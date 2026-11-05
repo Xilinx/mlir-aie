@@ -229,15 +229,18 @@ void SAPlacer::buildRouteModel(DeviceOp device, ArrayRef<FlowOp> flows,
         !isa_and_nonnull<LogicalTileOp>(tileOp) ||
         tileTypes.lookup(tileOp) != AIETileType::MemTile)
       continue;
-    PlannedDmaEnd end{0, nullptr, -1, 0, false};
-    int64_t objectBytes = 0;
+    PlannedDmaEnd end{0, nullptr, -1, 0, false, 0, 0};
     if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation())) {
       ObjectFifoPoolOp pool = dma.getPoolOp();
-      end = {dma.getNumBDs(), pool, -1, pool.getDepth(), pool.canWalkWhole()};
-      objectBytes = pool.getObjectSizeInBytes();
+      end = {dma.getNumBDs(),
+             pool,
+             -1,
+             pool.getDepth(),
+             pool.canWalkWhole(),
+             pool.getObjectSizeInBytes(),
+             pool.getContiguous() ? pool.getObjectsPerBuffer() : 0};
     }
-    memTileEnds[tileOp].push_back(
-        {endpoint.getRouteDirection(), end, objectBytes});
+    memTileEnds[tileOp].push_back({endpoint.getRouteDirection(), end});
   }
 }
 
@@ -655,11 +658,11 @@ int SAPlacer::computeDelegatePenalty() const {
 }
 
 void SAPlacer::collectSpillBuffers() {
-  // Each mem tile pool's objects, with the logical tile whose column is its
-  // home; a pool aie-objectfifo-allocate walks whole is one buffer, which
-  // spills only whole. A logical tile's ends do not depend on where it sits,
-  // so neither do the pools it walks, those of tiles sharing its position
-  // aside.
+  // Each mem tile pool's buffers, with the logical tile whose column is its
+  // home: one an object, or one holding them all for a pool the split lays out
+  // contiguously or aie-objectfifo-allocate walks whole, which spills only
+  // whole. A logical tile's ends do not depend on where it sits, so neither do
+  // the pools it walks, those of tiles sharing its position aside.
   spillBuffers.clear();
   for (auto &[tile, ends] : memTileEnds) {
     auto at = currentPlacement.find(tile);
@@ -668,15 +671,18 @@ void SAPlacer::collectSpillBuffers() {
     DenseSet<std::pair<Operation *, int>> walked, seen;
     (void)bdShortfall(at->second, {tile}, &walked);
     for (const MemTileEnd &end : ends) {
-      std::pair<Operation *, int> pool{end.end.pool, end.end.id};
+      const PlannedDmaEnd &plan = end.end;
+      std::pair<Operation *, int> pool{plan.pool, plan.id};
       if (!pool.first || !seen.insert(pool).second)
         continue;
-      if (walked.contains(pool)) {
-        spillBuffers.push_back({end.objectBytes * end.end.depth, tile});
-        continue;
-      }
-      for (int64_t d = 0; d < end.end.depth; d++)
-        spillBuffers.push_back({end.objectBytes, tile});
+      int64_t whole = plan.contiguousObjects  ? plan.contiguousObjects
+                      : walked.contains(pool) ? plan.depth
+                                              : 0;
+      for (int64_t buffer = 0, e = whole ? 1 : plan.depth; buffer < e; ++buffer)
+        spillBuffers.push_back(
+            {alignedBufferBytes(*targetModel, AIETileType::MemTile,
+                                plan.objectBytes * std::max<int64_t>(whole, 1)),
+             tile});
     }
   }
   // The allocator's order. Which buffers there are never changes while tiles
@@ -1597,32 +1603,16 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     fb.producerEnd = ofOp.plannedDmaEnd(std::nullopt);
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
       fb.consumerEnds.push_back(ofOp.plannedDmaEnd(ci));
-    // A link's pool holds objects of its owner's type.
-    auto objectBytesOf = [&](const PlannedDmaEnd &end, int64_t own) {
-      auto link = dyn_cast<ObjectFifoLinkOp>(end.pool);
-      if (!link)
-        return own;
-      auto owner = cast<MemRefType>(
-          cast<AIEObjectFifoType>(link.getPoolOwner().getElemType())
-              .getElementType());
-      return alignedBufferBytes(
-          *targetModel, AIETileType::MemTile,
-          owner.getNumElements() *
-              dataLayout.getTypeSizeInBits(owner.getElementType()) / 8);
-    };
     auto onMemTile = [&](Operation *tile) {
       return tile && tileTypes.lookup(tile) == AIETileType::MemTile;
     };
     if (fb.producerEnd && onMemTile(fb.producer))
       memTileEnds[fb.producer].push_back(
-          {DMAChannelDir::MM2S, *fb.producerEnd,
-           objectBytesOf(*fb.producerEnd, fb.producerSizeBytes)});
+          {DMAChannelDir::MM2S, *fb.producerEnd});
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
       if (const std::optional<PlannedDmaEnd> &end = fb.consumerEnds[ci];
           end && onMemTile(fb.consumers[ci]))
-        memTileEnds[fb.consumers[ci]].push_back(
-            {DMAChannelDir::S2MM, *end,
-             objectBytesOf(*end, fb.consumerSizeBytes)});
+        memTileEnds[fb.consumers[ci]].push_back({DMAChannelDir::S2MM, *end});
 
     std::optional<ObjectFifoLinkOp> link = ofOp.getLink();
     fb.forcesDMA = ofOp.dmaReason().has_value();

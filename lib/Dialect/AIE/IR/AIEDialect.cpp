@@ -2042,16 +2042,28 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   } else {
     link = getConsumerLink(*consumer);
   }
+  DataLayout layout = DataLayout::closest(*this);
+  auto objectBytes = [&](Type fifoType) -> int64_t {
+    MemRefType type = cast<AIEObjectFifoType>(fifoType).getElementType();
+    return type.getNumElements() * layout.getTypeSize(type.getElementType());
+  };
   if (!link) {
     int depth = dmaDepth(consumer);
     if (!drains)
-      return PlannedDmaEnd{depth, *this, static_cast<int>(*consumer), depth,
-                           walkable(depth)};
+      return PlannedDmaEnd{
+          depth, *this,           static_cast<int>(*consumer),
+          depth, walkable(depth), objectBytes(getConsumerElemTypeOrDefault()),
+          0};
     int64_t repeat = getRepeatCount().value_or(1);
     bool inHardware = repeat > 1 && depth == 1 && !getIterCount();
-    return PlannedDmaEnd{depth * (inHardware ? 1 : repeat), *this, -1, depth,
+    return PlannedDmaEnd{depth * (inHardware ? 1 : repeat),
+                         *this,
+                         -1,
+                         depth,
                          walkable(depth) && !getRepeatCount() &&
-                             getDimensionsToStream().empty()};
+                             getDimensionsToStream().empty(),
+                         objectBytes(getElemType()),
+                         0};
   }
 
   // A merge's participants fill one end, a dispatch's drain one, made by the
@@ -2071,11 +2083,13 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   int64_t selected =
       (drains ? link.isDistribute() : link.isJoin()) ? 1 : segments;
   int64_t descriptors = depth * selected;
+  int64_t contiguousObjects = 0;
   if (link.walksStream()) {
     StreamWindow window;
-    descriptors = !drains                                   ? 1
-                  : succeeded(link.getStreamWindow(window)) ? window.outputs
-                                                            : 0;
+    bool inferred = succeeded(link.getStreamWindow(window));
+    descriptors = !drains ? 1 : inferred ? window.outputs : 0;
+    if (inferred)
+      contiguousObjects = depth + window.top + window.bottom;
   }
   int64_t repeat = drains ? link.getRepeatCount().value_or(1) : 1;
   bool inHardware = repeat > 1 && descriptors == 1 && !getIterCount();
@@ -2090,10 +2104,15 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
       llvm::any_of(link.getOutputObjectFifos(), [](ObjectFifoCreateOp out) {
         return !out.getDimensionsToStream().empty();
       });
-  return PlannedDmaEnd{
-      descriptors * (inHardware ? 1 : repeat) * passes, link, -1, depth,
-      walkable(depth) && segments == 1 && !link.getRepeatCount() &&
-          !link.walksStream() && !link.isDispatch() && !drainLaysOut};
+  return PlannedDmaEnd{descriptors * (inHardware ? 1 : repeat) * passes,
+                       link,
+                       -1,
+                       depth,
+                       walkable(depth) && segments == 1 &&
+                           !link.getRepeatCount() && !link.walksStream() &&
+                           !link.isDispatch() && !drainLaysOut,
+                       objectBytes(link.getPoolOwner().getElemType()),
+                       contiguousObjects};
 }
 
 bool ObjectFifoCreateOp::canTakeTurns() {
