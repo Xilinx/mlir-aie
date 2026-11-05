@@ -297,9 +297,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // must be one row North or one column West of dst (edge.second); rows
   // increase upward, so isSouth(src,dst) means dst is south of src.
   auto cascadePred = [this](TileID srcPos, TileID dstPos) {
-    return targetModel->isSouth(srcPos.col, srcPos.row, dstPos.col,
-                                dstPos.row) ||
-           targetModel->isEast(srcPos.col, srcPos.row, dstPos.col, dstPos.row);
+    return targetModel->isLegalCascade(srcPos.col, srcPos.row, dstPos.col,
+                                       dstPos.row);
   };
   auto cascadeLabel = [](bool thisIsSrc) -> StringRef {
     return thisIsSrc ? "cascade destination" : "cascade source";

@@ -1014,8 +1014,9 @@ int SAPlacer::computeAdjacencyPenalty(
 }
 
 int SAPlacer::computePairingPenalty() const {
-  int penalty = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
-                                        config.cascadeWeightPerDist);
+  int penalty =
+      computeAdjacencyPenalty(cascadeAdjacency, targetModel->getCascadeSteps(),
+                              config.cascadeWeightPerDist);
   for (auto [first, second] : sharedMemAdjacency.edges) {
     auto firstIt = currentPlacement.find(first.getOperation());
     auto secondIt = currentPlacement.find(second.getOperation());

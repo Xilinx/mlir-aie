@@ -899,7 +899,6 @@ private:
 
   // Cascade
   Adjacency cascadeAdjacency;
-  static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
   // Ends of fifos that ask for shared memory, which must share a module.
   Adjacency sharedMemAdjacency;
 

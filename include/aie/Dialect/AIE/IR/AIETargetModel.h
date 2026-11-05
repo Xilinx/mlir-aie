@@ -11,7 +11,9 @@
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include <iostream>
 #include <memory>
@@ -270,6 +272,18 @@ public:
   /// Return true if src is South of dst
   bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) const {
     return srcCol == dstCol && srcRow == dstRow + 1;
+  }
+
+  /// The steps (destination column - source column, destination row - source
+  /// row) from one core's cascade output to the next core's input.
+  virtual llvm::ArrayRef<std::pair<int, int>> getCascadeSteps() const {
+    return {};
+  }
+
+  /// Return true if a cascade can run from src to dst.
+  bool isLegalCascade(int srcCol, int srcRow, int dstCol, int dstRow) const {
+    return llvm::is_contained(getCascadeSteps(),
+                              std::pair{dstCol - srcCol, dstRow - srcRow});
   }
 
   /// Return true if src has a memory tile which is West of dst
@@ -863,6 +877,12 @@ public:
   }
 
   AIEArch getTargetArch() const override;
+
+  // Cascade input comes from the North or West, output goes South or East.
+  llvm::ArrayRef<std::pair<int, int>> getCascadeSteps() const override {
+    static constexpr std::pair<int, int> steps[] = {{0, -1}, {1, 0}};
+    return steps;
+  }
 
   uint32_t getAddressGenGranularity() const override { return 32; }
 

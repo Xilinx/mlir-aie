@@ -268,13 +268,11 @@ module @cascade_chain_unsatisfiable {
 
 // -----
 
-// Verifier-legal but lowering-illegal direction: lowering requires src to be
-// one row North or one column West of dst (rows increase upward).
+// A pinned south-to-north cascade: the verifier rejects the direction the
+// cascade ports cannot take before placement runs (rows increase upward).
 module @cascade_pinned_wrong_direction {
   aie.device(npu1) {
-    // CHECK: error: tile (0, 4) violates cascade adjacency
-    // CHECK: note: cascade destination peer placed at (0, 5)
-    // CHECK: note: cascade adjacency requires the destination tile to be one row South or one column East of the source tile
+    // CHECK: error: 'aie.cascade_flow' op source tile must be to the North or West of the destination tile
     %dst = aie.logical_tile<CoreTile>(0, 5)
     %src = aie.logical_tile<CoreTile>(0, 4)
     aie.cascade_flow(%src, %dst)

@@ -47,19 +47,19 @@ struct AIELowerCascadeFlowsPass
       tilesWithCascadeFlow.insert(src);
       tilesWithCascadeFlow.insert(dst);
 
+      if (!targetModel.isLegalCascade(src.getCol(), src.getRow(), dst.getCol(),
+                                      dst.getRow())) {
+        cascadeFlow.emitOpError(
+            "source tile must be to the North or West of the destination tile");
+        return signalPassFailure();
+      }
       if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(),
                               dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::North;
         cascadeOutputsPerTile[src] = WireBundle::South;
-      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(),
-                                    dst.getRow())) {
+      } else {
         cascadeInputsPerTile[dst] = WireBundle::West;
         cascadeOutputsPerTile[src] = WireBundle::East;
-      } else {
-        // TODO: remove when this pass supports routing
-        cascadeFlow.emitOpError(
-            "source tile must be to the North or West of the destination tile");
-        return signalPassFailure();
       }
     }
 

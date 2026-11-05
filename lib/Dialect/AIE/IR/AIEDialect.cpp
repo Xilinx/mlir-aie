@@ -2900,19 +2900,26 @@ LogicalResult CascadeFlowOp::verify() {
   if (src.isMemTile() || dst.isMemTile())
     return emitOpError("memTile row has no cascade stream interface");
 
+  const auto &t = getTargetModel(*this);
+  if (t.getCascadeSteps().empty())
+    return emitOpError("cascade not supported in ")
+           << stringifyAIEArch(t.getTargetArch());
+
   std::optional<int> srcCol = src.tryGetCol();
   std::optional<int> srcRow = src.tryGetRow();
   std::optional<int> dstCol = dst.tryGetCol();
   std::optional<int> dstRow = dst.tryGetRow();
 
   if (srcCol && srcRow && dstCol && dstRow) {
-    const auto &t = getTargetModel(*this);
     if (!t.isSouth(*srcCol, *srcRow, *dstCol, *dstRow) &&
         !t.isWest(*srcCol, *srcRow, *dstCol, *dstRow) &&
         !t.isNorth(*srcCol, *srcRow, *dstCol, *dstRow) &&
         !t.isEast(*srcCol, *srcRow, *dstCol, *dstRow)) {
       return emitOpError("tiles must be adjacent");
     }
+    if (!t.isLegalCascade(*srcCol, *srcRow, *dstCol, *dstRow))
+      return emitOpError("source tile must be to the North or West of the "
+                         "destination tile");
   }
 
   return success();
