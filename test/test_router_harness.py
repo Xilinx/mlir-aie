@@ -228,6 +228,14 @@ UNJUDGED = {"aie_opt", "route_design", "find_flows", "route_batch", "debug_flags
 UNJUDGED |= {"check_verifier", "main"}
 
 
+# Seconds the slowest judged design takes on a busy hosted runner.
+SLOWEST_JUDGED_S = 258
+
+
+def test_the_nightly_limit_leaves_room_over_the_slowest_judged_design():
+    assert SLOWEST_JUDGED_S <= 0.75 * rp.ROUTE_TIMEOUT_S
+
+
 def test_every_judged_router_run_has_the_nightly_limit():
     for helper in (rp.route_design, rp.find_flows):
         assert "timeout" not in inspect.signature(helper).parameters

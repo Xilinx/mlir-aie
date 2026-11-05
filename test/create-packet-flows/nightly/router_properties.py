@@ -5848,10 +5848,8 @@ def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=Fals
 
 TIMEOUT = -1000
 
-# Seconds one router run of a judged design may take. The npu2 port-cap mutant
-# of seed 207560359 takes 67 s alone and 129 s under load on xcoradaie218, and
-# the hosted runner is about twice as slow.
-ROUTE_TIMEOUT_S = 300
+# Room for the slowest design the mutation nightly judges, on a busy runner.
+ROUTE_TIMEOUT_S = 360
 
 
 def route_design(text, hops_on=True, strict=False, deadline=None):
