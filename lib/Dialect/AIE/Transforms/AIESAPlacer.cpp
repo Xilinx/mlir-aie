@@ -427,10 +427,13 @@ void SAPlacer::addRouteEndContribution(size_t endIdx, int sign) {
 
 void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   const auto &fb = fifoBuffers[fifoIdx];
+  // Only cores' buffers are fitted.
   auto addObjects = [&](TileID pos, int64_t bytes, int count) {
+    if (targetModel->getTileType(pos.col, pos.row) != AIETileType::CoreTile)
+      return;
     currentObjects[pos][{bytes, fb.objectSpace}] += sign * count;
     objectsUndo.push_back({pos, {bytes, fb.objectSpace}, sign * count});
-    unplacedAt.erase(pos);
+    touchCore(pos);
   };
   auto addLocks = [&](TileID pos, int groups) {
     if (!fb.synchronized)
@@ -556,6 +559,7 @@ void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentObjects.clear();
   unplacedAt.clear();
+  lastCoreFitPlan.reset();
   currentLockDemand.clear();
   currentDMAUsage.clear();
   sharedMemDestination.clear();
@@ -833,8 +837,9 @@ int64_t SAPlacer::coreUnplacedBytes(TileID pos,
     }
   }
 
-  std::vector<int64_t> key = {layout.numBanks, layout.maxDataMemorySize,
-                              reinterpret_cast<intptr_t>(tile)};
+  std::vector<int64_t> &key = coreFitKey;
+  key.assign({layout.numBanks, layout.maxDataMemorySize,
+              reinterpret_cast<intptr_t>(tile)});
   for (auto &[object, count] : objects)
     if (count)
       key.insert(key.end(), {object.first, object.second, count});
@@ -903,7 +908,25 @@ int64_t SAPlacer::coreUnplacedBytes(TileID pos,
 // first, each to the neighbour with the most room whose buffers still fit
 // with it; room a neighbour gives one tile is gone for the next. What still
 // does not fit is charged by the KB.
-SAPlacer::CoreFitPlan SAPlacer::planCoreFit() const {
+const SAPlacer::CoreFitPlan &SAPlacer::planCoreFit() const {
+  static const ObjectCounts none;
+  SmallVector<TileID> overflowing;
+  for (auto &[tilePos, used] : currentMemUsage) {
+    if (targetModel->getTileType(tilePos.col, tilePos.row) !=
+        AIETileType::CoreTile)
+      continue;
+    auto [known, fresh] = unplacedAt.try_emplace(tilePos, 0);
+    if (fresh) {
+      auto held = currentObjects.find(tilePos);
+      known->second = coreUnplacedBytes(
+          tilePos, held == currentObjects.end() ? none : held->second);
+    }
+    if (known->second > 0)
+      overflowing.push_back(tilePos);
+  }
+
+  if (lastCoreFitPlan && overflowing == lastOverflowing)
+    return *lastCoreFitPlan;
   CoreFitPlan plan;
   int64_t coreCapacity = targetModel->getLocalMemorySize();
   DenseMap<TileID, ObjectCounts> objects;
@@ -914,17 +937,11 @@ SAPlacer::CoreFitPlan SAPlacer::planCoreFit() const {
         at->second = held->second;
     return at->second;
   };
-
-  SmallVector<TileID> overflowing;
-  for (auto &[tilePos, used] : currentMemUsage) {
-    if (targetModel->getTileType(tilePos.col, tilePos.row) !=
-        AIETileType::CoreTile)
-      continue;
-    auto [known, fresh] = unplacedAt.try_emplace(tilePos, 0);
-    if (fresh)
-      known->second = coreUnplacedBytes(tilePos, objectsAt(tilePos));
-    if (known->second > 0)
-      overflowing.push_back(tilePos);
+  coreFitPlanInputs.clear();
+  for (TileID tilePos : overflowing) {
+    coreFitPlanInputs.insert(tilePos);
+    for (TileID nbr : getMemAffinityNeighbors(*targetModel, tilePos))
+      coreFitPlanInputs.insert(nbr);
   }
 
   DenseMap<TileID, int64_t> lent;
@@ -984,7 +1001,9 @@ SAPlacer::CoreFitPlan SAPlacer::planCoreFit() const {
     if (int64_t left = coreUnplacedBytes(tilePos, objectsAt(tilePos)))
       plan.penalty += ((left + 1023) / 1024) * config.memPenaltyPerKB;
   }
-  return plan;
+  lastOverflowing = std::move(overflowing);
+  lastCoreFitPlan = std::move(plan);
+  return *lastCoreFitPlan;
 }
 
 int SAPlacer::computeLockPenalty() const {
@@ -2150,8 +2169,8 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
 
   // Apply moves: update placement maps and compute HPWL delta.
   for (auto &[t, pos] : moves) {
-    unplacedAt.erase(currentPlacement[t]);
-    unplacedAt.erase(pos);
+    touchCore(currentPlacement[t]);
+    touchCore(pos);
   }
   for (auto &[t, _] : moves)
     physToLogical.erase(currentPlacement[t]);
@@ -2225,13 +2244,13 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     sharedMemDestination = savedSharedMemDest;
     for (auto &[pos, object, delta] : llvm::reverse(objectsUndo)) {
       currentObjects[pos][object] -= delta;
-      unplacedAt.erase(pos);
+      touchCore(pos);
     }
     for (auto &[pos, delta] : lockUndo)
       currentLockDemand[pos] -= delta;
     for (auto &[t, pos] : moves) {
-      unplacedAt.erase(pos);
-      unplacedAt.erase(currentPlacement[t]);
+      touchCore(pos);
+      touchCore(currentPlacement[t]);
     }
     cachedResourcePenalty = oldResPenalty;
     memSpilloverPenalty = oldMemSpillover;

@@ -13,12 +13,14 @@
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIE/Transforms/AIETileMemoryFit.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/MapVector.h"
 
 #include <array>
 #include <deque>
 #include <map>
 #include <random>
+#include <unordered_map>
 
 namespace xilinx::AIE {
 
@@ -897,14 +899,54 @@ private:
   llvm::DenseMap<TileID, int64_t> currentMemUsage;
   // The fifo objects at each position: how many of each bytes and memory
   // space.
-  using ObjectCounts = std::map<std::pair<int64_t, int64_t>, int>;
+  class ObjectCounts {
+  public:
+    using Entry = std::pair<std::pair<int64_t, int64_t>, int>;
+    int &operator[](std::pair<int64_t, int64_t> object) {
+      auto *at = llvm::lower_bound(entries, object,
+                                   [](const Entry &entry, const auto &key) {
+                                     return entry.first < key;
+                                   });
+      if (at == entries.end() || at->first != object)
+        at = entries.insert(at, {object, 0});
+      return at->second;
+    }
+    void erase(std::pair<int64_t, int64_t> object) {
+      llvm::erase_if(entries,
+                     [&](const Entry &entry) { return entry.first == object; });
+    }
+    const Entry *begin() const { return entries.begin(); }
+    const Entry *end() const { return entries.end(); }
+
+  private:
+    // Few kinds of object meet on one tile, so a sorted vector copies
+    // without allocating.
+    llvm::SmallVector<Entry, 4> entries;
+  };
   llvm::DenseMap<TileID, ObjectCounts> currentObjects;
   // The bytes aie-assign-buffer-addresses leaves unplaced on a core
   // position, by what it holds.
-  mutable std::map<std::vector<int64_t>, int64_t> coreFitCache;
+  struct KeyHash {
+    size_t operator()(const std::vector<int64_t> &key) const {
+      return llvm::hash_combine_range(key.begin(), key.end());
+    }
+  };
+  mutable std::unordered_map<std::vector<int64_t>, int64_t, KeyHash>
+      coreFitCache;
+  mutable std::vector<int64_t> coreFitKey;
+  struct CoreFitPlan {
+    int penalty = 0;
+    llvm::SmallVector<std::pair<size_t, TileID>> moves;
+  };
   // What coreUnplacedBytes gives each position for what it holds now, and
   // the object changes the move being weighed made, to undo on rejection.
   mutable llvm::DenseMap<TileID, int64_t> unplacedAt;
+  // The last plan, the overflowing positions it was made for, and the
+  // positions it read; it stands until one of those changes.
+  mutable std::optional<CoreFitPlan> lastCoreFitPlan;
+  mutable llvm::SmallVector<TileID> lastOverflowing;
+  mutable llvm::DenseSet<TileID> coreFitPlanInputs;
+
   llvm::SmallVector<std::tuple<TileID, std::pair<int64_t, int64_t>, int>>
       objectsUndo;
   // The locks the pools at each position take, and the move's changes.
@@ -993,11 +1035,13 @@ private:
   int64_t coreUnplacedBytes(TileID pos, const ObjectCounts &objects) const;
   /// The intra-tile fifos generateAllocates moves to a neighbour's memory,
   /// and the penalty for what still does not fit.
-  struct CoreFitPlan {
-    int penalty = 0;
-    llvm::SmallVector<std::pair<size_t, TileID>> moves;
-  };
-  CoreFitPlan planCoreFit() const;
+  const CoreFitPlan &planCoreFit() const;
+  /// Forgets what the core fit knows of `pos`, whose contents changed.
+  void touchCore(TileID pos) {
+    unplacedAt.erase(pos);
+    if (coreFitPlanInputs.contains(pos))
+      lastCoreFitPlan.reset();
+  }
   /// The locks aie-objectfifo-allocate cannot place, by LockPlan on the pools
   /// the split gives each fifo where its ends sit, charged per lock.
   int computeLockPenalty() const;
