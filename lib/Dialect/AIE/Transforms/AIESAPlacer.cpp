@@ -919,8 +919,15 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
   // Bounded, since tiles meet at positions in more ways than a design has.
   if (bdShortfallOf.size() > (1u << 16))
     bdShortfallOf.clear();
+  SmallVector<Operation *> holders(tiles);
+  auto physical = physicalTiles.find(position);
+  if (physical != physicalTiles.end())
+    for (Operation *tile : physical->second)
+      if (!llvm::is_contained(holders, tile))
+        holders.push_back(tile);
   std::pair<TileID, std::vector<Operation *>> key{
-      layout->second, std::vector<Operation *>(tiles.begin(), tiles.end())};
+      physical != physicalTiles.end() ? position : layout->second,
+      std::vector<Operation *>(tiles.begin(), tiles.end())};
   if (auto cached = bdShortfallOf.find(key); cached != bdShortfallOf.end()) {
     if (walked)
       *walked = DenseSet<std::pair<Operation *, int>>(
@@ -938,7 +945,13 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
           col, row, WireBundle::DMA)),
       static_cast<int>(targetModel->getNumSourceSwitchboxConnections(
           col, row, WireBundle::DMA))};
-  auto free = [](DMAChannelDir, int) { return true; };
+  auto free = [&](DMAChannelDir dir, int channel) {
+    return llvm::all_of(holders, [&](Operation *tile) {
+      return channelAnalysis->isChannelFree(cast<TileLike>(tile), dir, channel);
+    });
+  };
+  DenseMap<int, int64_t> taken = takenBDs.at(*targetModel, col, row, holders);
+  auto spent = [&](int channel) { return taken.lookup(channel); };
   auto unspent = [](int) -> int64_t { return 0; };
   DenseSet<std::pair<Operation *, int>> whole;
   int64_t shortfall = 0;
@@ -954,7 +967,7 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
       total += bds;
     }
     if (DMAChannelAnalysis::planBDChannels(*targetModel, col, row, planned,
-                                           free, unspent))
+                                           free, spent))
       break;
     const MemTileEnd *deepest = nullptr;
     for (const MemTileEnd *end : ends)
@@ -967,6 +980,8 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
     }
     // Too few channels is the DMA term's to charge.
     int64_t ids = targetModel->getNumBDs(col, row);
+    for (auto [channel, held] : taken)
+      total += held;
     shortfall = DMAChannelAnalysis::planBDChannels(*targetModel, col, row,
                                                    unweighted, free, unspent)
                     ? std::max<int64_t>(1, total - ids)
@@ -1510,6 +1525,11 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device));
   runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
+  channelAnalysis.emplace(device);
+  takenBDs = DMAChannelAnalysis::TakenBDs(device);
+  physicalTiles.clear();
+  for (TileOp tile : device.getOps<TileOp>())
+    physicalTiles[{tile.getCol(), tile.getRow()}].push_back(tile);
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "
                           << cascadeAdjacency.edges.size() << " edges\n");

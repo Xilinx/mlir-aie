@@ -73,14 +73,11 @@ struct AIEObjectFifoAllocatePass
   /// tasks the runtime sequence configures for it.
   DenseMap<Operation *, SmallVector<DMAStartOp>> endpointStarts;
   DenseMap<Operation *, SmallVector<AIEX::DMAConfigureTaskForOp>> endpointTasks;
-  /// BDs the chains DMA programs start by index hold on each channel of a
-  /// placed tile, by (col, row, channel). Channels are chosen from these and
-  /// the endpoints' own chains alone, so an image built for one runtime
-  /// sequence serves another's instruction stream.
-  DenseMap<std::tuple<int, int, int>, int64_t> fixedBDs;
-  /// The BD ids runtime tasks pin, which aie-reserve-runtime-bd-ids keeps
-  /// static BDs off, each once per tile, by the lowest channel that reaches it.
-  DenseMap<std::tuple<int, int, int>, int64_t> pinnedBDs;
+  /// BD ids DMA programs and pinned runtime ids hold before objectFIFOs take
+  /// theirs. Channels are chosen from these and the endpoints' own chains
+  /// alone, so an image built for one runtime sequence serves another's
+  /// instruction stream.
+  DMAChannelAnalysis::TakenBDs takenBDs;
   /// The most unpinned BDs one task the runtime sequence configures on each
   /// channel by index holds, by (col, row, channel).
   DenseMap<std::tuple<int, int, int>, int64_t> taskBDs;
@@ -640,29 +637,6 @@ struct AIEObjectFifoAllocatePass
            !route.getTileLike().isShimTile();
   }
 
-  /// Blocks of the BD chain `start` begins, following next_bd.
-  static SmallVector<Block *> chainOf(DMAStartOp start) {
-    SmallVector<Block *> chain;
-    SmallPtrSet<Block *, 8> seen;
-    SmallVector<Block *> work{start.getDest()};
-    while (!work.empty()) {
-      Block *block = work.pop_back_val();
-      if (!seen.insert(block).second || block->getOps<DMABDOp>().empty())
-        continue;
-      chain.push_back(block);
-      if (auto next = dyn_cast<NextBDOp>(block->getTerminator()))
-        work.push_back(next.getDest());
-    }
-    return chain;
-  }
-
-  static int64_t countBDs(DMAStartOp start) {
-    int64_t bds = 0;
-    for (Block *block : chainOf(start))
-      bds += llvm::range_size(block->getOps<DMABDOp>());
-    return bds;
-  }
-
   static int64_t countBDs(Region &taskBody) {
     int64_t bds = 0;
     taskBody.walk([&](DMABDOp) { bds++; });
@@ -673,7 +647,7 @@ struct AIEObjectFifoAllocatePass
   int64_t endpointBDs(Operation *endpoint) {
     int64_t bds = 0;
     for (DMAStartOp start : endpointStarts.lookup(endpoint))
-      bds += countBDs(start);
+      bds += DMAChannelAnalysis::countBDs(start);
     return bds;
   }
 
@@ -703,7 +677,7 @@ struct AIEObjectFifoAllocatePass
       return tile && !sameTile(tile, endpoint.getTile());
     };
     for (DMAStartOp start : endpointStarts.lookup(endpoint))
-      for (Block *block : chainOf(start))
+      for (Block *block : DMAChannelAnalysis::chainOf(start))
         if (llvm::any_of(block->getOperations(),
                          [&](Operation &op) { return remote(&op); }))
           return true;
@@ -721,9 +695,8 @@ struct AIEObjectFifoAllocatePass
   void collectChannelPrograms() {
     endpointStarts.clear();
     endpointTasks.clear();
-    fixedBDs.clear();
-    pinnedBDs.clear();
     taskBDs.clear();
+    takenBDs = DMAChannelAnalysis::TakenBDs(device);
     auto key = [](Value tile,
                   int channel) -> std::optional<std::tuple<int, int, int>> {
       auto placed = cast<TileLike>(tile.getDefiningOp());
@@ -734,16 +707,9 @@ struct AIEObjectFifoAllocatePass
     };
     for (auto program : device.getOps<DmaBody>())
       for (Block &block : program.getDmaBody())
-        for (auto start : block.getOps<DMAStartOp>()) {
-          if (auto endpoint = start.getEndpointOp()) {
+        for (auto start : block.getOps<DMAStartOp>())
+          if (auto endpoint = start.getEndpointOp())
             endpointStarts[endpoint].push_back(start);
-          } else if (auto at =
-                         key(program.getTile(), start.getChannelIndex())) {
-            fixedBDs[*at] += countBDs(start);
-          }
-        }
-    // Each id a task pins on a tile, with a channel reaching it.
-    std::map<std::pair<int, int>, std::map<int32_t, int>> pinned;
     device.walk([&](Operation *op) {
       if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
         if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
@@ -753,28 +719,12 @@ struct AIEObjectFifoAllocatePass
       } else if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
         if (auto at = key(task.getTile(), task.getChannel())) {
           int64_t unpinned = 0;
-          task.getBody().walk([&](DMABDOp bd) {
-            if (std::optional<int32_t> id = bd.getBdId())
-              pinned[{std::get<0>(*at), std::get<1>(*at)}].try_emplace(
-                  *id, task.getChannel());
-            else
-              ++unpinned;
-          });
+          task.getBody().walk([&](DMABDOp bd) { unpinned += !bd.getBdId(); });
           int64_t &largest = taskBDs[*at];
           largest = std::max(largest, unpinned);
         }
       }
     });
-    const AIETargetModel &target = device.getTargetModel();
-    for (auto &[at, ids] : pinned) {
-      auto [col, row] = at;
-      for (auto [id, reaching] : ids)
-        for (int channel = 0; channel <= reaching; ++channel)
-          if (target.isBdChannelAccessible(col, row, id, channel)) {
-            ++pinnedBDs[{col, row, channel}];
-            break;
-          }
-    }
   }
 
   /// Rank tiles, pools, endpoints and routes by their attributes and then, a
@@ -950,9 +900,10 @@ struct AIEObjectFifoAllocatePass
     SmallVector<RouteEndpoint> pending;
     // BDs per placed (col, row, channel) as channels are handed out, for
     // choosing among a tile's channels by the BD ids they can use.
-    DenseMap<std::tuple<int, int, int>, int64_t> demand = fixedBDs;
-    for (auto &[at, bds] : pinnedBDs)
-      demand[at] += bds;
+    DenseMap<std::tuple<int, int, int>, int64_t> demand;
+    for (auto [col, row] : takenBDs.positions())
+      for (auto [channel, bds] : takenBDs.at(device.getTargetModel(), col, row))
+        demand[{col, row, channel}] += bds;
     auto bdsOf = [&](RouteEndpoint endpoint) -> int64_t {
       if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation()))
         return dma.getNumBDs();
@@ -1970,7 +1921,7 @@ struct AIEObjectFifoAllocatePass
     bool packet = !flows.empty() && RouteOp(flows.front()).getPacket();
     if (packet) {
       SmallVector<DMABDOp> bds;
-      for (Block *block : chainOf(start))
+      for (Block *block : DMAChannelAnalysis::chainOf(start))
         llvm::append_range(bds, block->getOps<DMABDOp>());
       if (failed(checkHeaders(endpoint, ids, bds)))
         return failure();
@@ -2230,7 +2181,7 @@ struct AIEObjectFifoAllocatePass
     channelAssignments.clear();
     endpointStarts.clear();
     endpointTasks.clear();
-    fixedBDs.clear();
+    takenBDs = {};
     taskBDs.clear();
     channelDemand.clear();
     structuralRank.clear();

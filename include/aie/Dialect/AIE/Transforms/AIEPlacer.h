@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
+#include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "llvm/ADT/MapVector.h"
 
@@ -897,6 +898,11 @@ private:
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
   llvm::DenseMap<TileID, TileID> bdLayoutOf;
+  // What aie-objectfifo-allocate plans a tile's BD ids around: the channels
+  // and ids its own programs and pinned runtime ids already hold.
+  std::optional<DMAChannelAnalysis> channelAnalysis;
+  DMAChannelAnalysis::TakenBDs takenBDs;
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> physicalTiles;
   int cachedPressure = 0;
   // The DMA-channel term per tile, and what the last move overwrote in it.
   int dmaPenalty = 0;

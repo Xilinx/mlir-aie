@@ -13,7 +13,9 @@
 #include "llvm/ADT/DenseSet.h"
 
 #include <functional>
+#include <map>
 #include <numeric>
+#include <set>
 
 using namespace mlir;
 using namespace xilinx;
@@ -211,6 +213,94 @@ LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,
                  "one circuit or only packet flows";
   diag.attachNote(it->second.owner->getLoc()) << "the other stream is here";
   return diag;
+}
+
+SmallVector<Block *> DMAChannelAnalysis::chainOf(DMAStartOp start) {
+  SmallVector<Block *> chain;
+  SmallPtrSet<Block *, 8> seen;
+  SmallVector<Block *> work{start.getDest()};
+  while (!work.empty()) {
+    Block *block = work.pop_back_val();
+    if (!seen.insert(block).second || block->getOps<DMABDOp>().empty())
+      continue;
+    chain.push_back(block);
+    if (auto next = dyn_cast<NextBDOp>(block->getTerminator()))
+      work.push_back(next.getDest());
+  }
+  return chain;
+}
+
+int64_t DMAChannelAnalysis::countBDs(DMAStartOp start) {
+  int64_t bds = 0;
+  for (Block *block : chainOf(start))
+    bds += llvm::range_size(block->getOps<DMABDOp>());
+  return bds;
+}
+
+DMAChannelAnalysis::TakenBDs::TakenBDs(DeviceOp device) {
+  for (auto program : device.getOps<DmaBody>())
+    for (Block &block : program.getDmaBody())
+      for (auto start : block.getOps<DMAStartOp>())
+        if (!start.getEndpointOp())
+          if (Operation *tile = program.getTile().getDefiningOp())
+            fixed[tile][start.getChannelIndex()] += countBDs(start);
+  unsigned order = 0;
+  device.walk([&](AIEX::DMAConfigureTaskOp task) {
+    Operation *tile = task.getTile().getDefiningOp();
+    if (!tile)
+      return;
+    task.getBody().walk([&](DMABDOp bd) {
+      if (std::optional<int32_t> id = bd.getBdId())
+        pinned[tile].try_emplace(
+            *id, Pin{order++, static_cast<int>(task.getChannel())});
+    });
+  });
+}
+
+DenseMap<int, int64_t>
+DMAChannelAnalysis::TakenBDs::at(const AIETargetModel &target, int col, int row,
+                                 ArrayRef<Operation *> tiles) const {
+  auto here = [&](Operation *tile) {
+    auto like = dyn_cast<TileLike>(tile);
+    return llvm::is_contained(tiles, tile) ||
+           (like && like.tryGetCol() == col && like.tryGetRow() == row);
+  };
+  DenseMap<int, int64_t> taken;
+  for (auto &[tile, channels] : fixed)
+    if (here(tile))
+      for (auto [channel, bds] : channels)
+        taken[channel] += bds;
+  std::map<int32_t, Pin> ids;
+  for (auto &[tile, pins] : pinned)
+    if (here(tile))
+      for (auto [id, pin] : pins)
+        if (auto [it, added] = ids.try_emplace(id, pin);
+            !added && pin.order < it->second.order)
+          it->second = pin;
+  for (auto [id, pin] : ids)
+    for (int channel = 0; channel <= pin.channel; ++channel)
+      if (target.isBdChannelAccessible(col, row, id, channel)) {
+        ++taken[channel];
+        break;
+      }
+  return taken;
+}
+
+SmallVector<std::pair<int, int>>
+DMAChannelAnalysis::TakenBDs::positions() const {
+  std::set<std::pair<int, int>> at;
+  auto add = [&](Operation *tile) {
+    auto like = dyn_cast<TileLike>(tile);
+    if (!like)
+      return;
+    if (auto col = like.tryGetCol(), row = like.tryGetRow(); col && row)
+      at.insert({*col, *row});
+  };
+  for (auto &entry : fixed)
+    add(entry.first);
+  for (auto &entry : pinned)
+    add(entry.first);
+  return {at.begin(), at.end()};
 }
 
 std::optional<SmallVector<int>>
