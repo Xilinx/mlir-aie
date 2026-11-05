@@ -117,7 +117,7 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
        ListOption<"clSAWalkedFifos", "sa-walked-fifos", "std::string",
                   "ObjectFIFOs whose mem tile pools the SA placer counts as "
                   "walked whole, one buffer each, as allocation lays out "
-                  "the pools a turn-sharing walk takes">,
+                  "the pools a turn-sharing walk takes, as <device>:<fifo>">,
        ListOption<"clSACoreDataSizes", "sa-core-data-sizes", "std::string",
                   "Bytes the SA placer reserves for a core's own sections "
                   "in place of its estimate, as <device>:<core>=<bytes>, "

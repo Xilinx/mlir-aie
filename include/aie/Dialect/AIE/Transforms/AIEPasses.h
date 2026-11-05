@@ -35,12 +35,14 @@ inline constexpr llvm::StringLiteral kObjectFifoObjectSlotAttrName =
     "aie.objectfifo.object_slot";
 
 /// How `--aie-objectfifo-allocate` says a pool's buffers fit no memory its
-/// users reach; the diagnostic's symbol argument names the pool's objectFIFO.
+/// users reach; the diagnostic's symbol argument names the pool's objectFIFO,
+/// nested in its device.
 inline constexpr llvm::StringLiteral kNoBufferRoom =
     "could not place buffers in accessible memory with available capacity";
 
 /// How `--aie-assign-buffer-addresses` says a buffer fits no tile memory left,
-/// and the note it adds when a core on that tile keeps its own sections there.
+/// and the note it adds when a core on that tile keeps its own sections there;
+/// the note's symbol argument names the core's device.
 inline constexpr llvm::StringLiteral kNoTileRoom = "could not be placed: ";
 inline constexpr llvm::StringLiteral kCoreSectionsNote =
     "the core on this tile keeps its own sections in ";

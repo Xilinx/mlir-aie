@@ -10,7 +10,7 @@
 // RUN: %aiecc --no-progress --tmpdir %t.once --placer=sa_placer --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | grep -c "never called from any core" | FileCheck %s --check-prefix=ONCE
 // RUN: not %aiecc --no-progress --tmpdir %t.pinned --placer=sa_placer --sa-core-data-sizes=main:1=0 --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
 // RUN: not %aiecc --no-progress --tmpdir %t.never --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
-// RUN: %aiecc --no-progress --tmpdir %t.otherpin --placer=sa_placer --sa-walked-fifos=y --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=OTHERPIN
+// RUN: %aiecc --no-progress --tmpdir %t.otherpin --placer=sa_placer --sa-walked-fifos=main:y --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=OTHERPIN
 
 // Core %c keeps 28 KiB of .bss, which the SA placer cannot know before the
 // probe link measures it. Its estimate fits %c's buffers on any tile, and the

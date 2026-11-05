@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-walked-fifos=a_in" --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-walked-fifos=main:a_in" --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
 // RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %s 2>&1 | FileCheck %s --check-prefix=DIAG
 
 // The mem tiles of columns 0 and 1 hold two 1 KiB holes each. Allocation
@@ -13,7 +13,7 @@
 // lcm(7, 6) descriptors are more than a channel has), and a walked pool fits
 // no hole. Counted apart, their objects fit the holes beside the core, where
 // the SA places them; allocation then finds no room and names the fifo.
-// DIAG: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @a_in
+// DIAG: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @main::@a_in
 
 // Counted walked, the SA places the pools where whole buffers fit.
 // CHECK-DAG: %a_in__cons__buf0 = aie.buffer(%mem_tile_2_1) {{.*}} : memref<448xi32>

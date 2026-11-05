@@ -3317,32 +3317,40 @@ int main(int argc, char **argv) {
   while ((mayWalkAgain && failedAt(kWithSymbolsEdge)) ||
          (mayCoreAgain && failedAt(kAddressesEdge))) {
     Attempt &last = attempts.back();
+    // Each charge names its device, and only the devices that failed are
+    // charged, so the others place as they did.
     std::optional<std::string> fifo;
-    bool coreFull = false;
+    llvm::StringSet<> fullDevices;
     for (const HeldError &error : last.diags.errors) {
       llvm::StringRef message = error.message;
-      coreFull |= mayCoreAgain && message.contains(xilinx::AIE::kNoTileRoom) &&
-                  llvm::any_of(error.notes, [](const auto &note) {
-                    return llvm::StringRef(note.first)
-                        .starts_with(xilinx::AIE::kCoreSectionsNote);
-                  });
+      if (mayCoreAgain && message.contains(xilinx::AIE::kNoTileRoom))
+        for (const auto &[note, attrs] : error.notes)
+          if (llvm::StringRef(note).starts_with(xilinx::AIE::kCoreSectionsNote))
+            for (mlir::Attribute attr : attrs)
+              if (auto device = llvm::dyn_cast<mlir::FlatSymbolRefAttr>(attr))
+                fullDevices.insert(device.getValue());
       if (!mayWalkAgain || !message.contains(xilinx::AIE::kNoBufferRoom))
         continue;
       for (mlir::Attribute arg : error.arguments)
-        if (auto name = llvm::dyn_cast<mlir::FlatSymbolRefAttr>(arg);
-            name && !llvm::is_contained(saWalkedFifos, name.getValue()))
-          fifo = name.getValue().str();
+        if (auto name = llvm::dyn_cast<mlir::SymbolRefAttr>(arg)) {
+          std::string entry = (name.getRootReference().getValue() + ":" +
+                               name.getLeafReference().getValue())
+                                  .str();
+          if (!llvm::is_contained(saWalkedFifos, entry))
+            fifo = entry;
+        }
     }
     // A core's measurement keeps its largest value, so the charges only grow
     // and the attempts end.
     bool grew = false;
-    if (coreFull) {
+    {
       std::lock_guard<std::mutex> lock(measuredCores.mutex);
       for (auto &[core, bytes] : measuredCores.bytes)
-        if (int64_t &charged = coreData[core]; bytes > charged) {
-          charged = bytes;
-          grew = true;
-        }
+        if (fullDevices.contains(llvm::StringRef(core).rsplit(':').first))
+          if (int64_t &charged = coreData[core]; bytes > charged) {
+            charged = bytes;
+            grew = true;
+          }
     }
     if (!fifo && !grew) {
       if (attempts.size() > 1)
@@ -3352,7 +3360,8 @@ int main(int argc, char **argv) {
     }
     if (fifo) {
       saWalkedFifos.push_back(*fifo);
-      llvm::errs() << "aiecc: objectFIFO @" << *fifo
+      auto [device, name] = llvm::StringRef(*fifo).rsplit(':');
+      llvm::errs() << "aiecc: objectFIFO @" << name << " of @" << device
                    << "'s buffers find no room; placing again with "
                       "--sa-walked-fifos="
                    << llvm::join(saWalkedFifos, ",") << "\n";

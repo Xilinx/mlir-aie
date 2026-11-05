@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: %aiecc -n --no-progress --tmpdir %t.retry --placer=sa_placer --get=input_with_symbols.mlir %S/Inputs/placement_retry_walked.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
-// RUN: not %aiecc -n --no-progress --tmpdir %t.pinned --placer=sa_placer --sa-walked-fifos=c --get=input_with_symbols.mlir %S/Inputs/placement_retry_walked.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
+// RUN: not %aiecc -n --no-progress --tmpdir %t.pinned --placer=sa_placer --sa-walked-fifos=main:c --get=input_with_symbols.mlir %S/Inputs/placement_retry_walked.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
 // RUN: not %aiecc -n --no-progress --tmpdir %t.never --placer=sa_placer --get=input_with_symbols.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
 // RUN: %aiecc -n --no-progress --tmpdir %t.otherpin --placer=sa_placer --sa-core-data-sizes=main:0=0 --get=input_with_symbols.mlir %S/Inputs/placement_retry_walked.mlir 2>&1 | FileCheck %s --check-prefix=OTHERPIN
 
@@ -15,22 +15,22 @@
 // their objects apart, which fit the holes of the mem tile next to the core;
 // the walked buffers do not. aiecc places again with the pool allocation
 // names counted walked, and that placement allocates.
-// RETRY: aiecc: objectFIFO @a_in's buffers find no room; placing again with --sa-walked-fifos=a_in
+// RETRY: aiecc: objectFIFO @a_in of @main's buffers find no room; placing again with --sa-walked-fifos=main:a_in
 // RETRY-NOT: error:
 
 // Core data sizes the command line chose leave this retry on.
-// OTHERPIN: aiecc: objectFIFO @a_in's buffers find no room; placing again with --sa-walked-fifos=a_in
+// OTHERPIN: aiecc: objectFIFO @a_in of @main's buffers find no room; placing again with --sa-walked-fifos=main:a_in
 // OTHERPIN-NOT: error:
 
 // Walked pools the command line chose are kept.
-// PINNED: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @a_in
+// PINNED: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @main::@a_in
 // PINNED-NOT: placing again
 
 // The one mem tile has no room for the walked buffers wherever it goes;
 // aiecc reports the first placement's error and its failed edge.
-// NEVER: aiecc: objectFIFO @a_in's buffers find no room; placing again with --sa-walked-fifos=a_in
+// NEVER: aiecc: objectFIFO @a_in of @main's buffers find no room; placing again with --sa-walked-fifos=main:a_in
 // NEVER-NOT: placing again
-// NEVER: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @a_in
+// NEVER: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @main::@a_in
 // NEVER: aiecc: no placement with what allocation found counted fits either; the errors above are the first placement's
 // NEVER: aiecc: edge 'input_with_symbols.mlir' (key '{{.*}}') failed
 

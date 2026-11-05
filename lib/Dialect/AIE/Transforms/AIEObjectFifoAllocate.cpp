@@ -2305,7 +2305,9 @@ struct AIEObjectFifoAllocatePass
         InFlightDiagnostic error = bufferFailure.emitOpError(kNoBufferRoom);
         if (std::optional<StringRef> fifo = bufferFailure.getFifoName())
           error << " for objectFIFO "
-                << FlatSymbolRefAttr::get(device.getContext(), *fifo);
+                << SymbolRefAttr::get(
+                       device.getSymNameAttr(),
+                       {FlatSymbolRefAttr::get(device.getContext(), *fifo)});
       } else if (failed(planLocks(pools))) {
         if (lockAccessFailure)
           lockAccessFailure->emitOpError("cannot access pool locks");

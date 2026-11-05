@@ -139,7 +139,8 @@ inline cl::opt<double> saEffort(
 inline cl::list<std::string> saWalkedFifos(
     "sa-walked-fifos", cl::CommaSeparated,
     cl::desc("ObjectFIFOs whose mem tile pools the SA placer counts as "
-             "walked whole; aiecc adds those allocation finds no room for "
+             "walked whole, as <device>:<fifo>; aiecc adds those allocation "
+             "finds no room for "
              "when it places again, unless this option is given"));
 inline cl::list<std::string> saCoreDataSizes(
     "sa-core-data-sizes", cl::CommaSeparated,

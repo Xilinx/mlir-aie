@@ -92,7 +92,11 @@ struct AIEPlaceTilesPass
       }
       SAConfig config;
       config.effort = effort;
-      config.walkedFifos.assign(clSAWalkedFifos.begin(), clSAWalkedFifos.end());
+      for (StringRef entry : clSAWalkedFifos) {
+        auto [name, fifo] = entry.rsplit(':');
+        if (name == device.getSymName())
+          config.walkedFifos.push_back(fifo.str());
+      }
       for (StringRef entry : clSACoreDataSizes) {
         auto [core, bytes] = entry.split('=');
         auto [name, ordinal] = core.rsplit(':');
