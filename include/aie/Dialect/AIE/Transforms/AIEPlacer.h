@@ -828,6 +828,8 @@ private:
     llvm::SmallVector<FitBuffer> buffers;
   };
   llvm::DenseMap<mlir::Operation *, CoreMemory> coreMemory;
+  // Locks the design already places on each logical tile.
+  llvm::DenseMap<mlir::Operation *, int> fixedLocks;
 
   // Net model
   struct FifoBufferInfo {
@@ -841,6 +843,10 @@ private:
     int64_t producerObjectBytes = 0;
     int64_t consumerObjectBytes = 0;
     int64_t objectSpace = 0;
+    // Whether its pools take locks, and how many lock groups the pool at a
+    // consumer end holds: a distribute link's input has one per output.
+    bool synchronized = true;
+    int consumerLockGroups = 1;
     // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
     int sharedDepth = 0;
     int producerDepth = 0;
@@ -901,6 +907,9 @@ private:
   mutable llvm::DenseMap<TileID, int64_t> unplacedAt;
   llvm::SmallVector<std::tuple<TileID, std::pair<int64_t, int64_t>, int>>
       objectsUndo;
+  // The locks the pools at each position take, and the move's changes.
+  llvm::DenseMap<TileID, int> currentLockDemand;
+  llvm::SmallVector<std::pair<TileID, int>> lockUndo;
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
@@ -989,6 +998,9 @@ private:
     llvm::SmallVector<std::pair<size_t, TileID>> moves;
   };
   CoreFitPlan planCoreFit() const;
+  /// The locks aie-objectfifo-allocate cannot place, by LockPlan on the pools
+  /// the split gives each fifo where its ends sit, charged per lock.
+  int computeLockPenalty() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();
   int computeTileDMAPenalty(TileID tilePos) const;

@@ -7,6 +7,7 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "aie/Dialect/AIE/Transforms/AIETileMemoryFit.h"
 #include "llvm/ADT/MapVector.h"
@@ -431,6 +432,12 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     objectsUndo.push_back({pos, {bytes, fb.objectSpace}, sign * count});
     unplacedAt.erase(pos);
   };
+  auto addLocks = [&](TileID pos, int groups) {
+    if (!fb.synchronized)
+      return;
+    currentLockDemand[pos] += sign * 2 * groups;
+    lockUndo.push_back({pos, sign * 2 * groups});
+  };
 
   int64_t sharedObjectBytes =
       std::max(fb.producerObjectBytes, fb.consumerObjectBytes);
@@ -480,6 +487,8 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       currentMemUsage[delegatePos.value_or(prodPos)] += sign * sharedBytes;
       addObjects(delegatePos.value_or(prodPos), sharedObjectBytes,
                  fb.sharedDepth);
+      if (ci == 0)
+        addLocks(delegatePos.value_or(prodPos), 1);
     } else if (isSharedMem) {
       TileID bufTile;
       if (delegatePos) {
@@ -507,17 +516,23 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       }
       currentMemUsage[bufTile] += sign * sharedBytes;
       addObjects(bufTile, sharedObjectBytes, fb.sharedDepth);
+      if (ci == 0)
+        addLocks(bufTile, 1);
     } else {
       if (!prodCharged && !prodIsShim && !fb.linkSharedProd) {
         currentMemUsage[prodPos] +=
             sign * fb.producerSizeBytes * fb.producerDepth;
         addObjects(prodPos, fb.producerObjectBytes, fb.producerDepth);
+        if (fb.producerEnd)
+          addLocks(prodPos, 1);
         prodCharged = true;
       }
       if (!consIsShim) {
         currentMemUsage[consPos] +=
             sign * fb.consumerSizeBytes * fb.consumerDepths[ci];
         addObjects(consPos, fb.consumerObjectBytes, fb.consumerDepths[ci]);
+        if (fb.consumerEnds[ci])
+          addLocks(consPos, fb.consumerLockGroups);
       }
     }
 
@@ -541,6 +556,7 @@ void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentObjects.clear();
   unplacedAt.clear();
+  currentLockDemand.clear();
   currentDMAUsage.clear();
   sharedMemDestination.clear();
 
@@ -621,7 +637,8 @@ void SAPlacer::initResourceTracking() {
   delegatePenalty = computeDelegatePenalty();
   dmaPenalty = computeDMAChannelPenalty();
   cachedResourcePenalty = memSpilloverPenalty + planCoreFit().penalty +
-                          dmaPenalty + bdCountPenalty + delegatePenalty;
+                          computeLockPenalty() + dmaPenalty + bdCountPenalty +
+                          delegatePenalty;
   cachedPressure = computeMemoryPressure();
 }
 
@@ -970,6 +987,103 @@ SAPlacer::CoreFitPlan SAPlacer::planCoreFit() const {
   return plan;
 }
 
+int SAPlacer::computeLockPenalty() const {
+  // Each group taking its locks at home always fits there.
+  auto fitsAtHome = [&](const DenseMap<TileID, int> &atHome) {
+    return llvm::all_of(atHome, [&](const auto &entry) {
+      return entry.second <= static_cast<int>(targetModel->getNumLocks(
+                                 entry.first.col, entry.first.row));
+    });
+  };
+  if (fixedLocks.empty() ? fitsAtHome(currentLockDemand) : [&] {
+        DenseMap<TileID, int> atHome = currentLockDemand;
+        for (auto &[tile, locks] : fixedLocks)
+          if (std::optional<TileID> at = positionOf(tile))
+            atHome[*at] += locks;
+        return fitsAtHome(atHome);
+      }())
+    return 0;
+
+  // Lock groups by the tiles that use them, a compute tile's DMA reaching
+  // only its own locks: a group takes any placed tile they all reach, so
+  // groups with the same users may take the same tiles.
+  std::map<SmallVector<std::pair<TileID, bool>, 2>, int> classes;
+  auto isCore = [](std::optional<AIETileType> type) {
+    return type == AIETileType::CoreTile;
+  };
+  auto isShim = [](std::optional<AIETileType> type) {
+    return type == AIETileType::ShimNOCTile || type == AIETileType::ShimPLTile;
+  };
+  for (auto [index, fb] : llvm::enumerate(fifoBuffers)) {
+    std::optional<TileID> prodPos = positionOf(fb.producer);
+    if (!fb.synchronized || !prodPos)
+      continue;
+    const FifoEndTypes &types = fifoEndTypes[index];
+    std::optional<TileID> delegatePos = positionOf(fb.delegate);
+    bool prodPool = false;
+    for (auto [ci, cons] : llvm::enumerate(fb.consumers)) {
+      std::optional<TileID> consPos = positionOf(cons);
+      if (!consPos)
+        continue;
+      using SharedMemory = AIETargetModel::SharedMemory;
+      if (!fb.forcesDMA && ObjectFifoCreateOp::sharedMemoryOf(
+                               *targetModel, *prodPos, *consPos, delegatePos,
+                               fb.linked) != SharedMemory::None) {
+        if (ci != 0)
+          continue;
+        SmallVector<std::pair<TileID, bool>, 2> users;
+        if (isCore(types.producer))
+          users.push_back({*prodPos, false});
+        if (isCore(types.consumers[ci]))
+          users.push_back({*consPos, false});
+        ++classes[users];
+        continue;
+      }
+      if (!prodPool && !isShim(types.producer) && !fb.linkSharedProd &&
+          fb.producerEnd) {
+        ++classes[{{*prodPos, false}, {*prodPos, isCore(types.producer)}}];
+        prodPool = true;
+      }
+      if (!isShim(types.consumers[ci]) && fb.consumerEnds[ci])
+        classes[{{*consPos, false}, {*consPos, isCore(types.consumers[ci])}}] +=
+            fb.consumerLockGroups;
+    }
+  }
+  SmallVector<TileID> positions;
+  for (auto &[op, at] : currentPlacement)
+    positions.push_back(at);
+  llvm::sort(positions, [](TileID a, TileID b) {
+    return std::make_pair(a.col, a.row) < std::make_pair(b.col, b.row);
+  });
+  positions.erase(llvm::unique(positions), positions.end());
+
+  LockPlan plan(*targetModel);
+  DenseMap<TileID, unsigned> index;
+  auto tileAt = [&](TileID at) {
+    auto [entry, fresh] = index.try_emplace(at, 0);
+    if (fresh)
+      entry->second = plan.addTile({{at}, at});
+    return entry->second;
+  };
+  int penalty = 0;
+  for (auto &[tile, locks] : fixedLocks)
+    if (std::optional<TileID> at = positionOf(tile))
+      if (!plan.reserve(tileAt(*at), locks))
+        penalty += locks * config.dmaPenaltyPerChannel;
+  SmallVector<unsigned> ranked;
+  for (TileID at : positions)
+    ranked.push_back(tileAt(at));
+  SmallVector<std::pair<int, SmallVector<LockPlan::User>>> planned;
+  for (auto &[users, count] : classes) {
+    SmallVector<LockPlan::User> records;
+    for (auto [at, localOnly] : users)
+      records.push_back({tileAt(at), localOnly});
+    planned.push_back({count, records});
+  }
+  return penalty + static_cast<int>(plan.shortfall(planned, ranked, 2)) * 2 *
+                       config.dmaPenaltyPerChannel;
+}
+
 int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
   auto usage = currentDMAUsage.lookup(tilePos);
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
@@ -1307,7 +1421,8 @@ int SAPlacer::updateResourcePenalty(
   }
 
   cachedResourcePenalty = memSpilloverPenalty + planCoreFit().penalty +
-                          dmaPenalty + bdCountPenalty + delegatePenalty;
+                          computeLockPenalty() + dmaPenalty + bdCountPenalty +
+                          delegatePenalty;
   return cachedResourcePenalty;
 }
 
@@ -1551,6 +1666,11 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
             : bytes;
   });
 
+  device.walk([&](LockOp lock) {
+    Operation *tileOp = lock.getTile().getDefiningOp();
+    if (isa_and_nonnull<LogicalTileOp>(tileOp))
+      ++fixedLocks[tileOp];
+  });
   auto [coreBytes, coreBus, coreVector] =
       tileMemoryLimits(*targetModel, AIETileType::CoreTile);
   device.walk([&](BufferOp bufOp) {
@@ -1736,6 +1856,10 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     // A link output's producer objects are the link input's consumer pool.
     fb.linkSharedProd =
         link && llvm::is_contained(link->getOutputObjectFifos(), ofOp);
+    fb.synchronized = !ofOp.getDisableSynchronization();
+    if (link && link->isDistribute() &&
+        llvm::is_contained(link->getInputObjectFifos(), ofOp))
+      fb.consumerLockGroups = link->getPoolSegments().size();
     fifoBuffers.push_back(fb);
   }
 
@@ -2017,6 +2141,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   auto savedDMAUsage = currentDMAUsage;
   auto savedSharedMemDest = sharedMemDestination;
   objectsUndo.clear();
+  lockUndo.clear();
 
   // Apply moves: update placement maps and compute HPWL delta.
   for (auto &[t, pos] : moves) {
@@ -2097,6 +2222,8 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       currentObjects[pos][object] -= delta;
       unplacedAt.erase(pos);
     }
+    for (auto &[pos, delta] : lockUndo)
+      currentLockDemand[pos] -= delta;
     for (auto &[t, pos] : moves) {
       unplacedAt.erase(pos);
       unplacedAt.erase(currentPlacement[t]);
