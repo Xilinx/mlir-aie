@@ -316,3 +316,53 @@ module {
     }
   }
 }
+
+// -----
+
+// Two outputs each prove the input consumed one for one, but the input moves
+// @a + @b blocks while each output moves only one of them: neither alone
+// covers it, by how much depending on the parameters.
+module {
+  aiex.scratchpad_parameter @a : i32 {kind = 0 : i32, max_value = 4 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
+  aiex.scratchpad_parameter @b : i32 {kind = 0 : i32, max_value = 4 : i32, min_value = 0 : i32, state_table_idx = 1 : ui8}
+  aie.device(npu2) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @o1, input_bytes = 1, output_bytes = 1>, #aie.consumed_by<output = @o2, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @o1(%t, S2MM, 0)
+    aie.shim_dma_allocation @o2(%t, S2MM, 1)
+    // expected-note@+1 {{the stretch ends here}}
+    aie.runtime_sequence @s(%x: memref<4096xi32>, %y: memref<4096xi32>, %z: memref<4096xi32>) {
+      %in0 = aiex.dma_configure_task(%t, MM2S, 0) {
+        aie.dma_bd(%x : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 16 : i32}
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in0)
+      %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
+        aie.dma_bd(%x : memref<4096xi32> offset = 1024 len = 0) {length_state_table_idx = 1 : ui8, length_unit = 16 : i32}
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in1)
+      %o1 = aiex.dma_configure_task(%t, S2MM, 0) {
+        aie.dma_bd(%y : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 16 : i32}
+        aie.end
+      } {alloc = @o1, issue_token = true}
+      aiex.dma_start_task(%o1)
+      %o2 = aiex.dma_configure_task(%t, S2MM, 1) {
+        aie.dma_bd(%z : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 1 : ui8, length_unit = 16 : i32}
+        aie.end
+      } {alloc = @o2, issue_token = true}
+      aiex.dma_start_task(%o2)
+      aiex.dma_await_task(%o1)
+      aiex.dma_await_task(%o2)
+      // expected-note@+1 {{released here}}
+      aiex.dma_free_task(%in0)
+      aiex.dma_free_task(%in1)
+      %in2 = aiex.dma_configure_task(%t, MM2S, 0) {
+        // expected-warning@+1 {{through @o1, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes times 1, 64 + 64 x @a + 64 x @b, against output bytes times 1, 0 + 64 x @a); through @o2, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes times 1, 64 + 64 x @a + 64 x @b, against output bytes times 1, 0 + 64 x @b). No one output's proof covers the input: it moves more than each proves alone, by how much depending on the runtime parameters @b, @a}}
+        aie.dma_bd(%x : memref<4096xi32> offset = 2048 len = 16)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in2)
+    }
+  }
+}

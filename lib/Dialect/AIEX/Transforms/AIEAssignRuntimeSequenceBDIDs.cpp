@@ -1140,29 +1140,31 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // Prints `bytes` scaled by `scale` as "c + k x @param ...".
   void printVolume(llvm::raw_ostream &os, const Volume &bytes, int64_t scale,
                    AIE::RuntimeSequenceOp seq) {
-    auto module = getOperation()->getParentOfType<ModuleOp>();
-    SmallVector<ScratchpadParameterOp> parameters;
-    if (module)
-      parameters = llvm::to_vector(module.getOps<ScratchpadParameterOp>());
-    ArrayAttr reads = seq.getScratchpadParametersAttr();
     auto constant = bytes.find(-1);
     os << (constant == bytes.end() ? 0 : constant->second * scale);
     for (const auto &term : bytes) {
-      int64_t index = term.first;
-      if (index < 0 || !term.second)
+      if (term.first < 0 || !term.second)
         continue;
       os << " + " << term.second * scale << " x ";
-      auto *named = llvm::find_if(parameters, [&](ScratchpadParameterOp p) {
-        return p.getStateTableIdx() == index &&
-               (!reads ||
-                llvm::is_contained(reads.getAsValueRange<FlatSymbolRefAttr>(),
-                                   p.getSymName()));
-      });
-      if (named != parameters.end())
-        os << "@" << named->getSymName();
-      else
-        os << "parameter " << index;
+      printParameter(os, term.first, seq);
     }
+  }
+
+  // Prints the scratchpad parameter `seq` reads at state-table index `index`.
+  void printParameter(llvm::raw_ostream &os, int64_t index,
+                      AIE::RuntimeSequenceOp seq) {
+    auto module = getOperation()->getParentOfType<ModuleOp>();
+    ArrayAttr reads = seq.getScratchpadParametersAttr();
+    if (module)
+      for (auto parameter : module.getOps<ScratchpadParameterOp>())
+        if (parameter.getStateTableIdx() == index &&
+            (!reads ||
+             llvm::is_contained(reads.getAsValueRange<FlatSymbolRefAttr>(),
+                                parameter.getSymName()))) {
+          os << "@" << parameter.getSymName();
+          return;
+        }
+    os << "parameter " << index;
   }
 
   // Why no proof shows `task`'s transfer finished, for the unsafe-reuse
@@ -1186,6 +1188,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::DeviceOp configured = opaqueLoad     ? AIE::DeviceOp()
                                : loadedDevice ? loadedDevice
                                               : getOperation();
+    size_t excess = 0;
+    SmallVector<std::pair<int64_t, AIE::RuntimeSequenceOp>> exceeding;
     llvm::interleave(
         proofs.getAsRange<AIE::ConsumedByAttr>(), os,
         [&](AIE::ConsumedByAttr proof) {
@@ -1242,9 +1246,25 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                    << ", ";
                 printVolume(os, verdict.out, proof.getInputBytes(), other);
                 os << ")";
+                ++excess;
+                for (const auto &term : verdict.in) {
+                  int64_t index = term.first;
+                  auto taken = verdict.out.find(index);
+                  if (index >= 0 &&
+                      term.second * proof.getOutputBytes() >
+                          (taken == verdict.out.end() ? 0 : taken->second) *
+                              proof.getInputBytes() &&
+                      llvm::none_of(exceeding, [&](const auto &seen) {
+                        return seen.first == index;
+                      }))
+                    exceeding.push_back({index, other});
+                }
                 note = "the stretch ends here";
               }
-              at.push_back({where ? where->getLoc() : other.getLoc(), note});
+              std::pair<Location, std::string> pointer = {
+                  where ? where->getLoc() : other.getLoc(), note};
+              if (!llvm::is_contained(at, pointer))
+                at.push_back(pointer);
               return;
             }
           }
@@ -1304,6 +1324,19 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             os << ", for some parameter values";
         },
         "; ");
+    if (proofs.size() > 1 && excess == proofs.size()) {
+      os << ". No one output's proof covers the input: it moves more than "
+            "each proves alone";
+      if (!exceeding.empty()) {
+        os << ", by how much depending on the runtime parameter";
+        if (exceeding.size() > 1)
+          os << "s";
+        os << " ";
+        llvm::interleaveComma(exceeding, os, [&](const auto &parameter) {
+          printParameter(os, parameter.first, parameter.second);
+        });
+      }
+    }
   }
 
   // Warn where the hazard actually bites: reusing the id, not releasing it.
