@@ -289,7 +289,11 @@ aie.device(npu2) {
 
 // An iterated BD with no dimensions whose length comes only from the
 // parameter: each of its 8 runs moves n units of 128 bf16, 512 elements apart.
+// The last run starts at element 3584, so 3584 + 128 * n - 1 <= 4095 gives
+// n <= 4.
 
+// CHECK-LABEL: module
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, max_value = 4 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
 // WRITEBD-LABEL: aie.runtime_sequence @iterated
 // WRITEBD: aiex.npu.writebd
 // WRITEBD-SAME: buffer_length = 0 : i32
@@ -310,8 +314,11 @@ aie.device(npu2) {
 
 // -----
 
-// The same with a static length of one unit: each run moves 1 + n units.
+// The same with a static length of one unit: each run moves 1 + n units, and
+// 3584 + 128 * (1 + n) - 1 <= 4095 gives n <= 3.
 
+// CHECK-LABEL: module
+// CHECK: aiex.scratchpad_parameter @n : i32 {kind = 1 : i32, max_value = 3 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
 // WRITEBD-LABEL: aie.runtime_sequence @iterated_base
 // WRITEBD: aiex.npu.writebd
 // WRITEBD-SAME: buffer_length = 64 : i32

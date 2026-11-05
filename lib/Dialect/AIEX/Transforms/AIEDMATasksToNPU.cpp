@@ -848,9 +848,9 @@ struct AIEDMATasksToNPUPass
     if (iter && dimsStorage->empty()) {
       // A length given only by its parameter sizes the dimension as one unit.
       int64_t elems = len / bd_op.getBufferElementTypeWidthInBytes();
-      if (elems == 0 && bd_op.getLengthStateTableIdxAttr() &&
-          bd_op.getLengthUnit())
-        elems = *bd_op.getLengthUnit();
+      std::optional<int64_t> unit = bd_op.getLengthUnit();
+      if (elems == 0 && bd_op.getLengthStateTableIdxAttr() && unit)
+        elems = *unit;
       dimsStorage->push_back(
           AIE::BDDimLayoutAttr::get(builder.getContext(), elems, 1));
     }
