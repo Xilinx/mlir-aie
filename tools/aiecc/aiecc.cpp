@@ -3215,11 +3215,10 @@ int main(int argc, char **argv) {
   // again with fewer cores a column until the router fits the flows.
   auto unroutable = [&] {
     return failedAt(kRoutedEdge) &&
-           llvm::any_of(attempts.back().errors,
-                        [](const RecordedError &error) {
-                          return llvm::StringRef(error.message)
-                              .starts_with(xilinx::AIE::kNoLegalRouting);
-                        });
+           llvm::any_of(attempts.back().errors, [](const RecordedError &error) {
+             return llvm::StringRef(error.message)
+                 .starts_with(xilinx::AIE::kNoLegalRouting);
+           });
   };
   if (mayPlaceAgain && unroutable()) {
     int coreRows = 0;
@@ -3262,12 +3261,13 @@ int main(int argc, char **argv) {
   auto noRoom = [&](llvm::StringRef edge, llvm::StringLiteral message,
                     llvm::StringLiteral note) {
     return failedAt(edge) &&
-           llvm::any_of(attempts.back().errors, [&](const RecordedError &error) {
-             return llvm::StringRef(error.message).contains(message) &&
-                    llvm::any_of(error.notes, [&](const auto &n) {
-                      return llvm::StringRef(n.first).starts_with(note);
-                    });
-           });
+           llvm::any_of(
+               attempts.back().errors, [&](const RecordedError &error) {
+                 return llvm::StringRef(error.message).contains(message) &&
+                        llvm::any_of(error.notes, [&](const auto &n) {
+                          return llvm::StringRef(n.first).starts_with(note);
+                        });
+               });
   };
   llvm::StringMap<int64_t> coreData;
   while ((mayWalkAgain && noRoom(kWithSymbolsEdge, xilinx::AIE::kNoBufferRoom,
@@ -3344,14 +3344,15 @@ int main(int argc, char **argv) {
     if (!fifos.empty()) {
       for (std::string &entry : fifos)
         saWalkedFifos.push_back(entry);
-      why.push_back("buffers channel turns walked whole found no room");
+      why.emplace_back("buffers channel turns walked whole found no room");
     }
     if (grew) {
       saCoreDataSizes.clear();
       for (auto &[core, bytes] : coreData)
         saCoreDataSizes.push_back((core + "=" + llvm::Twine(bytes)).str());
       llvm::sort(saCoreDataSizes);
-      why.push_back("a core's buffers found no room beside its own sections");
+      why.emplace_back(
+          "a core's buffers found no room beside its own sections");
     }
     std::vector<std::string> placedWith;
     if (mayWalkAgain && !saWalkedFifos.empty())
