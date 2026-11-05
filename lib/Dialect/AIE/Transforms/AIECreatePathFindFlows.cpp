@@ -3063,6 +3063,76 @@ llvm::Expected<PacketPlan> AIEPathfinderPass::route(
           .str());
 }
 
+static LogicalResult checkFixedFlowEndpoints(DeviceOp device) {
+  DenseMap<PhysPort, Operation *> inputs, outputs;
+  for (SwitchboxOp box : device.getOps<SwitchboxOp>()) {
+    TileID tile = box.getTileOp().getTileID();
+    for (ConnectOp connect : box.getOps<ConnectOp>()) {
+      inputs[{tile, connect.sourcePort()}] = connect;
+      outputs[{tile, connect.destPort()}] = connect;
+    }
+    for (MasterSetOp master : box.getOps<MasterSetOp>())
+      outputs[{tile, master.destPort()}] = master;
+    for (PacketRulesOp rules : box.getOps<PacketRulesOp>())
+      inputs[{tile, rules.sourcePort()}] = rules;
+  }
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
+  auto check = [&](Operation *flow, Value value, Port port,
+                   bool source) -> LogicalResult {
+    auto tile = cast<TileOp>(value.getDefiningOp());
+    auto &reservations = source ? inputs : outputs;
+    Operation *reserved = reservations.lookup({tile.getTileID(), port});
+    if (!reserved && tile.isShimNOCorPLTile() &&
+        llvm::is_contained({WireBundle::DMA, WireBundle::NOC, WireBundle::PLIO},
+                           port.bundle)) {
+      Port south{WireBundle::South,
+                 source ? shimMuxChannelFrom(port) : shimMuxChannelTo(port)};
+      reserved = reservations.lookup({tile.getTileID(), south});
+    }
+    auto packet = dyn_cast<PacketFlowOp>(flow);
+    if (!reserved || (packet && isa<PacketRulesOp>(reserved)))
+      return success();
+    bool fromOverlay = overlay.isAttrPresent(reserved);
+    if (auto rules = dyn_cast<PacketRulesOp>(reserved))
+      fromOverlay |= llvm::any_of(
+          rules.getRules().getOps<PacketRuleOp>(),
+          [&](PacketRuleOp rule) { return overlay.isAttrPresent(rule); });
+    auto diag = emitError(flow->getLoc());
+    diag << "Unable to find a legal routing: ";
+    if (packet)
+      diag << "packet flow " << packet.IDInt();
+    else
+      diag << "circuit flow";
+    diag << (source ? " starts at " : " ends at ")
+         << describeTilePort(tile.getTileID(), port) << ", whose "
+         << (source ? "input" : "output") << " port is reserved by ";
+    if (fromOverlay)
+      diag << "the control packet overlay";
+    else
+      diag << "a fixed " << reserved->getName();
+    diag.attachNote(reserved->getLoc())
+        << (source ? "input" : "output") << " port reserved here by "
+        << reserved->getName();
+    return failure();
+  };
+  for (PacketFlowOp flow : device.getOps<PacketFlowOp>()) {
+    for (PacketSourceOp source : flow.getPorts().getOps<PacketSourceOp>())
+      if (failed(check(flow, source.getTile(), source.port(), true)))
+        return failure();
+    for (PacketDestOp dest : flow.getPorts().getOps<PacketDestOp>())
+      if (failed(check(flow, dest.getTile(), dest.port(), false)))
+        return failure();
+  }
+  for (FlowOp flow : device.getOps<FlowOp>())
+    if (failed(check(flow, flow.getSource(),
+                     {flow.getSourceBundle(), flow.getSourceChannel()},
+                     true)) ||
+        failed(check(flow, flow.getDest(),
+                     {flow.getDestBundle(), flow.getDestChannel()}, false)))
+      return failure();
+  return success();
+}
+
 void AIEPathfinderPass::runOnOperation() {
 
   // create analysis pass with routing graph for entire device
@@ -3074,6 +3144,8 @@ void AIEPathfinderPass::runOnOperation() {
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
   if (clRoutePacket)
     unmuxShimDMAPacketPorts(d);
+  if (failed(checkFixedFlowEndpoints(d)))
+    return signalPassFailure();
 
   StreamConflicts conflicts(d);
   if (auto pairs = conflicts.unavoidable(); !pairs.empty()) {
