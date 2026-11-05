@@ -217,17 +217,20 @@ def test_a_batch_gets_one_limit_not_one_per_design():
     assert not {"SPLIT", "count"} & code_names(rp.aie_opt.__code__)
 
 
-def test_a_crash_retry_stops_by_the_deadline():
+def test_a_crash_retry_stops_by_the_deadline_and_keeps_the_crash():
     # Nested deeper than the parser's stack: a real crash, after a while.
     nested = "module {" * 20000 + "}" * 20000
+    crash_s = 0.0
+    for _ in range(2):
+        start = time.monotonic()
+        crashed = rp.aie_opt(nested)
+        assert crashed.returncode < 0 and crashed.returncode != rp.TIMEOUT
+        crash_s = max(crash_s, (time.monotonic() - start) / 2)
+    # The first attempt crashes in time; its retry cannot.
     start = time.monotonic()
-    crashed = rp.aie_opt(nested)
-    assert crashed.returncode < 0 and crashed.returncode != rp.TIMEOUT
-    crash_s = (time.monotonic() - start) / 2
-    start = time.monotonic()
-    cut = rp.aie_opt(nested, deadline=start + 1.5 * crash_s)
-    assert cut.returncode == rp.TIMEOUT, cut.returncode
-    assert time.monotonic() - start < 1.75 * crash_s
+    cut = rp.aie_opt(nested, deadline=start + 1.4 * crash_s)
+    assert cut.returncode == crashed.returncode, cut.stderr[-200:]
+    assert time.monotonic() - start < 1.65 * crash_s
 
 
 def test_a_router_timeout_is_not_called_a_crash(priority):
