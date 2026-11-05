@@ -5,11 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-walked-fifos=x" %s 2>&1 | grep -c "error:" | FileCheck %s --check-prefix=ONCE
 // RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-walked-fifos=x" %s 2>&1 | FileCheck %s --check-prefix=WALKED
-// RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-core-data-sizes=d0:x=1" %s 2>&1 | grep -c "error:" | FileCheck %s --check-prefix=ONCE
 // RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-core-data-sizes=d0:x=1" %s 2>&1 | FileCheck %s --check-prefix=SIZES
-// RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-walked-fifos=dx:x" %s 2>&1 | grep -c "error:" | FileCheck %s --check-prefix=ONCE
 // RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-walked-fifos=dx:x" %s 2>&1 | FileCheck %s --check-prefix=DEVICE
 // RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-walked-fifos=d1:y" %s 2>&1 | FileCheck %s --check-prefix=FIFO
 // RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-core-data-sizes=d1:1=8" %s 2>&1 | FileCheck %s --check-prefix=CORE
@@ -19,10 +16,12 @@
 // entry or one naming another device is reported once, not once a device,
 // and one naming something the device does not have is an error, not a
 // charge that silently does nothing.
-// ONCE: {{^}}1{{$}}
 // WALKED: error: sa-walked-fifos entry 'x' is not <device>:<fifo>
+// WALKED-NOT: error:
 // SIZES: error: sa-core-data-sizes entry 'd0:x=1' is not <device>:<core>=<bytes>
+// SIZES-NOT: error:
 // DEVICE: error: SA placer charges name no device @dx
+// DEVICE-NOT: error:
 // FIFO: error: sa-walked-fifos names no objectFIFO @y in @d1
 // CORE: error: sa-core-data-sizes names core 1 of @d1, which has 1 cores
 

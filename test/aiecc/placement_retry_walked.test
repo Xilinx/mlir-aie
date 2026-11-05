@@ -16,11 +16,13 @@
 // their objects apart, which fit the holes of the mem tile next to the core;
 // the walked buffers do not. aiecc places again with the pools allocation
 // says channel turns walked counted walked, and that placement allocates.
-// RETRY: aiecc: buffers channel turns walked whole find no room; placing again with --sa-walked-fifos=main:b_in,main:a_in
+// RETRY: error: 'aie.objectfifo.pool' op could not place buffers
+// RETRY: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // RETRY-NOT: error:
+// RETRY: aiecc: placement 2 (--sa-walked-fifos=main:b_in,main:a_in) stands
 
 // Core data sizes the command line chose leave this retry on.
-// OTHERPIN: aiecc: buffers channel turns walked whole find no room; placing again with --sa-walked-fifos=main:b_in,main:a_in
+// OTHERPIN: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // OTHERPIN-NOT: error:
 
 // Allocation fails before channel turns walk any pool, so nothing the SA
@@ -38,10 +40,10 @@
 // The one mem tile's four 1 KiB holes take the objects, so channel turns
 // walk the pools, but not the walked buffers, wherever the SA puts them;
 // aiecc reports the first placement's error and its failed edge.
-// NEVER: aiecc: buffers channel turns walked whole find no room; placing again with --sa-walked-fifos=main:b_in,main:a_in
+// NEVER: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // NEVER-NOT: placing again
 // NEVER: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @main::@a_in
-// NEVER: aiecc: no placement with what allocation found counted fits either; the errors above are the first placement's
+// NEVER: aiecc: no placement with what allocation found counted fits either; placement 1's failure stands
 // NEVER: aiecc: edge 'input_with_symbols.mlir' (key '{{.*}}') failed
 
 module @turn_walk_never {

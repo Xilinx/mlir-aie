@@ -1,4 +1,4 @@
-//===- placement_hold_order.test -------------------------------*- MLIR -*-===//
+//===- placement_live_order.test -------------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -9,10 +9,10 @@
 // RUN: %aiecc -j1 --verbose --no-progress --tmpdir %t.seq --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s
 // RUN: %aiecc -j1 --verbose --no-progress --tmpdir %t.sa --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s
 
-// The first placement fits, so the output aiecc held while it might have
-// placed again comes out in the order it was written: the warning from
-// lowering the objectFIFOs before that edge's own line, then the tools'
-// lines and the edges after it.
+// aiecc might place again until the placement's edges pass, and prints as
+// it goes all the same: the warning from lowering the objectFIFOs comes
+// before that edge's own line, then the tools' lines and the edges after it,
+// as in a build that cannot place again.
 // CHECK: ) traced.mlir (1 inputs) took
 // CHECK-NEXT: warning: func 'never_called' has link_with but is never called from any core
 // CHECK: ) input_with_symbols.mlir (1 inputs) took

@@ -7,7 +7,6 @@
 
 // REQUIRES: peano
 // RUN: %aiecc --no-progress --tmpdir %t.retry --placer=sa_placer --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
-// RUN: %aiecc --no-progress --tmpdir %t.once --placer=sa_placer --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | grep -c "never called from any core" | FileCheck %s --check-prefix=ONCE
 // RUN: not %aiecc --no-progress --tmpdir %t.pinned --placer=sa_placer --sa-core-data-sizes=main:1=0 --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
 // RUN: not %aiecc --no-progress --tmpdir %t.never --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
 // RUN: %aiecc --no-progress --tmpdir %t.otherpin --placer=sa_placer --sa-walked-fifos=main:y --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=OTHERPIN
@@ -17,19 +16,22 @@
 // shim's column pulls %c east, where x's buffers sit on %c too and do not fit
 // beside its sections. aiecc places again with the measured bytes, and the SA
 // puts %c beside %p, whose tile holds x's buffers.
-// Only the standing attempt's diagnostics print: not the first placement's
-// memory map warning, but the warning every attempt makes (never_called has
-// link_with but no caller), once.
-// RETRY: aiecc: a core's buffers find no room beside its own sections; placing again with --sa-core-data-sizes=main:0=0,main:1=28672
-// RETRY-NOT: Not all requested buffers fit
+// Each placement prints as it runs: the first one's memory map warning and
+// error, then the line marking them superseded, then the second placement's
+// warning (never_called has link_with but no caller) and the line saying it
+// stands.
+// RETRY: warning: func 'never_called' has link_with but is never called from any core
+// RETRY: warning: Not all requested buffers fit
+// RETRY: error: 'aie.buffer' op could not be placed:
+// RETRY: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=28672 (a core's buffers found no room beside its own sections); the messages above are from placement 1
 // RETRY-NOT: error:
 // RETRY: warning: func 'never_called' has link_with but is never called from any core
-// RETRY-NOT: warning:
 // RETRY-NOT: error:
-// ONCE: {{^}}1{{$}}
+// RETRY: aiecc: placement 2 (--sa-core-data-sizes=main:0=0,main:1=28672) stands
 
 // Walked fifos the command line chose leave this retry on.
-// OTHERPIN: aiecc: a core's buffers find no room beside its own sections; placing again with --sa-core-data-sizes=main:0=0,main:1=28672
+// OTHERPIN: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=28672 (a core's buffers found no room beside its own sections); the messages above are from placement 1
+// OTHERPIN: aiecc: placement 2 (--sa-core-data-sizes=main:0=0,main:1=28672) stands
 // OTHERPIN-NOT: error:
 
 // Core data sizes the command line chose are kept.
@@ -39,11 +41,11 @@
 
 // %c keeps 60 KiB of .bss here, and its own buffers fit beside that nowhere;
 // aiecc reports the first placement's error and its failed edge.
-// NEVER: aiecc: a core's buffers find no room beside its own sections; placing again with --sa-core-data-sizes=main:0=0,main:1=61440
+// NEVER: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=61440 (a core's buffers found no room beside its own sections); the messages above are from placement 1
 // NEVER-NOT: placing again
 // NEVER: error: 'aie.buffer' op could not be placed:
 // NEVER: note: the core on this tile keeps its own sections in 61440 bytes
-// NEVER: aiecc: no placement with what allocation found counted fits either; the errors above are the first placement's
+// NEVER: aiecc: no placement with what allocation found counted fits either; placement 1's failure stands
 // NEVER: aiecc: edge 'input_with_addresses.mlir' failed
 
 module @core_data_never {

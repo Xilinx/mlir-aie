@@ -74,7 +74,6 @@
 #include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/xxhash.h"
@@ -123,18 +122,10 @@ mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag, bool keepOpDump) {
 
 // What the retry decisions read of an error: its message, its notes, and the
 // attributes each carries.
-struct HeldError {
+struct RecordedError {
   std::string message;
   std::vector<mlir::Attribute> arguments;
   std::vector<std::pair<std::string, std::vector<mlir::Attribute>>> notes;
-};
-
-// One attempt's diagnostics that are not on stderr already: what was held
-// back, and the errors it reported.
-struct AttemptDiagnostics {
-  std::vector<HeldError> errors;
-  std::vector<mlir::Diagnostic> heldErrors;
-  std::vector<mlir::Diagnostic> remarks;
 };
 
 // A remark says what the compiler chose (a poll it inserted, an allocation
@@ -147,16 +138,20 @@ public:
                                          mlir::MLIRContext *ctx, bool verbose)
       : mlir::SourceMgrDiagnosticHandler(mgr, ctx), isVerbose(verbose) {
     setHandler([this](mlir::Diagnostic &diag) {
+      if (diag.getSeverity() == mlir::DiagnosticSeverity::Remark &&
+          !isVerbose) {
+        std::lock_guard<std::mutex> lock(heldMutex);
+        held.push_back(std::move(diag));
+        return;
+      }
       if (diag.getSeverity() == mlir::DiagnosticSeverity::Error) {
         std::lock_guard<std::mutex> lock(heldMutex);
         if (recording)
-          attempt.errors.push_back(record(diag));
-        if (holdingErrors) {
-          attempt.heldErrors.push_back(std::move(diag));
-          return;
-        }
+          recorded.push_back(record(diag));
       }
-      report(diag);
+      auto log = endProgressLine();
+      mlir::Diagnostic named = nameAfterDesign(diag, isVerbose);
+      emitDiagnostic(named);
     });
   }
 
@@ -171,53 +166,23 @@ public:
     held.clear();
   }
 
-  /// Record the errors of an attempt that may be repeated; `holdErrors` holds
-  /// them back too, where stderr itself cannot be held.
-  void beginAttempt(bool holdErrors) {
+  /// Record the errors reported from now on, for deciding whether to place
+  /// again; they print as they come all the same.
+  void recordErrors() {
     std::lock_guard<std::mutex> lock(heldMutex);
     recording = true;
-    holdingErrors = holdErrors;
-    remarksBefore = held.size();
   }
 
-  /// The attempt's errors and what it held back, its remarks included.
-  AttemptDiagnostics endAttempt() {
+  /// Stop recording and hand back the errors recorded.
+  std::vector<RecordedError> takeRecordedErrors() {
     std::lock_guard<std::mutex> lock(heldMutex);
     recording = false;
-    holdingErrors = false;
-    AttemptDiagnostics diags = std::exchange(attempt, {});
-    auto from = held.begin() + std::min(remarksBefore, held.size());
-    diags.remarks.assign(std::make_move_iterator(from),
-                         std::make_move_iterator(held.end()));
-    held.erase(from, held.end());
-    return diags;
-  }
-
-  /// Report what the attempt that stands held back, as if it had been the only
-  /// one.
-  void standAttempt(AttemptDiagnostics &diags) {
-    for (mlir::Diagnostic &diag : diags.heldErrors)
-      report(diag);
-    std::lock_guard<std::mutex> lock(heldMutex);
-    for (mlir::Diagnostic &remark : diags.remarks)
-      held.push_back(std::move(remark));
-    diags.remarks.clear();
+    return std::exchange(recorded, {});
   }
 
 private:
-  void report(mlir::Diagnostic &diag) {
-    if (diag.getSeverity() == mlir::DiagnosticSeverity::Remark && !isVerbose) {
-      std::lock_guard<std::mutex> lock(heldMutex);
-      held.push_back(std::move(diag));
-      return;
-    }
-    auto log = endProgressLine();
-    mlir::Diagnostic named = nameAfterDesign(diag, isVerbose);
-    emitDiagnostic(named);
-  }
-
-  static HeldError record(mlir::Diagnostic &diag) {
-    HeldError error{diag.str(), {}, {}};
+  static RecordedError record(mlir::Diagnostic &diag) {
+    RecordedError error{diag.str(), {}, {}};
     for (mlir::DiagnosticArgument &arg : diag.getArguments())
       if (arg.getKind() ==
           mlir::DiagnosticArgument::DiagnosticArgumentKind::Attribute)
@@ -237,9 +202,7 @@ private:
   std::mutex heldMutex;
   std::vector<mlir::Diagnostic> held;
   bool recording = false;
-  bool holdingErrors = false;
-  size_t remarksBefore = 0;
-  AttemptDiagnostics attempt;
+  std::vector<RecordedError> recorded;
 };
 
 // Defined here rather than in CommandLineOptions.h: __DATE__/__TIME__ need
@@ -2863,7 +2826,6 @@ int main(int argc, char **argv) {
   //--------------------------------------------------------------------------//
 
   llvm::InitLLVM y(argc, argv);
-  OutputHold::flushOnSignals();
   mlir::registerAsmPrinterCLOptions();
   mlir::registerAllPasses();
   xilinx::registerConversionPasses();
@@ -3194,24 +3156,15 @@ int main(int argc, char **argv) {
                     cutEdges.empty() && !resume.active;
   bool mayWalkAgain = maySAAgain && saWalkedFifos.getNumOccurrences() == 0;
   bool mayCoreAgain = maySAAgain && saCoreDataSizes.getNumOccurrences() == 0;
-  // Until the edges whose failure places again have passed, an attempt may
-  // be discarded; everything it writes to stderr is held until then, and only
-  // the attempt that stands is reported: the last if it succeeds, else the
-  // first placement's, failed edge last, as one attempt reports it.
-  std::vector<std::string> holdUntil;
-  if (mayPlaceAgain)
-    holdUntil.push_back(kRoutedEdge.str());
-  if (mayWalkAgain)
-    holdUntil.push_back(kWithSymbolsEdge.str());
-  if (mayCoreAgain)
-    holdUntil.push_back(kAddressesEdge.str());
+  // Every attempt prints as it runs. When aiecc places again, a line says why
+  // and that the messages above it are the earlier placement's; at the end, a
+  // line says which placement stands.
+  bool mayAgain = mayPlaceAgain || mayWalkAgain || mayCoreAgain;
   struct Attempt {
     std::unique_ptr<Graph> graph;
     std::unique_ptr<Engine> engine;
     mlir::LogicalResult ran = mlir::failure();
-    // What it wrote, when it failed before its edges passed.
-    OutputHold::Held held;
-    AttemptDiagnostics diags;
+    std::vector<RecordedError> errors;
     // The flags that place it, past the command line's.
     std::vector<std::string> placedWith;
   };
@@ -3221,30 +3174,22 @@ int main(int argc, char **argv) {
     Attempt &a = attempts.emplace_back();
     a.graph = std::move(attemptGraph);
     a.engine = std::move(attemptEngine);
-    bool holding = false;
-    if (!holdUntil.empty()) {
-      a.engine->opts.deferFailedEdge = true;
-      a.engine->opts.holdUntil = holdUntil;
-      a.engine->opts.onHoldEnd = [] {
-        std::lock_guard<std::mutex> log(logMutex());
-        bool lineOpen = progressLineOpen();
-        OutputHold::get().release(lineOpen);
-        progressLineOpen() = false;
-      };
-      std::lock_guard<std::mutex> log(logMutex());
-      holding = OutputHold::get().open();
-    }
-    diagHandler.beginAttempt(!holdUntil.empty() && !holding);
+    a.engine->opts.deferFailedEdge = mayAgain;
+    diagHandler.recordErrors();
     a.ran = a.engine->run(*a.graph, runOutputs, satisfied,
                           DeserializeContext{&context}, buildAlso);
-    {
-      std::lock_guard<std::mutex> log(logMutex());
-      a.held = OutputHold::get().take();
-    }
-    a.diags = diagHandler.endAttempt();
+    a.errors = diagHandler.takeRecordedErrors();
     return a.ran;
   };
-  auto placeAgain = [&](std::vector<std::string> placedWith) {
+  auto placeAgain = [&](std::vector<std::string> placedWith,
+                        llvm::StringRef why) {
+    {
+      auto log = endProgressLine();
+      llvm::errs() << "aiecc: placing again with "
+                   << llvm::join(placedWith, " ") << " (" << why
+                   << "); the messages above are from placement "
+                   << attempts.size() << "\n";
+    }
     auto next = std::make_unique<Graph>();
     checkEdges.clear();
     outputs = buildMainGraph(context, *next, cutEdges, checkEdges,
@@ -3270,8 +3215,8 @@ int main(int argc, char **argv) {
   // again with fewer cores a column until the router fits the flows.
   auto unroutable = [&] {
     return failedAt(kRoutedEdge) &&
-           llvm::any_of(attempts.back().diags.errors,
-                        [](const HeldError &error) {
+           llvm::any_of(attempts.back().errors,
+                        [](const RecordedError &error) {
                           return llvm::StringRef(error.message)
                               .starts_with(xilinx::AIE::kNoLegalRouting);
                         });
@@ -3298,15 +3243,13 @@ int main(int argc, char **argv) {
         }
       });
     for (int cores = coreRows - 1; cores > 0 && unroutable(); --cores) {
-      llvm::errs() << "aiecc: the placement does not route; placing again "
-                      "with --cores-per-col="
-                   << cores << "\n";
       coresPerCol = cores;
-      ran = placeAgain({"--cores-per-col=" + std::to_string(cores)});
+      ran = placeAgain({"--cores-per-col=" + std::to_string(cores)},
+                       "the placement does not route");
     }
     if (attempts.size() > 1 && unroutable())
       noPlacement = "aiecc: no placement with fewer cores a column routes "
-                    "either; the errors above are the first placement's";
+                    "either; placement 1's failure stands";
   }
   // The SA placer estimates two things later passes measure: allocation walks
   // some mem tile pools whole, one buffer each, where the SA counts their
@@ -3321,7 +3264,7 @@ int main(int argc, char **argv) {
     // charged, so the others place as they did.
     std::vector<std::string> fifos;
     llvm::StringSet<> fullDevices;
-    for (const HeldError &error : last.diags.errors) {
+    for (const RecordedError &error : last.errors) {
       llvm::StringRef message = error.message;
       if (mayCoreAgain && message.contains(xilinx::AIE::kNoTileRoom))
         for (const auto &[note, attrs] : error.notes)
@@ -3359,24 +3302,21 @@ int main(int argc, char **argv) {
     if (fifos.empty() && !grew) {
       if (attempts.size() > 1)
         noPlacement = "aiecc: no placement with what allocation found counted "
-                      "fits either; the errors above are the first placement's";
+                      "fits either; placement 1's failure stands";
       break;
     }
+    std::vector<std::string> why;
     if (!fifos.empty()) {
       for (std::string &entry : fifos)
         saWalkedFifos.push_back(entry);
-      llvm::errs() << "aiecc: buffers channel turns walked whole find no "
-                      "room; placing again with --sa-walked-fifos="
-                   << llvm::join(saWalkedFifos, ",") << "\n";
+      why.push_back("buffers channel turns walked whole found no room");
     }
     if (grew) {
       saCoreDataSizes.clear();
       for (auto &[core, bytes] : coreData)
         saCoreDataSizes.push_back((core + "=" + llvm::Twine(bytes)).str());
       llvm::sort(saCoreDataSizes);
-      llvm::errs() << "aiecc: a core's buffers find no room beside its own "
-                      "sections; placing again with --sa-core-data-sizes="
-                   << llvm::join(saCoreDataSizes, ",") << "\n";
+      why.push_back("a core's buffers found no room beside its own sections");
     }
     std::vector<std::string> placedWith;
     if (mayWalkAgain && !saWalkedFifos.empty())
@@ -3385,23 +3325,21 @@ int main(int argc, char **argv) {
     if (mayCoreAgain && !saCoreDataSizes.empty())
       placedWith.push_back("--sa-core-data-sizes=" +
                            llvm::join(saCoreDataSizes, ","));
-    ran = placeAgain(std::move(placedWith));
+    ran = placeAgain(std::move(placedWith), llvm::join(why, "; "));
   }
   // The first placement stands when the others failed as it did; otherwise
   // the last, which either succeeded or failed past what placing again fixes.
   Attempt &standing = noPlacement ? attempts.front() : attempts.back();
   EdgeBase *standingFailed = standing.engine->failedEdge;
-  {
-    std::lock_guard<std::mutex> log(logMutex());
-    llvm::outs() << standing.held.out;
-    llvm::outs().flush();
-    llvm::errs() << standing.held.err;
-    llvm::errs().flush();
+  if (attempts.size() > 1) {
+    auto log = endProgressLine();
+    if (noPlacement)
+      llvm::errs() << *noPlacement << "\n";
+    else
+      llvm::errs() << "aiecc: placement " << attempts.size() << " ("
+                   << llvm::join(standing.placedWith, " ") << ") stands\n";
   }
-  diagHandler.standAttempt(standing.diags);
-  if (noPlacement)
-    llvm::errs() << *noPlacement << "\n";
-  if (mlir::failed(ran) && !holdUntil.empty() && standingFailed)
+  if (mlir::failed(ran) && mayAgain && standingFailed)
     Engine::reportFailedEdge(standingFailed);
   if (mlir::failed(ran)) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
@@ -3427,10 +3365,6 @@ int main(int argc, char **argv) {
                    << "/manifest.json\n";
     }
     diagHandler.releaseRemarks();
-    {
-      std::lock_guard<std::mutex> log(logMutex());
-      OutputHold::get().drainLate();
-    }
     llvm::errs() << "aiecc: pipeline failed\n";
     return 1;
   }
@@ -3459,10 +3393,6 @@ int main(int argc, char **argv) {
 
   // The graph still holds every module it built; freeing them op by op takes
   // over a second on a large design, and the process is about to exit.
-  {
-    std::lock_guard<std::mutex> log(logMutex());
-    OutputHold::get().drainLate();
-  }
   for (Attempt &tried : attempts)
     llvm::BuryPointer(std::move(tried.graph));
   return 0;

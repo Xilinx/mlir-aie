@@ -32,7 +32,6 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -247,10 +246,6 @@ struct Engine {
     std::chrono::steady_clock::time_point processStart;
     // Leave reporting the failed edge to the caller (reportFailedEdge).
     bool deferFailedEdge = false;
-    // Called once every reachable edge named in `holdUntil` has finished (at
-    // once if none is reachable).
-    std::vector<std::string> holdUntil;
-    std::function<void()> onHoldEnd;
     bool timesEdges() const { return profile || !profileJson.empty(); }
   };
 
@@ -339,8 +334,6 @@ struct Engine {
     llvm::StringMap<std::string> seenPaths;
     unsigned numEdges = 0;
     unsigned finishedEdges = 0;
-    // Reachable edges named in opts.holdUntil not finished yet.
-    unsigned holdPending = 0;
     unsigned inFlight = 0;
     bool exclusiveBusy = false; // an exclusive (non-threadSafe) task is running
     bool failed = false;
@@ -476,9 +469,8 @@ struct Engine {
       size_t pad =
           progressPrevLen > line.size() ? progressPrevLen - line.size() : 0;
       std::lock_guard<std::mutex> log(logMutex());
-      llvm::raw_ostream &os = OutputHold::get().terminal();
-      os << '\r' << line << std::string(pad, ' ');
-      os.flush();
+      llvm::errs() << '\r' << line << std::string(pad, ' ');
+      llvm::errs().flush();
       progressPrevLen = line.size();
       progressLineOpen() = true;
     }
@@ -650,9 +642,6 @@ struct Engine {
           ++finishedEdges;
           if (opts.verbose)
             logEdgeFinished(s);
-          if (llvm::is_contained(opts.holdUntil, s.edge->name) &&
-              --holdPending == 0 && opts.onHoldEnd)
-            opts.onHoldEnd();
           if (opts.timesEdges()) {
             auto now = std::chrono::steady_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -709,12 +698,6 @@ struct Engine {
         if (effThreads == 0)
           effThreads = 1;
       }
-
-      for (unsigned u = 0; u < numEdges; ++u)
-        holdPending += !st[u].finished &&
-                       llvm::is_contained(opts.holdUntil, st[u].edge->name);
-      if (holdPending == 0 && opts.onHoldEnd)
-        opts.onHoldEnd();
 
       // Seed the ready queue, then run the pool to completion.
       {

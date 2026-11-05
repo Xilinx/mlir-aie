@@ -11,13 +11,14 @@
 
 // The first placement's walked pools find no room, and aiecc places again;
 // that placement allocates, and then fails for another reason (the core's
-// kernel object does not exist). aiecc reports that attempt, the one that
-// stands, not the first placement's error, and its reproducer places as it
-// did.
-// CHECK: aiecc: buffers channel turns walked whole find no room; placing again with --sa-walked-fifos=main:b_in,main:a_in
+// kernel object does not exist). That placement stands: aiecc says so and
+// reports its failed edge, and its reproducer places as it did.
+// CHECK: could not place buffers
+// CHECK: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // CHECK-NOT: could not place buffers
 // CHECK-NOT: no placement
 // CHECK: cannot open {{.*}}missing_kernel.o
+// CHECK: aiecc: placement 2 (--sa-walked-fifos=main:b_in,main:a_in) stands
 // CHECK: aiecc: edge 'probeElfs_{0}.elf' (key '{{.*}}') failed
 // REPEAT: "--sa-walked-fifos=main:b_in,main:a_in"
 
