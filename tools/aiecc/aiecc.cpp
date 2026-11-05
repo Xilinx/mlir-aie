@@ -949,13 +949,6 @@ static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
   return reached;
 }
 
-// Assemble the full compilation artifact graph into `g` and return the list of
-// requested output edges. Edges named via `--cut` are appended to `cutEdges`
-// (and built) so a `--checkpoint` can capture them as its cut points. Edges
-// that must run but write nothing are appended to `checkEdges`. A non-null
-// `cache` is --device-cache, which the graph uses only when this build's
-// outputs allow it. `keptDevices` are the devices --device-name keeps, or
-// empty to keep all.
 // What the probe link measured of each core's own sections, as
 // `<device>:<core>` (the device's aie.core ops counted in order) to bytes; the
 // address edge fills it in from its worker threads.
@@ -964,8 +957,8 @@ struct MeasuredCoreData {
   llvm::StringMap<int64_t> bytes;
 };
 
-static // The edge that routes the placed design's flows.
-    constexpr llvm::StringLiteral kRoutedEdge = "input_physical.mlir";
+// The edge that routes the placed design's flows.
+static constexpr llvm::StringLiteral kRoutedEdge = "input_physical.mlir";
 // The edge that places the compiled design's buffers.
 static constexpr llvm::StringLiteral kAddressesEdge =
     "input_with_addresses.mlir";
@@ -973,6 +966,14 @@ static constexpr llvm::StringLiteral kAddressesEdge =
 static constexpr llvm::StringLiteral kWithSymbolsEdge =
     "input_with_symbols.mlir";
 
+// Assemble the full compilation artifact graph into `g` and return the list of
+// requested output edges. Edges named via `--cut` are appended to `cutEdges`
+// (and built) so a `--checkpoint` can capture them as its cut points. Edges
+// that must run but write nothing are appended to `checkEdges`. A non-null
+// `cache` is --device-cache, which the graph uses only when this build's
+// outputs allow it. `keptDevices` are the devices --device-name keeps, or
+// empty to keep all. `measuredCores` receives the probe link's measurements,
+// which placing again charges.
 std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                        std::vector<EdgeBase *> &cutEdges,
                                        std::vector<EdgeBase *> &checkEdges,
