@@ -1400,8 +1400,8 @@ struct PacketFlowRouting : PacketPlan {
         numArbiters(targetModel.getNumArbiters()),
         numMselsPerArbiter(targetModel.getNumMselsPerArbiter()),
         maxPacketId(targetModel.getMaxPacketId()),
-        idBits(llvm::Log2_32_Ceil(maxPacketId + 1)), idMask((1 << idBits) - 1) {
-  }
+        idBits(targetModel.getPacketIdBits()),
+        idMask(targetModel.getPacketIdMask()) {}
 
   llvm::Expected<PacketPlan> plan();
   void collectFlows();
@@ -2685,8 +2685,8 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
   const int numArbiters = targetModel.getNumArbiters();
   const int numMselsPerArbiter = targetModel.getNumMselsPerArbiter();
   const uint32_t maxPacketId = targetModel.getMaxPacketId();
-  const int idBits = llvm::Log2_32_Ceil(maxPacketId + 1);
-  const int idMask = (1 << idBits) - 1;
+  const int idBits = targetModel.getPacketIdBits();
+  const int idMask = targetModel.getPacketIdMask();
   AIEDialect::IsCtrlPktOverlayAttrHelper overlay(builder.getContext());
   AIEDialect::PriorityRouteAttrHelper priorityRoute(builder.getContext());
   UnitAttr unit = builder.getUnitAttr();

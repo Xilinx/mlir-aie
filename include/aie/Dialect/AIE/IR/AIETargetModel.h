@@ -14,6 +14,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <iostream>
 #include <memory>
@@ -629,6 +630,12 @@ public:
   virtual uint32_t getNumMselsPerArbiter() const = 0;
   /// Return the largest packet id the stream switch can route.
   virtual uint32_t getMaxPacketId() const = 0;
+
+  /// Bits a packet id spans, and the mask a switch's id match uses.
+  int getPacketIdBits() const {
+    return llvm::Log2_32_Ceil(getMaxPacketId() + 1);
+  }
+  int getPacketIdMask() const { return (1 << getPacketIdBits()) - 1; }
   /// Return the largest out-of-order BD id (unsupported = 0).
   virtual uint32_t getMaxOutOfOrderId() const = 0;
   /// Return the largest DMA task repeat count (unsupported = 0).
