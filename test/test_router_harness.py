@@ -195,6 +195,16 @@ def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
     assert "id 3 from (0, 2) DMA:0" in detail
 
 
+def test_a_strict_rejection_without_a_witness_says_so(priority):
+    d, _ = priority
+    assert rp.strict_witness(d, rp.Analysis(d)) is None
+    rejected = subprocess.CompletedProcess([], 1, "", "error: no legal routing")
+    assert router_mutation.judge_strict(d, "route", True, rejected) == (
+        "ok",
+        "rejected strict, and no routing without a hold cycle is known",
+    )
+
+
 def test_a_packet_owed_twice_and_received_once_counts_as_missing():
     a, b = [1, 2], [3, 4]
     got = np.array([a, b, b], dtype=np.int32)

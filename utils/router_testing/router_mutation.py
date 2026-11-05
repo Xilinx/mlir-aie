@@ -817,7 +817,7 @@ def judge_strict(e, expect, hops_on, s):
     if s.returncode:
         if rp.strict_witness(e, rp.Analysis(e)) is not None:
             return "strict-miss", "fails without allow-deadlock-prone, needlessly"
-        return "ok", f"routed ({expect})"
+        return "ok", "rejected strict, and no routing without a hold cycle is known"
     try:
         problems, stats = rp.verify(e, rp.Analysis(e), s.stdout, hops_on)
     except Exception as x:
