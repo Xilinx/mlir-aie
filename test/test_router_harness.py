@@ -209,6 +209,14 @@ def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
     assert "id 3 from (0, 2) DMA:0" in detail
 
 
+def test_a_batch_gets_one_limit_not_one_per_design():
+    assert list(inspect.signature(rp.run_end).parameters) == ["deadline"]
+    assert "ROUTE_TIMEOUT_S" in code_names(rp.run_end.__code__)
+    start = time.monotonic()
+    assert rp.run_end() - start <= rp.ROUTE_TIMEOUT_S + 1
+    assert not {"SPLIT", "count"} & code_names(rp.aie_opt.__code__)
+
+
 def test_a_crash_retry_stops_by_the_deadline():
     # Nested deeper than the parser's stack: a real crash, after a while.
     nested = "module {" * 20000 + "}" * 20000
@@ -262,7 +270,7 @@ def test_no_router_run_chooses_its_own_limit():
     for runner in (rp.aie_opt, rp.find_flows):
         params = inspect.signature(runner).parameters
         assert "timeout" not in params and "deadline" in params
-        assert "ROUTE_TIMEOUT_S" in code_names(runner.__code__)
+        assert "run_end" in code_names(runner.__code__)
     for module in (rp, router_mutation, router_shrink):
         for name, fn in vars(module).items():
             if not inspect.isfunction(fn) or fn.__module__ != module.__name__:

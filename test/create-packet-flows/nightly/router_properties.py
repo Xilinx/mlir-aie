@@ -5836,7 +5836,8 @@ def aie_opt_path():
 
 
 def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=None):
-    """Run the router on `text`, `ROUTE_TIMEOUT_S` for each design in it.
+    """Run the router on `text` within `run_end(deadline)`; a batch that runs
+    out of time is for the caller to rerun a design at a time.
 
     Args:
         text: The design, or with `split` designs separated by `// -----`.
@@ -5850,10 +5851,7 @@ def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=No
     Returns:
         The run's result, with returncode `TIMEOUT` if it ran out of time.
     """
-    designs = text.count(SPLIT) + 1 if split else 1
-    end = time.monotonic() + ROUTE_TIMEOUT_S * designs
-    if deadline is not None:
-        end = min(end, deadline)
+    end = run_end(deadline)
     opts = [] if hops_on else ["circuit-switch-hops=false"]
     if not strict:
         opts.append("allow-deadlock-prone=true")
@@ -5884,6 +5882,20 @@ SPLIT = "\n// -----\n"
 
 # Room for the slowest design the mutation nightly judges, on a busy runner.
 ROUTE_TIMEOUT_S = 360
+
+
+def run_end(deadline=None):
+    """The `time.monotonic()` value an aie-opt run starting now stops by.
+
+    Args:
+        deadline: A `time.monotonic()` value to stop by, if that comes before
+            `ROUTE_TIMEOUT_S` from now.
+
+    Returns:
+        The earlier of the two.
+    """
+    end = time.monotonic() + ROUTE_TIMEOUT_S
+    return end if deadline is None else min(end, deadline)
 
 
 class ModelRunFailed(Exception):
@@ -5931,9 +5943,7 @@ def find_flows(text, keep_partial=False, deadline=None):
     Returns:
         The run's result, with returncode `TIMEOUT` if it ran out of time.
     """
-    limit = ROUTE_TIMEOUT_S
-    if deadline is not None:
-        limit = max(0.0, min(limit, deadline - time.monotonic()))
+    limit = max(0.0, run_end(deadline) - time.monotonic())
     opt = "--aie-find-flows" + ("=keep-partial-flows=true" if keep_partial else "")
     cmd = [aie_opt_path(), opt, "-"]
     try:
