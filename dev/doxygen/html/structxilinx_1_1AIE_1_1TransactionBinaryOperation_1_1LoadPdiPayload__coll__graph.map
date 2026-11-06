@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::TransactionBinaryOperation::LoadPdiPayload" name="xilinx::AIE::TransactionBinaryOperation::LoadPdiPayload">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,128,243,173"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="38,5,112,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="87,46,119,128,113,128,83,50"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="136,5,210,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="167,46,146,105,136,130,132,126,142,103,163,49"/>
+</map>
