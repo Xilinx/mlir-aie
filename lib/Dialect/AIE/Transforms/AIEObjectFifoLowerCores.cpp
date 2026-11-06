@@ -151,6 +151,7 @@ struct LoweringContext {
   /// Maximum outstanding objects across all pools sharing a tile's MM2S
   /// queue. S2MM queues are independent and do not participate in this bound.
   DenseMap<std::pair<Value, int>, int64_t> sendQueueObjects{};
+  llvm::DenseSet<std::pair<Value, int>> unsynchronizedSendQueues{};
   bool sawError = false;
 
   ObjectFifoCoreEndpointOp endpointOf(Operation *op, StringRef name) {
@@ -226,9 +227,11 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
     // A pool's locks bound its outstanding tasks, but all pools on this
     // channel contribute to the same queue. Poll unless their combined bound
     // fits in the hardware queue.
+    auto queue = std::make_pair(core.getTile(), *channel);
     bool waitForRoom = !assumeQueueSpace &&
-                       ctx.sendQueueObjects.lookup({core.getTile(), *channel}) >
-                           ctx.device.getTargetModel().getDmaTaskQueueDepth();
+                       (ctx.unsynchronizedSendQueues.contains(queue) ||
+                        ctx.sendQueueObjects.lookup(queue) >
+                            ctx.device.getTargetModel().getDmaTaskQueueDepth());
     Value current =
         memref::LoadOp::create(rewriter, loc, slot.getResult(), ValueRange{});
     Value depthValue = arith::ConstantIndexOp::create(rewriter, loc, depth);
@@ -236,7 +239,8 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       Value offset = arith::ConstantIndexOp::create(rewriter, loc, step);
       Value raw = arith::AddIOp::create(rewriter, loc, current, offset);
       Value which = arith::RemUIOp::create(rewriter, loc, raw, depthValue);
-      emitPushSwitch(rewriter, loc, which, *tags, *channel, waitForRoom);
+      emitPushSwitch(rewriter, loc, which, *tags, *channel,
+                     pool.getRepeatCount().value_or(1) - 1, waitForRoom);
     }
     Value taken = arith::ConstantIndexOp::create(rewriter, loc, size);
     Value raw = arith::AddIOp::create(rewriter, loc, current, taken);
@@ -248,7 +252,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
   /// Push the descriptor `tags[which]` names, selected at runtime. The switch
   /// folds to one push once the enclosing loops unroll.
   void emitPushSwitch(PatternRewriter &rewriter, Location loc, Value which,
-                      ArrayRef<int32_t> tags, int channel,
+                      ArrayRef<int32_t> tags, int channel, int repeatCount,
                       bool waitForRoom) const {
     SmallVector<int64_t> cases;
     for (size_t c = 0; c < tags.size(); ++c)
@@ -262,7 +266,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
                                        channel);
       DmaPushQueueOp::create(rewriter, loc, DMAChannelDir::MM2S, channel,
                              /*bd_id=*/nullptr, rewriter.getI32IntegerAttr(tag),
-                             /*repeat_count=*/0, /*out_of_order=*/false);
+                             repeatCount, /*out_of_order=*/false);
       scf::YieldOp::create(rewriter, loc);
     };
     rewriter.createBlock(&switchOp.getDefaultRegion());
@@ -647,8 +651,13 @@ struct AIEObjectFifoLowerCoresPass
       if (endpoint.drains() || !pool.getSendTags())
         continue;
       std::optional<int32_t> channel = pool.getSendChannel();
-      if (channel && countedSendPools.insert({endpoint.getTile(), pool}).second)
-        ctx.sendQueueObjects[{endpoint.getTile(), *channel}] += pool.getDepth();
+      if (channel &&
+          countedSendPools.insert({endpoint.getTile(), pool}).second) {
+        auto queue = std::make_pair(endpoint.getTile(), *channel);
+        ctx.sendQueueObjects[queue] += pool.getDepth();
+        if (pool.getDisableSynchronization())
+          ctx.unsynchronizedSendQueues.insert(queue);
+      }
     }
 
     annotateUnrollHints(device, ctx, builder);

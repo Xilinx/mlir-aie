@@ -28,6 +28,8 @@ from aie.helpers.dialects.scf import _for as range_
 
 LINE_LEN = 8
 N_LINES = 16
+REPEATS = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+SEND_DEPTH = int(sys.argv[2]) if len(sys.argv) > 2 else 2
 LEN = N_LINES * LINE_LEN
 
 LINE_TY = np.ndarray[(LINE_LEN,), np.dtype[np.int32]]
@@ -68,16 +70,24 @@ def add(amount):
 @iron.jit
 def shared_send_channel(in_tensor: In, even_tensor: Out, odd_tensor: Out):
     tensor_ty = np.ndarray[(LEN,), np.dtype[np.int32]]
-    half_ty = np.ndarray[(LEN // 2,), np.dtype[np.int32]]
+    half_ty = np.ndarray[(LEN // 2 * REPEATS,), np.dtype[np.int32]]
 
     of_in = ObjectFifo(LINE_TY, depth=2, name="in")
     # Both leave the splitter over channel 0, which selects push_queue: the
     # core pushes the descriptor of each buffer it releases.
     of_even = ObjectFifo(
-        LINE_TY, depth=2, name="even", transport=Transport.dma(packet=Packet())
+        LINE_TY,
+        depth=SEND_DEPTH,
+        name="even",
+        repeat_count=REPEATS,
+        transport=Transport.dma(packet=Packet()),
     )
     of_odd = ObjectFifo(
-        LINE_TY, depth=2, name="odd", transport=Transport.dma(packet=Packet())
+        LINE_TY,
+        depth=SEND_DEPTH,
+        name="odd",
+        repeat_count=REPEATS,
+        transport=Transport.dma(packet=Packet()),
     )
     of_even_out = ObjectFifo(LINE_TY, depth=2, name="even_out")
     of_odd_out = ObjectFifo(LINE_TY, depth=2, name="odd_out")
@@ -121,12 +131,12 @@ def main():
     rng = np.random.default_rng(0)
     src = rng.integers(-1000, 1000, size=(LEN,), dtype=np.int32)
     lines = src.reshape(N_LINES, LINE_LEN)
-    even_ref = (lines[0::2] + 1).reshape(-1)
-    odd_ref = (lines[1::2] + 2).reshape(-1)
+    even_ref = np.repeat(lines[0::2] + 1, REPEATS, axis=0).reshape(-1)
+    odd_ref = np.repeat(lines[1::2] + 2, REPEATS, axis=0).reshape(-1)
 
     src_tensor = iron.tensor(src, dtype=np.int32, device="npu")
-    even_tensor = iron.zeros(LEN // 2, dtype=np.int32, device="npu")
-    odd_tensor = iron.zeros(LEN // 2, dtype=np.int32, device="npu")
+    even_tensor = iron.zeros(LEN // 2 * REPEATS, dtype=np.int32, device="npu")
+    odd_tensor = iron.zeros(LEN // 2 * REPEATS, dtype=np.int32, device="npu")
 
     shared_send_channel(src_tensor, even_tensor, odd_tensor)
     if not np.array_equal(even_tensor.numpy(), even_ref):

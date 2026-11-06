@@ -22,6 +22,13 @@ module @shared_send_channel {
 
     aie.objectfifo @of1 (%tile12, {%tile32}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of2 (%tile12, {%tile33}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile12) {
+      %a = aie.objectfifo.acquire @of1(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @of1(Produce, 1)
+      %b = aie.objectfifo.acquire @of2(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @of2(Produce, 1)
+      aie.end
+    }
   }
 }
 

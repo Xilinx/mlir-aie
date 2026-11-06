@@ -1171,7 +1171,9 @@ int64_t ObjectFifoDmaEndpointOp::getRepeat() {
 }
 
 bool ObjectFifoDmaEndpointOp::repeatsInHardware() {
-  return getRepeat() > 1 && getNumDescriptors() == 1 && !getIterCount();
+  return getRepeat() > 1 &&
+         (getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
+          (getNumDescriptors() == 1 && !getIterCount()));
 }
 
 int64_t ObjectFifoDmaEndpointOp::getDispatchPasses() {
@@ -1245,6 +1247,22 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
   }
   if (failed(verifyAssignedPacket(*this, getPacketAttr()))) {
     return failure();
+  }
+
+  if (getReleaseStrategy() == ObjectFifoRelease::PushQueue) {
+    if (!drains() || !getTileLike().isCoreTile() ||
+        getTargetModel(*this).getDmaTaskQueueDepth() == 0)
+      return emitOpError("push_queue requires a sending DMA on a core tile "
+                         "with core-issued task support");
+    if (auto values = pool.getInitValues(); values && !values->empty())
+      return emitOpError("push_queue does not support initialized objects");
+    if (getRepeat() - 1 > getTargetModel(*this).getMaxRepeatCount())
+      return emitOpError(
+          "push_queue repeat_count exceeds the hardware task limit");
+    if (getOutOfOrder() && getRepeat() > 1)
+      return emitOpError(
+          "push_queue cannot repeat out-of-order packets: "
+          "each repetition may need a different destination BD ID");
   }
 
   if (std::optional<ArrayAttr> turns = getDispatch()) {

@@ -2629,11 +2629,18 @@ def AIE_ObjectFifoCreateOp
     * `push_queue` submits one DMA task per released object from the producer
       core. Device configuration does not submit an initial task. This lets
       multiple FIFOs share an MM2S channel without dedicating it to one
-      FIFO's cyclic chain. The lowering requires one descriptor per object.
+      FIFO's cyclic chain. The lowering requires one descriptor per object
+      and producer releases in a local core that supports queue instructions.
+      Initialized objects are unsupported because no startup tasks send them.
+      Repetitions use the task's repeat count; repeated out-of-order packets
+      are unsupported because copies may need different destination BD IDs.
+      Without buffer synchronization, releases poll for queue space unless
+      explicitly annotated with `assume_queue_space`.
 
     An omitted strategy defaults to `cycle_buffers`. When multiple FIFOs pin
-    their producer ports to the same DMA channel on the same tile,
-    `--aie-objectfifo-split` selects `push_queue` for all of them.
+    their producer ports to the same DMA channel on the same core tile,
+    `--aie-objectfifo-split` selects `push_queue` for all of them. Shared shim
+    channels continue to use runtime submission.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,

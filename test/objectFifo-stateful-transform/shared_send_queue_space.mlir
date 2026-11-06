@@ -284,3 +284,105 @@ module @assume_space {
     }
   }
 }
+
+// -----
+
+// Even the synchronized pool must poll when its queue has an unbounded user.
+// CHECK-LABEL: @unsynchronized_shared
+module @unsynchronized_shared {
+  aie.device(npu2) {
+    %src = aie.tile(0, 2)
+    %dst_a = aie.tile(0, 4)
+    %dst_b = aie.tile(1, 4)
+    aie.objectfifo @a(%src, {%dst_a}, [2, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, prod_port = #aie.end_port<DMA : 0>, disable_synchronization = true, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%src, {%dst_b}, [2, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    %core0 = aie.core(%src) {
+      // CHECK: aie.dma_poll_for_queue_space(MM2S : 0)
+      // CHECK-NEXT: aie.dma_push_queue(MM2S : 0) bd_id 0
+      // CHECK: scf.index_switch
+      // CHECK: aie.dma_poll_for_queue_space(MM2S : 0)
+      // CHECK-NEXT: aie.dma_push_queue(MM2S : 0) bd_id 2
+      %c0 = arith.constant 0 : index
+      %c6 = arith.constant 6 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %c6 step %c1 {
+        %a0 = aie.objectfifo.acquire @a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @a(Produce, 1)
+        %b0 = aie.objectfifo.acquire @b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @b(Produce, 1)
+      }
+      aie.end
+    }
+    %recv_a = aie.core(%dst_a) {
+      %c0 = arith.constant 0 : index
+      %c6 = arith.constant 6 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %c6 step %c1 {
+        %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @a(Consume, 1)
+      }
+      aie.end
+    }
+    %recv_b = aie.core(%dst_b) {
+      %c0 = arith.constant 0 : index
+      %c6 = arith.constant 6 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %c6 step %c1 {
+        %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @b(Consume, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+
+// -----
+
+// CHECK-LABEL: @unsynchronized_assumed
+module @unsynchronized_assumed {
+  aie.device(npu2) {
+    %src = aie.tile(0, 2)
+    %dst_a = aie.tile(0, 4)
+    %dst_b = aie.tile(1, 4)
+    aie.objectfifo @a(%src, {%dst_a}, [2, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, prod_port = #aie.end_port<DMA : 0>, disable_synchronization = true, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%src, {%dst_b}, [2, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    %core0 = aie.core(%src) {
+      // CHECK-NOT: aie.dma_poll_for_queue_space
+      // CHECK: aie.dma_push_queue(MM2S : 0) bd_id 0
+      // CHECK: scf.index_switch
+      // CHECK: aie.dma_poll_for_queue_space(MM2S : 0)
+      // CHECK-NEXT: aie.dma_push_queue(MM2S : 0) bd_id 2
+      %c0 = arith.constant 0 : index
+      %c6 = arith.constant 6 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %c6 step %c1 {
+        %a0 = aie.objectfifo.acquire @a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release {assume_queue_space} @a(Produce, 1)
+        %b0 = aie.objectfifo.acquire @b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @b(Produce, 1)
+      }
+      aie.end
+    }
+    %recv_a = aie.core(%dst_a) {
+      %c0 = arith.constant 0 : index
+      %c6 = arith.constant 6 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %c6 step %c1 {
+        %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @a(Consume, 1)
+      }
+      aie.end
+    }
+    %recv_b = aie.core(%dst_b) {
+      %c0 = arith.constant 0 : index
+      %c6 = arith.constant 6 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %c6 step %c1 {
+        %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @b(Consume, 1)
+      }
+      aie.end
+    }
+  }
+}

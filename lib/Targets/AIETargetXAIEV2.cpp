@@ -419,6 +419,15 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       return core.emitOpError("core-issued configuration is not supported by "
                               "the XAIEV2 backend");
   }
+  WalkResult corePushes = targetOp.walk([&](DMAStartOp start) {
+    if (!start.getCorePushes())
+      return WalkResult::advance();
+    start.emitOpError("core-issued configuration is not supported by "
+                      "the XAIEV2 backend");
+    return WalkResult::interrupt();
+  });
+  if (corePushes.wasInterrupted())
+    return failure();
   const auto &targetModel = targetOp.getTargetModel();
 
   collectTiles(targetOp, tiles);

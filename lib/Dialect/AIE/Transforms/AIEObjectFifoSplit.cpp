@@ -302,7 +302,8 @@ struct AIEObjectFifoSplitPass
         /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr(),
         from.getOutOfOrder() ? builder.getUnitAttr() : UnitAttr(),
         /*out_of_order_tags=*/DenseI32ArrayAttr(),
-        from.getReleaseStrategyAttr());
+        role == ObjectFifoRole::Drain ? from.getReleaseStrategyAttr()
+                                      : ObjectFifoReleaseAttr());
   }
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,
@@ -447,11 +448,15 @@ struct AIEObjectFifoSplitPass
     DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
         onChannel;
     for (ObjectFifoCreateOp fifo : fifos) {
+      auto shared = AIETargetModel::SharedMemory::None;
+      if (!dmaReason(fifo, shared))
+        continue;
       ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
       std::optional<int> channel =
           port && !port.isCore() ? port.channelIndex() : std::nullopt;
       auto tile = fifo.getProducerTile().getDefiningOp<TileOp>();
-      if (!channel || !tile)
+      // Shared shim transfers are submitted by the runtime.
+      if (!channel || !tile || tile.isShimTile())
         continue;
       onChannel[{tile.getCol(), tile.getRow(), *channel}].push_back(fifo);
     }
@@ -459,6 +464,37 @@ struct AIEObjectFifoSplitPass
       if (sharing.size() > 1)
         for (ObjectFifoCreateOp fifo : sharing)
           fifo.setReleaseStrategy(ObjectFifoRelease::PushQueue);
+  }
+
+  LogicalResult verifyPushQueueProducers(ArrayRef<ObjectFifoCreateOp> fifos) {
+    for (ObjectFifoCreateOp fifo : fifos) {
+      if (fifo.getReleaseStrategy() != ObjectFifoRelease::PushQueue)
+        continue;
+      auto shared = AIETargetModel::SharedMemory::None;
+      if (!dmaReason(fifo, shared))
+        continue;
+      if (auto values = fifo.getInitValues(); values && !values->empty())
+        return fifo.emitOpError(
+            "push_queue does not support initialized objects");
+      auto tile = fifo.getProducerTileOp();
+      if (!tile.isCoreTile() || fifo.streamsFromProducer() ||
+          device.getTargetModel().getDmaTaskQueueDepth() == 0)
+        return fifo.emitOpError(
+            "push_queue requires a sending DMA on a core tile "
+            "with core-issued task support");
+      bool hasRelease = false;
+      for (CoreOp core : device.getOps<CoreOp>()) {
+        if (core.getTile() == fifo.getProducerTile())
+          core.walk([&](ObjectFifoReleaseOp release) {
+            hasRelease |= release.getObjectFifo() == fifo &&
+                          release.getPort() == ObjectFifoPort::Produce;
+          });
+      }
+      if (!hasRelease)
+        return fifo.emitOpError("push_queue requires producer releases in a "
+                                "local core to submit send tasks");
+    }
+    return success();
   }
 
   /// A delegate tile can only hold a fifo's objects if both ends reach its
@@ -746,6 +782,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
   }
 
   selectPushQueueForSharedChannels(fifos);
+  if (failed(verifyPushQueueProducers(fifos)))
+    return signalPassFailure();
 
   if (failed(createLinkPools()) || failed(verifyAllocateDelegates())) {
     return signalPassFailure();

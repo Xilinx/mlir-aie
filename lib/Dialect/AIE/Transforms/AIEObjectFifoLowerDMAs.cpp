@@ -376,6 +376,27 @@ struct AIEObjectFifoLowerDMAsPass
     bool corePushes =
         drains && endpoint.getReleaseStrategy() == ObjectFifoRelease::PushQueue;
     if (corePushes) {
+      bool hasRelease = false;
+      for (auto coreEnd : device.getOps<ObjectFifoCoreEndpointOp>()) {
+        if (coreEnd.drains() || coreEnd.getPoolOp() != pool ||
+            coreEnd.getTile() != endpoint.getTile())
+          continue;
+        for (auto core : device.getOps<CoreOp>()) {
+          if (core.getTile() == coreEnd.getTile())
+            core.walk([&](ObjectFifoReleaseOp release) {
+              hasRelease |= release.getObjFifoName() == coreEnd.getSymName();
+            });
+        }
+      }
+      if (!hasRelease)
+        return endpoint.emitOpError(
+            "push_queue requires producer releases in a "
+            "local core to submit send tasks");
+      if (passes != 1)
+        return endpoint.emitOpError(
+            "push_queue requires one dispatch pass per object");
+      // Each release submits one task, with repetitions carried by that task.
+      taskCount = 0;
       if (static_cast<int64_t>(descriptors.size()) != pool.getDepth())
         return endpoint.emitOpError("sends ")
                << descriptors.size() << " descriptors for a pool of "
