@@ -113,21 +113,10 @@ NOT_JUDGED = {
         )
     },
     **{
-        name: "blocks on core locks its design releases, so it is judged only "
-        "inside a design that sets them"
+        name: "one stage of FastFlowLM's fused decode layer: its design drives "
+        "the call sequence and initializes the scratch state"
         for name in kernels.factories()
         if name.startswith("flm_gemma4_decode_")
-    },
-    # Later keys win: these three have a device design of their own.
-    **{
-        name: "blocks on core locks its design releases; "
-        "npu/test_flm_gemma4_decode_locks.py builds a design around them and "
-        "judges it on the device"
-        for name in (
-            "flm_gemma4_decode_attn_kv",
-            "flm_gemma4_decode_gate_layer_embedding",
-            "flm_gemma4_decode_proj_main",
-        )
     },
 }
 

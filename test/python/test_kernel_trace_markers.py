@@ -38,7 +38,7 @@ from kernel_cases import CASES  # noqa: E402
 # The only builds whose calls cannot be timed; each contract says why.
 UNTIMED = {
     "set_rounding",
-    # The decode kernels block on core locks the generic harness cannot drive.
+    # Decode stages need scratch initialization and a sequence of calls.
     *(n for n in kernels.factories() if n.startswith("flm_gemma4_decode_")),
 }
 

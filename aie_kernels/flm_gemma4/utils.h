@@ -4,8 +4,6 @@ Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
     SPDX-License-Identifier: MIT
 */
 
-// Lock helpers and the vector zero, copy, narrow and scale templates that the
-// flm_gemma4 kernels share. Independent of the model geometry.
 #ifndef AIE_KERNELS_FLM_GEMMA4_UTILS_H
 #define AIE_KERNELS_FLM_GEMMA4_UTILS_H
 
@@ -15,66 +13,6 @@ Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 #include <cstdint>
 
 using bf16 = bfloat16;
-
-// This tile's own locks, from 48 (see _lock_offset).
-inline void _lock_acquire(int lock_id, int num_locks = 1) {
-  acquire_greater_equal(lock_id + 48, num_locks);
-}
-
-inline void _lock_release(int lock_id, int num_locks = 1) {
-  release(lock_id + 48, num_locks);
-}
-
-// Pointer forms. Peano's aie2p_locks.h provides acquire/release overloads that
-// take the address of the guarded buffer and tie the lock to that buffer. The
-// 2-argument forms carry no memory operand, so the optimizer may move guarded
-// accesses across the lock. Use the pointer forms wherever a lock guards a
-// buffer.
-inline void _lock_acquire_p(const void *a, int lock_id, int num_locks = 1) {
-  acquire_greater_equal(a, lock_id + 48, num_locks);
-}
-inline void _lock_release_p(void *a, int lock_id, int num_locks = 1) {
-  release(a, lock_id + 48, num_locks);
-}
-
-// The parity of a ping-pong buffer pair. It must persist across calls, so keep
-// the object static or at file scope, and never reset it.
-struct PingPong {
-  bool is_ping = false;
-
-  // Flip the parity and return the buffer it selects.
-  template <typename T>
-  T *next(T *ping, T *pong) {
-    is_ping = !is_ping;
-    return is_ping ? ping : pong;
-  }
-
-  // next(), then acquire the selected buffer's lock.
-  template <typename T>
-  T *acquire(T *ping, T *pong, int lock_id) {
-    T *buf = next(ping, pong);
-    _lock_acquire_p(buf, lock_id);
-    return buf;
-  }
-};
-
-// The lock-id offset of the tile whose memory holds a, for a lock beside a
-// buffer that a neighbour owns. An aie2 or aie2p core reaches the memory of
-// the tiles south, west and north of it and its own at 0x40000, 0x50000,
-// 0x60000 and 0x70000 (AIE2TargetModel), and their locks from 0, 16, 32 and
-// 48, so the offset follows from the address wherever the placer puts the
-// two tiles.
-inline int _lock_offset(const void *a) {
-  return ((static_cast<int>(reinterpret_cast<uintptr_t>(a) >> 16) & 7) - 4) *
-         16;
-}
-inline void _shared_lock_acquire_p(const void *a, int lock_id,
-                                   int num_locks = 1) {
-  acquire_greater_equal(a, _lock_offset(a) + lock_id, num_locks);
-}
-inline void _shared_lock_release_p(void *a, int lock_id, int num_locks = 1) {
-  release(a, _lock_offset(a) + lock_id, num_locks);
-}
 
 // Stores 256 bits at a time, so c needs only 32-byte alignment. A wider store
 // to a buffer aligned below its width drops part of the store on AIE2P.
@@ -89,18 +27,11 @@ void zero_256(T *__restrict c) {
   }
 }
 
-// Copy M elements with vector loads and stores. Do not use memcpy in a loop:
-// memcpy is an opaque call, and the pipeliner does not schedule a loop that
-// contains a call.
-//
-// Both pointers must be 32-byte aligned. The copy uses 256-bit loads and
-// stores, and AIE2P silently drops part of an under-aligned access. The
-// static_assert checks only the element count. IRON buffers are 32-byte
-// aligned by default, so an offset into a buffer must be a multiple of 32
-// bytes.
+/// \brief Copy M elements between non-overlapping, 32-byte-aligned buffers.
+/// Vector loads/stores allow pipelining; an opaque memcpy call prevents it.
 template <typename T, int M>
 void copy_vectorized(T *__restrict dst, const T *__restrict src) {
-  constexpr int r = 256 / (sizeof(T) * 8); // one 256-bit store unit
+  constexpr int r = 256 / (sizeof(T) * 8);
   static_assert((M) % r == 0);
   const T *__restrict src_end = src + M;
   for (; src < src_end; src += r, dst += r) {
@@ -119,10 +50,9 @@ void scale_vectorized(bf16 *y, const bf16 scale) {
   }
 }
 
-// Narrows N floats to bf16 through an accfloat accumulator. The attention
-// kernels narrow in place, with the same buffer as source and destination: the
-// bf16 pointer advances at half the byte rate of the float one and so trails
-// it. The pointers must not be `restrict`, because they may alias.
+/// \brief Narrow N floats to bf16, allowing in-place conversion.
+/// With the same base address, bf16 stores trail float loads. Do not use
+/// restrict.
 template <int N>
 void narrow_to_bf16(bf16 *out, const float *in) {
   constexpr int vec_factor = 16;

@@ -5,18 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The online-softmax running-max update: rescale against the new max,
-// exponentiate, and return the correction factor for the kv side. Shared by
-// decode_attn_qk.cc and decode_attn_qk_kvh2.cc. It is not in
-// decode_attn_kv_common.h because
-// it needs the decode_lut_exp.h table, which costs the kv kernels 4 KB of
-// core data memory.
 #ifndef AIE_KERNELS_FLM_GEMMA4_DECODE_ATTN_QK_COMMON_H
 #define AIE_KERNELS_FLM_GEMMA4_DECODE_ATTN_QK_COMMON_H
 
 #include "decode_geometry.h"
 #include "decode_lut_exp.h"
 
+/// \brief Return masked exponentials relative to the updated running maximum m.
+/// Store the correction factor for the previous maximum in c.
 inline aie::vector<bf16, 16> update(bf16 *m, float *c,
                                     aie::vector<bf16, 16> &out,
                                     aie::mask<16> &mask, bool &is_first) {
