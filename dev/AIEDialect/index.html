@@ -11339,6 +11339,19 @@ between cores and DMAs, along with the implementation of those logical
 connections in the various switch components.  In the dialect, a
 switch is referred to as <code>switchbox</code> to avoid confusion with the
 <code>switch</code> keyword in C/C++.</p>
+<p><code>aie.shareable_with</code> is an array of flat symbol references. On a route
+endpoint it lists other route endpoints allowed to share its shim channel;
+both endpoints must permit the pairing. On a shim DMA allocation it lists
+route endpoints allowed to use that fixed channel. Empty lists forbid
+these shares. Explicit lists override lifetime analysis, but resource and
+packet-routing constraints still apply. Omission permits MM2S inference;
+S2MM sharing requires explicit permission because receive ordering does
+not constrain independent senders. The author must guarantee stream order
+and completion across repeated executions. On an unsplit objectFIFO, the
+list names other objectFIFOs and applies to its shim DMA endpoint; splitting
+transfers the permissions to route endpoints and rewrites the references.</p>
+<p>On a device, <code>aie.reserve_controller_packet_ids</code> reserves controller IDs
+when assigning packet IDs.</p>
 <div class="toc">
 <ul>
 <li><a href="#aie-dialect">'aie' Dialect</a><ul>
@@ -12295,11 +12308,9 @@ a portion of a device which may be relocatable, the intention would be to provid
 operation, for instance maybe <code>aie.segment</code>.
 The design itself is described using a region of code contained by the device
 operation.</p>
-<p>The optional <code>has_ctrl_pkt_overlay</code> attribute marks a design that a
-control-packet reload (<code>aiecc --load-pdi-to-ctrl-pkt</code>) installs. The reload
-configures the <code>@ctrl_pkt_overlay</code> device first and the rest of the design
-through it, so the router keeps the switch settings the overlay's flows
-take on their own. <code>aie-generate-column-control-overlay</code> sets it.</p>
+<p>The optional <code>overlay</code> symbol references a routed device whose resources
+remain resident while this design executes. <code>aie-import-overlay</code> imports
+those fixed resources before application allocation and routing.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>aie.device(xcvc1902) {
 <a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  %tile = aie.tile(1, 1)
@@ -12313,7 +12324,7 @@ take on their own. <code>aie-generate-column-control-overlay</code> sets it.</p>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>device</code></td><td>xilinx::AIE::AIEDeviceAttr</td><td>AIE Device</td></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>has_ctrl_pkt_overlay</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>overlay</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 </table>
 
 <h3 id="aiedma-xilinxaiedmaop"><code>aie.dma</code> (::xilinx::AIE::DMAOp)<a class="headerlink" href="#aiedma-xilinxaiedmaop" title="Permanent link">&para;</a></h3>
@@ -14035,9 +14046,7 @@ switchboxes.</p>
 data packet's packet header gets preserved at the flow's
 destination. The optional attribute priority_route routes the flow
 first, on its own, and the other flows route around it. If the design
-cannot route that way, the flow routes with the others. In a device
-with <code>has_ctrl_pkt_overlay</code>, the control overlay's flows (those to or
-from a TileControl port) always keep the route they take on their own.</p>
+cannot route that way, the flow routes with the others.</p>
 <p>The optional attribute mask, written after the ID in the parentheses,
 states the packet-rule mask of the flow. A slave port accepts a packet
 when <code>incoming &amp; mask == ID</code>, so the flow claims every ID that agrees

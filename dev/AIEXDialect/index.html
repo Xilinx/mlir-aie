@@ -14048,7 +14048,11 @@ two ops. See the "## BD iteration" section of <code>aie.dma_bd</code> for more d
 <p>Syntax:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-106-1" name="__codelineno-106-1" href="#__codelineno-106-1"></a>operation ::= `aiex.run` $runtime_sequence_symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
 </code></pre></div>
-<p>Executes an <code>aiex.runtime_sequence</code> with the given name and arguments by inlining its instructions at the call site.</p>
+<p>Executes the named <code>aie.runtime_sequence</code> with the given arguments.
+The callee is assumed to be self-contained: when it returns, its transfers
+must have completed and it may no longer use its DMA channels.</p>
+<p>Lowering inlines the callee's instructions without adding synchronization;
+the callee must fulfill this contract.</p>
 <p>Traits: <code>HasParent&lt;ConfigureOp&gt;</code></p>
 <h4 id="attributes_59">Attributes:<a class="headerlink" href="#attributes_59" title="Permanent link">&para;</a></h4>
 <table>

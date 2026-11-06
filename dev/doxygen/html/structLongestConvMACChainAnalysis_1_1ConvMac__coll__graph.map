@@ -1,9 +1,0 @@
-<map id="LongestConvMACChainAnalysis::ConvMac" name="LongestConvMACChainAnalysis::ConvMac">
-<area shape="rect" id="Node000001" title=" " alt="" coords="201,168,428,212"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,262,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="138,63,150,105,160,125,173,142,209,167,204,167,170,146,156,128,145,107,136,68"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="286,14,344,42"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="317,56,317,169,312,166,313,59"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="367,14,433,42"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="393,54,376,99,353,145,336,169,333,165,349,142,372,97,389,58"/>
-</map>

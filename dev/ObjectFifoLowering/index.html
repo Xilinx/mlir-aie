@@ -4929,23 +4929,33 @@ shim allocations. A packet header reaching it has to carry its id.</p>
 <p>Attributes already present are kept, so writing <code>aie.buffer</code> ops and naming them
 in the pool, attaching locks to a segment, or setting <code>channelIndex</code> on an
 endpoint overrides that choice; this pass fills in the rest.</p>
-<p>When a shim tile runs out of channels, shim ends that are never in flight
-together take turns on one channel instead. Ends that different runtime
-sequences use never are: one dispatch runs one sequence and is taken to finish
-its transfers before the next starts, the same contract that lets one design
-be dispatched twice in a row. Within one sequence, a receiving (S2MM) end's
-transfers must be awaited or freed (<code>aiex.dma_free_task</code>) before the other's
-first is issued, and an end used inside a loop counts as in flight for the
-whole loop. A sending (MM2S) end stays in flight to the end of its sequence:
-a shim MM2S task reports itself complete once the shim has read its data, up
-to about 1580 words before they have entered the stream (measured on npu2),
-so awaiting it proves nothing about a later transfer queued behind it. An end no
-runtime sequence names is never shared. Only as many ends share as the tile
-needs. The routes of ends sharing a channel become packet-switched, with ids
-that differ from one another; other shared channels reuse the same ids, as the
-router keeps flows with one id apart wherever their destinations differ. Each
-end keeps its own <code>aie.shim_dma_allocation</code>, so every transfer stamps its own
-header. A design that fits without sharing is lowered exactly as before.</p>
+<p>When a shim tile runs out of channels, MM2S endpoints whose transfers never
+overlap may share one channel. Ordinary MM2S transfers conservatively remain
+live until their runtime sequence returns. An <code>aiex.run</code> call is assumed to
+finish its transfers before returning, so disjoint calls can share. Configuration
+completes before the configure body starts, allowing control and application
+MM2S transfers in separate phases to share as well.</p>
+<p>S2MM sharing requires explicit <code>aie.shareable_with</code> permissions. Ordered receives
+do not constrain when independent cores or DMAs send their data. The author must
+guarantee that packets reach the shared channel in the order and quantities the
+receives expect, including across repeated executions. Awaiting or freeing receive
+tasks alone does not establish this guarantee.</p>
+<p>On an unsplit objectFIFO, the attribute names other objectFIFOs; on a route
+endpoint, it names other route endpoints. Both ends must permit the pairing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>aie.objectfifo @a(%core_a, {%shim}, 2 : i32) {aie.shareable_with = [@b]} : !aie.objectfifo&lt;memref&lt;16xi32&gt;&gt;
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>aie.objectfifo @b(%core_b, {%shim}, 2 : i32) {aie.shareable_with = [@a]} : !aie.objectfifo&lt;memref&lt;16xi32&gt;&gt;
+</code></pre></div>
+<p>Splitting copies these permissions to the shim route endpoints and rewrites the
+references. Explicit lists override lifetime analysis; <code>[]</code> disallows sharing.
+A shim DMA allocation's list instead permits named route endpoints to use its
+fixed channel. Hardware and routing constraints apply in all cases.</p>
+<p>Only as many endpoints share as the tile needs. Their routes become
+packet-switched with distinct packet IDs, and each endpoint has its own
+<code>aie.shim_dma_allocation</code>. MM2S transfers stamp their endpoint's packet header;
+S2MM descriptors do not select packets by ID.</p>
+<p>The runtime BD allocator warns about transfers left neither awaited nor freed
+at sequence exit (<code>warn-unreleased-transfers</code>, enabled by default in the pass
+and <code>aiecc</code>).</p>
 <p>When a compute or mem tile runs out of channels, DMA endpoints whose objects
 one core needs in a fixed order take turns on one channel instead, in that
 order. The core's period is the innermost loop around every acquire and
@@ -4970,40 +4980,40 @@ be placed.</p>
 <h3 id="5---aie-objectfifo-lower-dmas">5. <code>--aie-objectfifo-lower-dmas</code><a class="headerlink" href="#5---aie-objectfifo-lower-dmas" title="Permanent link">&para;</a></h3>
 <p>Turns each <code>dma_endpoint</code> into the BD chain that walks its pool's buffers,
 buffer-major and segment-minor:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>for each buffer b in pool.buffers:
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  for each segment s selected by the endpoint:
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>    acquire( drains ? s.consumeLock : s.produceLock )
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    dma_bd(b, s.offset, s.size)
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    release( drains ? s.produceLock : s.consumeLock )
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>for each buffer b in pool.buffers:
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  for each segment s selected by the endpoint:
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>    acquire( drains ? s.consumeLock : s.produceLock )
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    dma_bd(b, s.offset, s.size)
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>    release( drains ? s.produceLock : s.consumeLock )
 </code></pre></div>
 <p>Endpoints taking turns lower to one chain: the k-th BD moves the next object
 of the endpoint <code>turns</code> names k-th, through its own pool's locks, unrolled
 until every endpoint is back at its first object.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>%mem_0_2 = aie.mem(%tile_0_2) {
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>^bb1:
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  aie.use_lock(%of1__conslock0, AcquireGreaterEqual, %c1_i32)
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>  aie.dma_bd(%of1__buf0 : memref&lt;16xi32&gt; offset = 0 len = 16)
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>  aie.use_lock(%of1__prodlock0, Release, %c1_i32_0)
-<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>  aie.next_bd ^bb2
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>^bb2:   // the same, with %of1__buf1
-<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>  ...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>%mem_0_2 = aie.mem(%tile_0_2) {
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>  %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>^bb1:
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>  aie.use_lock(%of1__conslock0, AcquireGreaterEqual, %c1_i32)
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>  aie.dma_bd(%of1__buf0 : memref&lt;16xi32&gt; offset = 0 len = 16)
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>  aie.use_lock(%of1__prodlock0, Release, %c1_i32_0)
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>  aie.next_bd ^bb2
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>^bb2:   // the same, with %of1__buf1
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>  ...
 </code></pre></div>
 <h3 id="6---aie-objectfifo-lower-cores">6. <code>--aie-objectfifo-lower-cores</code><a class="headerlink" href="#6---aie-objectfifo-lower-cores" title="Permanent link">&para;</a></h3>
 <p>Turns <code>acquire</code> and <code>release</code> operations in AIE core code into <code>use_lock</code>
 and a rotation of the pool's objects. The core keeps its objects in rotation
 order in rank-0 slots: an acquire reads the front ones, and a release rotates
 the released objects to the back.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>%0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>%1 = arith.maxsi %0, %c0_i32_0 : i32     // delta = max(N - held, 0)
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>aie.use_lock(%of1__prodlock0, AcquireGreaterEqual, %1)
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>%obj = memref.load %front[] : memref&lt;memref&lt;16xi32&gt;&gt;
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>...
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>aie.use_lock(%of1__conslock0, Release, %c1_i32)
-<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>%a = memref.load %front[] : memref&lt;memref&lt;16xi32&gt;&gt;   // release(1) rotates
-<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>%b = memref.load %back[] : memref&lt;memref&lt;16xi32&gt;&gt;    // the objects by one
-<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>memref.store %b, %front[] : memref&lt;memref&lt;16xi32&gt;&gt;
-<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>memref.store %a, %back[] : memref&lt;memref&lt;16xi32&gt;&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>%0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>%1 = arith.maxsi %0, %c0_i32_0 : i32     // delta = max(N - held, 0)
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>aie.use_lock(%of1__prodlock0, AcquireGreaterEqual, %1)
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>%obj = memref.load %front[] : memref&lt;memref&lt;16xi32&gt;&gt;
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>...
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>aie.use_lock(%of1__conslock0, Release, %c1_i32)
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>%a = memref.load %front[] : memref&lt;memref&lt;16xi32&gt;&gt;   // release(1) rotates
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>%b = memref.load %back[] : memref&lt;memref&lt;16xi32&gt;&gt;    // the objects by one
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>memref.store %b, %front[] : memref&lt;memref&lt;16xi32&gt;&gt;
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>memref.store %a, %back[] : memref&lt;memref&lt;16xi32&gt;&gt;
 </code></pre></div>
 <p><code>--aie-objectFifo-unroll</code> promotes the slots to SSA wherever each object then
 folds to a concrete buffer: on the cores it unrolls, and on dynamic cores that
