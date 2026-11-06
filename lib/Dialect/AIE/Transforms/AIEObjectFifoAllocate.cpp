@@ -105,6 +105,9 @@ struct AIEObjectFifoAllocatePass
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
+  /// Whether a search for which pools to walk whole stopped at its bound,
+  /// DMAChannelAnalysis::kMaxWalkPlacements, before finding one that places.
+  bool walkSearchStopped = false;
 
   bool sameTile(Value a, Value b) {
     if (a == b)
@@ -1319,13 +1322,14 @@ struct AIEObjectFifoAllocatePass
       if (tile.isMemTile() && col && row && dma.getPoolOp())
         ends[{*col, *row}].push_back(dma);
     }
-    // Every tile walks its first set; when `pools` then cannot be placed, each
-    // tile in turn walks the first of its sets they place in with the others'
-    // as they stand (DMAChannelAnalysis::chooseWalkSet), as the SA placer does.
+    // Walk sets per spill component, as the SA placer chooses them
+    // (DMAChannelAnalysis::searchWalkProduct).
     struct Tile {
+      TileID at;
       HomeBDPlan home;
       DMAChannelAnalysis::BDWalkSets found;
       SmallVector<ObjectFifoDmaEndpointOp> dmas;
+      unsigned applied = 0;
     };
     SmallVector<Tile, 0> tiles;
     for (auto &[at, dmas] : ends) {
@@ -1338,47 +1342,87 @@ struct AIEObjectFifoAllocatePass
               [](int) -> int64_t { return 0; });
       if (found.sets.empty() && !found.fits && !found.channelShort) {
         found.sets.emplace_back();
+        found.bytes.push_back(0);
         for (auto [pool, walkable] : llvm::enumerate(home.walkable))
-          if (walkable.walkable)
+          if (walkable.walkable) {
             found.sets.back().push_back(pool);
+            found.bytes.back() += walkable.depth * walkable.objectBytes;
+          }
       }
       if (!found.sets.empty())
-        tiles.push_back({std::move(home), std::move(found), dmas});
+        tiles.push_back(
+            {{at.first, at.second}, std::move(home), std::move(found), dmas});
     }
-    SmallVector<unsigned> chosen(tiles.size(), 0);
-    auto setWalked = [&](unsigned tile, bool walked) {
-      for (unsigned pool : tiles[tile].found.sets[chosen[tile]])
-        tiles[tile].home.pools[pool].setContiguous(walked);
+    auto setWalked = [&](Tile &tile, bool walked) {
+      for (unsigned pool : tile.found.sets[tile.applied])
+        tile.home.pools[pool].setContiguous(walked);
     };
-    auto placed = [&] {
-      SmallVector<ObjectFifoPoolOp> trial(pools.begin(), pools.end());
-      sizeOrder(trial);
-      localPools.clear();
-      return succeeded(planBuffers(trial));
+    auto homeOf = [](ObjectFifoPoolOp pool) -> std::optional<TileID> {
+      TileLike tile = pool.getTileLike();
+      auto col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (!tile.isMemTile() || !col || !row)
+        return std::nullopt;
+      return TileID{*col, *row};
     };
-    for (unsigned tile = 0; tile < tiles.size(); ++tile)
-      setWalked(tile, true);
-    if (!placed())
-      for (unsigned tile = 0; tile < tiles.size(); ++tile) {
-        setWalked(tile, false);
-        chosen[tile] = DMAChannelAnalysis::chooseWalkSet(
-            tiles[tile].found.sets.size(), [&](unsigned set) {
-              chosen[tile] = set;
-              setWalked(tile, true);
-              bool fits = placed();
-              setWalked(tile, false);
-              return fits;
-            });
-        setWalked(tile, true);
-      }
+    std::set<std::pair<int, int>> homeSet;
+    for (ObjectFifoPoolOp pool : pools)
+      if (std::optional<TileID> at = homeOf(pool))
+        homeSet.insert({at->col, at->row});
+    for (Tile &tile : tiles)
+      homeSet.insert({tile.at.col, tile.at.row});
+    SmallVector<TileID> homes;
+    for (auto [col, row] : homeSet)
+      homes.push_back({col, row});
+    SmallVector<unsigned> componentIds =
+        memTileSpillComponents(device.getTargetModel(), homes);
+    std::map<std::pair<int, int>, unsigned> componentAt;
+    for (auto [home, id] : llvm::zip_equal(homes, componentIds))
+      componentAt[{home.col, home.row}] = id;
+
     bool walkedAny = false;
-    for (unsigned tile = 0; tile < tiles.size(); ++tile) {
-      if (tiles[tile].found.sets[chosen[tile]].empty())
+    std::set<unsigned> searched;
+    for (Tile &first : tiles) {
+      unsigned component = componentAt[{first.at.col, first.at.row}];
+      if (!searched.insert(component).second)
         continue;
-      walkedAny = true;
-      for (auto dma : tiles[tile].dmas)
-        bdPlanned.insert(
-            tileOf(cast<RouteEndpoint>(dma.getOperation())).getOperation());
+      SmallVector<Tile *> members;
+      for (Tile &tile : tiles)
+        if (componentAt[{tile.at.col, tile.at.row}] == component)
+          members.push_back(&tile);
+      SmallVector<ObjectFifoPoolOp> componentPools;
+      for (ObjectFifoPoolOp pool : pools)
+        if (std::optional<TileID> at = homeOf(pool);
+            at && componentAt[{at->col, at->row}] == component)
+          componentPools.push_back(pool);
+      SmallVector<SmallVector<int64_t>> bytes;
+      for (Tile *tile : members)
+        bytes.push_back(tile->found.bytes);
+      auto apply = [&](ArrayRef<unsigned> choice) {
+        for (auto [tile, set] : llvm::zip_equal(members, choice)) {
+          setWalked(*tile, false);
+          tile->applied = set;
+          setWalked(*tile, true);
+        }
+      };
+      DMAChannelAnalysis::WalkChoice choice =
+          DMAChannelAnalysis::searchWalkProduct(
+              bytes, [&](ArrayRef<unsigned> choice) {
+                apply(choice);
+                SmallVector<ObjectFifoPoolOp> trial(componentPools);
+                sizeOrder(trial);
+                localPools.clear();
+                return succeeded(planBuffers(trial));
+              });
+      apply(choice.sets);
+      walkSearchStopped |= choice.stopped;
+      for (Tile *tile : members) {
+        if (tile->found.sets[tile->applied].empty())
+          continue;
+        walkedAny = true;
+        for (auto dma : tile->dmas)
+          bdPlanned.insert(
+              tileOf(cast<RouteEndpoint>(dma.getOperation())).getOperation());
+      }
     }
     return walkedAny;
   }
@@ -2378,6 +2422,7 @@ struct AIEObjectFifoAllocatePass
     bufferFailure = nullptr;
     lockFailure = nullptr;
     lockAccessFailure = nullptr;
+    walkSearchStopped = false;
 
     if (failed(collectFixedMemory()) || failed(checkStreamPorts()))
       return signalPassFailure();
@@ -2451,9 +2496,15 @@ struct AIEObjectFifoAllocatePass
     if (failed(allocated)) {
       localPools.clear();
       if (failed(planBuffers(pools))) {
-        bufferFailure.emitOpError(
-            "could not place buffers in accessible memory with available "
-            "capacity");
+        if (walkSearchStopped)
+          bufferFailure.emitOpError("could not place buffers: the search for "
+                                    "which pools to walk whole stopped after ")
+              << DMAChannelAnalysis::kMaxWalkPlacements
+              << " placements tried in one spill component";
+        else
+          bufferFailure.emitOpError(
+              "could not place buffers in accessible memory with available "
+              "capacity");
       } else if (failed(planLocks(pools))) {
         if (lockAccessFailure)
           lockAccessFailure->emitOpError("cannot access pool locks");

@@ -104,6 +104,8 @@ public:
   /// tile's channels even taking no BD ids, `fits` false when no set does.
   struct BDWalkSets {
     llvm::SmallVector<llvm::SmallVector<unsigned>> sets;
+    /// The bytes each set walks whole.
+    llvm::SmallVector<int64_t> bytes;
     bool channelShort = false;
     bool fits = true;
   };
@@ -120,8 +122,8 @@ public:
   /// Every set of walkable `pools` whose walk lets planBDChannels fit `ends`
   /// (`poolOf` gives each end's pool), ordered by the bytes the set walks
   /// whole, then its size, then its members in nextPoolToWalk's order. Empty
-  /// when the ends fit unwalked. Sets are drawn from the first
-  /// kMaxWalkSearch walkable pools in nextPoolToWalk's order.
+  /// when the ends fit unwalked. At most 12 pools are walkable: each draws a
+  /// channel of its own, and more ends than channels make `channelShort`.
   /// aie-objectfifo-allocate and the SA placer both walk by this.
   static BDWalkSets
   walkSetsThatFit(const AIETargetModel &target, int col, int row,
@@ -130,15 +132,23 @@ public:
                   llvm::ArrayRef<BDWalkPool> pools,
                   llvm::function_ref<bool(DMAChannelDir, int)> free,
                   llvm::function_ref<int64_t(int)> spent);
-  static constexpr unsigned kMaxWalkSearch = 16;
 
-  /// The first of the first kMaxWalkChecks of `count` walk sets, in
-  /// walkSetsThatFit's order, whose walk `fits` (the caller's memory search)
-  /// accepts, or the first when it accepts none, so the caller fails as it
-  /// would have.
-  static unsigned chooseWalkSet(unsigned count,
-                                llvm::function_ref<bool(unsigned)> fits);
-  static constexpr unsigned kMaxWalkChecks = 8;
+  /// One walkSetsThatFit set per mem tile of a spill component
+  /// (memTileSpillComponents), by index; `placed` when its buffers place,
+  /// `stopped` when the search gave up at kMaxWalkPlacements tries.
+  struct WalkChoice {
+    llvm::SmallVector<unsigned> sets;
+    bool placed = false;
+    bool stopped = false;
+  };
+  /// Tries the choices of one set per tile, `bytes[tile]` giving each of its
+  /// sets' bytes walked whole, in order of total bytes walked, then the
+  /// tiles' set indices in turn, until `places` (the caller's buffer search
+  /// over the component) accepts one; the first choice when none does.
+  static WalkChoice
+  searchWalkProduct(llvm::ArrayRef<llvm::SmallVector<int64_t>> bytes,
+                    llvm::function_ref<bool(llvm::ArrayRef<unsigned>)> places);
+  static constexpr unsigned kMaxWalkPlacements = 1024;
 
   /// Claim a raw stream port for `user`, reporting on it when the port is
   /// taken; packet users may share it with other packets.

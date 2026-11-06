@@ -16,10 +16,38 @@
 
 #include <array>
 #include <deque>
+#include <list>
 #include <map>
 #include <random>
 
 namespace xilinx::AIE {
+
+/// A map that keeps its `capacity` most recently used entries.
+template <typename Key, typename Value>
+class LRUCache {
+public:
+  explicit LRUCache(size_t capacity) : capacity(capacity) {}
+  const Value *find(const Key &key) {
+    auto it = index.find(key);
+    if (it == index.end())
+      return nullptr;
+    order.splice(order.begin(), order, it->second);
+    return &it->second->second;
+  }
+  void insert(const Key &key, Value value) {
+    order.emplace_front(key, std::move(value));
+    index[key] = order.begin();
+    if (index.size() > capacity) {
+      index.erase(order.back().first);
+      order.pop_back();
+    }
+  }
+
+private:
+  size_t capacity;
+  std::list<std::pair<Key, Value>> order;
+  std::map<Key, typename std::list<std::pair<Key, Value>>::iterator> index;
+};
 
 /// Placement algorithm type for pass option
 enum class PlacerType { SequentialPlacer, SAPlacer };
@@ -894,9 +922,16 @@ private:
   /// order DMAChannelAnalysis::walkSetsThatFit tries them.
   using WalkSets =
       llvm::SmallVector<llvm::SmallVector<std::pair<mlir::Operation *, int>>>;
-  std::map<std::pair<TileID, std::vector<mlir::Operation *>>,
-           std::pair<int64_t, WalkSets>>
-      bdShortfallOf;
+  struct BDShortfall {
+    int64_t ids;
+    WalkSets sets;
+    llvm::SmallVector<int64_t> bytes;
+  };
+  LRUCache<std::pair<TileID, std::vector<mlir::Operation *>>, BDShortfall>
+      bdShortfallOf{1u << 16};
+  /// The bytes the spill search leaves unplaced in one spill component, by its
+  /// tiles' contents and each mem tile's walk set.
+  LRUCache<std::vector<uintptr_t>, int64_t> unplacedOf{1u << 16};
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
   llvm::DenseMap<TileID, TileID> bdLayoutOf;
@@ -947,9 +982,10 @@ private:
   /// The BD ids the ends of mem tiles `tiles`, at `position`, are short of
   /// once aie-objectfifo-allocate has planned their channels; with
   /// `walkSets`, DMAChannelAnalysis::walkSetsThatFit's sets (every walkable
-  /// pool when none fits).
+  /// pool when none fits) and, with `walkBytes`, each one's bytes.
   int64_t bdShortfall(TileID position, llvm::ArrayRef<mlir::Operation *> tiles,
-                      WalkSets *walkSets = nullptr);
+                      WalkSets *walkSets = nullptr,
+                      llvm::SmallVector<int64_t> *walkBytes = nullptr);
   /// The logical mem tiles at `position`, in memTileEnds order.
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
   int computeMemSpilloverPenalty();
