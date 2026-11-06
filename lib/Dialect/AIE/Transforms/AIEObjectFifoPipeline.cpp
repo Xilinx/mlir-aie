@@ -63,8 +63,8 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
       "aie-objectFifo-stateful-transform",
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
-        addObjectFifoLoweringPasses(pm, options.packetSwitched,
-                                    options.skipVerify, options.reserveControllerPacketIds,
-                                    options.checkQueueSpace);
+        addObjectFifoLoweringPasses(
+            pm, options.packetSwitched, options.skipVerify,
+            options.reserveControllerPacketIds, options.checkQueueSpace);
       });
 }

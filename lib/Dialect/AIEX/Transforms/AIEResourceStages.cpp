@@ -35,8 +35,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool packetSwObjFifos, bool ctrlPktOverlay,
                             bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
                             llvm::ArrayRef<int> coverColumns,
-                            bool adaptiveOverlay,
-                            bool checkQueueSpace) {
+                            bool adaptiveOverlay, bool checkQueueSpace) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
   // Before lock IDs and buffer addresses, which its new locks and buffers need.

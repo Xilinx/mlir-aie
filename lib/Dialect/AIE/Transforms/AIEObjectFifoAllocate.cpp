@@ -964,7 +964,6 @@ struct AIEObjectFifoAllocatePass
                                bool diagnose = true) {
     channelAssignments.clear();
     channelFailure = nullptr;
-    DenseSet<Operation *> packetEndpoints = this->packetEndpoints();
     SmallVector<RouteEndpoint> pending;
     // BDs per placed (col, row, channel) as channels are handed out, for
     // choosing among a tile's channels by the BD ids they can use.

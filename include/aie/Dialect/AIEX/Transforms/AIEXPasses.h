@@ -111,8 +111,7 @@ void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
                       bool packetSwObjFifos, bool ctrlPktOverlay,
                       bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
                       llvm::ArrayRef<int> coverColumns = {},
-                      bool adaptiveOverlay = true,
-                      bool checkQueueSpace = true);
+                      bool adaptiveOverlay = true, bool checkQueueSpace = true);
 void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
 void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
 

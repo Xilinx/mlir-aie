@@ -1058,7 +1058,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           llvm::ArrayRef<int> coverColumns) {
         return getInputWithAddressesPipeline(
             ctx, mod, dyn, pkt, ctrl, bf16, opt, ldpdi, skipVerify,
-            /*assignAddresses=*/false, coverColumns, adaptiveOverlay, queueSpace);
+            /*assignAddresses=*/false, coverColumns, adaptiveOverlay,
+            queueSpace);
       };
   auto routedCache = std::make_shared<RoutedCache>();
   using ModEdge = EdgeWithTypedOutput<ModRef>;
