@@ -14,10 +14,13 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <functional>
 #include <optional>
+#include <set>
+#include <vector>
 
 namespace xilinx::AIE {
 
@@ -139,7 +142,9 @@ public:
   /// bipartite matching instead: whether every group fits then does not
   /// depend on their order. The matching augments the in-order placement, so
   /// a group that found room there keeps its tile unless another needs it.
-  /// Groups of different counts keep the in-order placement.
+  /// Groups of different counts (AIE1 pools of different depths) are packed
+  /// by an exact search instead, largest first, within kPackBudget steps; when
+  /// it finds no packing the in-order placement stands.
   Assignment assign(llvm::ArrayRef<Group> groups) {
     Assignment result;
     llvm::DenseMap<TileID, int> before = used;
@@ -153,12 +158,6 @@ public:
     }
     if (!result.failed)
       return result;
-    int count = groups.front().count;
-    if (llvm::any_of(groups,
-                     [&](const Group &g) { return g.count != count; })) {
-      result.unassigned = llvm::count(result.tiles, std::nullopt);
-      return result;
-    }
 
     llvm::SmallVector<llvm::SmallVector<unsigned>> eligible;
     for (const Group &group : groups) {
@@ -168,6 +167,22 @@ public:
             llvm::all_of(group.users,
                          [&](const User &user) { return reaches(user, tile); }))
           tilesOf.push_back(tile);
+    }
+    int count = groups.front().count;
+    if (llvm::any_of(groups,
+                     [&](const Group &g) { return g.count != count; })) {
+      if (std::optional<llvm::SmallVector<std::optional<unsigned>>> packed =
+              pack(groups, eligible, before)) {
+        result.tiles = std::move(*packed);
+        result.failed.reset();
+        used = before;
+        for (auto [group, tile] : llvm::zip(groups, result.tiles))
+          if (tiles[*tile].at)
+            used[*tiles[*tile].at] += group.count;
+        return result;
+      }
+      result.unassigned = llvm::count(result.tiles, std::nullopt);
+      return result;
     }
     llvm::DenseMap<TileID, llvm::SmallVector<size_t>> members;
     auto assignTo = [&](size_t group, unsigned tile) {
@@ -239,7 +254,67 @@ public:
     return result;
   }
 
+  /// Steps the exact packing of groups of different counts may take.
+  static constexpr int64_t kPackBudget = 100000;
+
 private:
+  /// Each group on a tile in `eligible` with room for it, from the room left
+  /// `before` any group, or nothing when no such packing exists within
+  /// kPackBudget steps. Largest groups go first; a state (next group, room
+  /// on each position) that failed once is not tried again.
+  std::optional<llvm::SmallVector<std::optional<unsigned>>>
+  pack(llvm::ArrayRef<Group> groups,
+       llvm::ArrayRef<llvm::SmallVector<unsigned>> eligible,
+       const llvm::DenseMap<TileID, int> &before) const {
+    auto order = llvm::to_vector(
+        llvm::seq<unsigned>(0, static_cast<unsigned>(groups.size())));
+    llvm::stable_sort(order, [&](unsigned a, unsigned b) {
+      return groups[a].count > groups[b].count;
+    });
+    llvm::SmallVector<TileID> positions;
+    for (const auto &tilesOf : eligible)
+      for (unsigned tile : tilesOf)
+        if (tiles[tile].at && !llvm::is_contained(positions, *tiles[tile].at))
+          positions.push_back(*tiles[tile].at);
+    std::vector<int> room;
+    for (TileID at : positions)
+      room.push_back(static_cast<int>(target.getNumLocks(at.col, at.row)) -
+                     before.lookup(at));
+    llvm::SmallVector<std::optional<unsigned>> chosen(groups.size());
+    std::set<std::pair<size_t, std::vector<int>>> failed;
+    int64_t steps = kPackBudget;
+    std::function<bool(size_t)> place = [&](size_t next) {
+      if (next == order.size())
+        return true;
+      if (steps-- <= 0 || failed.count({next, room}))
+        return false;
+      unsigned group = order[next];
+      for (unsigned tile : eligible[group]) {
+        std::optional<TileID> at = tiles[tile].at;
+        int *left = nullptr;
+        if (at) {
+          left = &room[llvm::find(positions, *at) - positions.begin()];
+          if (*left < groups[group].count)
+            continue;
+          *left -= groups[group].count;
+        }
+        chosen[group] = tile;
+        if (place(next + 1))
+          return true;
+        if (left)
+          *left += groups[group].count;
+        if (steps <= 0)
+          return false;
+      }
+      chosen[group].reset();
+      failed.insert({next, room});
+      return false;
+    };
+    if (!place(0))
+      return std::nullopt;
+    return chosen;
+  }
+
   const AIETargetModel &target;
   llvm::SmallVector<Tile> tiles;
   llvm::DenseMap<TileID, int> used;
