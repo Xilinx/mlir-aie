@@ -5,10 +5,8 @@
 // device and runs its runtime sequence.
 //
 // The core asserts INSTR_EVENT_0 at the entry of a passthrough loop and
-// INSTR_EVENT_1 at its exit. The trace unit emits a packet only once it
-// collects enough events, so @core_trace also selects the lock events. They
-// fill the packet that carries the two markers.
-//
+// INSTR_EVENT_1 at its exit.
+
 module {
   aie.device(npu2) @main {
     aie.runtime_sequence @sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
@@ -21,6 +19,7 @@ module {
   aie.device(npu2) @trace_dev {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
+    %trace_padding_lock = aie.lock(%tile_0_2) {init = 1 : i32}
 
     aie.objectfifo @of_in(%tile_0_0, {%tile_0_2}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
@@ -44,6 +43,7 @@ module {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c64 = arith.constant 64 : index
+      %c1_i32 = arith.constant 1 : i32
       %ei = aie.objectfifo.acquire @of_in(Consume, 1) : memref<64xi32>
       %eo = aie.objectfifo.acquire @of_out(Produce, 1) : memref<64xi32>
       aie.event(0)
@@ -52,6 +52,13 @@ module {
         memref.store %v, %eo[%i] : memref<64xi32>
       }
       aie.event(1)
+
+      // Extra lock events push both markers through the trace DMA before
+      // releasing the output lets the runtime sequence stop tracing.
+      scf.for %pad = %c0 to %c64 step %c1 {
+        aie.use_lock(%trace_padding_lock, AcquireGreaterEqual, %c1_i32)
+        aie.use_lock(%trace_padding_lock, Release, %c1_i32)
+      }
       aie.objectfifo.release @of_in(Consume, 1)
       aie.objectfifo.release @of_out(Produce, 1)
       aie.end
