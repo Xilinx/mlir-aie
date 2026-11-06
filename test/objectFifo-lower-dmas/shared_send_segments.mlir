@@ -5,7 +5,11 @@
 // RUN: aie-opt --aie-objectfifo-lower-dmas --aie-objectfifo-lower-cores --canonicalize --aie-assign-bd-ids %s | FileCheck %s --check-prefix=CORE
 
 // The cyclic drainer must not inherit the pushed drainer's tag.
-// DMA: send_producer = @fill_lo
+// DMA: aie.objectfifo.pool @p
+// DMA-NOT: core_push =
+// DMA: aie.objectfifo.core_endpoint @fill_lo{{.*}}core_push = #aie.core_push<channel = 0, bd_tags = [0]>
+// DMA: aie.objectfifo.core_endpoint @fill_hi
+// DMA-NOT: core_push =
 // DMA: aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 8) {bd_tag = 0 : i32}
 // DMA: aie.dma_bd(%buffer : memref<16xi32> offset = 8 len = 8)
 // DMA-NOT: bd_tag

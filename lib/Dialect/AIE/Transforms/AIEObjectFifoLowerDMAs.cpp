@@ -188,7 +188,8 @@ struct AIEObjectFifoLowerDMAsPass
   void emitDescriptor(ObjectFifoDmaEndpointOp endpoint, ObjectFifoPoolOp pool,
                       Descriptor &descriptor, PacketInfoAttr packet,
                       Block *successor, bool binaryLocks, bool drains,
-                      int64_t transmittedObject = -1) {
+                      int64_t transmittedObject = -1,
+                      ArrayRef<int32_t> sendTags = {}) {
     Location loc = endpoint.getLoc();
     int count = drains ? 1 : pool.getRepeatCount().value_or(1);
 
@@ -254,13 +255,10 @@ struct AIEObjectFifoLowerDMAsPass
     }
     if (descriptor.iteration && descriptor.iteration.getSize() > 1)
       bd.setIterationAttr(descriptor.iteration);
-    // A core pushing this descriptor names it the same way.
-    if (auto tags = pool.getSendTags();
-        tags && drains &&
-        endpoint.getReleaseStrategy() == ObjectFifoRelease::PushQueue) {
-      assert(descriptor.object < static_cast<int64_t>(tags->size()) &&
+    if (!sendTags.empty()) {
+      assert(descriptor.object < static_cast<int64_t>(sendTags.size()) &&
              "a send tag names every buffer of a core-pushed pool");
-      bd.setBdTag((*tags)[descriptor.object]);
+      bd.setBdTag(sendTags[descriptor.object]);
     }
 
     if (releaseLock) {
@@ -378,6 +376,7 @@ struct AIEObjectFifoLowerDMAsPass
     // leaves the core no descriptor to name.
     bool corePushes =
         drains && endpoint.getReleaseStrategy() == ObjectFifoRelease::PushQueue;
+    SmallVector<int32_t> sendTags;
     if (corePushes) {
       bool hasRelease = false;
       ObjectFifoCoreEndpointOp producer;
@@ -417,16 +416,13 @@ struct AIEObjectFifoLowerDMAsPass
                << pool.getDepth()
                << " objects, so a release names no one of them; push_queue "
                << "needs one descriptor per object";
-      SmallVector<int32_t> tags;
       for (size_t slot = 0; slot < descriptors.size(); ++slot) {
         while (usedSendTags.contains(nextSendTag))
           ++nextSendTag;
-        tags.push_back(nextSendTag++);
+        sendTags.push_back(nextSendTag++);
       }
-      pool.setSendTagsAttr(DenseI32ArrayAttr::get(pool.getContext(), tags));
-      pool.setSendChannel(channel);
-      pool.setSendProducerAttr(
-          FlatSymbolRefAttr::get(producer.getSymNameAttr()));
+      producer.setCorePushAttr(
+          ObjectFifoCorePushAttr::get(pool.getContext(), channel, sendTags));
     }
 
     SmallVector<PacketInfoAttr> turns;
@@ -469,7 +465,7 @@ struct AIEObjectFifoLowerDMAsPass
           }
           builder.setInsertionPointToStart(current);
           emitDescriptor(endpoint, pool, descriptor, packet, successor,
-                         binaryLocks, drains, emitted);
+                         binaryLocks, drains, emitted, sendTags);
           current = successor;
           emitted++;
         }
@@ -546,12 +542,12 @@ struct AIEObjectFifoLowerDMAsPass
     // Reserve tags from both pool allocation and hand-written descriptors.
     nextSendTag = 0;
     usedSendTags.clear();
-    for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
+    for (auto pool : device.getOps<ObjectFifoPoolOp>())
       if (auto tags = pool.getOutOfOrderTags())
         usedSendTags.insert(tags->begin(), tags->end());
-      if (auto tags = pool.getSendTags())
-        usedSendTags.insert(tags->begin(), tags->end());
-    }
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
+      if (auto push = endpoint.getCorePushAttr())
+        usedSendTags.insert(push.getBdTags().begin(), push.getBdTags().end());
     device.walk([&](DMABDOp bd) {
       if (auto tag = bd.getBdTag())
         usedSendTags.insert(*tag);

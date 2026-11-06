@@ -337,6 +337,27 @@ def ObjectFifoReleaseAttr
   }];
 }
 
+def ObjectFifoCorePushAttr : AttrDef<AIE_Dialect, "ObjectFifoCorePush", []> {
+  let mnemonic = "core_push";
+  let summary = "The MM2S tasks submitted by a core endpoint's releases";
+  let description = [{
+    DMA lowering attaches this attribute only to a filling core endpoint
+    that submits `push_queue` tasks. `channel` names the MM2S queue on the
+    core's tile; `bd_tags` identifies one sending descriptor per buffer slot.
+    Core lowering uses this mapping after DMA lowering removes the DMA
+    endpoint, then removes the core endpoint and this attribute.
+
+    The corresponding `aie.dma_start` carries `core_pushes`, which prevents
+    device configuration from submitting startup tasks.
+
+    Example: `core_push = #aie.core_push<channel = 0, bd_tags = [4, 5]>`.
+  }];
+  let parameters = (ins "uint32_t":$channel,
+      ArrayRefParameter<"int32_t">:$bd_tags);
+  let assemblyFormat =
+      "`<` `channel` `=` $channel `,` `bd_tags` `=` `[` $bd_tags `]` `>`";
+}
+
 def ObjectFifoRole
     : I32EnumAttr<"ObjectFifoRole",
                   "What an objectFifo endpoint does to its pool's buffers",

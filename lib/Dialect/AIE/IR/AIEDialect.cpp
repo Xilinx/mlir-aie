@@ -1075,6 +1075,15 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
     return failure();
   }
 
+  if (auto push = getCorePushAttr()) {
+    if (drains())
+      return emitOpError("core_push requires a filling core endpoint");
+    if (push.getBdTags().size() != static_cast<size_t>(pool.getDepth()))
+      return emitOpError("core_push requires one BD tag per pool buffer");
+    if (llvm::any_of(push.getBdTags(), [](int32_t tag) { return tag < 0; }))
+      return emitOpError("core_push requires nonnegative BD tags");
+  }
+
   // The core sees one memref, so the segments it selects have to be a single
   // run of the object.
   int64_t next = -1;

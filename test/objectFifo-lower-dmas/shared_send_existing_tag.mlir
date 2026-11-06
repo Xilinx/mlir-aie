@@ -5,7 +5,7 @@
 // RUN: aie-opt --aie-objectfifo-lower-dmas --aie-objectfifo-lower-cores --canonicalize --aie-assign-bd-ids %s -o /dev/null
 
 // Generated send tags must avoid tags on existing descriptors.
-// CHECK: send_tags = array<i32: 1>
+// CHECK: aie.objectfifo.core_endpoint @fill{{.*}}core_push = #aie.core_push<channel = 0, bd_tags = [1]>
 // CHECK: aie.dma_bd(%buffer : memref<16xi32>) {bd_tag = 0 : i32}
 // CHECK: aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 16) {bd_tag = 1 : i32}
 module {

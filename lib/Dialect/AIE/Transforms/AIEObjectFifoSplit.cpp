@@ -240,9 +240,7 @@ struct AIEObjectFifoSplitPass
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
         /*contiguous=*/false, /*zeroObjects=*/nullptr,
-        /*out_of_order_tags=*/DenseI32ArrayAttr(),
-        /*send_tags=*/DenseI32ArrayAttr(), /*send_channel=*/IntegerAttr(),
-        /*send_producer=*/FlatSymbolRefAttr());
+        /*out_of_order_tags=*/DenseI32ArrayAttr());
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -250,9 +248,10 @@ struct AIEObjectFifoSplitPass
   ObjectFifoCoreEndpointOp createCoreEndpoint(Location loc, StringRef name,
                                               Value tile, PoolRef ref,
                                               ObjectFifoRole role) {
-    return ObjectFifoCoreEndpointOp::create(builder, loc, name, tile, role,
-                                            ref.pool.getSymName(),
-                                            selectedSegmentNames(ref));
+    return ObjectFifoCoreEndpointOp::create(
+        builder, loc, name, tile, role, ref.pool.getSymName(),
+        selectedSegmentNames(ref),
+        /*core_push=*/ObjectFifoCorePushAttr());
   }
 
   ObjectFifoDmaEndpointOp createDmaEndpoint(Location loc, StringRef name,
@@ -350,9 +349,7 @@ struct AIEObjectFifoSplitPass
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr(), /*contiguous=*/false,
         /*zeroObjects=*/nullptr,
-        /*out_of_order_tags=*/DenseI32ArrayAttr(),
-        /*send_tags=*/DenseI32ArrayAttr(), /*send_channel=*/IntegerAttr(),
-        /*send_producer=*/FlatSymbolRefAttr());
+        /*out_of_order_tags=*/DenseI32ArrayAttr());
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }

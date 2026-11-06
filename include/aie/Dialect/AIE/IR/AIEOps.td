@@ -2635,7 +2635,8 @@ def AIE_ObjectFifoCreateOp
       and producer releases in a local core that supports queue instructions.
       Initialized objects are unsupported because no startup tasks send them.
       Repetitions use the task's repeat count; repeated out-of-order packets
-      are unsupported because copies may need different destination BD IDs.
+      are unsupported because copies may need different destination
+      out-of-order IDs (the receiving descriptors' hardware BD IDs).
       Without buffer synchronization, releases poll for queue space unless
       explicitly annotated with `assume_queue_space`.
 
@@ -2675,9 +2676,6 @@ def AIE_ObjectFifoCreateOp
       // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
       OptionalAttr<AIEI32Attr>:$iter_count,
-      // Select whether the sending DMA follows a cyclic descriptor chain or
-      // the producer core submits a task for each released object. Shared
-      // producer channels select push_queue during ObjectFifo splitting.
       OptionalAttr<ObjectFifoReleaseAttr>:$release_strategy);
 
   let assemblyFormat = [{
@@ -3023,12 +3021,6 @@ def AIE_ObjectFifoPoolOp
     receiving descriptor. Broadcast destinations share these tags; a relay's
     incoming and outgoing transfers have separate mappings. BD ID assignment
     later resolves the tags to hardware IDs.
-
-    For `push_queue` senders, DMA lowering also records `send_tags` and
-    `send_channel`. `send_tags` maps each buffer slot to its sending BD tag;
-    `send_channel` identifies the MM2S task queue. `send_producer` names the
-    core endpoint that fills the sender's segment. Core lowering turns only
-    that endpoint's releases into pushes after the DMA endpoint is removed.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, AIEI32Attr:$depth,
@@ -3051,14 +3043,7 @@ def AIE_ObjectFifoPoolOp
       // `depth` objects in its buffer, which no endpoint fills.
       OptionalAttr<DenseI32ArrayAttr>:$zeroObjects,
       // Receiving BD tags indexed by buffer slot.
-      OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags,
-      // Sending BD tags indexed by buffer slot. Core lowering uses these
-      // tags to submit the descriptor for each released object.
-      OptionalAttr<DenseI32ArrayAttr>:$send_tags,
-      // MM2S channel for send_tags. Retained on the pool after DMA lowering
-      // removes the endpoint, for use by core lowering.
-      OptionalAttr<AIEI32Attr>:$send_channel,
-      OptionalAttr<FlatSymbolRefAttr>:$send_producer);
+      OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags);
 
   let regions = (region SizedRegion<1>:$segments);
 
@@ -3107,6 +3092,13 @@ def AIE_ObjectFifoCoreEndpointOp
     only segment and is invalid for a multi-segment pool.
 
     A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this op.
+    Releases at different locations in the core share the endpoint's rotating
+    object index.
+
+    Only endpoints that submit core-pushed DMA tasks carry `core_push`.
+    DMA lowering generates it for `push_queue` senders; see `#aie.core_push`
+    for its queue and descriptor mapping. Cyclic DMA senders and core
+    consumers do not use it.
 
     An endpoint covering only part of an object hands the core a
     `memref.subview` of the run its segments span, so a core can take one side
@@ -3120,7 +3112,8 @@ def AIE_ObjectFifoCoreEndpointOp
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
       ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
-      OptionalAttr<FlatSymbolRefArrayAttr>:$segments);
+      OptionalAttr<FlatSymbolRefArrayAttr>:$segments,
+      OptionalAttr<ObjectFifoCorePushAttr>:$core_push);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
@@ -3207,7 +3200,7 @@ def AIE_ObjectFifoDmaEndpointOp
     On a draining (MM2S) endpoint, `release_strategy` selects cyclic DMA
     execution or core-issued tasks, as described for `aie.objectfifo`.
     `push_queue` lowering creates one unchained descriptor per object and
-    records its tag and channel on the pool for use by core lowering. A pool
+    records its tag and channel on the filling core endpoint. A pool
     supports only one such draining endpoint, including when endpoints select
     disjoint segments.
   }];

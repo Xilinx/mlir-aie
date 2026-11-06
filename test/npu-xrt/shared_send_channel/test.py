@@ -73,8 +73,6 @@ def shared_send_channel(in_tensor: In, even_tensor: Out, odd_tensor: Out):
     half_ty = np.ndarray[(LEN // 2 * REPEATS,), np.dtype[np.int32]]
 
     of_in = ObjectFifo(LINE_TY, depth=2, name="in")
-    # Both leave the splitter over channel 0, which selects push_queue: the
-    # core pushes the descriptor of each buffer it releases.
     of_even = ObjectFifo(
         LINE_TY,
         depth=SEND_DEPTH,
@@ -82,6 +80,8 @@ def shared_send_channel(in_tensor: In, even_tensor: Out, odd_tensor: Out):
         repeat_count=REPEATS,
         transport=Transport.dma(packet=Packet()),
     )
+    # Pin both producer handles to MM2S channel 0 on the splitter's tile.
+    even_prod = of_even.prod(port=Port.dma(0))
     of_odd = ObjectFifo(
         LINE_TY,
         depth=SEND_DEPTH,
@@ -89,6 +89,7 @@ def shared_send_channel(in_tensor: In, even_tensor: Out, odd_tensor: Out):
         repeat_count=REPEATS,
         transport=Transport.dma(packet=Packet()),
     )
+    odd_prod = of_odd.prod(port=Port.dma(0))
     of_even_out = ObjectFifo(LINE_TY, depth=2, name="even_out")
     of_odd_out = ObjectFifo(LINE_TY, depth=2, name="odd_out")
 
@@ -96,8 +97,8 @@ def shared_send_channel(in_tensor: In, even_tensor: Out, odd_tensor: Out):
         split_lines,
         fn_args=[
             of_in.cons(),
-            of_even.prod(port=Port.dma(0)),
-            of_odd.prod(port=Port.dma(0)),
+            even_prod,
+            odd_prod,
         ],
     )
     even_worker = Worker(add(1), fn_args=[of_even.cons(), of_even_out.prod()])

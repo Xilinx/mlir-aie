@@ -203,14 +203,11 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
   void emitSendPushes(PatternRewriter &rewriter, Location loc, CoreOp core,
                       ObjectFifoCoreEndpointOp endpoint, ObjectFifoPoolOp pool,
                       int size, bool assumeQueueSpace) const {
-    std::optional<ArrayRef<int32_t>> tags = pool.getSendTags();
-    if (!tags || endpoint.drains() ||
-        pool.getSendProducerAttr() !=
-            FlatSymbolRefAttr::get(endpoint.getSymNameAttr()))
+    ObjectFifoCorePushAttr push = endpoint.getCorePushAttr();
+    if (!push || endpoint.drains())
       return;
-    std::optional<int32_t> channel = pool.getSendChannel();
-    if (!channel)
-      return;
+    ArrayRef<int32_t> tags = push.getBdTags();
+    int channel = push.getChannel();
     int depth = pool.getDepth();
 
     auto key = std::make_pair(core.getOperation(), endpoint.getOperation());
@@ -229,7 +226,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
     // A pool's locks bound its outstanding tasks, but all pools on this
     // channel contribute to the same queue. Poll unless their combined bound
     // fits in the hardware queue.
-    auto queue = std::make_pair(core.getTile(), *channel);
+    auto queue = std::make_pair(core.getTile(), channel);
     bool waitForRoom = !assumeQueueSpace &&
                        (ctx.unsynchronizedSendQueues.contains(queue) ||
                         ctx.sendQueueObjects.lookup(queue) >
@@ -241,7 +238,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       Value offset = arith::ConstantIndexOp::create(rewriter, loc, step);
       Value raw = arith::AddIOp::create(rewriter, loc, current, offset);
       Value which = arith::RemUIOp::create(rewriter, loc, raw, depthValue);
-      emitPushSwitch(rewriter, loc, which, *tags, *channel,
+      emitPushSwitch(rewriter, loc, which, tags, channel,
                      pool.getRepeatCount().value_or(1) - 1, waitForRoom);
     }
     Value taken = arith::ConstantIndexOp::create(rewriter, loc, size);
@@ -647,13 +644,10 @@ struct AIEObjectFifoLowerCoresPass
     // Only the recorded producer submits tasks for a sending pool.
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
-      if (endpoint.drains() || !pool.getSendTags() ||
-          pool.getSendProducerAttr() !=
-              FlatSymbolRefAttr::get(endpoint.getSymNameAttr()))
+      if (endpoint.drains())
         continue;
-      std::optional<int32_t> channel = pool.getSendChannel();
-      if (channel) {
-        auto queue = std::make_pair(endpoint.getTile(), *channel);
+      if (auto push = endpoint.getCorePushAttr()) {
+        auto queue = std::make_pair(endpoint.getTile(), int(push.getChannel()));
         ctx.sendQueueObjects[queue] += pool.getDepth();
         if (pool.getDisableSynchronization())
           ctx.unsynchronizedSendQueues.insert(queue);
