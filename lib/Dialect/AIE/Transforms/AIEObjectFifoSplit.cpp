@@ -241,7 +241,8 @@ struct AIEObjectFifoSplitPass
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
         /*contiguous=*/false, /*zeroObjects=*/nullptr,
         /*out_of_order_tags=*/DenseI32ArrayAttr(),
-        /*send_tags=*/DenseI32ArrayAttr(), /*send_channel=*/IntegerAttr());
+        /*send_tags=*/DenseI32ArrayAttr(), /*send_channel=*/IntegerAttr(),
+        /*send_producer=*/FlatSymbolRefAttr());
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -350,7 +351,8 @@ struct AIEObjectFifoSplitPass
         /*initValues=*/ArrayAttr(), /*contiguous=*/false,
         /*zeroObjects=*/nullptr,
         /*out_of_order_tags=*/DenseI32ArrayAttr(),
-        /*send_tags=*/DenseI32ArrayAttr(), /*send_channel=*/IntegerAttr());
+        /*send_tags=*/DenseI32ArrayAttr(), /*send_channel=*/IntegerAttr(),
+        /*send_producer=*/FlatSymbolRefAttr());
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }

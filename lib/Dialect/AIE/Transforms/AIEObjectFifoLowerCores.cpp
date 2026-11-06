@@ -204,7 +204,9 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
                       ObjectFifoCoreEndpointOp endpoint, ObjectFifoPoolOp pool,
                       int size, bool assumeQueueSpace) const {
     std::optional<ArrayRef<int32_t>> tags = pool.getSendTags();
-    if (!tags || endpoint.drains())
+    if (!tags || endpoint.drains() ||
+        pool.getSendProducerAttr() !=
+            FlatSymbolRefAttr::get(endpoint.getSymNameAttr()))
       return;
     std::optional<int32_t> channel = pool.getSendChannel();
     if (!channel)
@@ -642,17 +644,15 @@ struct AIEObjectFifoLowerCoresPass
     LoweringContext ctx{device, device.getTargetModel().hasProperty(
                                     AIETargetModel::UsesSemaphoreLocks)};
 
-    // Count each sending pool once, even when several core endpoints name
-    // its segments. The core endpoint identifies the tile issuing the push;
-    // the pool's buffers may reside in a neighbouring tile's memory.
-    llvm::DenseSet<std::pair<Value, Operation *>> countedSendPools;
+    // Only the recorded producer submits tasks for a sending pool.
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
-      if (endpoint.drains() || !pool.getSendTags())
+      if (endpoint.drains() || !pool.getSendTags() ||
+          pool.getSendProducerAttr() !=
+              FlatSymbolRefAttr::get(endpoint.getSymNameAttr()))
         continue;
       std::optional<int32_t> channel = pool.getSendChannel();
-      if (channel &&
-          countedSendPools.insert({endpoint.getTile(), pool}).second) {
+      if (channel) {
         auto queue = std::make_pair(endpoint.getTile(), *channel);
         ctx.sendQueueObjects[queue] += pool.getDepth();
         if (pool.getDisableSynchronization())

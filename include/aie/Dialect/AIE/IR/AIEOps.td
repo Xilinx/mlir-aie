@@ -3026,9 +3026,9 @@ def AIE_ObjectFifoPoolOp
 
     For `push_queue` senders, DMA lowering also records `send_tags` and
     `send_channel`. `send_tags` maps each buffer slot to its sending BD tag;
-    `send_channel` identifies the MM2S task queue. Core lowering uses this
-    information to turn producer releases into pushes after the DMA endpoint
-    has been removed.
+    `send_channel` identifies the MM2S task queue. `send_producer` names the
+    core endpoint that fills the sender's segment. Core lowering turns only
+    that endpoint's releases into pushes after the DMA endpoint is removed.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, AIEI32Attr:$depth,
@@ -3057,7 +3057,8 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<DenseI32ArrayAttr>:$send_tags,
       // MM2S channel for send_tags. Retained on the pool after DMA lowering
       // removes the endpoint, for use by core lowering.
-      OptionalAttr<AIEI32Attr>:$send_channel);
+      OptionalAttr<AIEI32Attr>:$send_channel,
+      OptionalAttr<FlatSymbolRefAttr>:$send_producer);
 
   let regions = (region SizedRegion<1>:$segments);
 

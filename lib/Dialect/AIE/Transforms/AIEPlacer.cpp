@@ -956,7 +956,11 @@ SequentialPlacer::buildChannelRequirements(
     if (!pinned || !logicalTile)
       return false;
     AIETileType type = logicalTile.getTileType();
-    if (type != AIETileType::ShimNOCTile && type != AIETileType::ShimPLTile)
+    bool coreSender = type == AIETileType::CoreTile &&
+                      !fifo.streamsFromProducer() &&
+                      targetModel->getDmaTaskQueueDepth() > 0;
+    if (type != AIETileType::ShimNOCTile && type != AIETileType::ShimPLTile &&
+        !coreSender)
       return false;
     auto [it, fresh] =
         sharedOut.try_emplace(channelKey(logicalTile, *pinned), fifo);
@@ -1056,7 +1060,7 @@ SequentialPlacer::buildChannelRequirements(
 
     // Producer needs ONE output channel if any consumer needs DMA (unless the
     // producer IS the link tile of an outgoing linked dest fifo, or it shares
-    // an already-counted shim channel).
+    // an already-counted shared channel).
     if (producerNeedsDMA && producerOp && !skipProducerSide &&
         !sharesProducerChannel(ofOp, producerLogicalTile))
       channelRequirements[producerOp].second++; // output++

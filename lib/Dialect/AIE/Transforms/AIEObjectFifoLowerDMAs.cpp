@@ -62,6 +62,7 @@ struct AIEObjectFifoLowerDMAsPass
 
   DeviceOp device;
   int32_t nextSendTag = 0;
+  llvm::DenseSet<int32_t> usedSendTags;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
 
   /// The DMA program of `tile`, created empty if the tile has none yet. A
@@ -254,7 +255,9 @@ struct AIEObjectFifoLowerDMAsPass
     if (descriptor.iteration && descriptor.iteration.getSize() > 1)
       bd.setIterationAttr(descriptor.iteration);
     // A core pushing this descriptor names it the same way.
-    if (auto tags = pool.getSendTags(); tags && endpoint.drains()) {
+    if (auto tags = pool.getSendTags();
+        tags && drains &&
+        endpoint.getReleaseStrategy() == ObjectFifoRelease::PushQueue) {
       assert(descriptor.object < static_cast<int64_t>(tags->size()) &&
              "a send tag names every buffer of a core-pushed pool");
       bd.setBdTag((*tags)[descriptor.object]);
@@ -377,10 +380,21 @@ struct AIEObjectFifoLowerDMAsPass
         drains && endpoint.getReleaseStrategy() == ObjectFifoRelease::PushQueue;
     if (corePushes) {
       bool hasRelease = false;
+      ObjectFifoCoreEndpointOp producer;
+      auto sentSegments = endpoint.getSelectedSegments();
       for (auto coreEnd : device.getOps<ObjectFifoCoreEndpointOp>()) {
         if (coreEnd.drains() || coreEnd.getPoolOp() != pool ||
             coreEnd.getTile() != endpoint.getTile())
           continue;
+        auto filledSegments = coreEnd.getSelectedSegments();
+        if (!llvm::any_of(sentSegments, [&](ObjectFifoSegmentOp segment) {
+              return llvm::is_contained(filledSegments, segment);
+            }))
+          continue;
+        if (producer)
+          return endpoint.emitOpError(
+              "push_queue requires a single core filler for its segment");
+        producer = coreEnd;
         for (auto core : device.getOps<CoreOp>()) {
           if (core.getTile() == coreEnd.getTile())
             core.walk([&](ObjectFifoReleaseOp release) {
@@ -404,10 +418,15 @@ struct AIEObjectFifoLowerDMAsPass
                << " objects, so a release names no one of them; push_queue "
                << "needs one descriptor per object";
       SmallVector<int32_t> tags;
-      for (size_t slot = 0; slot < descriptors.size(); ++slot)
+      for (size_t slot = 0; slot < descriptors.size(); ++slot) {
+        while (usedSendTags.contains(nextSendTag))
+          ++nextSendTag;
         tags.push_back(nextSendTag++);
+      }
       pool.setSendTagsAttr(DenseI32ArrayAttr::get(pool.getContext(), tags));
       pool.setSendChannel(channel);
+      pool.setSendProducerAttr(
+          FlatSymbolRefAttr::get(producer.getSymNameAttr()));
     }
 
     SmallVector<PacketInfoAttr> turns;
@@ -524,12 +543,19 @@ struct AIEObjectFifoLowerDMAsPass
     device = getOperation();
     builder = OpBuilder(device.getContext());
 
-    // Send tags share a space with the tags the allocation already handed
-    // out, so that one tag names one descriptor across the device.
-    for (auto pool : device.getOps<ObjectFifoPoolOp>())
+    // Reserve tags from both pool allocation and hand-written descriptors.
+    nextSendTag = 0;
+    usedSendTags.clear();
+    for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
       if (auto tags = pool.getOutOfOrderTags())
-        for (int32_t tag : *tags)
-          nextSendTag = std::max(nextSendTag, tag + 1);
+        usedSendTags.insert(tags->begin(), tags->end());
+      if (auto tags = pool.getSendTags())
+        usedSendTags.insert(tags->begin(), tags->end());
+    }
+    device.walk([&](DMABDOp bd) {
+      if (auto tag = bd.getBdTag())
+        usedSendTags.insert(*tag);
+    });
 
     SmallVector<ObjectFifoDmaEndpointOp> endpoints(
         device.getOps<ObjectFifoDmaEndpointOp>());
