@@ -845,6 +845,7 @@ private:
   struct InputLockGroup {
     mlir::Operation *home;
     llvm::SmallVector<std::pair<mlir::Operation *, bool>, 2> users;
+    int locks;
   };
   llvm::SmallVector<InputLockGroup> inputLockGroups;
   // Placed core tiles, whose own memory sits where they are.
@@ -878,6 +879,8 @@ private:
     // end a link's pool takes over, the link's segments at the link's first
     // input and none at the others.
     llvm::SmallVector<int> consumerLockGroups;
+    // The depth of the pool at each consumer end: its own, or its link's.
+    llvm::SmallVector<int64_t> consumerPoolDepth;
     llvm::SmallVector<bool> consumerLinked;
     // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
     int sharedDepth = 0;
@@ -1075,6 +1078,13 @@ private:
   /// The locks aie-objectfifo-allocate cannot place, by LockPlan on the pools
   /// the split gives each fifo where its ends sit, charged per lock.
   int computeLockPenalty() const;
+  /// The lock groups aie-objectfifo-allocate gives the pools the split makes
+  /// where the tiles sit now: how many locks each takes (two a segment, or a
+  /// pool's depth on AIE1) and the tiles using them, a compute tile's DMA
+  /// reaching only its own.
+  llvm::SmallVector<
+      std::pair<int, llvm::SmallVector<std::pair<TileID, bool>, 2>>>
+  lockGroups() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();
   int computeTileDMAPenalty(TileID tilePos) const;

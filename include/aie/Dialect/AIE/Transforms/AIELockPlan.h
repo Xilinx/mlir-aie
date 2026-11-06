@@ -17,7 +17,6 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include <functional>
-#include <limits>
 #include <optional>
 
 namespace xilinx::AIE {
@@ -227,88 +226,6 @@ public:
     if (!result.unassigned)
       result.failed.reset();
     return result;
-  }
-
-  /// How many of `groups` groups of `count` locks each, every group of a
-  /// class taking any of `tiles` all its users reach, no assignment finds
-  /// room for: the groups less a maximum flow, which is the size of the
-  /// matching assign() falls back to.
-  size_t
-  shortfall(llvm::ArrayRef<std::pair<int, llvm::SmallVector<User>>> classes,
-            llvm::ArrayRef<unsigned> candidates, int count) {
-    size_t sources = classes.size(), sinks = candidates.size();
-    llvm::SmallVector<int> slots;
-    for (unsigned tile : candidates) {
-      std::optional<TileID> at = tiles[tile].at;
-      slots.push_back(
-          at ? (static_cast<int>(target.getNumLocks(at->col, at->row)) -
-                used.lookup(*at)) /
-                   count
-             : std::numeric_limits<int>::max() / 2);
-    }
-    llvm::SmallVector<llvm::SmallVector<bool>> reach(sources);
-    for (auto [c, entry] : llvm::enumerate(classes))
-      for (unsigned tile : candidates)
-        reach[c].push_back(llvm::all_of(entry.second, [&](const User &user) {
-          return reaches(user, tile);
-        }));
-    // flow[c][t]: groups of class c on tile t; residual capacities follow.
-    llvm::SmallVector<llvm::SmallVector<int>> flow(
-        sources, llvm::SmallVector<int>(sinks, 0));
-    llvm::SmallVector<int> left, room(slots);
-    for (auto &entry : classes)
-      left.push_back(entry.first);
-    size_t placed = 0;
-    while (true) {
-      // Breadth-first over classes and tiles for a path from a class with
-      // groups left to a tile with room.
-      llvm::SmallVector<int> fromClass(sinks, -1), fromTile(sources, -1);
-      llvm::SmallVector<unsigned> queue;
-      llvm::SmallVector<bool> seen(sources, false);
-      for (size_t c = 0; c < sources; ++c)
-        if (left[c] > 0) {
-          seen[c] = true;
-          queue.push_back(c);
-        }
-      std::optional<size_t> end;
-      for (size_t i = 0; i < queue.size() && !end; ++i) {
-        unsigned c = queue[i];
-        for (size_t t = 0; t < sinks && !end; ++t) {
-          if (!reach[c][t] || fromClass[t] >= 0)
-            continue;
-          fromClass[t] = c;
-          if (room[t] > 0) {
-            end = t;
-            break;
-          }
-          for (size_t d = 0; d < sources; ++d)
-            if (!seen[d] && flow[d][t] > 0) {
-              seen[d] = true;
-              fromTile[d] = t;
-              queue.push_back(d);
-            }
-        }
-      }
-      if (!end)
-        break;
-      size_t t = *end;
-      --room[t];
-      while (true) {
-        int c = fromClass[t];
-        ++flow[c][t];
-        if (fromTile[c] < 0) {
-          --left[c];
-          break;
-        }
-        t = fromTile[c];
-        --flow[c][t];
-      }
-      ++placed;
-    }
-    size_t total = 0;
-    for (auto &entry : classes)
-      total += entry.first;
-    return total - placed;
   }
 
 private:
