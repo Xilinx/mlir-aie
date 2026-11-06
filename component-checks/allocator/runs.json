@@ -570,6 +570,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "42155964051",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42155964051",
+   "date": "2026-11-06T03:20:40+00:00",
+   "commit": {
+    "id": "60d26206ac0ecaa82c2697cb9df4b63b281ad2a2",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/60d26206ac0ecaa82c2697cb9df4b63b281ad2a2",
+    "message": "Add compiler metadata to the generated ELFs (#4019)",
+    "timestamp": "2026-11-05T20:59:38Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "60d26206ac",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
