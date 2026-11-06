@@ -1078,6 +1078,8 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
   if (auto push = getCorePushAttr()) {
     if (drains())
       return emitOpError("core_push requires a filling core endpoint");
+    if (auto values = pool.getInitValues(); values && !values->empty())
+      return emitOpError("core_push does not support initialized objects");
     if (push.getBdTags().size() != static_cast<size_t>(pool.getDepth()))
       return emitOpError("core_push requires one BD tag per pool buffer");
     if (llvm::any_of(push.getBdTags(), [](int32_t tag) { return tag < 0; }))
