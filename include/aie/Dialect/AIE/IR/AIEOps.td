@@ -2629,7 +2629,9 @@ def AIE_ObjectFifoCreateOp
     * `push_queue` submits one DMA task per released object from the producer
       core. Device configuration does not submit an initial task. This lets
       multiple FIFOs share an MM2S channel without dedicating it to one
-      FIFO's cyclic chain. The lowering requires one descriptor per object
+      FIFO's cyclic chain. Shared senders require packet transport with distinct
+      packet IDs to route each FIFO's objects to its receivers.
+      The lowering requires one descriptor per object
       and producer releases in a local core that supports queue instructions.
       Initialized objects are unsupported because no startup tasks send them.
       Repetitions use the task's repeat count; repeated out-of-order packets
@@ -3204,7 +3206,9 @@ def AIE_ObjectFifoDmaEndpointOp
     On a draining (MM2S) endpoint, `release_strategy` selects cyclic DMA
     execution or core-issued tasks, as described for `aie.objectfifo`.
     `push_queue` lowering creates one unchained descriptor per object and
-    records its tag and channel on the pool for use by core lowering.
+    records its tag and channel on the pool for use by core lowering. A pool
+    supports only one such draining endpoint, including when endpoints select
+    disjoint segments.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,

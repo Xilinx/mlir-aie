@@ -933,20 +933,21 @@ struct AIEObjectFifoAllocatePass
     auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
     if (dir == DMAChannelDir::S2MM)
       return dma && dma.getOutOfOrder();
-    if (dma && dma.getReleaseStrategy() == ObjectFifoRelease::PushQueue)
-      return true;
-    if (!tileOf(endpoint).isShimTile())
+    if (!tileOf(endpoint).isShimTile() &&
+        !(dma && dma.getReleaseStrategy() == ObjectFifoRelease::PushQueue))
       return false;
+    bool hasPacketRoute = false;
     for (auto flow : device.getOps<RouteOp>()) {
-      if (!flow.getPacket())
-        continue;
-      if (llvm::any_of(flow.getSourceNames(), [&](StringRef name) {
+      if (llvm::none_of(flow.getSourceNames(), [&](StringRef name) {
             return lookupEndpoint(name).getOperation() ==
                    endpoint.getOperation();
           }))
-        return true;
+        continue;
+      if (!flow.getPacket())
+        return false;
+      hasPacketRoute = true;
     }
-    return false;
+    return hasPacketRoute;
   }
 
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
@@ -1671,6 +1672,32 @@ struct AIEObjectFifoAllocatePass
   }
 
   LogicalResult lowerFlows() {
+    // Independent core-pushed senders need different routing IDs even when
+    // their descriptors are submitted at different times.
+    DenseMap<std::tuple<Value, int, int>, Operation *> pushedPacketSources;
+    for (RouteOp flow : device.getOps<RouteOp>()) {
+      auto packet = flow.getPacket();
+      if (!packet || !packet->isAssigned())
+        continue;
+      for (StringRef name : flow.getSourceNames()) {
+        auto source = dyn_cast<ObjectFifoDmaEndpointOp>(
+            lookupEndpoint(name).getOperation());
+        if (!source ||
+            source.getReleaseStrategy() != ObjectFifoRelease::PushQueue)
+          continue;
+        auto [it, inserted] = pushedPacketSources.try_emplace(
+            std::make_tuple(source.getTile(), channelOf(source),
+                            packet->assignedId()),
+            source.getOperation());
+        if (!inserted && it->second != source.getOperation()) {
+          auto diag = source.emitOpError(
+              "core-pushed senders sharing an MM2S channel require distinct "
+              "packet IDs");
+          diag.attachNote(it->second->getLoc()) << "other sender is here";
+          return failure();
+        }
+      }
+    }
     DenseSet<std::tuple<Value, int, Value, int>> circuits;
     for (RouteOp flow : device.getOps<RouteOp>())
       for (auto name : flow.getSources().getAsRange<FlatSymbolRefAttr>())

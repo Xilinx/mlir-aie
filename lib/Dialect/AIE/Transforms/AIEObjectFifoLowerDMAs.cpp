@@ -533,6 +533,21 @@ struct AIEObjectFifoLowerDMAsPass
 
     SmallVector<ObjectFifoDmaEndpointOp> endpoints(
         device.getOps<ObjectFifoDmaEndpointOp>());
+    DenseMap<Operation *, ObjectFifoDmaEndpointOp> pushedDrainers;
+    for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
+      if (!endpoint.drains() ||
+          endpoint.getReleaseStrategy() != ObjectFifoRelease::PushQueue)
+        continue;
+      auto [it, inserted] =
+          pushedDrainers.try_emplace(endpoint.getPoolOp(), endpoint);
+      if (!inserted) {
+        auto diag = endpoint.emitOpError(
+            "a pool supports only one core-pushed DMA drainer");
+        diag.attachNote(it->second.getLoc())
+            << "first core-pushed drainer is here";
+        return signalPassFailure();
+      }
+    }
     // A tile's chains, and so the BD ids they get, follow its channels rather
     // than the order the endpoints were written in.
     DenseMap<Value, size_t> tileOrder;
