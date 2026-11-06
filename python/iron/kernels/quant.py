@@ -11,6 +11,7 @@ from functools import partial
 import numpy as np
 from aie.iron.kernel import ExternalFunction
 from aie.utils import bfp
+from aie.utils.aie2p_emulation import bf16_floor
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -21,6 +22,11 @@ from ._common import (
     _arch_traits,
     _kernel_source,
     _make_extern,
+)
+
+Q4NX_M_TILE, Q4NX_K_TILE, Q4NX_GROUP = 32, 256, 32
+Q4NX_BLOCK_BYTES = (
+    Q4NX_M_TILE * Q4NX_K_TILE // 2 + 4 * Q4NX_M_TILE * Q4NX_K_TILE // Q4NX_GROUP
 )
 
 
@@ -51,16 +57,15 @@ def _geometry(m_tile, k_tile, group, ct_k, s, t):
     return geometry
 
 
-def _bf16_floor(x):
-    """Narrow float32 toward minus infinity, not numpy's bf16 nearest-even."""
-    bits = np.ascontiguousarray(x, dtype=np.float32).view(np.uint32)
-    upper = bits >> 16
-    upper += ((bits >> 31 != 0) & (bits & 0xFFFF != 0)).astype(np.uint32)
-    return (upper << 16).view(np.float32)
-
-
 def q4nx_unpack(
-    payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8
+    payload,
+    *,
+    m_tile=Q4NX_M_TILE,
+    k_tile=Q4NX_K_TILE,
+    group=Q4NX_GROUP,
+    ct_k=128,
+    s=8,
+    t=8,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Unpack packed q4nx to its codes, scales and minima.
 
@@ -106,7 +111,16 @@ def q4nx_unpack(
     return q, scales, mins
 
 
-def q4nx_dequant_ref(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8):
+def q4nx_dequant_ref(
+    payload,
+    *,
+    m_tile=Q4NX_M_TILE,
+    k_tile=Q4NX_K_TILE,
+    group=Q4NX_GROUP,
+    ct_k=128,
+    s=8,
+    t=8,
+):
     """Dequantize packed q4nx to the kernel's bfp16ebs8 output bytes.
 
     See ``q4nx_unpack`` for the packed input layout.
@@ -138,7 +152,7 @@ def q4nx_dequant_ref(payload, *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8,
             np.repeat(scales, group, axis=1).astype(np.float64) * q
             + np.repeat(mins, group, axis=1).astype(np.float64)
         ).astype(np.float32)
-        values = _bf16_floor(values)
+        values = bf16_floor(values)
     if not np.isfinite(values).all():
         raise ValueError("q4nx_dequant_ref: dequantized bf16 values must be finite")
     values = values.reshape(-1, k_tile // ct_k, ct_k // s, s, m_tile // t, t)
@@ -158,7 +172,7 @@ def _q4nx_sample(rng, calls, *, m_tile, k_tile, group, **_):
 
 
 def q4nx_dequant(
-    *, m_tile=32, k_tile=256, group=32, ct_k=128, s=8, t=8
+    *, m_tile=Q4NX_M_TILE, k_tile=Q4NX_K_TILE, group=Q4NX_GROUP, ct_k=128, s=8, t=8
 ) -> ExternalFunction:
     """AIE2P-only q4nx dequantization into GEMM B-operand BFP storage.
 
