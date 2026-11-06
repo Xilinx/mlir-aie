@@ -133,11 +133,12 @@ public:
   };
 
   /// Places `groups` in order. When one finds no room and all take the same
-  /// count, a tile holds a whole number of groups, so they go to tiles as a
-  /// maximum bipartite matching instead: whether every group fits then does
-  /// not depend on their order. The matching augments the in-order
-  /// placement, so a group that found room there keeps its tile unless
-  /// another needs it.
+  /// count (always on AIE2; on AIE1 when every pool has one depth), a tile
+  /// holds a whole number of groups, so they go to tiles as a maximum
+  /// bipartite matching instead: whether every group fits then does not
+  /// depend on their order. The matching augments the in-order placement, so
+  /// a group that found room there keeps its tile unless another needs it.
+  /// Groups of different counts keep the in-order placement.
   Assignment assign(llvm::ArrayRef<Group> groups) {
     Assignment result;
     llvm::DenseMap<TileID, int> before = used;
