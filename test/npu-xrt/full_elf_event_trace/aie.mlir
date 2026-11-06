@@ -9,11 +9,6 @@
 // collects enough events, so @core_trace also selects the lock events. They
 // fill the packet that carries the two markers.
 //
-// aiex.run passes a fixed argument list to @trace_seq, so trace lowering must
-// keep the argument list of @trace_seq unchanged. `reuse_output_buffer = true`
-// puts the trace data in the tail of the output buffer, past the 64 i32 output
-// words.
-
 module {
   aie.device(npu2) @main {
     aie.runtime_sequence @sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
@@ -63,7 +58,7 @@ module {
     }
 
     aie.runtime_sequence @trace_seq(%in : memref<64xi32>, %out : memref<64xi32>) {
-      aie.trace.host_config {buffer_size = 8192 : i32, reuse_output_buffer = true}
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @core_trace
       %ti = aiex.dma_configure_task_for @of_in {
         aie.dma_bd(%in : memref<64xi32> offset = 0 len = 64)

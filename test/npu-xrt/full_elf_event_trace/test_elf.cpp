@@ -5,10 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Host runner for the full-ELF event-trace design. The design sets
-// `reuse_output_buffer`, so the trace data follows the 64 i32 output words in
-// the same buffer. bo_out therefore holds OUT_BYTES + TRACE_SIZE bytes, and
-// the runner writes the tail of that buffer to trace.txt as 32-bit hex words.
+// Host runner for the full-ELF event-trace design.
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,21 +33,26 @@ int main() {
   auto kernel = xrt::ext::kernel(context, "main:sequence");
 
   xrt::bo bo_in = xrt::ext::bo{device, OUT_BYTES};
-  xrt::bo bo_out = xrt::ext::bo{device, OUT_BYTES + TRACE_SIZE};
+  xrt::bo bo_out = xrt::ext::bo{device, OUT_BYTES};
+  xrt::bo bo_trace = xrt::ext::bo{device, TRACE_SIZE};
 
   auto *in = bo_in.map<int32_t *>();
   for (size_t i = 0; i < N; i++)
     in[i] = static_cast<int32_t>(i);
-  std::memset(bo_out.map<char *>(), 0, OUT_BYTES + TRACE_SIZE);
+  std::memset(bo_out.map<char *>(), 0, OUT_BYTES);
+  std::memset(bo_trace.map<char *>(), 0, TRACE_SIZE);
   bo_in.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   auto run = xrt::run(kernel);
   run.set_arg(0, bo_in);
   run.set_arg(1, bo_out);
+  run.set_arg(2, bo_trace);
   run.start();
   run.wait2();
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
   auto *out = bo_out.map<int32_t *>();
   for (size_t i = 0; i < N; i++)
@@ -59,8 +61,7 @@ int main() {
       return 1;
     }
 
-  uint32_t *words =
-      reinterpret_cast<uint32_t *>(bo_out.map<char *>() + OUT_BYTES);
+  uint32_t *words = bo_trace.map<uint32_t *>();
   std::ofstream fout("trace.txt");
   for (size_t i = 0; i < TRACE_SIZE / sizeof(uint32_t); i++)
     fout << std::setfill('0') << std::setw(8) << std::hex << words[i] << "\n";
