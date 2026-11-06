@@ -43,9 +43,7 @@ void generateXAieDmaSetMultiDimAddr(llvm::raw_ostream &output, int ndims,
 
 llvm::SetVector<mlir::Block *> getOrderedChainOfBlocks(mlir::Region *region);
 
-/// Collect every BD block of a channel whose descriptors run one at a time:
-/// one receiving out of order, where each object names its own descriptor,
-/// and one whose core pushes a task per object. These BDs use use_next_bd=0.
+/// Collect BD blocks that require use_next_bd=0 during configuration.
 llvm::SmallPtrSet<mlir::Block *, 8>
 collectUnchainedBlocks(const llvm::SetVector<mlir::Block *> &blockVector);
 

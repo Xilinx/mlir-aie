@@ -925,21 +925,14 @@ struct AIEObjectFifoAllocatePass
     return failure(clash);
   }
 
-  /// Whether this endpoint shares its pinned channel with other claimants.
-  ///
-  /// Only a packet-switched shim source. The runtime writes such a channel's
-  /// descriptors one transfer at a time, each under its own header, so the
-  /// streams stay apart. A channel whose descriptors are a fixed BD chain
-  /// holds no per-stream state, and sharing it needs the DMA's out-of-order
-  /// packet mode.
+  /// Whether this endpoint can share its pinned channel without a cyclic
+  /// DMA program monopolizing it.
   bool sharesPinnedChannel(RouteEndpoint endpoint, DMAChannelDir dir) {
     // An out-of-order receiver takes each object into the buffer its header
     // names, so its channel keeps no order its fifos would have to agree on.
     auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
     if (dir == DMAChannelDir::S2MM)
       return dma && dma.getOutOfOrder();
-    // A sender whose core pushes a task per object keeps none either: each
-    // push names the descriptor that runs next.
     if (dma && dma.getReleaseStrategy() == ObjectFifoRelease::PushQueue)
       return true;
     if (!tileOf(endpoint).isShimTile())

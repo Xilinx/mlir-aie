@@ -66,7 +66,8 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
     Value rest = arith::SubIOp::create(builder, loc, left, step);
     Value spent = arith::CmpIOp::create(builder, loc, arith::CmpIPredicate::sle,
                                         rest, zero);
-    auto push = scf::IfOp::create(builder, loc, spent, /*withElse=*/false);
+    auto push =
+        scf::IfOp::create(builder, loc, spent, /*withElseRegion=*/false);
     {
       OpBuilder::InsertionGuard guard(builder);
       builder.setInsertionPointToStart(push.thenBlock());
