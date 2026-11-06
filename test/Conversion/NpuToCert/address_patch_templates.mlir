@@ -60,3 +60,25 @@ module {
     }
   }
 }
+
+// -----
+
+// An i32 arg_plus is unsigned: offsets from 2 GiB up are valid.
+// CHECK-LABEL: aie.device(xcve3858)
+// CHECK: memref.global "private" constant @t : memref<2xi32> = dense<[1, -2147483648]>
+// CHECK: aiex.cert.apply_offset_57(@t, 1, 0)
+// ASM: APPLY_OFFSET_57        @t, 1, 0
+// ASM: t:
+// ASM-NEXT: .long           0x00000001
+// ASM-NEXT: .long           0x80000000
+module {
+  aie.device(xcve3858) {
+    memref.global "private" constant @t : memref<2xi32> = dense<[1, 0]>
+    aie.runtime_sequence @seq(%a: memref<64xi32>) {
+      %0 = memref.get_global @t : memref<2xi32>
+      aiex.npu.blockwrite(%0) {address = 36864 : ui32} : memref<2xi32>
+      %c2g = arith.constant -2147483648 : i32
+      aiex.npu.address_patch(%c2g : i32) {addr = 36868 : ui32, arg_idx = 0 : i32}
+    }
+  }
+}
