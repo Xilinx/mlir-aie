@@ -217,6 +217,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       rewriter.setInsertionPointToStart(&core.getBody().front());
       slot = memref::AllocaOp::create(
           rewriter, loc, MemRefType::get({}, rewriter.getIndexType()));
+      slot->setAttr(kBookkeepingSlotAttrName, rewriter.getUnitAttr());
       Value zero = arith::ConstantIndexOp::create(rewriter, loc, 0);
       memref::StoreOp::create(rewriter, loc, zero, slot.getResult(),
                               ValueRange{});
@@ -649,7 +650,12 @@ struct AIEObjectFifoLowerCoresPass
       if (auto push = endpoint.getCorePushAttr()) {
         auto queue = std::make_pair(endpoint.getTile(), int(push.getChannel()));
         ctx.sendQueueObjects[queue] += pool.getDepth();
-        if (pool.getDisableSynchronization())
+        bool missingLocks = llvm::any_of(
+            endpoint.getSelectedSegments(), [](ObjectFifoSegmentOp segment) {
+              return !segment.getProduceLockAttr() ||
+                     !segment.getConsumeLockAttr();
+            });
+        if (pool.getDisableSynchronization() || missingLocks)
           ctx.unsynchronizedSendQueues.insert(queue);
       }
     }

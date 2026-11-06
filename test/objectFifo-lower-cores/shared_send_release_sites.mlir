@@ -1,26 +1,14 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: aie-opt --aie-objectfifo-lower-cores %s | FileCheck %s
+// RUN: aie-opt --aie-objectfifo-lower-cores --aie-objectFifo-unroll %s | FileCheck %s --implicit-check-not='memref.alloca() : memref<index>' --implicit-check-not=scf.index_switch
 
-// Releases in either branch and after the branch use one send index.
-// CHECK: aie.core
-// CHECK: %[[SLOT:.*]] = memref.alloca() : memref<index>
-// CHECK-NOT: memref.alloca() : memref<index>
+// Both branches send buffer 0; the release after their merge sends buffer 1.
 // CHECK: scf.if
-// CHECK: memref.load %[[SLOT]][]
 // CHECK: aie.dma_push_queue(MM2S : 0) {bd_tag = 7 : i32}
-// CHECK: aie.dma_push_queue(MM2S : 0) {bd_tag = 8 : i32}
-// CHECK: memref.store %{{.*}}, %[[SLOT]][]
 // CHECK: } else {
-// CHECK: memref.load %[[SLOT]][]
 // CHECK: aie.dma_push_queue(MM2S : 0) {bd_tag = 7 : i32}
 // CHECK: aie.dma_push_queue(MM2S : 0) {bd_tag = 8 : i32}
-// CHECK: memref.store %{{.*}}, %[[SLOT]][]
-// CHECK: memref.load %[[SLOT]][]
-// CHECK: aie.dma_push_queue(MM2S : 0) {bd_tag = 7 : i32}
-// CHECK: aie.dma_push_queue(MM2S : 0) {bd_tag = 8 : i32}
-// CHECK: memref.store %{{.*}}, %[[SLOT]][]
 
 module {
   aie.device(npu2) {

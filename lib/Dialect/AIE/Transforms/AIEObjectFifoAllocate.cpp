@@ -1771,6 +1771,15 @@ struct AIEObjectFifoAllocatePass
             tileOf(endpoint).isShimTile() || !channel) {
           continue;
         }
+        if (auto dma =
+                dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+            dma && dma.getReleaseStrategy() == ObjectFifoRelease::PushQueue) {
+          for (AIEX::DmaChannelResetForOp user : users)
+            user.emitOpError(
+                "does not support core-pushed DMA channels; reset requires "
+                "coordination with the issuing core and all shared senders");
+          return failure();
+        }
         channelTiles.push_back(endpoint.getTile());
         channelDirs.push_back(
             static_cast<int32_t>(endpoint.getRouteDirection()));

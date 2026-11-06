@@ -2634,6 +2634,9 @@ def AIE_ObjectFifoCreateOp
       The lowering requires one descriptor per object
       and producer releases in a local core that supports queue instructions.
       Initialized objects are unsupported because no startup tasks send them.
+      `aiex.dma_channel_reset_for` is unsupported for core-pushed channels;
+      resetting one requires coordination with the issuing core and all
+      senders sharing that channel.
       Repetitions use the task's repeat count; repeated out-of-order packets
       are unsupported because copies may need different destination
       out-of-order IDs (the receiving descriptors' hardware BD IDs).
