@@ -874,7 +874,11 @@ private:
     bool rearmed = false;
     bool producerCore = false;
     llvm::SmallVector<bool> consumerCore;
-    int consumerLockGroups = 1;
+    // The lock groups each consumer end charges: one for its own pool; at an
+    // end a link's pool takes over, the link's segments at the link's first
+    // input and none at the others.
+    llvm::SmallVector<int> consumerLockGroups;
+    llvm::SmallVector<bool> consumerLinked;
     // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
     int sharedDepth = 0;
     int producerDepth = 0;

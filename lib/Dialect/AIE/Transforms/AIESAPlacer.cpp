@@ -540,7 +540,8 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
             sign * fb.consumerSizeBytes * fb.consumerDepths[ci];
         addObjects(consPos, fb.consumerObjectBytes, fb.consumerDepths[ci]);
         if (fb.consumerEnds[ci])
-          addLocks(consPos, fb.consumerLockGroups, !fb.unsynchronized);
+          addLocks(consPos, fb.consumerLockGroups[ci],
+                   fb.consumerLinked[ci] || !fb.unsynchronized);
       }
     }
 
@@ -1097,12 +1098,13 @@ int SAPlacer::computeLockPenalty() const {
         }
       }
       if (!isShim(types.consumers[ci]) && fb.consumerEnds[ci] &&
-          !fb.unsynchronized) {
+          (fb.consumerLinked[ci] || !fb.unsynchronized) &&
+          fb.consumerLockGroups[ci]) {
         SmallVector<std::pair<TileID, bool>, 2> users;
         if (fb.consumerCore[ci])
           users.push_back({*consPos, false});
         users.push_back({*consPos, isCore(types.consumers[ci])});
-        classes[users] += fb.consumerLockGroups;
+        classes[users] += fb.consumerLockGroups[ci];
       }
     }
   }
@@ -1993,10 +1995,44 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     for (Value tile : ofOp.getConsumerTiles())
       fb.consumerCore.push_back(
           hasCoreAccess(device, tile, ofOp, ObjectFifoPort::Consume));
-    if (link && link->isDistribute() &&
-        llvm::is_contained(link->getInputObjectFifos(), ofOp))
-      fb.consumerLockGroups = link->getPoolSegments().size();
+    fb.consumerLockGroups.assign(fb.consumers.size(), 1);
+    fb.consumerLinked.assign(fb.consumers.size(), false);
     fifoBuffers.push_back(fb);
+  }
+
+  // A fifo may be one link's output and another's input; each link's pool,
+  // on its shared tile, replaces the ends there. It has the link's segments
+  // and takes locks unless a participant disables synchronization.
+  DenseMap<Operation *, size_t> fifoIndex;
+  for (auto [index, fb] : llvm::enumerate(fifoBuffers))
+    fifoIndex[fb.fifoOp] = index;
+  for (auto link : objectFifoLinks) {
+    std::optional<Value> shared = link.getOptionalSharedTile();
+    if (!shared)
+      continue;
+    bool unsynchronized =
+        llvm::any_of(
+            link.getInputObjectFifos(),
+            [](auto fifo) { return fifo.getDisableSynchronization(); }) ||
+        llvm::any_of(link.getOutputObjectFifos(), [](auto fifo) {
+          return fifo.getDisableSynchronization();
+        });
+    int segments =
+        unsynchronized ? 0 : static_cast<int>(link.getPoolSegments().size());
+    for (auto out : link.getOutputObjectFifos())
+      if (auto at = fifoIndex.find(out.getOperation()); at != fifoIndex.end())
+        fifoBuffers[at->second].linkSharedProd = true;
+    for (auto [k, in] : llvm::enumerate(link.getInputObjectFifos())) {
+      auto at = fifoIndex.find(in.getOperation());
+      if (at == fifoIndex.end())
+        continue;
+      FifoBufferInfo &fb = fifoBuffers[at->second];
+      for (auto [ci, tile] : llvm::enumerate(in.getConsumerTiles()))
+        if (tile == *shared) {
+          fb.consumerLinked[ci] = true;
+          fb.consumerLockGroups[ci] = k == 0 ? segments : 0;
+        }
+    }
   }
 
   LLVM_DEBUG(llvm::dbgs() << "[SA] seed=" << rngSeed << "\n");
