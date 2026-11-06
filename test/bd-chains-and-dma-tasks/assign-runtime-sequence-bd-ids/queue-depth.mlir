@@ -6,10 +6,10 @@
 // Enforcement pinned off: these stanzas are about what the count reports, and
 // with it on the compiler inserts a poll instead of saying anything.
 // RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
+// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false warn-unreleased-transfers=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
 // RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
+// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false warn-unreleased-transfers=false' \
 // RUN:         --aie-dma-tasks-to-npu --aie-dma-to-npu='enforce-queue-depth=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
 // RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \

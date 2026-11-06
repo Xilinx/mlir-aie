@@ -69,15 +69,21 @@ Each runtime sequence is a full-ELF entry named `<device>:<sequence>`, e.g.
 `aiex.configure`. Two options cut the resets between its configurations; each
 requires a full ELF:
 
-- `--reconfig-teardown` (with `--expand-load-pdis`): before the next load, or
-  at the sequence's end, each configuration's `aiex.npu.write_teardown`
-  disables the stream-switch circuits and packet ports it set, disables its
-  cores and resets the memtile and core-tile DMA channels it started. A
-  sequence then keeps only its first reset. A device that starts a shim DMA
-  channel itself is refused, since shim channels have no reset.
+- `--reconfig-teardown` (with `--expand-load-pdis` or `--load-pdi-to-ctrl-pkt`):
+  before the next load, or at the sequence's end, each configuration disables
+  the stream-switch circuits and packet ports it set, disables its cores and
+  resets the memtile and core-tile DMA channels it started. A sequence then
+  keeps only its first reset or overlay load. A device that starts a shim DMA
+  channel itself is refused, since shim channels have no reset. Under
+  `--expand-load-pdis` the teardown is an `aiex.npu.write_teardown`. On by
+  default under `--load-pdi-to-ctrl-pkt`; under it, the teardown is sent as
+  control packets and leaves the control overlay in place.
 - `--reconfig-init-entry` (with `--reconfig-teardown`): the reset moves into an
-  argument-free `<device>:reconfig_init` entry. The host runs it once on each new
-  hardware context, before any other entry; IRON's host runtime does so itself.
+  argument-free `<device>:reconfig_init` entry; under `--load-pdi-to-ctrl-pkt` it
+  also installs the control overlay. The host runs it before the first entry on a
+  hardware context, and again whenever another context ran in between, since
+  that may have reset the array. IRON's host runtime does so itself; a host
+  that shares the NPU with another process runs it before each entry.
 
 For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 
@@ -87,6 +93,56 @@ For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 | teardown, init entry | `main:reconfig_init`, `main:sequence` |
 
 `--sequence-name` always keeps the `reconfig_init` entry.
+
+### Control packet reconfiguration
+
+`aie-generate-column-control-overlay` creates a standalone overlay device on
+placed, split ObjectFIFO IR. Application devices reference it using
+`overlay = @ctrl_pkt_overlay`; `aie-import-overlay` imports its resources before
+application allocation. Both passes run in the normal compilation pipeline.
+
+For ordinary compilation, the overlay contains completion-token packet flows.
+They remain unrouted until imported into each application. With
+`--generate-ctrl-pkt-overlay` or `--load-pdi-to-ctrl-pkt`, the generator also
+creates configuration transport and routes the standalone overlay once.
+The application router respects the imported switchboxes and DMA reservations.
+`aie.is_ctrl_pkt_overlay` marks settings that configuration and teardown preserve.
+
+`--ctrlpkt-adaptive-overlay` chooses channels around application reservations
+and prefers routes away from application traffic. Set it to `false` to use
+channel zero and default routes. Coverage includes occupied columns
+and expands when application routing touches additional columns.
+
+`aie-annotate-shim-sharing` records sharing permissions before allocation.
+The allocator can place application endpoints on the overlay's fixed channels
+and add packet headers when the transfers do not overlap. Explicit
+`aie.shareable_with` lists override analysis; an empty list on a shim allocation
+prevents application endpoints from sharing that channel.
+
+For direct pass use:
+
+```sh
+aie-opt --aie-objectfifo-split \
+  --aie-generate-column-control-overlay='configuration=true adaptive=false' \
+  --aie-import-overlay --aie-annotate-shim-sharing \
+  --aie-assign-packet-ids='reserve-controller-packet-ids=true' \
+  --aie-objectfifo-allocate design.mlir
+```
+
+Sharing analysis examines runtime sequences and their `aiex.run` calls before
+materialization. Each call completes its own transfers on return; transfers
+started by the caller remain live until their completion is established.
+Configuration operations and explicit control-packet batches complete before
+the following operation. The analysis combines conflicts across all entry
+sequences and records pairwise `aie.shareable_with` permissions on application
+endpoints and overlay shim allocations.
+
+An explicit `aie.shim_dma_allocation` keeps its assigned channel. Packet
+endpoints may share it when listed in `aie.shareable_with` and when their own
+transfers are mutually disjoint. Allocations without sharing permissions and
+unknown transfer lifetimes remain exclusive.
+The overlay's packet IDs and routing settings remain protected during reload
+and teardown.
 
 ### Parameterized C++ transaction builders
 

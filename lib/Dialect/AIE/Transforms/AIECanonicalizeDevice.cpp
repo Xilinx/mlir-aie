@@ -43,8 +43,8 @@ struct AIECanonicalizeDevicePass
     auto deviceOp = DeviceOp::create(
         builder, location,
         AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902),
-        StringAttr::get(builder.getContext(),
-                        DeviceOp::getDefaultDeviceName()));
+        StringAttr::get(builder.getContext(), DeviceOp::getDefaultDeviceName()),
+        nullptr);
 
     deviceOp.getRegion().takeBody(moduleOp.getBodyRegion());
     new (&moduleOp->getRegion(0)) Region(moduleOp);

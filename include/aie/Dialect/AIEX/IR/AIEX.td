@@ -551,7 +551,12 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
 
   let summary = "Execute a runtime sequence";
   let description = [{
-    Executes an `aiex.runtime_sequence` with the given name and arguments by inlining its instructions at the call site.
+    Executes the named `aie.runtime_sequence` with the given arguments.
+    The callee is assumed to be self-contained: when it returns, its transfers
+    must have completed and it may no longer use its DMA channels.
+
+    Lowering inlines the callee's instructions without adding synchronization;
+    the callee must fulfill this contract.
   }];
 }
 

@@ -1502,11 +1502,22 @@ Placer::collectShareableShimEnds(DeviceOp device,
       if (Operation *lt = shareable(fifo, consumer, fifo.getConsumerPort(i)))
         ends[lt][0].push_back(fifo.getSymNameAttr());
   }
+  for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+    auto tile = dyn_cast<LogicalTileOp>(endpoint.getTile().getDefiningOp());
+    if (tile && tile.isShimTile() && endpoint.getBundle() == WireBundle::DMA &&
+        !endpoint.getChannelIndex())
+      ends[tile][endpoint.getRouteDirection() == DMAChannelDir::MM2S ? 1 : 0]
+          .push_back(endpoint.getSymNameAttr());
+  }
   return ends;
 }
 
 std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,
                                                         StringAttr symbol) {
+  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
+          SymbolTable::lookupNearestSymbolFrom(device, symbol)))
+    return ShimTransferSpans::End{symbol, endpoint.getRouteDirection() ==
+                                              DMAChannelDir::MM2S};
   auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(
       SymbolTable::lookupNearestSymbolFrom(device, symbol));
   if (!fifo)

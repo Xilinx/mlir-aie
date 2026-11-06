@@ -110,7 +110,8 @@ void addTraceStage(mlir::OpPassManager &pm);
 void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
                       bool packetSwObjFifos, bool ctrlPktOverlay,
                       bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
-                      bool checkQueueSpace = true);
+                      llvm::ArrayRef<int> coverColumns = {},
+                      bool adaptiveOverlay = true, bool checkQueueSpace = true);
 void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
 void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
 
@@ -149,6 +150,10 @@ struct AIEResourceStagesOptions
   Option<bool> loadPdiToCtrlPkt{
       *this, "load-pdi-to-ctrl-pkt",
       llvm::cl::desc("Load PDIs over control packets"), llvm::cl::init(false)};
+  Option<bool> adaptiveOverlay{
+      *this, "ctrlpkt-adaptive-overlay",
+      llvm::cl::desc("Choose the control overlay around application resources"),
+      llvm::cl::init(true)};
   Option<bool> skipObjectFifoVerify{
       *this, "skip-objectFifo-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR"),

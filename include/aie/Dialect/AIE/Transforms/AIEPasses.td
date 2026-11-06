@@ -655,6 +655,9 @@ def AIEAssignPacketIds : Pass<"aie-assign-packet-ids", "DeviceOp"> {
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Make every route packet-switched, whether or not it asked.">,
+       Option<"clReserveControllerPacketIds", "reserve-controller-packet-ids",
+              "bool", /*default=*/"false",
+              "Reserve controller packet IDs for configuration traffic.">,
   ];
 }
 
@@ -857,34 +860,52 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   ];
 }
 
+def AIEImportOverlay : Pass<"aie-import-overlay", "mlir::ModuleOp"> {
+  let summary = "Import operations from a referenced overlay device";
+  let description = [{
+    Copies the operations of the `aie.device` referenced by the `overlay`
+    attribute into the referencing device, deduplicating equivalent operations
+    and merging routing containers. Both devices must use the same target.
+    Unrouted flows are routed with the application after import.
+  }];
+  let constructor = "xilinx::AIE::createAIEImportOverlayPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIEGenerateColumnControlOverlay
     : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
-  let summary = "Spawns streaming interconnect network for column control";
+  let summary =
+      "Generate a standalone control overlay shared by the module's devices";
   let description = [{
-    For each column of AIE tiles being employed in the design, spawn a network of control packet
-    streaming interconnects which overlay on top of the design.
+    Creates an overlay device and references it from application devices.
+    Completion-token flows are imported and routed with each application.
+    With configuration enabled, also creates shim-to-controller flows and
+    routes the overlay once, before importing its fixed resources.
+    Adaptive placement avoids application reservations; fixed placement uses
+    shim MM2S channel zero. Supplied overlays must be explicitly referenced.
   }];
-
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
   let options =
-      [Option<
-           "clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string",
-           /*default=*/"\"shim-only\"",
-           "Flag to generate TCT routing between tile CTRL and shim SOUTH "
-           "ports. Available options: ['shim-only', 'all-tiles', 'disable']. "
-           "'shim-only' also routes any tile a runtime sequence task issues "
-           "a token from.">,
-       Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool",
-              /*default=*/"false",
-              "Flag to generate routing between shim dma DMA and tile CTRL "
-              "ports, for configuration.">,
-       Option<"clEmitStandaloneOverlay", "emit-standalone-overlay", "bool",
-              /*default=*/"false",
-              "Emit a standalone @ctrl_pkt_overlay device (and tag source "
-              "devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When "
-              "false, the pass applies the overlay in place only.">,
-  ];
+      [Option<"configuration", "configuration", "bool", "false",
+              "Include and pre-route configuration transport">,
+       Option<"adaptive", "adaptive", "bool", "true",
+              "Place configuration transport around application resources">,
+       ListOption<"coverColumns", "cover-columns", "int",
+                  "Additional columns touched by application routing">];
+}
+
+def AIEAnnotateShimSharing
+    : Pass<"aie-annotate-shim-sharing", "mlir::ModuleOp"> {
+  let summary = "Annotate shim endpoints that can share channels";
+  let description = [{
+    Records module-wide transfer lifetime analysis in aie.shareable_with.
+    Explicit attributes take precedence over inferred sharing permissions.
+  }];
+  let constructor = "xilinx::AIE::createAIEAnnotateShimSharingPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
 }
 
 def AIETraceToConfig : Pass<"aie-trace-to-config", "DeviceOp"> {
