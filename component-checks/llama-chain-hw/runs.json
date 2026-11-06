@@ -591,6 +591,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "llama-chain-hw",
+   "id": "42175728831",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42175728831",
+   "date": "2026-11-06T06:38:32+00:00",
+   "commit": {
+    "id": "24f2e559fecb7e06246fbd85c427ddafa7b051ad",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/24f2e559fecb7e06246fbd85c427ddafa7b051ad",
+    "message": "Add an Out-of-Order Packet Lowering for ObjectFifo (#3949)",
+    "timestamp": "2026-11-06T01:44:53Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "24f2e559fe",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "a6d60d5d2bde",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 71,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

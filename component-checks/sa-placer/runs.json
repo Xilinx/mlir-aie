@@ -836,6 +836,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "42175728831",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42175728831",
+   "date": "2026-11-06T06:38:32+00:00",
+   "commit": {
+    "id": "24f2e559fecb7e06246fbd85c427ddafa7b051ad",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/24f2e559fecb7e06246fbd85c427ddafa7b051ad",
+    "message": "Add an Out-of-Order Packet Lowering for ObjectFifo (#3949)",
+    "timestamp": "2026-11-06T01:44:53Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "24f2e559fe",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
