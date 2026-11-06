@@ -3610,6 +3610,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-lower-core-issued-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-lower-core-issued-configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-normalize-address-spaces" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3682,6 +3693,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-objectfifo-insert-core-queue-pushes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-objectfifo-insert-core-queue-pushes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="-aie-objectfifo-insert-core-queue-pushes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-objectfifo-liveness" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3749,7 +3788,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_10" class="md-nav__link">
+  <a href="#options_11" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -3810,7 +3849,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_11" class="md-nav__link">
+  <a href="#options_12" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -3871,7 +3910,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_12" class="md-nav__link">
+  <a href="#options_13" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4598,6 +4637,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-lower-core-issued-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-lower-core-issued-configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-normalize-address-spaces" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4670,6 +4720,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-objectfifo-insert-core-queue-pushes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-objectfifo-insert-core-queue-pushes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="-aie-objectfifo-insert-core-queue-pushes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-objectfifo-liveness" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4737,7 +4815,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_10" class="md-nav__link">
+  <a href="#options_11" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4798,7 +4876,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_11" class="md-nav__link">
+  <a href="#options_12" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4859,7 +4937,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_12" class="md-nav__link">
+  <a href="#options_13" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -5207,6 +5285,14 @@ becomes
 <p><em>Lower aie.cascade_flow operations through <code>aie.configure_cascade</code> operations</em></p>
 <p>Replace each aie.cascade_flow operation with an equivalent set of <code>aie.configure_cascade</code>
 operations.</p>
+<h3 id="-aie-lower-core-issued-configuration"><code>-aie-lower-core-issued-configuration</code><a class="headerlink" href="#-aie-lower-core-issued-configuration" title="Permanent link">&para;</a></h3>
+<p><em>Lower core-issued DMA queue operations to register accesses</em></p>
+<p>Lowers device/tile configuration instructions issued from within a core.</p>
+<p>Concretely, lowers <code>aie.dma_push_queue</code> to register writes and
+<code>aie.dma_poll_for_queue_space</code> to a loop that reads the DMA queue status.
+The accesses execute on the core and address registers on its own tile
+through the processor bus. The pass sets <code>processor_bus</code> on each affected
+<code>aie.core</code> so device configuration enables the bus before core startup.</p>
 <h3 id="-aie-normalize-address-spaces"><code>-aie-normalize-address-spaces</code><a class="headerlink" href="#-aie-normalize-address-spaces" title="Permanent link">&para;</a></h3>
 <p><em>Remove non-default address spaces</em></p>
 <p>Early in the flow, it is convenient to represent multiple memories using different
@@ -5294,6 +5380,24 @@ jointly feasible placement.</p>
 <p>Erase every <code>aie.objectfifo.pool</code> nothing refers to any more. Users may
 choose to skip this pass to retain the metadata about which buffers and
 locks belong to which lowered objectFifo.</p>
+<h3 id="-aie-objectfifo-insert-core-queue-pushes"><code>-aie-objectfifo-insert-core-queue-pushes</code><a class="headerlink" href="#-aie-objectfifo-insert-core-queue-pushes" title="Permanent link">&para;</a></h3>
+<p><em>Insert core-issued tasks to replenish out-of-order receive queues</em></p>
+<p>An out-of-order S2MM task accepts a finite number of objects. For FIFOs
+without <code>iter_count</code>, this pass inserts additional tasks so reception can
+continue beyond the tasks submitted during device configuration.</p>
+<p>After channel allocation, the pass creates a runtime counter for each
+receiving channel used by a core. Consumer releases decrement that
+counter across all FIFOs sharing the channel. The first release submits
+an additional task; subsequent pushes occur once per
+<code>getMaxRepeatCount() + 1</code> released objects (256 on current supported
+targets). A release of multiple objects carries any excess into the next
+counter interval. Each pushed task accepts that same number of objects.</p>
+<p>With <code>check-queue-space=true</code>, a queue-space poll precedes each push.
+The program must still avoid circular waits between core synchronization
+and DMA progress; polling only prevents task-queue overflow.</p>
+<h4 id="options_10">Options<a class="headerlink" href="#options_10" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>-check-queue-space : Wait for room on the task queue before each push.
+</code></pre></div>
 <h3 id="-aie-objectfifo-liveness"><code>-aie-objectfifo-liveness</code><a class="headerlink" href="#-aie-objectfifo-liveness" title="Permanent link">&para;</a></h3>
 <p><em>Flag a specific under-buffered coupled-multicast objectFIFO class that hangs at runtime (not a general deadlock detector).</em></p>
 <p>A coupled multicast (broadcast) objectFIFO whose consumers back-pressure the
@@ -5377,16 +5481,16 @@ ops are and connect to) rather than op order or symbol names, so a design
 declared in another order or under other names is placed alike. Logical
 tiles whose flows name the same DMA channel by index never share a
 physical tile.</p>
-<h4 id="options_10">Options<a class="headerlink" href="#options_10" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>-placer                  : Placement algorithm to use (default: sequential_placer)
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>-cores-per-col           : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>-merge-logical-tiles     : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>-spread-unanchored-tiles : When true (default), a non-core aie.logical_tile with no CoreTile peers to derive a routing centroid from is ranked by current DMA load rather than by distance to column 0. Affects only designs with no core anchors (e.g. pure DMA passthrough); CoreTile placement and anchored non-core placement are unaffected.
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>-sa-seed                 : Random seed for SA placer (0 = non-deterministic).
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>-sa-effort               : Scales the SA placer's moves per temperature step and its greedy tail. Below 1.0 trades placement cost for compile time.
+<h4 id="options_11">Options<a class="headerlink" href="#options_11" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>-placer                  : Placement algorithm to use (default: sequential_placer)
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>-cores-per-col           : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>-merge-logical-tiles     : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>-spread-unanchored-tiles : When true (default), a non-core aie.logical_tile with no CoreTile peers to derive a routing centroid from is ranked by current DMA load rather than by distance to column 0. Affects only designs with no core anchors (e.g. pure DMA passthrough); CoreTile placement and anchored non-core placement are unaffected.
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>-sa-seed                 : Random seed for SA placer (0 = non-deterministic).
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>-sa-effort               : Scales the SA placer's moves per temperature step and its greedy tail. Below 1.0 trades placement cost for compile time.
 </code></pre></div>
 <h4 id="statistics_1">Statistics<a class="headerlink" href="#statistics_1" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>sa-final-cost : SA placer cost of the placement it kept
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>sa-final-cost : SA placer cost of the placement it kept
 </code></pre></div>
 <h3 id="-aie-prepare-buffers"><code>-aie-prepare-buffers</code><a class="headerlink" href="#-aie-prepare-buffers" title="Permanent link">&para;</a></h3>
 <p><em>Check buffer placement and give every buffer a name</em></p>
@@ -5414,10 +5518,10 @@ those buffers are converted to GetGlobalMemrefOp.  Other AIE operations
 inside the cores are generally lowered to appropriate function intrinsics.
 Other AIE operations (e.g. CoreOp, TileOp, LockOp) outside the core are removed.</p>
 <p>Optionally, tileCol and tileRow can specify a single core to export</p>
-<h4 id="options_11">Options<a class="headerlink" href="#options_11" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>-device  : Device to generate code for
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>-tilecol : X coordinate of tile to generate code for
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>-tilerow : Y coordinate of tile to generate code for
+<h4 id="options_12">Options<a class="headerlink" href="#options_12" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>-device  : Device to generate code for
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>-tilecol : X coordinate of tile to generate code for
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>-tilerow : Y coordinate of tile to generate code for
 </code></pre></div>
 <h3 id="-aie-trace-pack-reg-writes"><code>-aie-trace-pack-reg-writes</code><a class="headerlink" href="#-aie-trace-pack-reg-writes" title="Permanent link">&para;</a></h3>
 <p><em>Pack multiple register field writes into single register writes</em></p>
@@ -5427,12 +5531,12 @@ into a single aie.trace.reg operation with a combined mask and value.</p>
 1. Convert field+value pairs to mask+shifted_value using register database
 2. Merge multiple writes to the same register with non-overlapping masks</p>
 <p>Example transformation:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>// Before:
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>aie.trace.reg register="Trace_Event0" field="Trace_Event0" value=33
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>aie.trace.reg register="Trace_Event0" field="Trace_Event1" value=34
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>// After:
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>aie.trace.reg register="Trace_Event0" value=0x22210000 mask=0xFFFF0000
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>// Before:
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>aie.trace.reg register="Trace_Event0" field="Trace_Event0" value=33
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>aie.trace.reg register="Trace_Event0" field="Trace_Event1" value=34
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>// After:
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>aie.trace.reg register="Trace_Event0" value=0x22210000 mask=0xFFFF0000
 </code></pre></div></p>
 <p>It is an error for two aie.trace.reg in the same aie.trace block to have
 overlapping masks for the same register.</p>
@@ -5473,8 +5577,8 @@ and vector.transfer_write operations to vector.store, when applicable.
 It's a wrapper for the upstream <code>populateVectorTransferLoweringPatterns</code>.
 TODO: Deprecate this pass once <code>populateVectorTransferLoweringPatterns</code> is included in
 <code>convert-to-llvm</code>.</p>
-<h4 id="options_12">Options<a class="headerlink" href="#options_12" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>-max-transfer-rank : Maximum vector rank to lower. -1 means no limit.
+<h4 id="options_13">Options<a class="headerlink" href="#options_13" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>-max-transfer-rank : Maximum vector rank to lower. -1 means no limit.
 </code></pre></div>
 
 
