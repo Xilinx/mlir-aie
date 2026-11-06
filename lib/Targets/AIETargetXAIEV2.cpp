@@ -349,6 +349,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         std::string oooSuffix = std::to_string(col) + "_" +
                                 std::to_string(row) + "_" +
                                 std::to_string(chNum);
+        output << "{\n";
         output << "XAie_DmaChannelDesc ooo_desc_" << oooSuffix << ";\n";
         output << "__mlir_aie_try(XAie_DmaChannelDescInit(" << deviceInstRef
                << ", &ooo_desc_" << oooSuffix << ", " << tileLocStr(col, row)
@@ -367,6 +368,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << deviceInstRef << ", " << tileLocStr(col, row)
                << ", /* ChNum */" << chNum << ", /* dmaDir */ DMA_" << dmaDir
                << ", &ooo_queue_" << oooSuffix << "));\n";
+        output << "}\n";
       } else {
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.
@@ -408,6 +410,15 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
     return module.emitOpError("expected AIE.device operation at toplevel");
   if (failed(verifyDMAChannelsResolved(targetOp)))
     return failure();
+  for (CoreOp core : targetOp.getOps<CoreOp>()) {
+    bool configuresDMA = core.getProcessorBus();
+    core.walk([&](Operation *op) {
+      configuresDMA |= isa<DmaPushQueueOp, DmaPollForQueueSpaceOp>(op);
+    });
+    if (configuresDMA)
+      return core.emitOpError("core-issued configuration is not supported by "
+                              "the XAIEV2 backend");
+  }
   const auto &targetModel = targetOp.getTargetModel();
 
   collectTiles(targetOp, tiles);

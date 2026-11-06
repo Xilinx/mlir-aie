@@ -10,6 +10,9 @@
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/Support/MathExtras.h"
+
+#include <map>
 
 using namespace mlir;
 using namespace xilinx;
@@ -182,7 +185,8 @@ struct AIEObjectFifoLowerDMAsPass
 
   void emitDescriptor(ObjectFifoDmaEndpointOp endpoint, ObjectFifoPoolOp pool,
                       Descriptor &descriptor, PacketInfoAttr packet,
-                      Block *successor, bool binaryLocks, bool drains) {
+                      Block *successor, bool binaryLocks, bool drains,
+                      int64_t transmittedObject = -1) {
     Location loc = endpoint.getLoc();
     int count = drains ? 1 : pool.getRepeatCount().value_or(1);
 
@@ -230,6 +234,22 @@ struct AIEObjectFifoLowerDMAsPass
       bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
                            descriptor.size);
     }
+    if (endpoint.getOutOfOrder()) {
+      auto tags =
+          drains ? endpoint.getOutOfOrderTags() : pool.getOutOfOrderTags();
+      if (tags) {
+        assert(descriptor.object < static_cast<int64_t>(tags->size()) &&
+               "the allocator names every descriptor of an out-of-order pool");
+        int64_t slot = transmittedObject >= 0 && drains
+                           ? transmittedObject % tags->size()
+                           : descriptor.object;
+        int32_t tag = (*tags)[slot];
+        if (endpoint.getRouteDirection() == DMAChannelDir::MM2S)
+          bd.setOutOfOrderTag(tag);
+        else
+          bd.setBdTag(tag);
+      }
+    }
     if (descriptor.iteration && descriptor.iteration.getSize() > 1)
       bd.setIterationAttr(descriptor.iteration);
 
@@ -254,7 +274,9 @@ struct AIEObjectFifoLowerDMAsPass
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
                        taskCount, endpoint.getPadValue(),
-                       /*out_of_order=*/false, bdBlock, endBlock);
+                       endpoint.getOutOfOrder() &&
+                           endpoint.getRouteDirection() == DMAChannelDir::S2MM,
+                       bdBlock, endBlock);
     if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
     }
@@ -338,6 +360,7 @@ struct AIEObjectFifoLowerDMAsPass
     int taskCount = iterCount ? *iterCount / passes - 1
                               : (repeatInHardware ? repeat - 1 : 0);
     int64_t copies = repeatInHardware ? 1 : repeat;
+
     SmallVector<PacketInfoAttr> turns;
     if (std::optional<ArrayAttr> headers = endpoint.getDispatchPackets()) {
       llvm::append_range(turns, headers->getAsRange<PacketInfoAttr>());
@@ -377,10 +400,71 @@ struct AIEObjectFifoLowerDMAsPass
           }
           builder.setInsertionPointToStart(current);
           emitDescriptor(endpoint, pool, descriptor, packet, successor,
-                         binaryLocks, drains);
+                         binaryLocks, drains, emitted);
           current = successor;
           emitted++;
         }
+      }
+    }
+    return success();
+  }
+
+  LogicalResult
+  lowerOutOfOrderReceivers(ArrayRef<ObjectFifoDmaEndpointOp> endpoints,
+                           int channel) {
+    auto first = endpoints.front();
+    SmallVector<SmallVector<Descriptor>> descriptors;
+    int64_t objects = 0;
+    bool unbounded = false;
+    size_t totalBDs = 0;
+    for (auto endpoint : endpoints) {
+      descriptors.push_back(
+          descriptorsFor(endpoint, buffersOf(endpoint.getPoolOp()), false));
+      if (descriptors.back().empty() ||
+          static_cast<int64_t>(descriptors.back().size()) !=
+              endpoint.getNumDescriptors())
+        return endpoint.emitOpError(
+            "incorrect number of receiving descriptors");
+      totalBDs += descriptors.back().size();
+      if (auto iterations = endpoint.getIterCount())
+        objects += descriptors.back().size() * *iterations;
+      else
+        unbounded = true;
+    }
+    int64_t perTask = device.getTargetModel().getMaxRepeatCount() + 1;
+    if (unbounded)
+      objects = perTask;
+    int64_t tasks = llvm::divideCeil(objects, perTask);
+    if (tasks > device.getTargetModel().getDmaTaskQueueDepth())
+      return first.emitOpError("shared receiving channel needs ")
+             << tasks << " initial tasks for " << objects
+             << " objects, exceeding its queue capacity; use an unbounded "
+                "receiver with core replenishment";
+
+    auto [head, endBlock] =
+        startChain(first, channel, std::min(objects, perTask) - 1);
+    for (objects -= perTask; objects > 0; objects -= perTask) {
+      auto [unusedHead, unusedEnd] =
+          startChain(first, channel, std::min(objects, perTask) - 1);
+      unusedHead->replaceAllUsesWith(head);
+      unusedHead->erase();
+    }
+    bool binaryLocks = !device.getTargetModel().hasProperty(
+        AIETargetModel::UsesSemaphoreLocks);
+    Block *current = head;
+    size_t emitted = 0;
+    for (auto [index, bds] : llvm::enumerate(descriptors)) {
+      ObjectFifoDmaEndpointOp endpoint = endpoints[index];
+      for (auto &descriptor : bds) {
+        Block *successor = builder.createBlock(endBlock);
+        if (++emitted == totalBDs) {
+          builder.setInsertionPointToStart(successor);
+          EndOp::create(builder, endpoint.getLoc());
+        }
+        builder.setInsertionPointToStart(current);
+        emitDescriptor(endpoint, endpoint.getPoolOp(), descriptor,
+                       endpoint.getPacketAttr(), successor, binaryLocks, false);
+        current = successor;
       }
     }
     return success();
@@ -406,11 +490,29 @@ struct AIEObjectFifoLowerDMAsPass
                                  b.getRouteDirection(),
                                  b.getChannelIndex().value_or(-1));
         });
+    using ChannelKey = std::tuple<int, int, int>;
+    std::map<ChannelKey, SmallVector<ObjectFifoDmaEndpointOp>> receivers;
+    for (auto endpoint : endpoints) {
+      if (endpoint.getOutOfOrder() && !endpoint.drains()) {
+        auto tile = endpoint.getTile().getDefiningOp<TileOp>();
+        receivers[{tile.getCol(), tile.getRow(),
+                   endpoint.getChannelIndex().value_or(-1)}]
+            .push_back(endpoint);
+      }
+    }
     for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
       std::optional<int> channel = endpoint.getChannelIndex();
       if (!channel) {
         endpoint.emitOpError("has no channel; run --aie-objectfifo-allocate");
         return signalPassFailure();
+      }
+      if (endpoint.getOutOfOrder() && !endpoint.drains()) {
+        auto tile = endpoint.getTile().getDefiningOp<TileOp>();
+        auto &group = receivers.at({tile.getCol(), tile.getRow(), *channel});
+        if (group.front() == endpoint &&
+            failed(lowerOutOfOrderReceivers(group, *channel)))
+          return signalPassFailure();
+        continue;
       }
       SmallVector<ObjectFifoDmaEndpointOp> turns = turnEndpoints(endpoint);
       if (turns.empty() ? failed(lowerEndpoint(endpoint, *channel))

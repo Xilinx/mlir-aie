@@ -27,6 +27,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 
 namespace xilinx::AIE {
@@ -186,15 +187,6 @@ struct AIEAssignBufferDescriptorIDsPass
             }
         }
       }
-      auto checkBdChannelAccessible = [&](DMABDOp bd, int bdId,
-                                          int channelIndex) -> bool {
-        if (targetModel.isBdChannelAccessible(col, row, bdId, channelIndex))
-          return true;
-        bd.emitOpError() << "assigned bd_id " << bdId
-                         << " is not accessible from channel " << channelIndex
-                         << " on this tile";
-        return false;
-      };
       bool bdIdCollision = false;
       memOp->walk<WalkOrder::PreOrder>([&](DMABDOp bd) {
         if (!bd.getBdId().has_value())
@@ -210,80 +202,106 @@ struct AIEAssignBufferDescriptorIDsPass
       });
       if (bdIdCollision)
         return signalPassFailure();
+    }
 
-      auto dmaOps = memOp.getOperation()->getRegion(0).getOps<DMAOp>();
-      if (!dmaOps.empty()) {
-        for (auto dmaOp : dmaOps) {
-          auto bdRegions = dmaOp.getBds();
-          for (auto &bdRegion : bdRegions) {
-            auto &block = bdRegion.getBlocks().front();
-            DMABDOp bd = *block.getOps<DMABDOp>().begin();
-            if (auto existingBdId = bd.getBdId()) {
-              assert(
-                  gen.bdIdAlreadyAssigned(*existingBdId) &&
-                  "bdId assigned by user but not found during previous walk");
-              int channelIndex = dmaOp.getChannelIndex();
-              if (!checkBdChannelAccessible(bd, *existingBdId, channelIndex))
-                return signalPassFailure();
-            } else {
-              std::optional<int32_t> nextId =
-                  gen.nextBdId(dmaOp.getChannelIndex());
-              if (!nextId) {
-                int channelIndex = dmaOp.getChannelIndex();
-                bd.emitOpError()
-                    << "Allocator exhausted available BD IDs (maximum "
-                    << targetModel.getNumBDsForChannel(col, row, channelIndex)
-                    << " available for channel " << channelIndex << ").";
-                return signalPassFailure();
-              }
-              bd.setBdId(nextId);
-            }
+    struct Assignment {
+      DMABDOp bd;
+      int col, row, channel;
+    };
+    SmallVector<Assignment> assignments;
+    std::map<int32_t, SmallVector<size_t>> receiversOfTag;
+    for (TileElement memOp : memOps) {
+      DenseMap<Block *, int> channels;
+      Region &region = memOp->getRegion(0);
+      for (Block &block : region)
+        for (auto start : block.getOps<DMAStartOp>()) {
+          Block *dest = start.getDest();
+          while (dest && !channels.contains(dest)) {
+            channels[dest] = start.getChannelIndex();
+            dest = dest->hasNoSuccessors() ? nullptr : dest->getSuccessor(0);
           }
+        }
+      memOp->walk([&](DMABDOp bd) {
+        auto dma = bd->getParentOfType<DMAOp>();
+        int channel =
+            dma ? dma.getChannelIndex() : channels.lookup(bd->getBlock());
+        if (auto tag = bd.getBdTag())
+          receiversOfTag[*tag].push_back(assignments.size());
+        assignments.push_back(
+            {bd, memOp.getTileID().col, memOp.getTileID().row, channel});
+      });
+    }
+
+    // Broadcast destinations must agree on a hardware ID. Reserve their
+    // common IDs before ordinary allocation can consume them on one tile.
+    for (auto &[tag, indices] : receiversOfTag) {
+      if (indices.size() < 2)
+        continue;
+      std::optional<uint32_t> fixed;
+      for (size_t i : indices) {
+        if (auto id = assignments[i].bd.getBdId()) {
+          if (fixed && *fixed != static_cast<uint32_t>(*id)) {
+            assignments[i].bd.emitOpError(
+                "broadcast receiving buffers must have matching bd_id values "
+                "for bd_tag ")
+                << tag;
+            return signalPassFailure();
+          }
+          fixed = id;
+        }
+      }
+      auto available = [&, &indices = indices](uint32_t id) {
+        std::set<std::pair<int, int>> tiles;
+        for (size_t i : indices) {
+          auto &a = assignments[i];
+          auto tile = std::make_pair(a.col, a.row);
+          if (!tiles.insert(tile).second ||
+              id >= targetModel.getNumBDs(a.col, a.row) ||
+              !targetModel.isBdChannelAccessible(a.col, a.row, id, a.channel) ||
+              (!a.bd.getBdId() && gens.at(tile).bdIdAlreadyAssigned(id)))
+            return false;
+        }
+        return true;
+      };
+      uint32_t id = fixed.value_or(0);
+      auto &first = assignments[indices.front()];
+      uint32_t limit = targetModel.getNumBDs(first.col, first.row);
+      if (!fixed)
+        while (id < limit && !available(id))
+          ++id;
+      if (id >= limit || !available(id)) {
+        first.bd.emitOpError("cannot allocate a common bd_id for broadcast "
+                             "receiving buffers with bd_tag ")
+            << tag;
+        return signalPassFailure();
+      }
+      for (size_t i : indices) {
+        auto &a = assignments[i];
+        if (!a.bd.getBdId()) {
+          gens.at({a.col, a.row}).assignBdId(id);
+          a.bd.setBdId(id);
+        }
+      }
+    }
+    for (auto &a : assignments) {
+      auto &gen = gens.at({a.col, a.row});
+      if (auto id = a.bd.getBdId()) {
+        if (!targetModel.isBdChannelAccessible(a.col, a.row, *id, a.channel)) {
+          a.bd.emitOpError()
+              << "assigned bd_id " << *id << " is not accessible from channel "
+              << a.channel << " on this tile";
+          return signalPassFailure();
         }
       } else {
-        DenseMap<Block *, int> blockChannelMap;
-        // Associate with each block the channel index specified by the
-        // dma_start
-        for (Block &block : memOp.getOperation()->getRegion(0))
-          for (auto op : block.getOps<DMAStartOp>()) {
-            int chNum = op.getChannelIndex();
-            blockChannelMap[&block] = chNum;
-            Block *dest = op.getDest();
-            while (dest) {
-              blockChannelMap[dest] = chNum;
-              if (dest->hasNoSuccessors())
-                break;
-              dest = dest->getSuccessors()[0];
-              if (blockChannelMap.contains(dest))
-                dest = nullptr;
-            }
-          }
-
-        for (Block &block : memOp.getOperation()->getRegion(0)) {
-          if (block.getOps<DMABDOp>().empty())
-            continue;
-          assert(blockChannelMap.count(&block));
-          DMABDOp bd = (*block.getOps<DMABDOp>().begin());
-          if (auto existingBdId = bd.getBdId()) {
-            assert(gen.bdIdAlreadyAssigned(*existingBdId) &&
-                   "bdId assigned by user but not found during previous walk");
-            int channelIndex = blockChannelMap[&block];
-            if (!checkBdChannelAccessible(bd, *existingBdId, channelIndex))
-              return signalPassFailure();
-          } else {
-            std::optional<int32_t> nextId =
-                gen.nextBdId(blockChannelMap[&block]);
-            if (!nextId) {
-              int channelIndex = blockChannelMap[&block];
-              bd.emitOpError()
-                  << "Allocator exhausted available BD IDs (maximum "
-                  << targetModel.getNumBDsForChannel(col, row, channelIndex)
-                  << " available for channel " << channelIndex << ").";
-              return signalPassFailure();
-            }
-            bd.setBdId(nextId);
-          }
+        auto nextId = gen.nextBdId(a.channel);
+        if (!nextId) {
+          a.bd.emitOpError()
+              << "Allocator exhausted available BD IDs (maximum "
+              << targetModel.getNumBDsForChannel(a.col, a.row, a.channel)
+              << " available for channel " << a.channel << ").";
+          return signalPassFailure();
         }
+        a.bd.setBdId(*nextId);
       }
     }
     for (TileElement memOp : memOps) {
@@ -345,7 +363,45 @@ struct AIEAssignBufferDescriptorIDsPass
       }
     }
 
+    if (failed(resolveOutOfOrderTags(targetOp)))
+      return signalPassFailure();
     populateRearmBindings(targetOp);
+  }
+
+  /// Resolve temporary receiving-BD tags after hardware ID assignment.
+  LogicalResult resolveOutOfOrderTags(DeviceOp device) {
+    DenseMap<int32_t, int> idOfTag;
+    WalkResult receivers = device.walk([&](DMABDOp bd) {
+      std::optional<uint32_t> id = bd.getBdId();
+      if (std::optional<int32_t> tag = bd.getBdTag(); tag && id) {
+        auto [it, inserted] = idOfTag.try_emplace(*tag, *id);
+        if (!inserted && it->second != static_cast<int>(*id)) {
+          bd.emitOpError("broadcast receiving buffers must have matching bd_id "
+                         "values for bd_tag ")
+              << *tag;
+          return WalkResult::interrupt();
+        }
+      }
+      bd.removeBdTagAttr();
+      return WalkResult::advance();
+    });
+    if (receivers.wasInterrupted())
+      return failure();
+    WalkResult walked = device.walk([&](DMABDOp bd) {
+      std::optional<int32_t> tag = bd.getOutOfOrderTag();
+      if (!tag)
+        return WalkResult::advance();
+      auto it = idOfTag.find(*tag);
+      if (it == idOfTag.end()) {
+        bd.emitOpError("sends out of order into a descriptor that no "
+                       "receiving tile holds");
+        return WalkResult::interrupt();
+      }
+      bd.setOutOfOrderId(it->second);
+      bd.removeOutOfOrderTagAttr();
+      return WalkResult::advance();
+    });
+    return failure(walked.wasInterrupted());
   }
 };
 

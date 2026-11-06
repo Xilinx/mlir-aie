@@ -22,6 +22,7 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects.aie import Port, Transport, object_fifo, object_fifo_link
 from ...helpers.npdtypes import (
     NpuDType,
+    is_block_float,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
     np_ndarray_type_of,
@@ -166,8 +167,11 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
                 share memory, and ``Transport.shared_mem()`` insists on shared memory.
                 ``Transport.dma(packet=Packet())`` routes the fifo as an
                 ``aie.packet_flow`` sharing the stream with other packet flows, and
-                ``Packet(id=7)`` pins the 5-bit header for designs that route on it. None
-                leaves the choice to the lowering, which is the same as ``Transport.auto()``.
+                ``Packet(id=7)`` pins the 5-bit header for designs that route on it.
+                ``Transport.dma(packet=Packet(), out_of_order=True)`` selects receiving
+                buffer descriptors through packet headers, allowing FIFOs to share an
+                S2MM channel. None leaves the choice to the lowering, which is the same
+                as ``Transport.auto()``.
                 What drives each end, a DMA channel or a core stream port, is the ``port``
                 of [`prod`][aie.iron.dataflow.objectfifo.ObjectFifo.prod] and
                 [`cons`][aie.iron.dataflow.objectfifo.ObjectFifo.cons].
@@ -750,6 +754,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
         repeat_parameter: ScratchpadParameter | str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Shared body for fill()/drain().
 
@@ -786,6 +791,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             length_parameter=length_parameter,
             length_unit=length_unit,
             repeat_parameter=repeat_parameter,
+            out_of_order_id=out_of_order_id,
         )
 
     def fill(
@@ -800,8 +806,14 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
         repeat_parameter: ScratchpadParameter | str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
+
+        An ``out_of_order`` fifo requires ``out_of_order_id`` to select its
+        receiving buffer. Each packet must contain exactly one receiving
+        object's bytes, with a statically known length. Task repetitions reuse
+        the same ID; use separate fills to cycle through receiving buffers.
 
         Call from within a [`Runtime`][aie.iron.Runtime] sequence body on a producer
         handle. See ``_emit_transfer`` for the shared arguments; returns a
@@ -810,6 +822,46 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
 
+        transport = self._object_fifo._transport
+        if transport and transport.out_of_order:
+            from ...dialects.aiex import shim_dims
+            from ..runtime.data import RuntimeData
+
+            if out_of_order_id is None:
+                raise ValueError(
+                    f"ObjectFifo '{self.name}' is out_of_order, so each fill names "
+                    "the buffer it lands in: pass out_of_order_id"
+                )
+            if not isinstance(source, RuntimeData):
+                raise ValueError(f"Expected a RuntimeData source/dest, got {source}")
+            if length_parameter is not None:
+                raise ValueError("out_of_order fill does not support length_parameter")
+            if tap is None:
+                tap = source.default_tap()
+            _, sizes, _ = shim_dims(tap)
+            # Outer dimensions repeat the BD; the last three size each packet.
+            packet_sizes = sizes[-3:]
+            if not all(isinstance(s, (int, np.integer)) for s in packet_sizes):
+                raise ValueError("out_of_order fill requires a static packet length")
+
+            def element_bytes(dtype):
+                return (
+                    dtype.block_bytes
+                    if is_block_float(dtype)
+                    else np.dtype(dtype).itemsize
+                )
+
+            packet_bytes = math.prod(packet_sizes) * element_bytes(source.dtype)
+            obj_type = self._object_fifo.consumer_obj_type
+            object_bytes = math.prod(
+                np_ndarray_type_get_shape(obj_type)
+            ) * element_bytes(np_ndarray_type_get_dtype(obj_type))
+            if packet_bytes != object_bytes:
+                raise ValueError(
+                    f"out_of_order fill sends {packet_bytes} bytes per packet, but "
+                    f"one receiving object requires {object_bytes} bytes; "
+                    "use an object-sized tap and a separate fill for each destination ID"
+                )
         return self._emit_transfer(
             source,
             tap,
@@ -821,6 +873,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             length_parameter,
             length_unit,
             repeat_parameter,
+            out_of_order_id,
         )
 
     def drain(
