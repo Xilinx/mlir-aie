@@ -125,7 +125,8 @@ public:
 
   struct Assignment {
     llvm::SmallVector<std::optional<unsigned>> tiles;
-    /// The first group placing them in order finds no room for, and why.
+    /// A group no assignment finds room for, and why: the first placing them
+    /// in order misses, or, after the matching, the first it leaves out.
     std::optional<size_t> failed;
     Placed failure;
     /// How many groups no assignment finds room for.
@@ -224,8 +225,17 @@ public:
     for (std::optional<unsigned> tile : result.tiles)
       if (tile && tiles[*tile].at)
         used[*tiles[*tile].at] += count;
-    if (!result.unassigned)
-      result.failed.reset();
+    result.failed.reset();
+    for (auto [group, tile] : llvm::enumerate(result.tiles)) {
+      if (tile)
+        continue;
+      result.failed = group;
+      result.failure = {std::nullopt, !eligible[group].empty(),
+                        eligible[group].empty()
+                            ? std::nullopt
+                            : std::optional(eligible[group].back())};
+      break;
+    }
     return result;
   }
 
