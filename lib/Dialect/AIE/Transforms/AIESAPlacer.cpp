@@ -497,11 +497,10 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       TileID bufTile;
       if (delegatePos) {
         bufTile = *delegatePos;
-      } else if (shared == SharedMemory::Either && !fb.producer &&
-                 !fb.consumers[ci]) {
-        // Neither end moves, so the split's choice stands: the producer's.
-        bufTile = prodPos;
-      } else if (shared == SharedMemory::Either) {
+      } else if (shared == SharedMemory::Either &&
+                 // Neither end moving, the split's choice, the producer's,
+                 // stands.
+                 (fb.producer || fb.consumers[ci])) {
         if (sign > 0) {
           int64_t prodUsed =
               currentMemUsage.count(prodPos) ? currentMemUsage[prodPos] : 0;
@@ -1057,7 +1056,8 @@ int SAPlacer::computeLockPenalty() const {
   auto isShim = [](std::optional<AIETileType> type) {
     return type == AIETileType::ShimNOCTile || type == AIETileType::ShimPLTile;
   };
-  for (auto [index, fb] : llvm::enumerate(fifoBuffers)) {
+  for (size_t index = 0; index < fifoBuffers.size(); ++index) {
+    const FifoBufferInfo &fb = fifoBuffers[index];
     std::optional<TileID> prodPos = endAt(fb, std::nullopt);
     if (!prodPos)
       continue;
