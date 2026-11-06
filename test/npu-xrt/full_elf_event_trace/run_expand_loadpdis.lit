@@ -1,0 +1,15 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Full-ELF event-trace design through the --expand-load-pdis reconfigure flow,
+// which emits explicit write32 and blockwrite operations.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf expand_loadpdis && mkdir -p expand_loadpdis
+// RUN: cd expand_loadpdis
+// RUN: %aiecc -j2 -v --get-full-elf --get-input-with-addresses --expand-load-pdis %S/aie.mlir
+// RUN: %host_clang -o test.exe %S/test_elf.cpp -std=c++17 %host_link_flags %xrt_flags
+// RUN: %run_on_npu2% ./test.exe
+// RUN: %python %S/check_trace.py.inc trace.txt input_with_addresses.mlir | FileCheck %s
+// CHECK: PASS!
