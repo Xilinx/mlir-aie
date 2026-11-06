@@ -661,7 +661,9 @@ static LogicalResult prepareAddressPatchTemplates(AIE::DeviceOp device) {
       result = failure();
       continue;
     }
-    if (argPlus.isNegative() || argPlus.getActiveBits() > 32) {
+    // An i32 arg_plus is unsigned, so any value fits; a negative i64 has 64
+    // active bits and is rejected.
+    if (argPlus.getActiveBits() > 32) {
       patch.emitError("arg_plus ")
           << argPlus.getSExtValue()
           << " does not fit the BD's 32-bit address word";
@@ -672,9 +674,10 @@ static LogicalResult prepareAddressPatchTemplates(AIE::DeviceOp device) {
     if (word >= words.getNumElements())
       continue;
 
-    // Give this blockwrite a private template if anything else uses it.
+    // Give this blockwrite a private template if anything else uses it,
+    // whether through another getter or through this one (after CSE).
     auto uses = SymbolTable::getSymbolUses(global, device);
-    if (uses && !llvm::hasSingleElement(*uses)) {
+    if (!uses || !llvm::hasSingleElement(*uses) || !getGlobal->hasOneUse()) {
       OpBuilder builder(global);
       auto copy = cast<memref::GlobalOp>(builder.clone(*global));
       symbols.insert(copy);
