@@ -864,6 +864,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "42347689306",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42347689306",
+   "date": "2026-11-07T06:35:25+00:00",
+   "commit": {
+    "id": "afbb857876c1955e72c2a1c15954c6340a353b49",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/afbb857876c1955e72c2a1c15954c6340a353b49",
+    "message": "Run reconfiguration init-entry tests with exclusive NPU access (#4023)",
+    "timestamp": "2026-11-07T01:41:10Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "INTEL(R) XEON(R) PLATINUM 8573C",
+   "device_raw": null,
+   "provenance": {
+    "commit": "afbb857876",
+    "fixtures": "9b6b41d42657",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

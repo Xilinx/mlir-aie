@@ -1191,6 +1191,46 @@
     "full": 1.0
    },
    "iters": 20
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "42347689306",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42347689306",
+   "date": "2026-11-07T06:35:25+00:00",
+   "commit": {
+    "id": "afbb857876c1955e72c2a1c15954c6340a353b49",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/afbb857876c1955e72c2a1c15954c6340a353b49",
+    "message": "Run reconfiguration init-entry tests with exclusive NPU access (#4023)",
+    "timestamp": "2026-11-07T01:41:10Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "afbb857876",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "dispatch": "dynamic"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 395,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "efforts": {
+    "default": 0.05,
+    "full": 1.0
+   },
+   "iters": 20
   }
  ]
 }
