@@ -189,8 +189,13 @@ getTransferExtent(AIE::DMABDOp op, std::optional<int64_t> lengthUnit,
   std::reverse(strides->begin(), strides->end());
   std::optional<TransferExtent> extent =
       getTransferExtent(buffer, *offset, *len, *sizes, *strides, lengthUnit);
-  if (extent)
-    extent->offset = *offsetMin;
+  if (!extent)
+    return std::nullopt;
+  extent->offset = *offsetMin;
+  // Each run of an iterated BD starts `stride` elements after the last.
+  if (std::optional<BDIterationAttr> iter = op.getIteration();
+      iter && iter->getSize() > 1)
+    extent->last += int64_t(iter->getSize() - 1) * iter->getStride();
   return extent;
 }
 

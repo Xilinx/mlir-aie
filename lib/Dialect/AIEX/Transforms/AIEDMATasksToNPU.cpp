@@ -845,10 +845,15 @@ struct AIEDMATasksToNPUPass
     // The iteration attribute rides in the outermost (iteration) slot of the
     // dimensioned form, so a BD without dims becomes one contiguous dimension.
     std::optional<AIE::BDIterationAttr> iter = bd_op.getIteration();
-    if (iter && dimsStorage->empty())
-      dimsStorage->push_back(AIE::BDDimLayoutAttr::get(
-          builder.getContext(), len / bd_op.getBufferElementTypeWidthInBytes(),
-          1));
+    if (iter && dimsStorage->empty()) {
+      // A length given only by its parameter sizes the dimension as one unit.
+      int64_t elems = len / bd_op.getBufferElementTypeWidthInBytes();
+      std::optional<int64_t> unit = bd_op.getLengthUnit();
+      if (elems == 0 && bd_op.getLengthStateTableIdxAttr() && unit)
+        elems = *unit;
+      dimsStorage->push_back(
+          AIE::BDDimLayoutAttr::get(builder.getContext(), elems, 1));
+    }
     std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims;
     if (!dimsStorage->empty())
       dims = llvm::ArrayRef<AIE::BDDimLayoutAttr>(*dimsStorage);
