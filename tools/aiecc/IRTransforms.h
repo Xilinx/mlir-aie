@@ -2016,8 +2016,10 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 inline std::unique_ptr<mlir::PassManager>
 getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
+  xilinx::AIEX::AIECtrlPacketToDmaOptions opts;
+  opts.chainBds = true;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIEX::createAIECtrlPacketToDmaPass());
+      xilinx::AIEX::createAIECtrlPacketToDmaPass(opts));
   return pm;
 }
 
