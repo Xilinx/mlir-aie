@@ -727,13 +727,19 @@ def AIEReorderCtrlPacketsByTile
 
     A push stays in the configuration when its channel's `aie.dma_start`, in the
     device its group names, carries `aiex.started_by` (see
-    `aie-annotate-ctrl-packet-start-gating`). With `by-tile=false` the enable phase
-    still moves behind the configuration, but nothing is sorted by tile. The
-    pass needs the target's register database.
+    `aie-annotate-ctrl-packet-start-gating`). With `gated-enable`, so does the
+    enable of a core whose `aie.core` carries it, last among its column's
+    packets. With `by-tile=false` the enable phase still moves behind the
+    configuration, but nothing is sorted by tile. The pass needs the target's
+    register database.
   }];
 
   let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
                         "Sort each part of a run by tile">,
+                 Option<"gatedEnable", "gated-enable", "bool",
+                        /*default=*/"false",
+                        "Send the enables of proved cores with their column's "
+                        "configuration">,
   ];
 
   let constructor = "xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass()";

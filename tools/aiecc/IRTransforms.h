@@ -1966,7 +1966,9 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   if (ctrlPkt) {
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIELegalizeControlPacketPass());
-    pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass());
+    xilinx::AIEX::AIEReorderCtrlPacketsByTileOptions reorder;
+    reorder.gatedEnable = true;
+    pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(reorder));
   }
   return pm;
 }
