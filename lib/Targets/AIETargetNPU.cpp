@@ -701,6 +701,10 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     uint32_t hdr = 0;
     if (info)
       hdr = (info.getPktType() & 0x7) << 12 | (info.assignedId() & 0xff);
+    // A packet aie-dedup-ctrl-packet-multicast sends to a multicast goes on
+    // its id.
+    if (std::optional<uint32_t> id = packetOp.getMulticastId())
+      hdr = (hdr & ~0xffu) | (*id & 0xff);
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // `beats` gets two bits, directly above the address, so an oversized

@@ -24,6 +24,9 @@
 
 namespace xilinx::AIEX {
 
+// An arbiter, by its switchbox and index.
+using Arbiter = std::pair<AIE::TileID, int>;
+
 // What sends a stream: an MM2S channel of a tile, or its core for channel -1.
 using StreamSource = std::pair<AIE::TileID, int>;
 

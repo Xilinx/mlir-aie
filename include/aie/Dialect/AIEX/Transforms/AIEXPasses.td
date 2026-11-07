@@ -786,6 +786,79 @@ def AIEAnnotateCtrlPacketStartGating
   ];
 }
 
+def AIECheckCtrlPacketDelivery
+    : Pass<"aie-check-ctrl-packet-delivery", "mlir::ModuleOp"> {
+  let summary = "Check the order control packets land in";
+  let description = [{
+    Checks the control packets of every runtime sequence's
+    `aiex.control_packet_group`s against the order `aie-ctrl-packet-to-dma`
+    delivers them in, serially or with `parallel-shims`. Other ops, control
+    packets outside groups, and a change of group kind or device separate runs
+    and wait for them.
+
+    It checks two rules. First, the packets that reach a tile (its own and
+    those on a control multicast, listed in `aie.ctrl_pkt_multicast` by its
+    device's overlay, that reaches it) land in program order, except that two
+    packets commute, and may swap, when they share no address and neither starts
+    a DMA channel or enables the core. Packets on one shim channel keep their
+    order along one trail; a multicast's packet and a tile's own share one only
+    where they pass the same switch input ports. A packet on a multicast must be
+    addressed to its lowest tile.
+
+    Second, with `parallel-shims`, the multicasts of two shim channels sent in
+    one phase take no common arbiter, since each holds its arbiters until its
+    last word.
+
+    An error names the packet that breaks a rule.
+  }];
+
+  let options = [Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Check against parallel-shims delivery">,
+  ];
+
+  let constructor = "xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEDedupCtrlPacketMulticast
+    : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
+  let summary = "Send the control packets a multicast's tiles share once";
+  let description = [{
+    For each run of adjacent `aiex.control_packet_group`s of one kind and
+    device, each stretch between barriers apart, and each control multicast
+    that device's overlay lists in `aie.ctrl_pkt_multicast`, compares the
+    multicast's tiles' packets position by position. The leading packets that
+    make the same write on every tile (apart from the address's column and row
+    bits) and come first on the lowest tile, the base, stay only there, with the
+    multicast's id as their `multicast_id`; the other tiles' copies go. A
+    multicast with a tile that has no packets in the stretch is left alone. Run
+    it after `aie-reorder-ctrl-packets-by-tile`.
+
+    A later packet to one of the tiles lands after the base only if it leaves
+    by the same control channel and passes the same switch input ports as the
+    multicast does to that tile. Where some later packet to a tile does not and
+    does not commute with the base (as `aie-check-ctrl-packet-delivery` defines
+    it), the base moves to the start of its stretch, followed by an
+    `aiex.control_packet_barrier`, so `aie-ctrl-packet-to-dma` sends it first.
+    With `drain-merge=false` it moves whenever some tile's packets do not share
+    the multicast's trail.
+  }];
+
+  let options = [Option<"drainMerge", "drain-merge", "bool",
+                        /*default=*/"true",
+                        "Leave the base in place when the later packets that "
+                        "may overtake it commute with it">,
+  ];
+
+  let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   let summary =
       "Expand load_pdi operations to explicit configuration sequences";

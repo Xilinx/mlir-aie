@@ -1053,13 +1053,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
        bf16 = bf16Emulation.getValue(),
        skipVerify = skipObjectFifoVerify.getValue(), opt = optLevel.getValue(),
        queueSpace = checkQueueSpace.getValue(),
-       adaptiveOverlay = ctrlpktAdaptiveOverlay.getValue()](
+       adaptiveOverlay = ctrlpktAdaptiveOverlay.getValue(),
+       span = ctrlpktMulticastSpan.getValue()](
           mlir::MLIRContext *ctx, mlir::ModuleOp mod,
           llvm::ArrayRef<int> coverColumns) {
         return getInputWithAddressesPipeline(
             ctx, mod, dyn, pkt, ctrl, bf16, opt, ldpdi, skipVerify,
             /*assignAddresses=*/false, coverColumns, adaptiveOverlay,
-            queueSpace);
+            queueSpace, span);
       };
   auto routedCache = std::make_shared<RoutedCache>();
   using ModEdge = EdgeWithTypedOutput<ModRef>;

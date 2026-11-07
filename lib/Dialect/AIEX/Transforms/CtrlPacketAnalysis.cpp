@@ -11,7 +11,10 @@
 
 #include "CtrlPacketClassifier.h"
 #include "CtrlPacketDevices.h"
+#include "CtrlPacketMulticast.h"
 #include "CtrlPacketRuns.h"
+
+#include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
 
 #include <string>
 
@@ -169,4 +172,111 @@ ConfiguredDevices::Info &ConfiguredDevices::infoOf(FlatSymbolRefAttr device) {
                          start.getChannelIndex()});
   });
   return info;
+}
+
+bool OverlayMulticasts::Info::sharesTrail(const Multicast &m,
+                                          AIE::TileID tile) const {
+  if (tile.col != m.column)
+    return false;
+  auto own = controllerIds.find(tile);
+  if (own == controllerIds.end())
+    return false;
+  auto a = trails.find({tile, m.id});
+  auto b = trails.find({tile, own->second});
+  return a != trails.end() && b != trails.end() && a->second == b->second;
+}
+
+const OverlayMulticasts::Multicast *
+OverlayMulticasts::Info::multicastOf(NpuControlPacketOp packet) const {
+  std::optional<uint32_t> id = packet.getMulticastId();
+  AIE::TileID own = packet.getTileFromAddr();
+  auto column = byTile.find(own);
+  if (!id || column == byTile.end())
+    return nullptr;
+  const Multicast &m = multicasts.at(column->second);
+  return m.id == static_cast<int32_t>(*id) && m.tiles.front() == own ? &m
+                                                                     : nullptr;
+}
+
+SmallVector<AIE::TileID>
+AIEX::tilesReached(NpuControlPacketOp packet,
+                   const OverlayMulticasts::Info *info) {
+  if (const OverlayMulticasts::Multicast *m =
+          info ? info->multicastOf(packet) : nullptr)
+    return m->tiles;
+  return {packet.getTileFromAddr()};
+}
+
+// Reads `overlay`'s aie.ctrl_pkt_multicast and the routes of its control
+// channels; null when it records no multicast.
+static std::unique_ptr<OverlayMulticasts::Info>
+readMulticasts(AIE::DeviceOp overlay) {
+  MLIRContext *ctx = overlay.getContext();
+  ArrayAttr listed =
+      AIE::AIEDialect::CtrlPktMulticastAttrHelper(ctx).getAttr(overlay);
+  if (!listed)
+    return nullptr;
+  auto info = std::make_unique<OverlayMulticasts::Info>();
+  for (Attribute entry : listed) {
+    auto dict = cast<DictionaryAttr>(entry);
+    OverlayMulticasts::Multicast m;
+    m.id = dict.getAs<IntegerAttr>("id").getInt();
+    m.column = dict.getAs<IntegerAttr>("column").getInt();
+    for (auto tile :
+         dict.getAs<ArrayAttr>("tiles").getAsRange<AIE::TileAttr>()) {
+      m.tiles.push_back(tile.getTileID());
+      info->byTile[tile.getTileID()] = m.column;
+    }
+    info->multicasts[m.column] = std::move(m);
+  }
+  for (auto [tile, id] : controllerIdsOf(overlay))
+    info->controllerIds[tile] = id.assignedId();
+  std::map<int, int> channels;
+  AIE::AIEDialect::IsCtrlPktOverlayAttrHelper marked(ctx);
+  for (auto alloc : overlay.getOps<AIE::ShimDMAAllocationOp>())
+    if (marked.isAttrPresent(alloc) &&
+        alloc.getChannelDir() == AIE::DMAChannelDir::MM2S)
+      channels[alloc.getTileOp().colIndex()] =
+          static_cast<int>(alloc.getChannelIndex());
+  for (const AIE::RoutedStream &s : AIE::traceRoutedStreams(overlay)) {
+    auto channel = channels.find(s.src.tile.col);
+    if (s.src.tile.row != 0 || channel == channels.end() ||
+        s.src.port.bundle != AIE::WireBundle::DMA ||
+        s.src.port.channel != channel->second ||
+        s.dst.port.bundle != AIE::WireBundle::TileControl)
+      continue;
+    SmallVector<std::pair<AIE::TileID, AIE::Port>> trail;
+    for (const AIE::StreamHop &hop : s.hops)
+      trail.push_back({hop.tile, hop.input});
+    auto addTrail = [&](int32_t id) {
+      info->trails.try_emplace({s.dst.tile, id}, trail);
+    };
+    if (auto m = info->multicasts.find(s.src.tile.col);
+        m != info->multicasts.end() &&
+        s.carries(AIE::PacketInfoAttr::get(ctx, 0, m->second.id))) {
+      addTrail(m->second.id);
+      for (const AIE::StreamHop &hop : s.hops)
+        if (hop.arbiter)
+          info->trees[m->first].insert({hop.tile, *hop.arbiter});
+    }
+    auto own = info->controllerIds.find(s.dst.tile);
+    if (own != info->controllerIds.end() &&
+        s.carries(AIE::PacketInfoAttr::get(ctx, 0, own->second)))
+      addTrail(own->second);
+  }
+  return info;
+}
+
+const OverlayMulticasts::Info *
+OverlayMulticasts::of(FlatSymbolRefAttr configured) {
+  auto device = configured ? module.lookupSymbol<AIE::DeviceOp>(configured)
+                           : AIE::DeviceOp();
+  if (!device || !device.getOverlayAttr())
+    return nullptr;
+  auto [it, fresh] = infos.try_emplace(device.getOverlayAttr().getAttr());
+  if (fresh)
+    if (auto overlay =
+            module.lookupSymbol<AIE::DeviceOp>(device.getOverlayAttr()))
+      it->second = readMulticasts(overlay);
+  return it->second.get();
 }

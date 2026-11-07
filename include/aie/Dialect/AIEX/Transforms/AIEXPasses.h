@@ -89,6 +89,16 @@ createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEAnnotateCtrlPacketStartGatingPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckCtrlPacketDeliveryPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECheckCtrlPacketDeliveryPass(
+    const AIECheckCtrlPacketDeliveryOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEDedupCtrlPacketMulticastPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEDedupCtrlPacketMulticastPass(
+    const AIEDedupCtrlPacketMulticastOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass(
@@ -120,7 +130,8 @@ void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
                       bool packetSwObjFifos, bool ctrlPktOverlay,
                       bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
                       llvm::ArrayRef<int> coverColumns = {},
-                      bool adaptiveOverlay = true, bool checkQueueSpace = true);
+                      bool adaptiveOverlay = true, bool checkQueueSpace = true,
+                      unsigned multicastSpan = 0);
 void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
 void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
 
@@ -163,6 +174,11 @@ struct AIEResourceStagesOptions
       *this, "ctrlpkt-adaptive-overlay",
       llvm::cl::desc("Choose the control overlay around application resources"),
       llvm::cl::init(true)};
+  Option<unsigned> multicastSpan{
+      *this, "ctrlpkt-multicast-span",
+      llvm::cl::desc("Columns of each control multicast under "
+                     "load-pdi-to-ctrl-pkt; 0 adds none"),
+      llvm::cl::init(1)};
   Option<bool> skipObjectFifoVerify{
       *this, "skip-objectFifo-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR"),

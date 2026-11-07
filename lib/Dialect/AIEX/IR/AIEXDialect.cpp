@@ -2394,6 +2394,16 @@ SmallVector<AIEX::NpuControlPacketOp> AIEX::controlPacketsOf(Block &block) {
   return packets;
 }
 
+llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>
+AIEX::controllerIdsOf(AIE::DeviceOp device) {
+  llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr> ids;
+  for (auto tile : device.getOps<AIE::TileOp>())
+    if (auto id = tile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+        id && id.isAssigned())
+      ids[tile.getTileID()] = id;
+  return ids;
+}
+
 void AIEX::inlineControlPacketGroups(Block &block) {
   for (auto group :
        llvm::make_early_inc_range(block.getOps<ControlPacketGroupOp>())) {

@@ -10,9 +10,10 @@
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-PacketIdSpace::PacketIdSpace(DeviceOp device)
+PacketIdSpace::PacketIdSpace(DeviceOp device, bool reserveControllerIds)
     : max(static_cast<int>(device.getTargetModel().getMaxPacketId())) {
-  if (AIEDialect::ReserveControllerPacketIdsAttrHelper(device.getContext())
+  if (reserveControllerIds ||
+      AIEDialect::ReserveControllerPacketIdsAttrHelper(device.getContext())
           .isAttrPresent(device)) {
     for (auto [tile, id] :
          device.getTargetModel().getTileToControllerIdMap(true))

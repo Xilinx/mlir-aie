@@ -103,6 +103,11 @@ llvm::SmallVector<NpuControlPacketOp> controlPacketsOf(mlir::Block &block);
 // place and erases the group.
 void inlineControlPacketGroups(mlir::Block &block);
 
+// The assigned controller_id of each tile of `device` that has one, which the
+// control packets to that tile route by.
+llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>
+controllerIdsOf(AIE::DeviceOp device);
+
 } // namespace AIEX
 } // namespace xilinx
 

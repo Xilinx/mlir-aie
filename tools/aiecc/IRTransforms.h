@@ -1406,7 +1406,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
     bool skipObjectFifoVerify = false, bool assignAddresses = true,
     llvm::ArrayRef<int> coverColumns = {}, bool adaptiveOverlay = true,
-    bool checkQueueSpace = true) {
+    bool checkQueueSpace = true, unsigned multicastSpan = 0) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1429,7 +1429,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // lowering in this stage writes no `outputParamsFile`.
   X::addLoweringStage(*pm, dynamicObjFifos, packetSwObjFifos, ctrlPktOverlay,
                       loadPdiToCtrlPkt, skipObjectFifoVerify, coverColumns,
-                      adaptiveOverlay, checkQueueSpace);
+                      adaptiveOverlay, checkQueueSpace, multicastSpan);
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   if (assignAddresses) {
@@ -1969,6 +1969,11 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     xilinx::AIEX::AIEReorderCtrlPacketsByTileOptions reorder;
     reorder.gatedEnable = true;
     pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(reorder));
+    if (cli::ctrlpktMulticastSpan)
+      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
+    xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
+    check.parallelShims = cli::ctrlpktParallelShims;
+    pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));
   }
   return pm;
 }
