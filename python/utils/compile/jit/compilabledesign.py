@@ -90,6 +90,7 @@ from ._hash import (
     _compute_hash,
     _compute_recipe_hash,
     _device_identity_key,
+    _mask_generator_mutations,
 )
 from ._introspect import declare
 from ._object_cache import KernelObjectCache
@@ -2410,7 +2411,14 @@ class CompilableDesign:
             with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
                 bound = inspect.BoundArguments(sig, OrderedDict(_gen_call_kwargs))
                 bound.apply_defaults()
-                result = self.mlir_generator(*bound.args, **bound.kwargs)
+                # The generator may reconfigure the state its own key walks
+                # (a self-configuring design recording what it learns); the
+                # mask pins those mutations so this compile's entry is the
+                # one the next lookup finds.
+                with _mask_generator_mutations(
+                    self.mlir_generator, tuple(self.compile_kwargs.values())
+                ):
+                    result = self.mlir_generator(*bound.args, **bound.kwargs)
                 for parameter in _dispatch_placeholders.values():
                     if parameter._binding is None:
                         raise TypeError(
