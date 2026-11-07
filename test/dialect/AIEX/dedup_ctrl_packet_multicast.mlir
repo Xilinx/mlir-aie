@@ -7,6 +7,7 @@
 
 // RUN: aie-opt %s --split-input-file --aie-generate-column-control-overlay="configuration=true adaptive=false multicast-span=1" --aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=SPAN1
 // RUN: aie-opt %s --split-input-file --aie-generate-column-control-overlay="configuration=true adaptive=false multicast-span=2" --aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=SPAN2
+// RUN: aie-opt %s --split-input-file --aie-generate-column-control-overlay="configuration=true adaptive=false multicast-span=2" --aie-dedup-ctrl-packet-multicast="parallel-shims=true" | FileCheck %s --check-prefix=PAR2
 
 // Tiles (0, 2) and (0, 3) are column 0's multicast (id 28). The teardown and
 // the configuration are runs of their own, so each dedups its own leading
@@ -66,20 +67,31 @@ module {
 // -----
 
 // At span 2, tiles (0, 2), (0, 3) and (1, 2) are one multicast from column 0.
-// Tile (1, 2)'s own packets leave by column 1's channel, and its enable does
-// not commute with the program word, so the word goes first, behind a barrier.
-// The control packet outside groups stays as it is.
+// Tile (1, 2)'s own packets leave by column 1's channel. Serially that channel
+// is awaited after column 0's, so the program word stays in place; with
+// parallel shims they land alongside it, and its enable does not commute with
+// the word, so the word goes first, behind a barrier. The control packet
+// outside groups stays as it is.
 
 // SPAN2-LABEL: aie.runtime_sequence @seq()
 // SPAN2-NEXT:  aiex.control_packet_group @cfg(Config) {
 // SPAN2-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
-// SPAN2-NEXT:  {{^ *}}}
-// SPAN2-NEXT:  aiex.control_packet_barrier
-// SPAN2-NEXT:  aiex.control_packet_group @cfg(Config) {
 // SPAN2-NEXT:    address = 2301952 : ui32, data = array<i32: 1>, opcode
 // SPAN2-NEXT:    address = 35856384 : ui32, data = array<i32: 1>, opcode
 // SPAN2-NEXT:  {{^ *}}}
 // SPAN2-NEXT:  address = 3276800 : ui32, data = array<i32: 9>, opcode
+
+// PAR2-LABEL: // -----
+// PAR2:       aie.runtime_sequence @seq()
+// PAR2-NEXT:  aiex.control_packet_group @cfg(Config) {
+// PAR2-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
+// PAR2-NEXT:  {{^ *}}}
+// PAR2-NEXT:  aiex.control_packet_barrier
+// PAR2-NEXT:  aiex.control_packet_group @cfg(Config) {
+// PAR2-NEXT:    address = 2301952 : ui32, data = array<i32: 1>, opcode
+// PAR2-NEXT:    address = 35856384 : ui32, data = array<i32: 1>, opcode
+// PAR2-NEXT:  {{^ *}}}
+// PAR2-NEXT:  address = 3276800 : ui32, data = array<i32: 9>, opcode
 
 module {
   aie.device(npu2) @cfg {

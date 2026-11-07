@@ -103,6 +103,21 @@ PacketClassifier::getRegisters(NpuControlPacketOp op) {
   return &registers.try_emplace(tile, std::move(regs)).first->second;
 }
 
+SmallVector<unsigned> AIEX::awaitSteps(const GroupRun &run,
+                                       bool parallelShims) {
+  SmallVector<unsigned> steps;
+  for (size_t i = 0; i < run.size(); ++i) {
+    NpuControlPacketOp packet = run[i].packet;
+    bool next =
+        i && (run[i].phase != run[i - 1].phase ||
+              (!parallelShims &&
+               packet.getColumnFromAddr() !=
+                   NpuControlPacketOp(run[i - 1].packet).getColumnFromAddr()));
+    steps.push_back(i ? steps.back() + next : 0);
+  }
+  return steps;
+}
+
 bool AIEX::sameKindAndDevice(ControlPacketGroupOp a, ControlPacketGroupOp b) {
   return a.getKind() == b.getKind() &&
          a.getDeviceRefAttr() == b.getDeviceRefAttr();
@@ -127,9 +142,12 @@ SmallVector<GroupRun> AIEX::groupRuns(Block &block, RunSplit split) {
       continue;
     }
     auto group = dyn_cast<ControlPacketGroupOp>(op);
+    bool changes = group && last && !sameKindAndDevice(last, group);
     if (!group ||
-        (last && split.byKindAndDevice && !sameKindAndDevice(last, group)))
+        (changes && split.kindOrDevice == KindOrDeviceChange::EndsRun))
       end();
+    else if (changes && split.kindOrDevice == KindOrDeviceChange::NextPhase)
+      ++phase;
     if (!group)
       continue;
     last = group;
@@ -150,6 +168,15 @@ SmallVector<GroupRun> AIEX::groupRuns(AIE::RuntimeSequenceOp seq,
   return runs;
 }
 
+std::optional<Arbiter>
+ConfiguredDevices::controlArbiterIn(FlatSymbolRefAttr device, AIE::TileID tile,
+                                    const std::set<Arbiter> &held) {
+  for (const Arbiter &a : infoOf(device).control.lookup(tile))
+    if (held.count(a))
+      return a;
+  return std::nullopt;
+}
+
 ConfiguredDevices::Info &ConfiguredDevices::infoOf(FlatSymbolRefAttr device) {
   auto [it, fresh] = infos.try_emplace(device.getAttr());
   if (fresh)
@@ -160,17 +187,42 @@ ConfiguredDevices::Info &ConfiguredDevices::infoOf(FlatSymbolRefAttr device) {
     return info;
   AIEXDialect::StartedByAttrHelper startedBy(module.getContext());
   d.walk([&](Operation *op) {
-    if (!startedBy.isAttrPresent(op))
+    ArrayAttr cores = startedBy.getAttr(op);
+    if (!cores)
       return;
+    StreamSource source;
     if (auto core = dyn_cast<AIE::CoreOp>(op))
-      info.gated.insert({core.getTileOp().getTileID(), -1});
+      source = {core.getTileOp().getTileID(), -1};
     else if (auto start = dyn_cast<AIE::DMAStartOp>(op))
-      info.gated.insert({cast<AIE::TileElement>(start->getParentOp())
-                             .getTile()
-                             .getDefiningOp<AIE::TileOp>()
-                             .getTileID(),
-                         start.getChannelIndex()});
+      source = {cast<AIE::TileElement>(start->getParentOp())
+                    .getTile()
+                    .getDefiningOp<AIE::TileOp>()
+                    .getTileID(),
+                start.getChannelIndex()};
+    else
+      return;
+    info.gated.insert(source);
+    for (auto core : cores.getAsRange<AIE::TileAttr>())
+      info.startedBy[core.getTileID()].push_back(source);
   });
+  llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr> controllerIds =
+      controllerIdsOf(d);
+  for (const AIE::RoutedStream &s : AIE::traceRoutedStreams(d)) {
+    SmallVector<Arbiter> hops;
+    for (const AIE::StreamHop &hop : s.hops)
+      if (hop.arbiter)
+        hops.push_back({hop.tile, *hop.arbiter});
+    if (s.src.port.bundle == AIE::WireBundle::DMA)
+      info.sent[{s.src.tile, s.src.port.channel}].insert(hops.begin(),
+                                                         hops.end());
+    else if (s.src.port.bundle == AIE::WireBundle::Core)
+      info.sent[{s.src.tile, -1}].insert(hops.begin(), hops.end());
+    // A multicast's tree is no part of a tile's own route.
+    if (AIE::PacketInfoAttr id = controllerIds.lookup(s.dst.tile);
+        s.dst.port.bundle == AIE::WireBundle::TileControl &&
+        s.carries(id ? std::optional(id) : std::nullopt))
+      llvm::append_range(info.control[s.dst.tile], hops);
+  }
   return info;
 }
 
@@ -184,6 +236,11 @@ bool OverlayMulticasts::Info::sharesTrail(const Multicast &m,
   auto a = trails.find({tile, m.id});
   auto b = trails.find({tile, own->second});
   return a != trails.end() && b != trails.end() && a->second == b->second;
+}
+
+bool OverlayMulticasts::Info::keepsOrder(const Multicast &m, AIE::TileID tile,
+                                         bool parallelShims) const {
+  return tile.col != m.column ? !parallelShims : sharesTrail(m, tile);
 }
 
 const OverlayMulticasts::Multicast *
@@ -205,6 +262,24 @@ AIEX::tilesReached(NpuControlPacketOp packet,
           info ? info->multicastOf(packet) : nullptr)
     return m->tiles;
   return {packet.getTileFromAddr()};
+}
+
+std::optional<Arbiter> AIEX::arbiterTaken(NpuControlPacketOp packet,
+                                          const OverlayMulticasts::Info *info,
+                                          ConfiguredDevices &devices,
+                                          const std::set<Arbiter> &held) {
+  const OverlayMulticasts::Multicast *m =
+      info ? info->multicastOf(packet) : nullptr;
+  if (!m)
+    return devices.controlArbiterIn(
+        cast<ControlPacketGroupOp>(packet->getParentOp()).getDeviceRefAttr(),
+        packet.getTileFromAddr(), held);
+  auto tree = info->trees.find(m->column);
+  if (tree != info->trees.end())
+    for (const Arbiter &a : tree->second)
+      if (held.count(a))
+        return a;
+  return std::nullopt;
 }
 
 // Reads `overlay`'s aie.ctrl_pkt_multicast and the routes of its control
@@ -279,4 +354,35 @@ OverlayMulticasts::of(FlatSymbolRefAttr configured) {
             module.lookupSymbol<AIE::DeviceOp>(device.getOverlayAttr()))
       it->second = readMulticasts(overlay);
   return it->second.get();
+}
+
+std::set<Arbiter> ConfiguredDevices::startedArbiters(FlatSymbolRefAttr device,
+                                                     AIE::TileID tile,
+                                                     const Classified &write) {
+  std::set<Arbiter> held;
+  int channel = write.kind == WriteKind::ChannelStart ? write.channel : -1;
+  if (write.kind == WriteKind::Other || startGated(device, {tile, channel}))
+    return held;
+  Info &info = infoOf(device);
+  SmallVector<StreamSource> started{{tile, channel}};
+  for (size_t i = 0; i < started.size(); ++i) {
+    auto [t, c] = started[i];
+    auto it = c == -1 ? info.startedBy.find(t) : info.startedBy.end();
+    if (it != info.startedBy.end())
+      for (const StreamSource &s : it->second)
+        if (!llvm::is_contained(started, s))
+          started.push_back(s);
+  }
+  for (const StreamSource &s : started) {
+    const std::set<Arbiter> &sent = info.sent[s];
+    held.insert(sent.begin(), sent.end());
+  }
+  return held;
+}
+
+std::string AIEX::describeStart(AIE::TileID tile, const Classified &write) {
+  if (write.kind == WriteKind::ChannelStart)
+    return "the push to MM2S channel " + std::to_string(write.channel) +
+           " of tile " + tileName(tile);
+  return "the enable of core " + tileName(tile);
 }
