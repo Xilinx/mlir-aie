@@ -630,6 +630,16 @@ findPatchedBlockWrite(AIEX::NpuAddressPatchOp patch) {
 static LogicalResult prepareAddressPatchTemplates(AIE::DeviceOp device) {
   LogicalResult result = success();
   SymbolTable symbols(device);
+  // Count each global's symbol uses once, then keep the counts current as
+  // getters are added and erased. Asking SymbolTable per patch walks the whole
+  // device each time, which is quadratic in the number of patched BDs. With no
+  // counts (an op with unknown symbol uses), every patched template is copied.
+  std::optional<llvm::DenseMap<StringAttr, unsigned>> symbolUseCounts;
+  if (auto uses = SymbolTable::getSymbolUses(&device.getRegion())) {
+    symbolUseCounts.emplace();
+    for (const SymbolTable::SymbolUse &use : *uses)
+      ++(*symbolUseCounts)[use.getSymbolRef().getRootReference()];
+  }
   SmallVector<AIEX::NpuAddressPatchOp> patches;
   device.walk([&](AIEX::NpuAddressPatchOp patch) { patches.push_back(patch); });
   for (AIEX::NpuAddressPatchOp patch : patches) {
@@ -676,18 +686,25 @@ static LogicalResult prepareAddressPatchTemplates(AIE::DeviceOp device) {
 
     // Give this blockwrite a private template if anything else uses it,
     // whether through another getter or through this one (after CSE).
-    auto uses = SymbolTable::getSymbolUses(global, device);
-    if (!uses || !llvm::hasSingleElement(*uses) || !getGlobal->hasOneUse()) {
+    if (!symbolUseCounts ||
+        symbolUseCounts->lookup(global.getSymNameAttr()) != 1 ||
+        !getGlobal->hasOneUse()) {
       OpBuilder builder(global);
       auto copy = cast<memref::GlobalOp>(builder.clone(*global));
-      symbols.insert(copy);
+      // insert renames the copy, so count it under its new name.
+      StringAttr copyName = symbols.insert(copy);
       OpBuilder atBlockWrite(blockWrite);
       auto privateGet =
           memref::GetGlobalOp::create(atBlockWrite, getGlobal.getLoc(),
                                       getGlobal.getType(), copy.getSymName());
       blockWrite.getDataMutable().assign(privateGet);
-      if (getGlobal->use_empty())
+      if (symbolUseCounts)
+        (*symbolUseCounts)[copyName] = 1;
+      if (getGlobal->use_empty()) {
+        if (symbolUseCounts)
+          --(*symbolUseCounts)[global.getSymNameAttr()];
         getGlobal->erase();
+      }
       global = copy;
     }
 
