@@ -5,10 +5,10 @@
 
 For each module with logical tiles and each seed, places the module with the
 SA placer, reads its sa-lock-groups and sa-lock-penalty statistics, then runs
-split, packet ids and allocation on that placement. The SA's group
-count must equal the lock groups allocation makes (one ``__prodlock`` each),
-and the SA must charge a lock penalty exactly when allocation cannot place the
-locks. Placements that fail, or whose allocation fails for another reason,
+split, packet ids and allocation on that placement. The SA must charge a lock
+penalty exactly when allocation cannot place the locks, and when allocation
+succeeds its group count must equal the groups allocation makes (an AIE2
+segment's ``__prodlock``, an AIE1 pool's ``__lock0``). Placements that fail, or whose allocation fails for another reason,
 are skipped and counted. Exits 1 on any mismatch.
 
 With no inputs it checks every in-tree .mlir with a logical tile and the
@@ -26,7 +26,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
 _GROUPS_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-lock-groups")
 _PENALTY_RE = re.compile(r"\(S\)\s+(\d+)\s+sa-lock-penalty")
-_LOCK_RE = re.compile(r"__prodlock\d+ = aie\.lock")
+# One group each: an AIE2 segment's producer lock, an AIE1 pool's first lock.
+_GROUP_RE = re.compile(r"__(?:prodlock\d+|lock0) = aie\.lock")
 
 
 def in_tree_inputs() -> list:
@@ -73,7 +74,7 @@ def check(aie_opt: str, text: str, seed: int, timeout: float, scratch: str):
 
     Returns:
         None when skipped, else (sa_groups, alloc_groups, sa_penalty,
-        alloc_lock_failure).
+        alloc_lock_failure); alloc_groups is None when allocation failed.
     """
     source = os.path.join(scratch, "in.mlir")
     placed = os.path.join(scratch, "placed.mlir")
@@ -114,7 +115,8 @@ def check(aie_opt: str, text: str, seed: int, timeout: float, scratch: str):
         return None
     groups = sum(int(n) for n in _GROUPS_RE.findall(place.stderr))
     penalty = sum(int(n) for n in _PENALTY_RE.findall(place.stderr))
-    return groups, len(_LOCK_RE.findall(alloc.stdout)), penalty, lock_failure
+    made = None if lock_failure else len(_GROUP_RE.findall(alloc.stdout))
+    return groups, made, penalty, lock_failure
 
 
 def main() -> int:
@@ -135,7 +137,7 @@ def main() -> int:
 
     inputs = args.inputs or in_tree_inputs()
     seeds = args.seeds or [3, 11, 99]
-    agree = mismatch = skipped = 0
+    agree = mismatch = skipped = failing = 0
     with tempfile.TemporaryDirectory() as scratch:
         for path in inputs:
             for index, text in enumerate(modules(path)):
@@ -145,8 +147,9 @@ def main() -> int:
                         skipped += 1
                         continue
                     groups, made, penalty, lock_failure = result
-                    if groups == made and (penalty > 0) == lock_failure:
+                    if (penalty > 0) == lock_failure and made in (None, groups):
                         agree += 1
+                        failing += lock_failure
                         continue
                     mismatch += 1
                     print(
@@ -154,7 +157,10 @@ def main() -> int:
                         f"{groups} groups (penalty {penalty}), allocation "
                         f"{made} groups (lock failure {lock_failure})"
                     )
-    print(f"agree={agree} mismatch={mismatch} skipped={skipped}")
+    print(
+        f"agree={agree} mismatch={mismatch} skipped={skipped} "
+        f"agreeing_lock_failures={failing}"
+    )
     return 1 if mismatch else 0
 
 
