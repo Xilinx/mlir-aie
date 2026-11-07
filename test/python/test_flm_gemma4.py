@@ -9,6 +9,7 @@
 
 import dataclasses
 
+import numpy as np
 import pytest
 from aie.iron import kernels
 
@@ -31,3 +32,11 @@ def test_decode_kernels_build_only_the_gemma4_presets():
         kernels.flm_gemma4_decode_glu(geometry=custom)
     renamed = dataclasses.replace(kernels.FLM_GEMMA4_E4B_DECODE, name="mine")
     kernels.flm_gemma4_decode_glu(geometry=renamed)
+
+
+def test_lm_head_reference_accepts_a_single_quantization_group():
+    w = np.array([0x80, 0x3F] * 16 + [0] * 32 + [0x21] * 256, np.uint8)
+    got = kernels.flm_gemma4_q4nx_lm_head_ref(
+        w, np.ones(64, np.float32), np.array([32], np.float32), m_tile=16, k_tile=32
+    )
+    np.testing.assert_array_equal(got, np.array([[32, 64] * 8], np.float32))
