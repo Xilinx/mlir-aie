@@ -1,9 +1,0 @@
-<map id="include/aie/Dialect/AIEVec/IR/AIEVecMatMul.h" name="include/aie/Dialect/AIEVec/IR/AIEVecMatMul.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="212,5,407,50"/>
-<area shape="rect" id="Node000002" href="$AIEVecToLLVM_8cpp.html" title=" " alt="" coords="5,106,216,151"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="255,57,155,108,153,104,250,58"/>
-<area shape="rect" id="Node000003" href="$AIEVecOps_8cpp.html" title=" " alt="" coords="240,106,378,151"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="311,64,311,108,307,105,307,67"/>
-<area shape="rect" id="Node000004" href="$VectorToAIEVecConversions_8cpp.html" title=" " alt="" coords="402,98,603,160"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="366,55,446,97,441,97,365,60"/>
-</map>
