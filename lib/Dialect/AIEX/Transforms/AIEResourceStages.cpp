@@ -35,7 +35,8 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool packetSwObjFifos, bool ctrlPktOverlay,
                             bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
                             llvm::ArrayRef<int> coverColumns,
-                            bool adaptiveOverlay, bool checkQueueSpace) {
+                            bool adaptiveOverlay, bool checkQueueSpace,
+                            unsigned multicastSpan) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
   // Before lock IDs and buffer addresses, which its new locks and buffers need.
@@ -47,6 +48,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   AIEGenerateColumnControlOverlayOptions overlay;
   overlay.configuration = ctrlPktOverlay || loadPdiToCtrlPkt;
   overlay.adaptive = adaptiveOverlay;
+  overlay.multicastSpan = loadPdiToCtrlPkt ? multicastSpan : 0;
   overlay.coverColumns = llvm::to_vector(coverColumns);
   pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
   pm.addPass(createAIEImportOverlayPass());
@@ -106,7 +108,8 @@ void AIEX::registerAIEResourceStagesPipeline() {
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,
                          options.ctrlPktOverlay || options.loadPdiToCtrlPkt,
                          options.loadPdiToCtrlPkt, options.skipObjectFifoVerify,
-                         {}, options.adaptiveOverlay);
+                         {}, options.adaptiveOverlay, /*checkQueueSpace=*/true,
+                         options.multicastSpan);
         addBufferAddressStage(pm, options.placementBudget);
         addRoutingStage(pm, options.allowDeadlockProneRouting);
       });

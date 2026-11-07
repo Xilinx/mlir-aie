@@ -162,6 +162,8 @@ struct AIECtrlPacketToDmaPass
     // From an aiex.control_packet_group, so a chain may carry it; control
     // packets the user wrote keep a transfer and a sync each.
     bool generated;
+    // The multicast the packets go on.
+    std::optional<int32_t> multicast;
   };
 
   // The descriptors each shim tile's static DMAs leave.
@@ -299,7 +301,7 @@ struct AIECtrlPacketToDmaPass
       if (parallelShims) {
         length = ++perPhase[{col, it->phase}];
       } else {
-        bool joins = it != begin &&
+        bool joins = it != begin && std::prev(it)->phase == it->phase &&
                      std::prev(it)->shimDmaAllocName == it->shimDmaAllocName;
         length = joins ? length + 1 : 1;
       }
@@ -406,10 +408,16 @@ struct AIECtrlPacketToDmaPass
         if (auto data = ctrlPktOp.getData())
           ctrlPktSize += data->size();
 
-        // Read requests must end their DMA transfer.
+        // Read requests must end their DMA transfer. A batch is one stream
+        // packet, routed by its first header, so its packets share their
+        // destination.
         bool batchable = ctrlPktOp.getOpcode() == 0;
+        std::optional<int32_t> multicast;
+        if (auto id = ctrlPktOp.getMulticastId())
+          multicast = *id;
         if (targetModel.getTargetArch() == AIEArch::AIE2p && batchable &&
-            !new_batch && batches.back().tileId == TileID{col, row}) {
+            !new_batch && batches.back().tileId == TileID{col, row} &&
+            batches.back().multicast == multicast) {
           // Add to existing batch
           batches.back().totalSize += ctrlPktSize;
         } else {
@@ -426,7 +434,7 @@ struct AIECtrlPacketToDmaPass
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              alloc.getSymName().str(),
                              static_cast<int>(alloc.getChannelIndex()), &o, run,
-                             phase, generated.contains(&o)});
+                             phase, generated.contains(&o), multicast});
         }
         new_batch = !batchable;
         ddrOffset += ctrlPktSize;
@@ -475,6 +483,7 @@ struct AIECtrlPacketToDmaPass
           while (chainEnd != batches.end() &&
                  static_cast<uint32_t>(chainEnd - batchIt) < maxBds &&
                  chainEnd->run == batchIt->run &&
+                 chainEnd->phase == batchIt->phase &&
                  chainEnd->shimDmaAllocName == batchIt->shimDmaAllocName)
             ++chainEnd;
 

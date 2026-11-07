@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -144,6 +145,7 @@ struct AIEGenerateColumnControlOverlayPass
                            dst.channel);
       EndOp::create(builder, packet.getLoc());
     };
+    std::map<int, int> controlChannel;
     for (int col : columns) {
       if (col < 0 || col >= model.columns()) {
         overlay.emitOpError("control coverage column is outside the target");
@@ -180,6 +182,7 @@ struct AIEGenerateColumnControlOverlayPass
             << col;
         return failure();
       }
+      controlChannel[col] = channel;
       builder.setInsertionPoint(overlay.getBody()->getTerminator());
       auto alloc = ShimDMAAllocationOp::create(
           builder, shim.getLoc(), getCtrlPktAllocName(col, channel), shim,
@@ -192,6 +195,9 @@ struct AIEGenerateColumnControlOverlayPass
              {WireBundle::TileControl, 0}, dest);
       }
     }
+    if (configuration && multicastSpan &&
+        failed(addMulticasts(builder, overlay, users, controlChannel)))
+      return failure();
     for (DeviceOp device : users) {
       device.setOverlayAttr(FlatSymbolRefAttr::get(overlay.getSymNameAttr()));
       if (configuration)
@@ -229,6 +235,83 @@ struct AIEGenerateColumnControlOverlayPass
     });
     return success();
   }
+  // See the pass description's multicast-span. Every group shares one id: the
+  // router keeps two trees on one id apart unless they reach the same tiles,
+  // as it does the controllers' ids, which repeat in every column.
+  LogicalResult addMulticasts(OpBuilder &builder, DeviceOp overlay,
+                              ArrayRef<DeviceOp> users,
+                              const std::map<int, int> &controlChannel) {
+    std::set<TileID> cores;
+    for (DeviceOp device : users)
+      for (CoreOp core : device.getOps<CoreOp>())
+        cores.insert(core.getTileOp().getTileID());
+    if (cores.empty())
+      return success();
+    int base = cores.begin()->col;
+    std::map<int, SmallVector<TileID>> groups;
+    for (TileID t : cores)
+      groups[(t.col - base) / static_cast<int>(multicastSpan)].push_back(t);
+    for (auto it = groups.begin(); it != groups.end();)
+      it = it->second.size() < 2 ? groups.erase(it) : std::next(it);
+    if (groups.empty())
+      return success();
+
+    SmallVector<PacketIdSpace> spaces;
+    for (DeviceOp device : users)
+      spaces.emplace_back(device, /*reserveControllerIds=*/true);
+    // The router folds the ids headed for one arbiter into mask/value rules,
+    // so the highest free id, among the controllers' where one is free, keeps
+    // those masks narrow.
+    int id = overlay.getTargetModel().getMaxPacketId();
+    for (; id >= 0; --id)
+      if (llvm::none_of(spaces, [&](const PacketIdSpace &space) {
+            return space.isTaken(id);
+          }))
+        break;
+    if (id < 0)
+      return overlay.emitOpError(
+          "has no packet id left for the control multicasts");
+
+    MLIRContext *ctx = overlay.getContext();
+    SmallVector<Attribute> record;
+    for (auto &[g, members] : groups) {
+      int srcCol = members.front().col;
+      auto channel = controlChannel.find(srcCol);
+      if (channel == controlChannel.end())
+        return overlay.emitOpError("has no control channel in column ")
+               << srcCol << " for a control multicast";
+
+      builder.setInsertionPointToStart(overlay.getBody());
+      TileOp shim = TileOp::getOrCreate(builder, overlay, srcCol, 0);
+      SmallVector<TileOp> tiles;
+      SmallVector<Attribute> listed;
+      for (TileID t : members) {
+        tiles.push_back(TileOp::getOrCreate(builder, overlay, t.col, t.row));
+        listed.push_back(TileAttr::get(ctx, t.col, t.row));
+      }
+      builder.setInsertionPoint(overlay.getBody()->getTerminator());
+      auto flow = PacketFlowOp::create(builder, shim.getLoc(), id,
+                                       builder.getBoolAttr(true),
+                                       builder.getBoolAttr(true));
+      OpBuilder::InsertionGuard guard(builder);
+      builder.createBlock(&flow.getPorts());
+      PacketSourceOp::create(builder, flow.getLoc(), shim, WireBundle::DMA,
+                             channel->second);
+      for (TileOp t : tiles)
+        PacketDestOp::create(builder, flow.getLoc(), t, WireBundle::TileControl,
+                             0);
+      EndOp::create(builder, flow.getLoc());
+      record.push_back(DictionaryAttr::get(
+          ctx,
+          {builder.getNamedAttr("id", builder.getI32IntegerAttr(id)),
+           builder.getNamedAttr("column", builder.getI32IntegerAttr(srcCol)),
+           builder.getNamedAttr("tiles", ArrayAttr::get(ctx, listed))}));
+    }
+    AIEDialect::CtrlPktMulticastAttrHelper(ctx).setAttr(
+        overlay, ArrayAttr::get(ctx, record));
+    return success();
+  }
+
   void collectShimMM2SUses(ArrayRef<DeviceOp> devices) {
     packetDemand.clear();
     fixedCircuits.clear();

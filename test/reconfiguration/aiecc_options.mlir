@@ -35,6 +35,9 @@
 // RUN: not %aiecc --ctrlpkt-parallel-shims %s 2>&1 | FileCheck %s --check-prefix=PARALLEL-LDPDI-CTRLPKT
 // PARALLEL-LDPDI-CTRLPKT: aiecc: --ctrlpkt-parallel-shims requires --load-pdi-to-ctrl-pkt
 
+// RUN: not %aiecc --ctrlpkt-multicast-span=2 %s 2>&1 | FileCheck %s --check-prefix=SPAN-LDPDI-CTRLPKT
+// SPAN-LDPDI-CTRLPKT: aiecc: --ctrlpkt-multicast-span requires --load-pdi-to-ctrl-pkt
+
 // Under --load-pdi-to-ctrl-pkt the teardown is on by default with full-ELF
 // output, and off without it.
 // RUN: %aiecc -n --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-init-entry %s
@@ -51,7 +54,7 @@
 // RUN: %aiecc -n --get=aie.elf --expand-load-pdis --reconfig-teardown --reconfig-init-entry %s
 
 // Turning an option off explicitly is never an error.
-// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-adaptive-overlay=false --ctrlpkt-parallel-shims=false %s
+// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-adaptive-overlay=false --ctrlpkt-parallel-shims=false --ctrlpkt-multicast-span=0 %s
 
 module {
   aie.device(npu2) @main {
