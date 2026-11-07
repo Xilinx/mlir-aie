@@ -18,6 +18,7 @@
 #include "llvm/ADT/SetVector.h"
 
 #include <algorithm>
+#include <limits>
 #include <set>
 #include <tuple>
 
@@ -61,13 +62,21 @@ struct AIEReorderCtrlPacketsByTilePass
         return failure();
       AIE::TileID tile = packet.getTileFromAddr();
       WriteKind part = c->kind;
+      // With gated-enable, a proved core's enable goes last among its
+      // column's other writes.
+      uint32_t row = tile.row;
+      FlatSymbolRefAttr device = entry.group.getDeviceRefAttr();
       if (part == WriteKind::ChannelStart &&
-          devices.startGated(entry.group.getDeviceRefAttr(),
-                             {tile, c->channel}))
+          devices.startGated(device, {tile, c->channel})) {
         part = WriteKind::Other;
+      } else if (part == WriteKind::CoreEnable && gatedEnable &&
+                 devices.startGated(device, {tile, -1})) {
+        part = WriteKind::Other;
+        row = std::numeric_limits<uint32_t>::max();
+      }
       Key key{part, 0, 0};
       if (byTile)
-        key = {part, tile.col, tile.row};
+        key = {part, static_cast<uint32_t>(tile.col), row};
       keyed.push_back({key, entry});
     }
     std::stable_sort(

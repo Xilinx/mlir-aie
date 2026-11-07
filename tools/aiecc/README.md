@@ -160,6 +160,9 @@ packets written outside groups are sent as written.
 - `--ctrlpkt-parallel-shims` (default: on) starts every column's transfers
   before awaiting any. `aie-annotate-ctrl-packet-start-gating` proves which MM2S
   channels cannot move data before their configuration lands.
+- The same proof finds cores that do nothing visible before their configuration
+  lands; `aie-reorder-ctrl-packets-by-tile{gated-enable}` sends their enables
+  with their column's packets.
 
 ### Parameterized C++ transaction builders
 
