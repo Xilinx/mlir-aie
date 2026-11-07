@@ -597,6 +597,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "42333433605",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42333433605",
+   "date": "2026-11-07T03:18:55+00:00",
+   "commit": {
+    "id": "284a8d78687dafefeb4be459d433d3c4bfb25a88",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/284a8d78687dafefeb4be459d433d3c4bfb25a88",
+    "message": "flm_gemma4 decode: expose lock-free compute steps for ObjectFifos (#3912)",
+    "timestamp": "2026-11-06T22:47:12Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "284a8d7868",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "42155964051",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42155964051",
- "date": "2026-11-06T03:20:40+00:00",
+ "id": "42333433605",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42333433605",
+ "date": "2026-11-07T03:18:55+00:00",
  "commit": {
-  "id": "60d26206ac0ecaa82c2697cb9df4b63b281ad2a2",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/60d26206ac0ecaa82c2697cb9df4b63b281ad2a2",
-  "message": "Add compiler metadata to the generated ELFs (#4019)",
-  "timestamp": "2026-11-05T20:59:38Z"
+  "id": "284a8d78687dafefeb4be459d433d3c4bfb25a88",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/284a8d78687dafefeb4be459d433d3c4bfb25a88",
+  "message": "flm_gemma4 decode: expose lock-free compute steps for ObjectFifos (#3912)",
+  "timestamp": "2026-11-06T22:47:12Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V74 80-Core Processor",
+ "device": "AMD EPYC 9V45 96-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "60d26206ac",
-  "cpu": "AMD EPYC 9V74 80-Core Processor"
+  "commit": "284a8d7868",
+  "cpu": "AMD EPYC 9V45 96-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 235.3,
+    "value": 183.9,
     "unit": "s"
    }
   }
