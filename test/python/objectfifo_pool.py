@@ -38,6 +38,10 @@ def consume(handle):
     buf = handle.acquire(1)
     buf[0] = 1
     handle.release(1)
+    handle.acquire(1)
+    handle.release(1, assume_queue_space=True)
+    handle.acquire(1)
+    handle.release(1, assume_queue_space=False)
 
 
 def pool_handle_drives_a_worker():
@@ -163,6 +167,8 @@ def a_pool_holds_a_multidimensional_object():
 # CHECK:     aie.core({{.*}}) {
 # CHECK:       aie.objectfifo.acquire @x_pool__cons(1)
 # CHECK:       aie.objectfifo.release @x_pool__cons(1)
+# CHECK:       aie.objectfifo.release {assume_queue_space} @x_pool__cons(1)
+# CHECK:       aie.objectfifo.release @x_pool__cons(1)
 # CHECK:     }
 
 # The filling BD takes the lock protocol the core endpoint expects.
@@ -187,6 +193,8 @@ pool_handle_drives_a_worker()
 
 # CHECK:     aie.core({{.*}}) {
 # CHECK:       aie.objectfifo.acquire @y(Consume, 1)
+# CHECK:       aie.objectfifo.release @y(Consume, 1)
+# CHECK:       aie.objectfifo.release {assume_queue_space} @y(Consume, 1)
 # CHECK:       aie.objectfifo.release @y(Consume, 1)
 # CHECK:     }
 # CHECK:   }

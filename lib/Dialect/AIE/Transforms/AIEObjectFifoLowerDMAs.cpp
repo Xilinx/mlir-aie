@@ -61,6 +61,8 @@ struct AIEObjectFifoLowerDMAsPass
           AIEObjectFifoLowerDMAsPass> {
 
   DeviceOp device;
+  int32_t nextSendTag = 0;
+  llvm::DenseSet<int32_t> usedSendTags;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
 
   /// The DMA program of `tile`, created empty if the tile has none yet. A
@@ -186,7 +188,8 @@ struct AIEObjectFifoLowerDMAsPass
   void emitDescriptor(ObjectFifoDmaEndpointOp endpoint, ObjectFifoPoolOp pool,
                       Descriptor &descriptor, PacketInfoAttr packet,
                       Block *successor, bool binaryLocks, bool drains,
-                      int64_t transmittedObject = -1) {
+                      int64_t transmittedObject = -1,
+                      ArrayRef<int32_t> sendTags = {}) {
     Location loc = endpoint.getLoc();
     int count = drains ? 1 : pool.getRepeatCount().value_or(1);
 
@@ -252,6 +255,11 @@ struct AIEObjectFifoLowerDMAsPass
     }
     if (descriptor.iteration && descriptor.iteration.getSize() > 1)
       bd.setIterationAttr(descriptor.iteration);
+    if (!sendTags.empty()) {
+      assert(descriptor.object < static_cast<int64_t>(sendTags.size()) &&
+             "a send tag names every buffer of a core-pushed pool");
+      bd.setBdTag(sendTags[descriptor.object]);
+    }
 
     if (releaseLock) {
       UseLockOp::create(builder, loc, releaseLock, LockAction::Release,
@@ -263,7 +271,8 @@ struct AIEObjectFifoLowerDMAsPass
   /// A `dma_start` of `channel` on the endpoint's tile, chained after the
   /// tile's others; returns the first BD's block and the program's end block.
   std::pair<Block *, Block *> startChain(ObjectFifoDmaEndpointOp endpoint,
-                                         int channel, int taskCount) {
+                                         int channel, int taskCount,
+                                         bool corePushes = false) {
     Location loc = endpoint.getLoc();
     DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program.getDmaBody());
@@ -276,7 +285,7 @@ struct AIEObjectFifoLowerDMAsPass
                        taskCount, endpoint.getPadValue(),
                        endpoint.getOutOfOrder() &&
                            endpoint.getRouteDirection() == DMAChannelDir::S2MM,
-                       bdBlock, endBlock);
+                       corePushes, bdBlock, endBlock);
     if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
     }
@@ -361,6 +370,61 @@ struct AIEObjectFifoLowerDMAsPass
                               : (repeatInHardware ? repeat - 1 : 0);
     int64_t copies = repeatInHardware ? 1 : repeat;
 
+    // With push_queue the configuration pushes nothing: the core pushes
+    // the descriptor of each object it releases. Each descriptor then runs
+    // on its own, so a pool whose buffers do not map one-to-one onto them
+    // leaves the core no descriptor to name.
+    bool corePushes =
+        drains && endpoint.getReleaseStrategy() == ObjectFifoRelease::PushQueue;
+    SmallVector<int32_t> sendTags;
+    if (corePushes) {
+      bool hasRelease = false;
+      ObjectFifoCoreEndpointOp producer;
+      auto sentSegments = endpoint.getSelectedSegments();
+      for (auto coreEnd : device.getOps<ObjectFifoCoreEndpointOp>()) {
+        if (coreEnd.drains() || coreEnd.getPoolOp() != pool ||
+            coreEnd.getTile() != endpoint.getTile())
+          continue;
+        auto filledSegments = coreEnd.getSelectedSegments();
+        if (!llvm::any_of(sentSegments, [&](ObjectFifoSegmentOp segment) {
+              return llvm::is_contained(filledSegments, segment);
+            }))
+          continue;
+        if (producer)
+          return endpoint.emitOpError(
+              "push_queue requires a single core filler for its segment");
+        producer = coreEnd;
+        for (auto core : device.getOps<CoreOp>()) {
+          if (core.getTile() == coreEnd.getTile())
+            core.walk([&](ObjectFifoReleaseOp release) {
+              hasRelease |= release.getObjFifoName() == coreEnd.getSymName();
+            });
+        }
+      }
+      if (!hasRelease)
+        return endpoint.emitOpError(
+            "push_queue requires producer releases in a "
+            "local core to submit send tasks");
+      if (passes != 1)
+        return endpoint.emitOpError(
+            "push_queue requires one dispatch pass per object");
+      // Each release submits one task, with repetitions carried by that task.
+      taskCount = 0;
+      if (static_cast<int64_t>(descriptors.size()) != pool.getDepth())
+        return endpoint.emitOpError("sends ")
+               << descriptors.size() << " descriptors for a pool of "
+               << pool.getDepth()
+               << " objects, so a release names no one of them; push_queue "
+               << "needs one descriptor per object";
+      for (size_t slot = 0; slot < descriptors.size(); ++slot) {
+        while (usedSendTags.contains(nextSendTag))
+          ++nextSendTag;
+        sendTags.push_back(nextSendTag++);
+      }
+      producer.setCorePushAttr(
+          ObjectFifoCorePushAttr::get(pool.getContext(), channel, sendTags));
+    }
+
     SmallVector<PacketInfoAttr> turns;
     if (std::optional<ArrayAttr> headers = endpoint.getDispatchPackets()) {
       llvm::append_range(turns, headers->getAsRange<PacketInfoAttr>());
@@ -375,7 +439,8 @@ struct AIEObjectFifoLowerDMAsPass
           "dispatches from a contiguous pool, which has no per-object BDs");
     int64_t depth = pool.getDepth();
 
-    auto [bdBlock, endBlock] = startChain(endpoint, channel, taskCount);
+    auto [bdBlock, endBlock] =
+        startChain(endpoint, channel, taskCount, corePushes);
     bool binaryLocks = !device.getTargetModel().hasProperty(
         AIETargetModel::UsesSemaphoreLocks);
     size_t total = descriptors.size() * copies * passes;
@@ -400,7 +465,7 @@ struct AIEObjectFifoLowerDMAsPass
           }
           builder.setInsertionPointToStart(current);
           emitDescriptor(endpoint, pool, descriptor, packet, successor,
-                         binaryLocks, drains, emitted);
+                         binaryLocks, drains, emitted, sendTags);
           current = successor;
           emitted++;
         }
@@ -474,8 +539,37 @@ struct AIEObjectFifoLowerDMAsPass
     device = getOperation();
     builder = OpBuilder(device.getContext());
 
+    // Reserve tags from both pool allocation and hand-written descriptors.
+    nextSendTag = 0;
+    usedSendTags.clear();
+    for (auto pool : device.getOps<ObjectFifoPoolOp>())
+      if (auto tags = pool.getOutOfOrderTags())
+        usedSendTags.insert(tags->begin(), tags->end());
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
+      if (auto push = endpoint.getCorePushAttr())
+        usedSendTags.insert(push.getBdTags().begin(), push.getBdTags().end());
+    device.walk([&](DMABDOp bd) {
+      if (auto tag = bd.getBdTag())
+        usedSendTags.insert(*tag);
+    });
+
     SmallVector<ObjectFifoDmaEndpointOp> endpoints(
         device.getOps<ObjectFifoDmaEndpointOp>());
+    DenseMap<Operation *, ObjectFifoDmaEndpointOp> pushedDrainers;
+    for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
+      if (!endpoint.drains() ||
+          endpoint.getReleaseStrategy() != ObjectFifoRelease::PushQueue)
+        continue;
+      auto [it, inserted] =
+          pushedDrainers.try_emplace(endpoint.getPoolOp(), endpoint);
+      if (!inserted) {
+        auto diag = endpoint.emitOpError(
+            "a pool supports only one core-pushed DMA drainer");
+        diag.attachNote(it->second.getLoc())
+            << "first core-pushed drainer is here";
+        return signalPassFailure();
+      }
+    }
     // A tile's chains, and so the BD ids they get, follow its channels rather
     // than the order the endpoints were written in.
     DenseMap<Value, size_t> tileOrder;

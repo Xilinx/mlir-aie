@@ -310,6 +310,54 @@ def InitValuesArrayAttr
 // ObjectFifo pools and endpoints
 //===----------------------------------------------------------------------===//
 
+def ObjectFifoRelease
+    : I32EnumAttr<"ObjectFifoRelease",
+                  "ObjectFifo sending DMA task submission strategy",
+                  [I32EnumAttrCase<"CycleBuffers", 0, "cycle_buffers">,
+                   I32EnumAttrCase<"PushQueue", 1, "push_queue">]> {
+  let cppNamespace = "xilinx::AIE";
+  // The attribute class comes from ObjectFifoReleaseAttr below, which prints
+  // the case by name rather than by number.
+  let genSpecializedAttr = 0;
+}
+
+def ObjectFifoReleaseAttr
+    : EnumAttr<AIE_Dialect, ObjectFifoRelease, "release_strategy"> {
+  let summary = "Select cyclic DMA execution or core-issued send tasks";
+  let description = [{
+    Controls how an ObjectFifo's sending DMA receives work. `cycle_buffers`
+    uses a cyclic BD chain synchronized by buffer locks. `push_queue` has the
+    producer core submit a task for each released object, allowing several
+    FIFOs to share one MM2S channel. Both strategies retain buffer-lock
+    synchronization.
+
+    This attribute can be attached to `aie.objectfifo` or its draining
+    `aie.objectfifo.dma_endpoint`. See those operations for defaults and
+    lowering requirements.
+  }];
+}
+
+def ObjectFifoCorePushAttr : AttrDef<AIE_Dialect, "ObjectFifoCorePush", []> {
+  let mnemonic = "core_push";
+  let summary = "The MM2S tasks submitted by a core endpoint's releases";
+  let description = [{
+    DMA lowering attaches this attribute only to a filling core endpoint
+    that submits `push_queue` tasks. `channel` names the MM2S queue on the
+    core's tile; `bd_tags` identifies one sending descriptor per buffer slot.
+    Core lowering uses this mapping after DMA lowering removes the DMA
+    endpoint, then removes the core endpoint and this attribute.
+
+    The corresponding `aie.dma_start` carries `core_pushes`, which prevents
+    device configuration from submitting startup tasks.
+
+    Example: `core_push = #aie.core_push<channel = 0, bd_tags = [4, 5]>`.
+  }];
+  let parameters = (ins "uint32_t":$channel,
+      ArrayRefParameter<"int32_t">:$bd_tags);
+  let assemblyFormat =
+      "`<` `channel` `=` $channel `,` `bd_tags` `=` `[` $bd_tags `]` `>`";
+}
+
 def ObjectFifoRole
     : I32EnumAttr<"ObjectFifoRole",
                   "What an objectFifo endpoint does to its pool's buffers",

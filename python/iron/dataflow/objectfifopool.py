@@ -465,11 +465,19 @@ class ObjectFifoPoolHandle(Declared, PerDeviceConfigurationResolvable):
             return result
         return list(result)
 
-    def release(self, num_elem: int = 1) -> None:
-        """Release ``num_elem`` objects back to the other end."""
+    def release(self, num_elem: int = 1, *, assume_queue_space: bool = False) -> None:
+        """Release ``num_elem`` objects back to the other end.
+
+        ``assume_queue_space=True`` asserts room for every DMA push generated
+        by this release, omitting its queue-space polling. The programmer must
+        guarantee room on every execution; a full queue can discard a task and
+        prevent progress. Buffer synchronization and the pushes remain.
+        """
         if num_elem < 1:
             raise ValueError("Must release at least one object")
-        objectfifo_release(self.op.sym_name.value, num_elem)
+        objectfifo_release(
+            self.op.sym_name.value, num_elem, assume_queue_space=assume_queue_space
+        )
 
     def resolve(
         self,

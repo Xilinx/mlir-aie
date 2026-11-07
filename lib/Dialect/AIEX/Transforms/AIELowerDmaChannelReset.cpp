@@ -51,6 +51,12 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
         repeatCount; // already the N-1 biased value on the resident dma_start
   };
 
+  SmallVector<DMAStartOp> corePushStarts;
+  device.walk([&](DMAStartOp start) {
+    if (start.getCorePushes())
+      corePushStarts.push_back(start);
+  });
+
   SmallVector<DmaChannelResetForOp> toErase;
   WalkResult res = device.walk([&](DmaChannelResetForOp op) -> WalkResult {
     auto binding =
@@ -96,6 +102,16 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
       }
       DMAChannelDir dir =
           dirs[i] == 0 ? DMAChannelDir::S2MM : DMAChannelDir::MM2S;
+      for (DMAStartOp start : corePushStarts) {
+        if (start->getParentOfType<TileElement>().getTile() == tiles[i] &&
+            start.getChannelDir() == dir &&
+            start.getChannelIndex() == chans[i]) {
+          op.emitOpError(
+              "does not support core-pushed DMA channels; reset requires "
+              "coordination with the issuing core and all shared senders");
+          return WalkResult::interrupt();
+        }
+      }
       ResolvedEndpoint ep;
       ep.tile = tiles[i];
       ep.dir = dir;

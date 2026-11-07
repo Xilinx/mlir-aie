@@ -122,6 +122,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         transport: Transport | str | None = None,
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | In | Out | InOut | None = None,
+        release_strategy: str | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -187,6 +188,11 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
                 transfers and the consumer receives consumer_obj_type-sized transfers.
                 Producer element count must be an integer multiple of consumer element count.
                 Defaults to None.
+            release_strategy (str | None, optional): What a release on the producer
+                handle starts. ``"cycle_buffers"``, the default, leaves the sending
+                DMA to walk the pool's buffers on its own. ``"push_queue"`` has the
+                core push the descriptor of each buffer it releases, which is what
+                lets two ObjectFifos share a sending channel. Defaults to None.
 
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
@@ -223,6 +229,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         self._delegate_tile: Tile | None = delegate_tile
         self._transport: Transport | None = Transport.coerce(transport)
         self._init_values: list[np.ndarray] | None = init_values
+        self._release_strategy: str | None = release_strategy
 
     @property
     def depth(self) -> int | None:
@@ -537,6 +544,9 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
             if any(p is not None for p in cons_ports):
                 op.set_cons_ports(cons_ports)
 
+            if self._release_strategy is not None:
+                op.set_release_strategy(self._release_strategy)
+
             # Shared-memory delegate: redirect the fifo's buffer pool to a tile
             # whose memory module is shared with both prod and cons. See the
             # delegate_tile docstring on ObjectFifo for the constraint.
@@ -563,10 +573,12 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         self,
         port: ObjectFifoPort,
         num_elem: int,
+        *,
+        assume_queue_space: bool = False,
     ):
         if num_elem < 1:
             raise ValueError("Must produce at least one element")
-        self.op.release(port, num_elem)
+        self.op.release(port, num_elem, assume_queue_space=assume_queue_space)
 
 
 class ObjectFifoHandle(PerDeviceConfigurationResolvable):
@@ -654,11 +666,19 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     def release(
         self,
         num_elem: int,
+        *,
+        assume_queue_space: bool = False,
     ) -> None:
         """Release access to some elements of the ObjectFifo, allowing the other endpoint of the ObjectFifo to acquire them.
 
         Args:
             num_elem (int): Number of elements to release.
+            assume_queue_space (bool): Assert that every DMA queue push generated
+                by this release has room, omitting its queue-space polling.
+                Applies to sending tasks and out-of-order receive replenishment.
+                Buffer synchronization and the pushes remain. The programmer
+                must guarantee room on every execution; a full queue can discard
+                a task and prevent progress. Defaults to False.
 
         Raises:
             ValueError: Number of elements cannot exceed ObjectFifo depth.
@@ -667,7 +687,9 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             raise ValueError(
                 f"Number of elements to release {num_elem} must be smaller than depth {self._depth}"
             )
-        self._object_fifo._release(self._fifo_port, num_elem)
+        self._object_fifo._release(
+            self._fifo_port, num_elem, assume_queue_space=assume_queue_space
+        )
 
     @property
     def name(self) -> str | None:

@@ -7,4 +7,4 @@
 // RUN: cd %t.d
 // RUN: %aiecc --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-init-entry %S/aie.mlir
 // RUN: %host_clang -o test %S/test.cpp -std=c++17 %host_link_flags %xrt_flags
-// RUN: %run_on_npu2% ./test init
+// RUN: env AIE_NPU_EXCLUSIVE_DEVICE=1 %run_on_npu2% ./test init

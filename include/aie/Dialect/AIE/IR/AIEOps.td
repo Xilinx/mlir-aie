@@ -1527,6 +1527,12 @@ def AIE_DMAStartOp
     (e.g. `0x07070707` to fill an `i8` region with `0x07`). The register is present only on
     targets that provide it (e.g. AIE2P) and only on MM2S channels; the verifier rejects a
     nonzero `pad_value` elsewhere.
+
+    With `core_pushes`, device configuration initializes the descriptors and
+    enables the channel without submitting a task. The core must submit work
+    using `aie.dma_push_queue`. ObjectFifo `push_queue` lowering uses this mode
+    with one unchained descriptor per buffer, so each producer release can
+    submit the descriptors for exactly the objects it makes available.
   }];
 
   let arguments = (ins DMAChannelDir:$channel_dir,
@@ -1536,7 +1542,10 @@ def AIE_DMAStartOp
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
       // Put the channel into out-of-order mode (S2MM only).
-      UnitAttr:$out_of_order);
+      UnitAttr:$out_of_order,
+      // Configure and enable the channel without submitting an initial task.
+      // The core submits tasks later with aie.dma_push_queue.
+      UnitAttr:$core_pushes);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
     `(` $channel_dir `,` custom<DMAStartChannel>($channel) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
@@ -1549,7 +1558,17 @@ def AIE_DMAStartOp
                             [{
       build($_builder, $_state, channel_dir,
             $_builder.getI32IntegerAttr(channel_index), repeat_count,
-            pad_value, out_of_order, dest, chain);
+            pad_value, out_of_order, /*core_pushes=*/false, dest, chain);
+    }]>,
+                  OpBuilder<(ins "DMAChannelDir":$channel_dir,
+                                "int":$channel_index, "int":$repeat_count,
+                                "int":$pad_value, "bool":$out_of_order,
+                                "bool":$core_pushes, "mlir::Block *":$dest,
+                                "mlir::Block *":$chain),
+                            [{
+      build($_builder, $_state, channel_dir,
+            $_builder.getI32IntegerAttr(channel_index), repeat_count,
+            pad_value, out_of_order, core_pushes, dest, chain);
     }]>];
 
   let extraClassDeclaration = [{
@@ -2062,16 +2081,24 @@ def AIE_DmaPushQueueOp : AIE_Op<"dma_push_queue", [HasAncestor<"CoreOp">]> {
     Lowering emits processor-bus register writes and sets `processor_bus` on
     the enclosing `aie.core`, so device configuration enables the bus before
     the core starts.
+
+    Before hardware BD IDs are assigned, `bd_tag` can reference a descriptor's
+    temporary `bd_tag` instead of specifying `bd_id`. Exactly one of `bd_id`
+    and `bd_tag` must be present. `--aie-assign-bd-ids` replaces this reference
+    with the descriptor's hardware ID before register-access lowering.
   }];
   let arguments = (ins DMAChannelDir:$direction,
       ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel,
-      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$bd_id,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$bd_id,
+      // Reference to a descriptor's temporary bd_tag. --aie-assign-bd-ids
+      // resolves it to bd_id and removes bd_tag from this operation.
+      OptionalAttr<AIEI32Attr>:$bd_tag,
       // Encodes one less than the number of chain executions, or received
       // objects in out-of-order mode. Zero requests one execution/object.
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count, UnitAttr:$out_of_order);
   let results = (outs);
   let assemblyFormat = [{
-    `(` $direction `:` $channel `)` `bd_id` $bd_id attr-dict
+    `(` $direction `:` $channel `)` (`bd_id` $bd_id^)? attr-dict
   }];
   let hasVerifier = 1;
 }
@@ -2589,6 +2616,33 @@ def AIE_ObjectFifoCreateOp
     packets behind it, including packets for other FIFOs. The program must
     arrange its acquire/release order and buffering to avoid circular waits;
     matching average producer and consumer rates alone is not sufficient.
+
+    `release_strategy` controls how the sending DMA receives work:
+
+    * `cycle_buffers` uses a cyclic descriptor chain. Producer releases
+      update buffer locks, and the DMA waits on those locks as it traverses
+      the chain.
+    * `push_queue` submits one DMA task per released object from the producer
+      core. Device configuration does not submit an initial task. This lets
+      multiple FIFOs share an MM2S channel without dedicating it to one
+      FIFO's cyclic chain. Shared senders require packet transport with distinct
+      packet IDs to route each FIFO's objects to its receivers.
+      The lowering requires one descriptor per object
+      and producer releases in a local core that supports queue instructions.
+      Initialized objects are unsupported because no startup tasks send them.
+      `aiex.dma_channel_reset_for` is unsupported for core-pushed channels;
+      resetting one requires coordination with the issuing core and all
+      senders sharing that channel.
+      Repetitions use the task's repeat count; repeated out-of-order packets
+      are unsupported because copies may need different destination
+      out-of-order IDs (the receiving descriptors' hardware BD IDs).
+      Without buffer synchronization, releases poll for queue space unless
+      explicitly annotated with `assume_queue_space`.
+
+    An omitted strategy defaults to `cycle_buffers`. When multiple FIFOs pin
+    their producer ports to the same DMA channel on the same core tile,
+    `--aie-objectfifo-split` selects `push_queue` for all of them. Shared shim
+    channels continue to use runtime submission.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
@@ -2620,7 +2674,8 @@ def AIE_ObjectFifoCreateOp
       OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
       // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-      OptionalAttr<AIEI32Attr>:$iter_count);
+      OptionalAttr<AIEI32Attr>:$iter_count,
+      OptionalAttr<ObjectFifoReleaseAttr>:$release_strategy);
 
   let assemblyFormat = [{
     $sym_name
@@ -3036,6 +3091,13 @@ def AIE_ObjectFifoCoreEndpointOp
     only segment and is invalid for a multi-segment pool.
 
     A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this op.
+    Releases at different locations in the core share the endpoint's rotating
+    object index.
+
+    Only endpoints that submit core-pushed DMA tasks carry `core_push`.
+    DMA lowering generates it for `push_queue` senders; see `#aie.core_push`
+    for its queue and descriptor mapping. Cyclic DMA senders and core
+    consumers do not use it.
 
     An endpoint covering only part of an object hands the core a
     `memref.subview` of the run its segments span, so a core can take one side
@@ -3049,7 +3111,8 @@ def AIE_ObjectFifoCoreEndpointOp
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
       ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
-      OptionalAttr<FlatSymbolRefArrayAttr>:$segments);
+      OptionalAttr<FlatSymbolRefArrayAttr>:$segments,
+      OptionalAttr<ObjectFifoCorePushAttr>:$core_push);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
@@ -3132,6 +3195,13 @@ def AIE_ObjectFifoDmaEndpointOp
     destination pools' receiving tags, indexed by destination buffer slot.
     This mapping is separate from its own pool's receiving tags, so relaying
     an object can select a different BD ID on the next hop.
+
+    On a draining (MM2S) endpoint, `release_strategy` selects cyclic DMA
+    execution or core-issued tasks, as described for `aie.objectfifo`.
+    `push_queue` lowering creates one unchained descriptor per object and
+    records its tag and channel on the filling core endpoint. A pool
+    supports only one such draining endpoint, including when endpoints select
+    disjoint segments.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
@@ -3155,7 +3225,10 @@ def AIE_ObjectFifoDmaEndpointOp
       // draining (MM2S) endpoint, set the receiving BD ID in each packet's
       // header. See aie.objectfifo's transport attribute.
       UnitAttr:$out_of_order,
-      OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags);
+      OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags,
+      // Sending strategy for a draining (MM2S) endpoint. Filling endpoints do
+      // not use this setting. See aie.objectfifo's release_strategy.
+      OptionalAttr<ObjectFifoReleaseAttr>:$release_strategy);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
@@ -3295,6 +3368,23 @@ def AIE_ObjectFifoReleaseOp : AIE_Op<"objectfifo.release", []> {
     ```
     This operation releases the lock of the next object in the `objectFifo` named `@of1` from producer port.
 
+    `assume_queue_space` tells the compiler to omit queue-space polling for
+    DMA pushes generated by this release. It applies both to producer releases
+    that submit `push_queue` send tasks and to consumer releases that replenish
+    an out-of-order receive queue. Buffer synchronization and task submission
+    are unchanged, and other release operations are unaffected.
+
+    The attribute is a programmer assertion: every push generated by this
+    release must have a free queue slot whenever it executes. Releasing several
+    objects may generate several pushes, each of which needs space. An
+    incorrect assertion can cause hardware to discard a task and stall the
+    program. Without the attribute, the compiler's usual queue analysis and
+    polling rules apply.
+
+    ```
+      aie.objectfifo.release {assume_queue_space} @of1 (Produce, 1)
+    ```
+
     The port is omitted when the target is an endpoint, whose role already fixes the direction:
     ```
       aie.objectfifo.release @of1_prod (1)
@@ -3303,7 +3393,8 @@ def AIE_ObjectFifoReleaseOp : AIE_Op<"objectfifo.release", []> {
 
   let arguments = (ins OptionalAttr<ObjectFifoPort>:$port,
       FlatSymbolRefAttr:$objFifo_name,
-      ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size);
+      ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size,
+      UnitAttr:$assume_queue_space);
 
   let assemblyFormat = [{
     attr-dict $objFifo_name `` custom<ObjectFifoReleaseCount>($port, $size)

@@ -368,12 +368,16 @@ struct AIEAssignBufferDescriptorIDsPass
     populateRearmBindings(targetOp);
   }
 
-  /// Resolve temporary receiving-BD tags after hardware ID assignment.
+  /// Resolve BD tags after hardware ID assignment.
   LogicalResult resolveOutOfOrderTags(DeviceOp device) {
     DenseMap<int32_t, int> idOfTag;
+    DenseMap<std::pair<Value, int32_t>, int> localIdOfTag;
     WalkResult receivers = device.walk([&](DMABDOp bd) {
       std::optional<uint32_t> id = bd.getBdId();
       if (std::optional<int32_t> tag = bd.getBdTag(); tag && id) {
+        auto tile = bd->getParentOfType<TileElement>();
+        if (tile)
+          localIdOfTag[{tile.getTile(), *tag}] = *id;
         auto [it, inserted] = idOfTag.try_emplace(*tag, *id);
         if (!inserted && it->second != static_cast<int>(*id)) {
           bd.emitOpError("broadcast receiving buffers must have matching bd_id "
@@ -399,6 +403,22 @@ struct AIEAssignBufferDescriptorIDsPass
       }
       bd.setOutOfOrderId(it->second);
       bd.removeOutOfOrderTagAttr();
+      return WalkResult::advance();
+    });
+    if (walked.wasInterrupted())
+      return failure();
+    walked = device.walk([&](DmaPushQueueOp push) {
+      std::optional<int32_t> tag = push.getBdTag();
+      if (!tag)
+        return WalkResult::advance();
+      Value tile = push->getParentOfType<CoreOp>().getTile();
+      auto it = localIdOfTag.find({tile, *tag});
+      if (it == localIdOfTag.end()) {
+        push.emitOpError("pushes a descriptor that this tile does not hold");
+        return WalkResult::interrupt();
+      }
+      push.setBdId(it->second);
+      push.removeBdTagAttr();
       return WalkResult::advance();
     });
     return failure(walked.wasInterrupted());

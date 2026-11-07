@@ -932,32 +932,29 @@ struct AIEObjectFifoAllocatePass
     return failure(clash);
   }
 
-  /// Whether this endpoint shares its pinned channel with other claimants.
-  ///
-  /// Only a packet-switched shim source. The runtime writes such a channel's
-  /// descriptors one transfer at a time, each under its own header, so the
-  /// streams stay apart. A channel whose descriptors are a fixed BD chain
-  /// holds no per-stream state, and sharing it needs the DMA's out-of-order
-  /// packet mode.
+  /// Whether this endpoint can share its pinned channel without a cyclic
+  /// DMA program monopolizing it.
   bool sharesPinnedChannel(RouteEndpoint endpoint, DMAChannelDir dir) {
     // An out-of-order receiver takes each object into the buffer its header
     // names, so its channel keeps no order its fifos would have to agree on.
-    if (dir == DMAChannelDir::S2MM) {
-      auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+    auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+    if (dir == DMAChannelDir::S2MM)
       return dma && dma.getOutOfOrder();
-    }
-    if (!tileOf(endpoint).isShimTile())
+    if (!tileOf(endpoint).isShimTile() &&
+        !(dma && dma.getReleaseStrategy() == ObjectFifoRelease::PushQueue))
       return false;
+    bool hasPacketRoute = false;
     for (auto flow : device.getOps<RouteOp>()) {
-      if (!flow.getPacket())
-        continue;
-      if (llvm::any_of(flow.getSourceNames(), [&](StringRef name) {
+      if (llvm::none_of(flow.getSourceNames(), [&](StringRef name) {
             return lookupEndpoint(name).getOperation() ==
                    endpoint.getOperation();
           }))
-        return true;
+        continue;
+      if (!flow.getPacket())
+        return false;
+      hasPacketRoute = true;
     }
-    return false;
+    return hasPacketRoute;
   }
 
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
@@ -1250,7 +1247,10 @@ struct AIEObjectFifoAllocatePass
            llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
                         [&](ObjectFifoDmaEndpointOp end) {
                           return end.getPoolOp() != pool ||
-                                 (!end.getOutOfOrder() && !end.getDispatch() &&
+                                 (!end.getOutOfOrder() &&
+                                  end.getReleaseStrategy() !=
+                                      ObjectFifoRelease::PushQueue &&
+                                  !end.getDispatch() &&
                                   (!end.getTurns() ||
                                    llvm::is_contained(regrouped, end)));
                         });
@@ -1339,7 +1339,9 @@ struct AIEObjectFifoAllocatePass
   }
 
   static bool canTakeTurns(ObjectFifoDmaEndpointOp endpoint) {
-    return endpoint && !endpoint.getChannelIndex() && !endpoint.getDispatch() &&
+    return endpoint &&
+           endpoint.getReleaseStrategy() != ObjectFifoRelease::PushQueue &&
+           !endpoint.getChannelIndex() && !endpoint.getDispatch() &&
            !endpoint.getPacketAttr() && !endpoint.getIterCount() &&
            endpoint.getRepeat() == 1 && !endpoint.walksStream();
   }
@@ -1760,6 +1762,32 @@ struct AIEObjectFifoAllocatePass
   }
 
   LogicalResult lowerFlows() {
+    // Independent core-pushed senders need different routing IDs even when
+    // their descriptors are submitted at different times.
+    DenseMap<std::tuple<Value, int, int>, Operation *> pushedPacketSources;
+    for (RouteOp flow : device.getOps<RouteOp>()) {
+      auto packet = flow.getPacket();
+      if (!packet || !packet->isAssigned())
+        continue;
+      for (StringRef name : flow.getSourceNames()) {
+        auto source = dyn_cast<ObjectFifoDmaEndpointOp>(
+            lookupEndpoint(name).getOperation());
+        if (!source ||
+            source.getReleaseStrategy() != ObjectFifoRelease::PushQueue)
+          continue;
+        auto [it, inserted] = pushedPacketSources.try_emplace(
+            std::make_tuple(source.getTile(), channelOf(source),
+                            packet->assignedId()),
+            source.getOperation());
+        if (!inserted && it->second != source.getOperation()) {
+          auto diag = source.emitOpError(
+              "core-pushed senders sharing an MM2S channel require distinct "
+              "packet IDs");
+          diag.attachNote(it->second->getLoc()) << "other sender is here";
+          return failure();
+        }
+      }
+    }
     DenseSet<std::tuple<Value, int, Value, int>> circuits;
     for (RouteOp flow : device.getOps<RouteOp>())
       for (auto name : flow.getSources().getAsRange<FlatSymbolRefAttr>())
@@ -1832,6 +1860,15 @@ struct AIEObjectFifoAllocatePass
         if (endpoint.getFifoName() != fifoName ||
             tileOf(endpoint).isShimTile() || !channel) {
           continue;
+        }
+        if (auto dma =
+                dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+            dma && dma.getReleaseStrategy() == ObjectFifoRelease::PushQueue) {
+          for (AIEX::DmaChannelResetForOp user : users)
+            user.emitOpError(
+                "does not support core-pushed DMA channels; reset requires "
+                "coordination with the issuing core and all shared senders");
+          return failure();
         }
         channelTiles.push_back(endpoint.getTile());
         channelDirs.push_back(
