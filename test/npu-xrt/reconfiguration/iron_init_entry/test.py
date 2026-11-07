@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # REQUIRES: ryzen_ai_npu2, xrt_python_bindings, peano
-# RUN: %run_on_npu2% %pytest %s
+# RUN: env AIE_NPU_EXCLUSIVE_DEVICE=1 %run_on_npu2% %pytest %s
 
 # The reconfigure_loadpdi_iron program with teardown and an init entry. Under
 # control packet reconfiguration, main:reconfig_init installs the control
