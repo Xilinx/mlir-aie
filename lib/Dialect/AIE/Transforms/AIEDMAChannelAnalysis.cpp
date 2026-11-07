@@ -114,16 +114,19 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
 int DMAChannelAnalysis::getDMAChannelLimit(
     TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
-  int maxChannelNum = (dir == DMAChannelDir::MM2S)
-                          ? tile.getNumSourceConnections(WireBundle::DMA)
-                          : tile.getNumDestConnections(WireBundle::DMA);
+  std::optional<int> col = tile.tryGetCol();
+  std::optional<int> row = tile.tryGetRow();
+  const auto &targetModel = getTargetModel(tile);
+  // A tile that is not fully placed stands for any tile of its type.
+  TileID id =
+      col && row
+          ? TileID{*col, *row}
+          : cast<LogicalTileOp>(tile.getOperation()).getCanonicalTileID();
+  int maxChannelNum = targetModel.getNumDMAChannels(id.col, id.row, dir);
 
   if (!requiresAdjacentTileAccessChannels)
     return maxChannelNum;
 
-  std::optional<int> col = tile.tryGetCol();
-  std::optional<int> row = tile.tryGetRow();
-  const auto &targetModel = getTargetModel(tile);
   if (col && row)
     return std::min<int>(
         maxChannelNum,
