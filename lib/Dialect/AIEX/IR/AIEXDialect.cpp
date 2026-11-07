@@ -2213,6 +2213,15 @@ LogicalResult AIEX::NpuControlPacketOp::verify() {
   return success();
 }
 
+AIE::TileID AIEX::NpuControlPacketOp::getTileFromAddr() {
+  return {static_cast<int>(getColumnFromAddr()),
+          static_cast<int>(getRowFromAddr())};
+}
+
+uint32_t AIEX::NpuControlPacketOp::getLocalAddress() {
+  return getAddress() & ((1u << AIE::getTargetModel(*this).getRowShift()) - 1);
+}
+
 //===----------------------------------------------------------------------===//
 // SetLockOp
 //===----------------------------------------------------------------------===//

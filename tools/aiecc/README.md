@@ -144,6 +144,16 @@ unknown transfer lifetimes remain exclusive.
 The overlay's packet IDs and routing settings remain protected during reload
 and teardown.
 
+### Control packet delivery
+
+Under `--load-pdi-to-ctrl-pkt`, each configuration's and teardown's control
+packets are an `aiex.control_packet_group`, which these passes rewrite; control
+packets written outside groups are sent as written.
+
+- `aie-reorder-ctrl-packets-by-tile` puts each tile's packets together, so they
+  go in one transfer, and moves MM2S queue pushes and core enables behind the
+  rest of the configuration.
+
 ### Parameterized C++ transaction builders
 
 ```bash

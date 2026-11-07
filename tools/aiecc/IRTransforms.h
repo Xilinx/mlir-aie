@@ -2050,6 +2050,7 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   if (ctrlPkt) {
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIELegalizeControlPacketPass());
+    pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass());
   }
   return pm;
 }
