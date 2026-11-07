@@ -186,8 +186,12 @@ from .eltwise import (
     scale_ref,
 )
 from .flm_gemma4 import (
+    BF16_PROJ_K,
+    BF16_PROJ_M,
+    DECODE_KEYS_PER_ROUND,
     FLM_GEMMA4_E2B_DECODE,
     FLM_GEMMA4_E4B_DECODE,
+    RMS_EPS,
     FlmGemma4DecodeGeometry,
     flm_gemma4_attn_kv_core,
     flm_gemma4_attn_kv_core_ref,
@@ -306,7 +310,15 @@ from .norm import (
     rms_norm_eps,
     rms_norm_ref,
 )
-from .quant import q4nx_dequant, q4nx_dequant_ref
+from .quant import (
+    Q4NX_BLOCK_BYTES,
+    Q4NX_GROUP,
+    Q4NX_K_TILE,
+    Q4NX_M_TILE,
+    q4nx_dequant,
+    q4nx_dequant_ref,
+    q4nx_unpack,
+)
 from .reduce import (
     argmax,
     argmax_combine,
@@ -388,6 +400,15 @@ DTYPES: dict[str, tuple[dict, ...]] = {
 }
 
 __all__ = [
+    "BF16_PROJ_K",
+    "BF16_PROJ_M",
+    "DECODE_KEYS_PER_ROUND",
+    "RMS_EPS",
+    "Q4NX_BLOCK_BYTES",
+    "Q4NX_GROUP",
+    "Q4NX_K_TILE",
+    "Q4NX_M_TILE",
+    "q4nx_unpack",
     "DTYPES",
     "BUILDS",
     "Build",
