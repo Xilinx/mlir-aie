@@ -2102,6 +2102,7 @@ getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIEX::AIECtrlPacketToDmaOptions opts;
   opts.chainBds = true;
+  opts.parallelShims = cli::ctrlpktParallelShims;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIEX::createAIECtrlPacketToDmaPass(opts));
   return pm;

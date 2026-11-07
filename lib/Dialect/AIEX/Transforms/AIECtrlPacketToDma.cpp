@@ -9,13 +9,18 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "CtrlPacketRuns.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+#include <deque>
 #include <map>
 #include <optional>
 
@@ -42,22 +47,21 @@ static ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col) {
   return {};
 }
 
-// The packets that start a delivery run. Control packets outside
-// aiex.control_packet_group ops keep their own runs, so a batch never mixes
-// packets the user wrote with generated ones.
+// The packets that start a delivery run: the first of each run of groups
+// (see groupRuns), and each control packet the user wrote right after a group,
+// so a batch never mixes packets the user wrote with generated ones.
 static llvm::DenseSet<Operation *> runStarts(Block &block) {
   llvm::DenseSet<Operation *> starts;
-  bool prevGroup = false, prevPacket = false;
+  for (const GroupRun &run :
+       groupRuns(block, {/*byKindAndDevice=*/true, /*atBarriers=*/false}))
+    starts.insert(run.front().packet);
+  Operation *last = nullptr;
   for (Operation &op : block) {
-    if (auto group = dyn_cast<ControlPacketGroupOp>(op)) {
-      Block &body = group.getBody().front();
-      if (!body.empty() && prevPacket)
-        starts.insert(&body.front());
-    } else if (isa<NpuControlPacketOp>(op) && prevGroup) {
+    if (isa<NpuControlPacketOp>(op) &&
+        isa_and_present<ControlPacketGroupOp>(last))
       starts.insert(&op);
-    }
-    prevGroup = isa<ControlPacketGroupOp>(op);
-    prevPacket = isa<NpuControlPacketOp>(op);
+    if (!isa<ControlPacketBarrierOp>(op))
+      last = &op;
   }
   return starts;
 }
@@ -153,7 +157,8 @@ struct AIECtrlPacketToDmaPass
     std::string shimDmaAllocName;
     int shimChan;
     Operation *first;
-    int run; // batches of one run have no other op between them
+    int run;   // batches of one run have no other op between them
+    int phase; // the barriers before it in its run
     // From an aiex.control_packet_group, so a chain may carry it; control
     // packets the user wrote keep a transfer and a sync each.
     bool generated;
@@ -229,18 +234,75 @@ struct AIECtrlPacketToDmaPass
     return task;
   }
 
+  // parallel-shims (see the pass description).
+  void emitParallelRun(OpBuilder &builder, Location loc, Value buffer,
+                       DeviceOp device, ArrayRef<BatchInfo> batches) {
+    const AIE::AIETargetModel &targetModel = device.getTargetModel();
+    int phases = 0;
+    for (const BatchInfo &batch : batches)
+      phases = std::max(phases, batch.phase + 1);
+    for (int phase = 0; phase < phases; ++phase) {
+      // Each allocation's chains, and how many may be in flight at once.
+      llvm::MapVector<StringRef, SmallVector<SmallVector<const BatchInfo *>>>
+          tasks;
+      llvm::StringMap<size_t> window;
+      for (const BatchInfo &batch : batches) {
+        if (batch.phase != phase)
+          continue;
+        int col = batch.tileId.col;
+        uint32_t numBds = chainBdLimit(device, col);
+        auto &list = tasks[batch.shimDmaAllocName];
+        if (list.empty()) {
+          uint32_t depth = targetModel.getDmaTaskQueueDepth(
+              col, 0, batch.shimChan, DMAChannelDir::MM2S);
+          window[batch.shimDmaAllocName] =
+              chainBds ? 1 : (depth ? std::min(depth, numBds) : numBds);
+        }
+        if (list.empty() || !chainBds || list.back().size() >= numBds)
+          list.emplace_back();
+        list.back().push_back(&batch);
+      }
+      size_t rounds = 0;
+      for (auto &[name, list] : tasks)
+        rounds = std::max(rounds, list.size());
+      SmallVector<std::deque<DMAConfigureTaskForOp>> outstanding(tasks.size());
+      for (size_t r = 0; r < rounds; ++r) {
+        for (auto [i, entry] : llvm::enumerate(tasks)) {
+          auto &[name, list] = entry;
+          if (r >= list.size())
+            continue;
+          if (outstanding[i].size() >= window[name]) {
+            DMAAwaitTaskOp::create(builder, loc, outstanding[i].front());
+            outstanding[i].pop_front();
+          }
+          DMAConfigureTaskForOp task = emitTask(builder, loc, buffer, list[r]);
+          DMAStartTaskOp::create(builder, loc, task);
+          outstanding[i].push_back(task);
+        }
+      }
+      for (auto &queue : outstanding)
+        for (DMAConfigureTaskForOp task : queue)
+          DMAAwaitTaskOp::create(builder, loc, task);
+    }
+  }
+
   // A remark for each column whose chains in the run starting at `begin` the
   // descriptors runtime tasks hold make shorter.
   void remarkHeldBds(DeviceOp device, ArrayRef<BatchInfo> batches,
                      const BatchInfo *begin) {
     std::map<int, size_t> longest;
+    std::map<std::pair<int, int>, size_t> perPhase;
     size_t length = 0;
     for (const BatchInfo *it = begin;
          it != batches.end() && it->run == begin->run; ++it) {
       int col = it->tileId.col;
-      bool joins = it != begin &&
-                   std::prev(it)->shimDmaAllocName == it->shimDmaAllocName;
-      length = joins ? length + 1 : 1;
+      if (parallelShims) {
+        length = ++perPhase[{col, it->phase}];
+      } else {
+        bool joins = it != begin &&
+                     std::prev(it)->shimDmaAllocName == it->shimDmaAllocName;
+        length = joins ? length + 1 : 1;
+      }
       longest[col] = std::max(longest[col], length);
     }
     for (auto [col, n] : longest) {
@@ -315,13 +377,14 @@ struct AIECtrlPacketToDmaPass
 
       // First pass: collect and batch control packet operations
       bool new_batch = true, inRun = false;
-      int run = 0;
+      int run = 0, phase = 0;
       for (Operation &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
 
-        // A barrier ends the current batch
+        // A barrier ends the current batch and phase
         if (isa<ControlPacketBarrierOp>(o)) {
           new_batch = true;
+          ++phase;
           continue;
         }
         // Any other op, or the start of a run, ends the current batch and run
@@ -330,6 +393,7 @@ struct AIECtrlPacketToDmaPass
             ++run;
           new_batch = true;
           inRun = false;
+          phase = 0;
           if (!ctrlPktOp)
             continue;
         }
@@ -362,7 +426,7 @@ struct AIECtrlPacketToDmaPass
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              alloc.getSymName().str(),
                              static_cast<int>(alloc.getChannelIndex()), &o, run,
-                             generated.contains(&o)});
+                             phase, generated.contains(&o)});
         }
         new_batch = !batchable;
         ddrOffset += ctrlPktSize;
@@ -394,6 +458,16 @@ struct AIECtrlPacketToDmaPass
           remarkHeldBds(device, batches, &*batchIt);
 
         int col = ctrlPktOp.getColumnFromAddr();
+
+        if (parallelShims && batchIt->generated) {
+          auto runEnd = batchIt;
+          while (runEnd != batches.end() && runEnd->run == batchIt->run)
+            ++runEnd;
+          emitParallelRun(builder, loc, newBlockArg, device,
+                          ArrayRef<BatchInfo>(&*batchIt, runEnd - batchIt));
+          batchIt = runEnd;
+          continue;
+        }
 
         if (chainBds && batchIt->generated) {
           uint32_t maxBds = chainBdLimit(device, col);
