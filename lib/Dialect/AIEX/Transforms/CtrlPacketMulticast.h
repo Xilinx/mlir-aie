@@ -56,6 +56,12 @@ public:
     // by one control channel and pass the same input ports.
     bool sharesTrail(const Multicast &m, AIE::TileID tile) const;
 
+    // Whether a packet to `tile` sent after one on `m`, in its phase, lands on
+    // `tile` after it: along `m`'s own trail or, serially, from another
+    // column's shim, which aie-ctrl-packet-to-dma awaits after `m`'s.
+    bool keepsOrder(const Multicast &m, AIE::TileID tile,
+                    bool parallelShims) const;
+
     // The multicast `packet` goes on: the one on its multicast_id whose lowest
     // tile it names. Null if none is.
     const Multicast *multicastOf(NpuControlPacketOp packet) const;
@@ -76,6 +82,13 @@ private:
 // The tiles `packet` reaches: its multicast's in `info`, or its own.
 llvm::SmallVector<AIE::TileID>
 tilesReached(NpuControlPacketOp packet, const OverlayMulticasts::Info *info);
+
+// The first arbiter of `held` that `packet`, in a group, takes on its way: on
+// its multicast's tree in `info`, or on its tile's control route.
+std::optional<Arbiter> arbiterTaken(NpuControlPacketOp packet,
+                                    const OverlayMulticasts::Info *info,
+                                    ConfiguredDevices &devices,
+                                    const std::set<Arbiter> &held);
 
 } // namespace xilinx::AIEX
 

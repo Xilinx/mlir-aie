@@ -1968,9 +1968,13 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
         xilinx::AIEX::createAIELegalizeControlPacketPass());
     xilinx::AIEX::AIEReorderCtrlPacketsByTileOptions reorder;
     reorder.gatedEnable = true;
+    reorder.parallelShims = cli::ctrlpktParallelShims;
     pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(reorder));
-    if (cli::ctrlpktMulticastSpan)
-      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
+    if (cli::ctrlpktMulticastSpan) {
+      xilinx::AIEX::AIEDedupCtrlPacketMulticastOptions dedup;
+      dedup.parallelShims = cli::ctrlpktParallelShims;
+      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass(dedup));
+    }
     xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
     check.parallelShims = cli::ctrlpktParallelShims;
     pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));

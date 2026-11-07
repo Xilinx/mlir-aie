@@ -737,6 +737,17 @@ def AIEReorderCtrlPacketsByTile
     packets. With `by-tile=false` the enable phase still moves behind the
     configuration, but nothing is sorted by tile. The pass needs the target's
     register database.
+
+    A push not proved gated starts its MM2S channel's streams, and a core
+    enable not proved gated starts its core's and those of the channels and
+    cores whose `aiex.started_by` lists it or a gated core it starts. Such a
+    stream may stall at a receiver nothing has started yet, holding the switch
+    arbiters on its way until its last word. So a packet that starts streams
+    goes after every packet of the enable phase whose control packets take one
+    of their arbiters, after a barrier: a packet sent earlier on the same shim
+    channel may still wait on its way where the two routes part. Serially
+    another column's packets are awaited first anyway. The pass fails on a
+    cycle of such packets.
   }];
 
   let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
@@ -745,6 +756,10 @@ def AIEReorderCtrlPacketsByTile
                         /*default=*/"false",
                         "Send the enables of proved cores with their column's "
                         "configuration">,
+                 Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Order for aie-ctrl-packet-to-dma's parallel-shims "
+                        "delivery">,
   ];
 
   let constructor = "xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass()";
@@ -797,11 +812,12 @@ def AIECheckCtrlPacketDelivery
   let description = [{
     Checks the control packets of every runtime sequence's
     `aiex.control_packet_group`s against the order `aie-ctrl-packet-to-dma`
-    delivers them in, serially or with `parallel-shims`. Other ops, control
-    packets outside groups, and a change of group kind or device separate runs
-    and wait for them.
+    delivers them in, serially or with `parallel-shims`. Other ops and control
+    packets outside groups separate runs and wait for them. A change of group
+    kind or device waits for the packets before it, as a barrier does, while a
+    stream they start stays in the run.
 
-    It checks two rules. First, the packets that reach a tile (its own and
+    It checks three rules. First, the packets that reach a tile (its own and
     those on a control multicast, listed in `aie.ctrl_pkt_multicast` by its
     device's overlay, that reaches it) land in program order, except that two
     packets commute, and may swap, when they share no address and neither starts
@@ -810,7 +826,16 @@ def AIECheckCtrlPacketDelivery
     where they pass the same switch input ports. A packet on a multicast must be
     addressed to its lowest tile.
 
-    Second, with `parallel-shims`, the multicasts of two shim channels sent in
+    Second, a packet that starts streams (see
+    `aie-reorder-ctrl-packets-by-tile`) may start one that stalls at a receiver
+    nothing has started yet, holding the switch arbiters on its way until its
+    last word, so no control packet of the run that is not awaited before it
+    may take one of those arbiters: a tile's own packets on its controller id's
+    route, a multicast's on its tree. The ops after a run, such as the
+    application's transfers, are taken to drain the streams it starts, so
+    later runs are not checked against them.
+
+    Third, with `parallel-shims`, the multicasts of two shim channels sent in
     one phase take no common arbiter, since each holds its arbiters until its
     last word.
 
@@ -840,22 +865,32 @@ def AIEDedupCtrlPacketMulticast
     bits) and come first on the lowest tile, the base, stay only there, with the
     multicast's id as their `multicast_id`; the other tiles' copies go. A
     multicast with a tile that has no packets in the stretch is left alone. Run
-    it after `aie-reorder-ctrl-packets-by-tile`.
+    it after `aie-reorder-ctrl-packets-by-tile`: a copy that starts streams is
+    kept, with the packets after it, if a packet before it in the stretch may
+    wait behind one of those streams, since on the multicast it would go out
+    with that packet unawaited.
 
     A later packet to one of the tiles lands after the base only if it leaves
     by the same control channel and passes the same switch input ports as the
-    multicast does to that tile. Where some later packet to a tile does not and
+    multicast does to that tile, or, serially, leaves by another column's
+    channel, awaited after the base's. Where some later packet to a tile does
+    not and
     does not commute with the base (as `aie-check-ctrl-packet-delivery` defines
     it), the base moves to the start of its stretch, followed by an
     `aiex.control_packet_barrier`, so `aie-ctrl-packet-to-dma` sends it first.
-    With `drain-merge=false` it moves whenever some tile's packets do not share
-    the multicast's trail.
+    With `drain-merge=false` it moves whenever some tile's later packets do not
+    land after it that way. With `parallel-shims` it moves whenever the
+    multicast has a tile in another column, whose packets land alongside it
+    from their own shim channel.
   }];
 
   let options = [Option<"drainMerge", "drain-merge", "bool",
                         /*default=*/"true",
                         "Leave the base in place when the later packets that "
                         "may overtake it commute with it">,
+                 Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Dedup for parallel-shims delivery">,
   ];
 
   let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";

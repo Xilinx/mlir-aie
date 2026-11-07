@@ -159,14 +159,16 @@ packets written outside groups are sent as written.
   configuration starts.
 - `--ctrlpkt-parallel-shims` (default: on) starts every column's transfers
   before awaiting any. `aie-annotate-ctrl-packet-start-gating` proves which MM2S
-  channels cannot move data before their configuration lands.
+  channels cannot move data before their configuration lands;
+  `aie-check-ctrl-packet-delivery` fails the build when a stream started early
+  could hold a later control packet of the configuration.
 - The same proof finds cores that do nothing visible before their configuration
   lands; `aie-reorder-ctrl-packets-by-tile{gated-enable}` sends their enables
   with their column's packets.
 - `--ctrlpkt-multicast-span=<w>` (default: 1; 0 off): the overlay gets a control
   multicast for the core tiles of each group of w columns, and
   `aie-dedup-ctrl-packet-multicast` sends the packets those tiles share once.
-  `aie-check-ctrl-packet-delivery` checks that each tile's writes land in
+  `aie-check-ctrl-packet-delivery` also checks that each tile's writes land in
   order.
 
 With `--warn-unreleased-transfers` (default: on), a configuration's control

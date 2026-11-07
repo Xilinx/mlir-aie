@@ -32,18 +32,26 @@ using namespace xilinx::AIEX;
 namespace {
 
 // Which packets of a run surely land before which, as aie-ctrl-packet-to-dma
-// delivers them, by their index in the run. A barrier ends a phase, which
-// aie-ctrl-packet-to-dma awaits before the next.
+// delivers them (see groupRuns), by their index in the run.
 struct RunOrder {
   GroupRun &run;
   bool parallelShims;
   OverlayMulticasts &multicasts;
+  SmallVector<unsigned> steps;
+
+  RunOrder(GroupRun &run, bool parallelShims, OverlayMulticasts &multicasts)
+      : run(run), parallelShims(parallelShims), multicasts(multicasts),
+        steps(awaitSteps(run, parallelShims)) {}
 
   unsigned phaseOf(size_t i) const { return run[i].phase; }
 
   const OverlayMulticasts::Info *infoOf(size_t i) const {
     return multicasts.of(run[i].group.getDeviceRefAttr());
   }
+
+  // Whether `a` has landed before `b` is sent: an earlier one on the same
+  // channel may still wait on its way where their routes part.
+  bool awaitedBefore(size_t a, size_t b) const { return steps[a] < steps[b]; }
 
   // Whether `a` surely lands on `tile` before `b`. Serially each column's
   // transfers are awaited before another column's; a multicast and a tile's
@@ -53,22 +61,26 @@ struct RunOrder {
       return phaseOf(a) < phaseOf(b);
     if (a > b)
       return false;
-    if (!sameColumn(a, b))
-      return !parallelShims;
     bool ma = run[a].packet.getMulticastId().has_value(),
          mb = run[b].packet.getMulticastId().has_value();
     if (ma == mb)
-      return true;
+      return sameColumn(a, b) || !parallelShims;
     size_t multicast = ma ? a : b;
     const OverlayMulticasts::Info *info = infoOf(multicast);
     const OverlayMulticasts::Multicast *m =
         info ? info->multicastOf(run[multicast].packet) : nullptr;
-    return m && info->sharesTrail(*m, tile);
+    return m && info->keepsOrder(*m, tile, parallelShims);
   }
 
   // The tiles packet `i` reaches.
   SmallVector<AIE::TileID> tilesOf(size_t i) const {
     return tilesReached(run[i].packet, infoOf(i));
+  }
+
+  // The first arbiter of `held` packet `i` takes, if any.
+  std::optional<Arbiter> arbiterTaken(size_t i, ConfiguredDevices &devices,
+                                      const std::set<Arbiter> &held) const {
+    return AIEX::arbiterTaken(run[i].packet, infoOf(i), devices, held);
   }
 
   bool sameColumn(size_t a, size_t b) const {
@@ -84,14 +96,15 @@ struct AIECheckCtrlPacketDeliveryPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
+    ConfiguredDevices devices(module);
     OverlayMulticasts multicasts(module);
     bool failedAny = false;
     for (auto device : module.getOps<AIE::DeviceOp>()) {
       PacketClassifier classifier(device.getTargetModel());
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
-        for (GroupRun &run : groupRuns(seq, {/*byKindAndDevice=*/true,
+        for (GroupRun &run : groupRuns(seq, {KindOrDeviceChange::NextPhase,
                                              /*atBarriers=*/false}))
-          if (failed(checkRun(run, classifier, multicasts)))
+          if (failed(checkRun(run, classifier, devices, multicasts)))
             failedAny = true;
     }
     if (failedAny)
@@ -100,6 +113,7 @@ struct AIECheckCtrlPacketDeliveryPass
 
   // Checks one run against the pass description's rules.
   LogicalResult checkRun(GroupRun &run, PacketClassifier &classifier,
+                         ConfiguredDevices &devices,
                          OverlayMulticasts &multicasts) {
     SmallVector<Classified> writes;
     for (GroupedPacket &p : run) {
@@ -109,7 +123,8 @@ struct AIECheckCtrlPacketDeliveryPass
       writes.push_back(std::move(*c));
     }
     RunOrder order{run, parallelShims, multicasts};
-    if (failed(checkOrder(order, writes)))
+    if (failed(checkOrder(order, writes)) ||
+        failed(checkHolds(order, writes, devices)))
       return failure();
     return parallelShims ? checkMulticastArbiters(order) : success();
   }
@@ -155,7 +170,40 @@ struct AIECheckCtrlPacketDeliveryPass
     return success();
   }
 
-  // The second rule: multicasts from two shim channels sent in one phase take
+  // The second rule: no control packet may wait behind a stream that may
+  // stall.
+  static LogicalResult checkHolds(const RunOrder &order,
+                                  ArrayRef<Classified> writes,
+                                  ConfiguredDevices &devices) {
+    GroupRun &run = order.run;
+    for (auto [i, p] : llvm::enumerate(run)) {
+      FlatSymbolRefAttr device = p.group.getDeviceRefAttr();
+      for (AIE::TileID tile : order.tilesOf(i)) {
+        std::set<Arbiter> held =
+            devices.startedArbiters(device, tile, writes[i]);
+        if (held.empty())
+          continue;
+        for (size_t j = 0; j < run.size(); ++j) {
+          if (j == i || order.awaitedBefore(j, i))
+            continue;
+          if (std::optional<Arbiter> hold =
+                  order.arbiterTaken(j, devices, held)) {
+            InFlightDiagnostic d =
+                run[j].packet.emitOpError("may wait forever: its control "
+                                          "packets take arbiter ")
+                << hold->second << " of switchbox " << tileName(hold->first)
+                << ", which a stream that " << describeStart(tile, writes[i])
+                << " starts may hold, stalled";
+            d.attachNote(p.packet.getLoc()) << "the stream is started here";
+            return failure();
+          }
+        }
+      }
+    }
+    return success();
+  }
+
+  // The third rule: multicasts from two shim channels sent in one phase take
   // no common arbiter.
   static LogicalResult checkMulticastArbiters(const RunOrder &order) {
     GroupRun &run = order.run;

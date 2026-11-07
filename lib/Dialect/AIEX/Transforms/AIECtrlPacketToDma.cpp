@@ -52,8 +52,8 @@ static ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col) {
 // so a batch never mixes packets the user wrote with generated ones.
 static llvm::DenseSet<Operation *> runStarts(Block &block) {
   llvm::DenseSet<Operation *> starts;
-  for (const GroupRun &run :
-       groupRuns(block, {/*byKindAndDevice=*/true, /*atBarriers=*/false}))
+  for (const GroupRun &run : groupRuns(block, {KindOrDeviceChange::EndsRun,
+                                               /*atBarriers=*/false}))
     starts.insert(run.front().packet);
   Operation *last = nullptr;
   for (Operation &op : block) {
@@ -389,7 +389,8 @@ struct AIECtrlPacketToDmaPass
 
       int64_t ddrOffset = 0;
 
-      // First pass: collect and batch control packet operations
+      // First pass: collect and batch control packet operations into the runs
+      // and phases CtrlPacketRuns.h describes
       bool new_batch = true, inRun = false;
       int run = 0, phase = 0;
       for (Operation &o : entry) {
