@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from aie.iron.kernels import flm_gemma4
 from aie.utils import aie2p_emulation as emu
-from ml_dtypes import bfloat16
+from ml_dtypes import bfloat16, finfo
 
 _EDGES = np.array(
     [0.0, -0.0, np.inf, -np.inf, 1.0, -1.0, 1e-40, -1e-40, 3.4e38, -3.4e38],
@@ -39,6 +39,19 @@ def test_bf16_floor_rounds_toward_minus_infinity():
     assert np.all(y[finite] <= x[finite])
     above = np.nextafter(y.astype(bfloat16), bfloat16(np.inf)).astype(np.float32)
     assert np.all(above[finite] > x[finite])
+
+
+@pytest.mark.parametrize(
+    "bits",
+    [0x7F800001, 0x7FFFFFFF, 0xFF800001, 0xFFFFFFFF],
+)
+def test_bf16_rounding_preserves_nans(bits):
+    x = np.array([bits], np.uint32).view(np.float32)
+    # Converting a signaling NaN to fp64 may raise invalid while quieting it.
+    with np.errstate(invalid="ignore"):
+        for y in (emu.bf16_floor(x), emu.round_bf16(x), emu.round_bf16(x, "conv_even")):
+            assert np.isnan(y).all()
+            np.testing.assert_array_equal(np.signbit(y), np.signbit(x))
 
 
 def test_round_bf16_rounds_through_fp32():
@@ -105,6 +118,14 @@ def test_gelu_bf16_follows_tanh_gelu_within_the_kernel_bound():
     np.testing.assert_array_equal(y, y.astype(bfloat16).astype(np.float32))
     err = np.abs(y - flm_gemma4._gelu_tanh(x))
     assert np.all(err <= flm_gemma4._gelu_lut_bound(x))
+
+
+def test_gelu_bf16_large_inputs_use_the_end_segments():
+    large = np.array([2.0**56, 2.0**100, float(finfo(bfloat16).max)], np.float32)
+    x = np.concatenate([-large, large])
+    with np.errstate(all="raise"):
+        np.testing.assert_array_equal(emu.gelu_bf16(x), np.maximum(x, 0))
+        np.testing.assert_array_equal(emu.gelu_bf16([np.nan]), [np.nan])
 
 
 def test_decode_constants_match_kernel_headers():

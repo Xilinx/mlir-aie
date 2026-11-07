@@ -29,11 +29,15 @@ def _from_bits(bits):
 
 
 def bf16_floor_bits(x):
-    """float32 ``x`` rounded to bf16 toward minus infinity, as uint16 bit patterns."""
+    """float32 ``x`` rounded to bf16 toward minus infinity, preserving NaNs, as uint16 bits."""
     u = np.ascontiguousarray(x, dtype=np.float32).view(np.uint32)
     inexact = (u & 0xFFFF) != 0
     negative = (u >> 31) != 0
-    return ((u >> 16) + (inexact & negative)).astype(np.uint16)
+    bits = (u >> 16) + (inexact & negative)
+    # Retain the NaN sign and high payload bits, and set the bf16 quiet bit.
+    return np.where((u & 0x7FFFFFFF) > 0x7F800000, (u >> 16) | 0x40, bits).astype(
+        np.uint16
+    )
 
 
 def bf16_floor(x):
@@ -172,7 +176,9 @@ def gelu_bf16(x):
     [-4, 4) take the end segments.
     """
     x = np.asarray(x, np.float64)
-    k = np.clip(np.floor(x * 128).astype(np.int64), -512, 511) >> 4
+    k = np.clip(np.floor(x * 128), -512, 511)
+    # Any segment works for NaN: the arithmetic below propagates it.
+    k = np.nan_to_num(k, nan=0).astype(np.int64) >> 4
     pair = gelu_lut_segments()[k + 32]
     slope = (pair[..., 0].view(np.uint32) & 0xFFFF0000).view(np.float32)
     return round_bf16(f32(slope.astype(np.float64) * x + pair[..., 1]))

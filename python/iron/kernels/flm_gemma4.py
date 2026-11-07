@@ -2467,6 +2467,7 @@ def flm_gemma4_decode_proj_layer_embedding(
     Input layout: per-layer embedding, norm weights plus ``model_dim + 32``
     values forwarded to the up projection, then the ``model_dim`` input row.
     The MVM entry point reads that last row using its explicit offset.
+    The first ``pli_d`` input elements are overwritten with the residual sum.
     """
     bf16 = np.dtype[bfloat16]
     d, pli = geometry.model_dim, geometry.pli_d
@@ -2476,7 +2477,7 @@ def flm_gemma4_decode_proj_layer_embedding(
         "proj_layer_embedding",
         "proj_layer_embedding_finish",
         [np.ndarray[(2 * (pli + d) + 32,), bf16], pli_ty, y_ty],
-        (In, InOut, Out),
+        (InOut, InOut, Out),
         geometry,
     )
 
