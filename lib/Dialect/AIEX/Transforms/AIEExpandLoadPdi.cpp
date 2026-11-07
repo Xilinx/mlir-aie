@@ -304,6 +304,13 @@ verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
   if (!teardown)
     return success();
   for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
+    // A configuration is torn down before its block's next load_pdi, which a
+    // load in a loop or branch may skip or repeat.
+    Operation *parent = loadPdiOp->getParentOp();
+    if (!isa<AIE::RuntimeSequenceOp>(parent))
+      return loadPdiOp.emitOpError("with teardown, must be in the runtime "
+                                   "sequence's body, not inside ")
+             << parent->getName();
     if (expandMode(loadPdiOp) == AIEX::ExpandMode::none)
       continue;
     // write_teardown's verifier checks this too, but inline-config leaves no
