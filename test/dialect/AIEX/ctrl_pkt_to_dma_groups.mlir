@@ -7,12 +7,14 @@
 
 // RUN: aie-opt %s -aie-ctrl-packet-to-dma | FileCheck %s
 
-// Adjacent groups share a batch; a control packet outside groups starts its
-// own.
+// Adjacent groups of one kind and device share a batch; a change of kind or
+// device, and a control packet outside groups, start their own.
 
 // CHECK-LABEL: aie.device(npu2) {
 // CHECK-NOT:   aiex.control_packet_group
-// CHECK:       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 12][0, 0, 0, 1])
+// CHECK:       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 9][0, 0, 0, 1])
+// CHECK:       aiex.npu.sync
+// CHECK:       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 9][1, 1, 1, 3][0, 0, 0, 1])
 // CHECK:       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 12][1, 1, 1, 6][0, 0, 0, 1])
 // CHECK-NOT:   aiex.npu.dma_memcpy_nd
 

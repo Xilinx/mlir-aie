@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "CtrlPacketClassifier.h"
+#include "CtrlPacketDevices.h"
 #include "CtrlPacketRuns.h"
 
 #include <string>
@@ -104,31 +105,68 @@ bool AIEX::sameKindAndDevice(ControlPacketGroupOp a, ControlPacketGroupOp b) {
          a.getDeviceRefAttr() == b.getDeviceRefAttr();
 }
 
-SmallVector<GroupRun> AIEX::groupRuns(Block &block) {
+SmallVector<GroupRun> AIEX::groupRuns(Block &block, RunSplit split) {
   SmallVector<GroupRun> runs;
   GroupRun run;
+  ControlPacketGroupOp last;
+  unsigned phase = 0;
   auto end = [&]() {
     if (!run.empty())
       runs.push_back(std::move(run));
     run.clear();
+    last = nullptr;
+    phase = 0;
   };
   for (Operation &op : block) {
+    if (isa<ControlPacketBarrierOp>(op) && !split.atBarriers) {
+      if (last)
+        ++phase;
+      continue;
+    }
     auto group = dyn_cast<ControlPacketGroupOp>(op);
-    if (!group || (!run.empty() && !sameKindAndDevice(run.back().group, group)))
+    if (!group ||
+        (last && split.byKindAndDevice && !sameKindAndDevice(last, group)))
       end();
-    if (group)
-      for (auto packet : group.getBody().front().getOps<NpuControlPacketOp>())
-        run.push_back({packet, group});
+    if (!group)
+      continue;
+    last = group;
+    for (auto packet : group.getBody().front().getOps<NpuControlPacketOp>())
+      run.push_back({packet, group, phase});
   }
   end();
   return runs;
 }
 
-SmallVector<GroupRun> AIEX::groupRuns(AIE::RuntimeSequenceOp seq) {
+SmallVector<GroupRun> AIEX::groupRuns(AIE::RuntimeSequenceOp seq,
+                                      RunSplit split) {
   SmallVector<GroupRun> runs;
   seq.walk([&](Block *block) {
     if (!isa<ControlPacketGroupOp>(block->getParentOp()))
-      llvm::append_range(runs, groupRuns(*block));
+      llvm::append_range(runs, groupRuns(*block, split));
   });
   return runs;
+}
+
+ConfiguredDevices::Info &ConfiguredDevices::infoOf(FlatSymbolRefAttr device) {
+  auto [it, fresh] = infos.try_emplace(device.getAttr());
+  if (fresh)
+    it->second = std::make_unique<Info>();
+  Info &info = *it->second;
+  auto d = module.lookupSymbol<AIE::DeviceOp>(device);
+  if (!fresh || !d)
+    return info;
+  AIEXDialect::StartedByAttrHelper startedBy(module.getContext());
+  d.walk([&](Operation *op) {
+    if (!startedBy.isAttrPresent(op))
+      return;
+    if (auto core = dyn_cast<AIE::CoreOp>(op))
+      info.gated.insert({core.getTileOp().getTileID(), -1});
+    else if (auto start = dyn_cast<AIE::DMAStartOp>(op))
+      info.gated.insert({cast<AIE::TileElement>(start->getParentOp())
+                             .getTile()
+                             .getDefiningOp<AIE::TileOp>()
+                             .getTileID(),
+                         start.getChannelIndex()});
+  });
+  return info;
 }

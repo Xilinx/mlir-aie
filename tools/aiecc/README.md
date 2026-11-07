@@ -154,7 +154,12 @@ packets written outside groups are sent as written.
   go in one transfer, and moves MM2S queue pushes and core enables behind the
   rest of the configuration.
 - `aie-ctrl-packet-to-dma{chain-bds}` sends each run of transfers on one shim
-  channel as one BD chain with one await.
+  channel as one BD chain with one await, and awaits at each change of group
+  kind or device, so a configuration's teardown lands before the next
+  configuration starts.
+- `--ctrlpkt-parallel-shims` (default: on) starts every column's transfers
+  before awaiting any. `aie-annotate-ctrl-packet-start-gating` proves which MM2S
+  channels cannot move data before their configuration lands.
 
 ### Parameterized C++ transaction builders
 

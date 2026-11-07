@@ -109,19 +109,6 @@ std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
   return std::nullopt;
 }
 
-// Every DMA channel program: aie.dma_start and aie.dma inside the tile DMA
-// ops, and runtime-configured tasks.
-SmallVector<DmaChannelProgram> collectDmaPrograms(DeviceOp device) {
-  SmallVector<DmaChannelProgram> programs;
-  device.walk([&](Operation *op) {
-    if (isa<DMAStartOp, DMAOp, AIEX::DMAConfigureTaskOp,
-            AIEX::DMAConfigureTaskForOp>(op))
-      if (std::optional<DmaChannelProgram> p = makeProgram(op, device))
-        programs.push_back(std::move(*p));
-  });
-  return programs;
-}
-
 template <typename OpT>
 void forEachInProgram(const DmaChannelProgram &p,
                       llvm::function_ref<void(OpT)> fn) {
@@ -411,6 +398,17 @@ private:
 };
 
 } // namespace
+
+SmallVector<DmaChannelProgram> AIE::collectDmaPrograms(DeviceOp device) {
+  SmallVector<DmaChannelProgram> programs;
+  device.walk([&](Operation *op) {
+    if (isa<DMAStartOp, DMAOp, AIEX::DMAConfigureTaskOp,
+            AIEX::DMAConfigureTaskForOp>(op))
+      if (std::optional<DmaChannelProgram> p = makeProgram(op, device))
+        programs.push_back(std::move(*p));
+  });
+  return programs;
+}
 
 std::vector<RoutedStream> AIE::traceRoutedStreams(DeviceOp device) {
   return StreamTracer(device).trace();

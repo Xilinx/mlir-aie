@@ -87,6 +87,8 @@ createAIELegalizeControlPacketPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEAnnotateCtrlPacketStartGatingPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass(

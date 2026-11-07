@@ -21,8 +21,14 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include <optional>
+#include <string>
 
 namespace xilinx::AIEX {
+
+// "(col, row)", for a diagnostic.
+inline std::string tileName(AIE::TileID tile) {
+  return "(" + std::to_string(tile.col) + ", " + std::to_string(tile.row) + ")";
+}
 
 enum class WriteKind { Other, ChannelStart, CoreEnable };
 

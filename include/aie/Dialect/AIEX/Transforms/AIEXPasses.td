@@ -535,11 +535,25 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     task holds its descriptors from its configure, after the last
     `aiex.npu.load_pdi`, to its await or free; a remark notes chains it
     shortens.
+
+    A change of group kind or device starts a new run, awaited after the one
+    before, so a configuration's teardown has landed before the next
+    configuration starts. With `parallel-shims`, a run's channels send at once,
+    phase by phase, each `aiex.control_packet_barrier` ending one phase. A
+    phase starts every channel's transfers before awaiting any. Each channel
+    keeps at most one chain, or as many single transfers as its task queue
+    holds, outstanding. Serially a barrier only ends a transfer.
+
+    Both options apply to the packets of `aiex.control_packet_group`s; control
+    packets outside groups keep a transfer and a sync each.
   }];
 
   let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
                         "Chain each run of transfers on one shim channel into "
                         "one task with one await">,
+                 Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Send a run's shim channels at once, phase by phase">,
   ];
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
@@ -709,9 +723,13 @@ def AIEReorderCtrlPacketsByTile
     bit). A push starts its channel, which streams at once if its lock allows,
     so its route has to be configured first; cores start last. A channel's
     control register (its reset and enable) stays in place, and the push,
-    written before the enable, still starts the channel. With `by-tile=false`
-    the enable phase still moves behind the configuration, but nothing is
-    sorted by tile. The pass needs the target's register database.
+    written before the enable, still starts the channel.
+
+    A push stays in the configuration when its channel's `aie.dma_start`, in the
+    device its group names, carries `aiex.started_by` (see
+    `aie-annotate-ctrl-packet-start-gating`). With `by-tile=false` the enable phase
+    still moves behind the configuration, but nothing is sorted by tile. The
+    pass needs the target's register database.
   }];
 
   let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
@@ -719,6 +737,44 @@ def AIEReorderCtrlPacketsByTile
   ];
 
   let constructor = "xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEAnnotateCtrlPacketStartGating
+    : Pass<"aie-annotate-ctrl-packet-start-gating", "mlir::ModuleOp"> {
+  let summary = "Prove which DMA channels cannot start moving data during "
+                "their configuration";
+  let description = [{
+    `aie-ctrl-packet-to-dma` with `parallel-shims` sends every column's
+    configuration at once, so an MM2S channel that streams as soon as its queue
+    push lands could send data before another column's switches are configured.
+    This pass marks with `aiex.started_by` the `aie.dma_start` of each channel
+    that cannot, and each core that cannot act before the rest of its
+    configuration lands, and remarks on the others with the reason. The
+    attribute lists the tiles of the cores whose enables may let it act: those
+    that release a lock its proof waits on, or stream into an S2MM channel whose
+    descriptors release one. An empty list leaves it to the host's transfers.
+
+    An MM2S channel is proved gated when its first buffer descriptor waits (a
+    blocking acquire, on a lock of its own tile, at a value the lock's initial
+    value does not reach) and every buffer descriptor that releases that lock is
+    an MM2S descriptor of a proved channel, or a stream-to-memory descriptor (of
+    known nonzero length) fed only by proved channels, cores, or shim channels
+    only the runtime sequence starts. Neither cores nor the host run during a
+    configuration; cores are enabled after it and the host's writes follow it.
+
+    A core is proved gated when, until it passes an acquire that cannot succeed
+    early (blocking, on an own-tile lock, at a value the initial value does not
+    reach, released only as above), it releases no lock, runs no loop that may
+    not run, touches only its own tile's buffers that only idle descriptors
+    otherwise use, and calls external functions only when it sends on no stream
+    or cascade. A core given as `elf_file` is not proved.
+  }];
+
+  let constructor =
+      "xilinx::AIEX::createAIEAnnotateCtrlPacketStartGatingPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];

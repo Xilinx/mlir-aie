@@ -7,6 +7,7 @@
 
 // RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file | FileCheck %s
 // RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file -verify-diagnostics -o /dev/null
+// RUN: aie-opt %s "-aie-ctrl-packet-to-dma=chain-bds=true parallel-shims=true" --split-input-file -verify-diagnostics -o /dev/null
 // RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids -aie-dma-tasks-to-npu | FileCheck %s --check-prefix=NPU
 
 // One run of generated batches on one channel is one task, one BD per batch (a

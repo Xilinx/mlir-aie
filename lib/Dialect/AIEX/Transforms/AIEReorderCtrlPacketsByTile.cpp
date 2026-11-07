@@ -10,6 +10,7 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "CtrlPacketClassifier.h"
+#include "CtrlPacketDevices.h"
 #include "CtrlPacketRuns.h"
 
 #include "mlir/Pass/Pass.h"
@@ -17,6 +18,7 @@
 #include "llvm/ADT/SetVector.h"
 
 #include <algorithm>
+#include <set>
 #include <tuple>
 
 namespace xilinx::AIEX {
@@ -37,17 +39,19 @@ struct AIEReorderCtrlPacketsByTilePass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
+    ConfiguredDevices devices(module);
     for (auto device : module.getOps<AIE::DeviceOp>()) {
       PacketClassifier classifier(device.getTargetModel());
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
         for (GroupRun &run : groupRuns(seq))
-          if (failed(reorder(run, classifier)))
+          if (failed(reorder(run, classifier, devices)))
             return signalPassFailure();
     }
   }
 
   // Puts the run's packets in the order the pass description gives.
-  LogicalResult reorder(GroupRun &run, PacketClassifier &classifier) {
+  LogicalResult reorder(GroupRun &run, PacketClassifier &classifier,
+                        ConfiguredDevices &devices) {
     using Key = std::tuple<WriteKind, uint32_t, uint32_t>;
     SmallVector<std::pair<Key, GroupedPacket>> keyed;
     for (GroupedPacket entry : run) {
@@ -55,9 +59,15 @@ struct AIEReorderCtrlPacketsByTilePass
       FailureOr<Classified> c = classifier.classify(packet);
       if (failed(c))
         return failure();
-      Key key{c->kind, 0, 0};
+      AIE::TileID tile = packet.getTileFromAddr();
+      WriteKind part = c->kind;
+      if (part == WriteKind::ChannelStart &&
+          devices.startGated(entry.group.getDeviceRefAttr(),
+                             {tile, c->channel}))
+        part = WriteKind::Other;
+      Key key{part, 0, 0};
       if (byTile)
-        key = {c->kind, packet.getColumnFromAddr(), packet.getRowFromAddr()};
+        key = {part, tile.col, tile.row};
       keyed.push_back({key, entry});
     }
     std::stable_sort(
