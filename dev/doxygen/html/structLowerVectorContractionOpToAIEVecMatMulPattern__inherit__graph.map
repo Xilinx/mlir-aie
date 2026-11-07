@@ -1,9 +1,0 @@
-<map id="LowerVectorContractionOpToAIEVecMatMulPattern&lt; MatMulOpTy &gt;" name="LowerVectorContractionOpToAIEVecMatMulPattern&lt; MatMulOpTy &gt;">
-<area shape="rect" id="Node000001" title=" " alt="" coords="248,48,442,110"/>
-<area shape="rect" id="Node000003" href="$structLowerVectorContractionOpToAIEVecMatMulPattern.html" title=" " alt="" coords="656,5,850,67"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="457,64,658,46,653,47,458,70"/>
-<area shape="rect" id="Node000004" href="$structLowerVectorContractionOpToAIEVecMatMulPattern.html" title=" " alt="" coords="646,91,860,152"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="446,111,467,116,558,125,649,128,643,128,558,130,466,121,446,117"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,56,199,101"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="214,76,250,78,245,79,215,81"/>
-</map>

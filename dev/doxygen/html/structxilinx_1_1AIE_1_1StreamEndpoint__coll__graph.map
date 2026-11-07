@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::StreamEndpoint" name="xilinx::AIE::StreamEndpoint">
-<area shape="rect" id="Node000001" title="A tile port at the edge of the stream fabric." alt="" coords="301,70,499,97"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,219,84"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="234,58,303,70,298,70,234,64"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="93,108,131,136"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="146,115,300,94,301,99,147,120"/>
-</map>
