@@ -722,10 +722,17 @@ class XRTHostRuntime(HostRuntime):
         buffer the trace lowering appended) is bound positionally with
         ``set_arg``.
         """
-        r, ns = kernel_handle.kernel_run.dispatch(buffers, parameters)
-
-        if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise HostRuntimeError(f"Kernel returned {str(r)}")
+        # A dispatch that doesn't complete may leave a configuration no teardown
+        # undid, so the next one runs the init entry again.
+        try:
+            r, ns = kernel_handle.kernel_run.dispatch(buffers, parameters)
+        except BaseException:
+            self._dispatched_context = None
+            raise
+        if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            self._dispatched_context = None
+            if fail_on_error:
+                raise HostRuntimeError(f"Kernel returned {str(r)}")
 
         return XRTKernelResult(r, ns)
 

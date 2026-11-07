@@ -13,6 +13,7 @@ from aie.utils.hostruntime.xrtruntime.hostruntime import (
     XRTHostRuntime,
     XRTKernelHandle,
 )
+import pyxrt
 
 
 @pytest.mark.parametrize("runtime_type", [XRTHostRuntime, CachedXRTRuntime])
@@ -74,3 +75,47 @@ def test_failed_init_requires_previous_context_to_reinitialize(
     runtime.run(handles[0], [])
     assert initialized == [contexts[0], contexts[1], contexts[0]]
     assert dispatched == [contexts[0], contexts[0], contexts[0]]
+
+
+@pytest.mark.parametrize("runtime_type", [XRTHostRuntime, CachedXRTRuntime])
+@pytest.mark.parametrize("failure", ["raises", "times_out"])
+def test_failed_dispatch_reinitializes(monkeypatch, runtime_type, failure):
+    runtime = runtime_type.__new__(runtime_type)
+    runtime._dispatched_context = None
+    runtime._tensor_class = object
+    monkeypatch.setattr(runtime, "check_device_consistency", lambda: None)
+
+    completed = pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED
+    states = iter([completed, pyxrt.ert_cmd_state.ERT_CMD_STATE_TIMEOUT, completed])
+
+    class Run:
+        def dispatch(self, buffers, parameters):
+            state = next(states)
+            if failure == "raises" and state != completed:
+                raise RuntimeError("dispatch failed")
+            return state, 0
+
+    context = object()
+    handle = XRTKernelHandle(
+        kernel=None,
+        xclbin=None,
+        context=context,
+        insts=None,
+        name="main:sequence",
+        is_full_elf=True,
+        init_name="main:reconfig_init",
+        kernel_run=Run(),
+    )
+    initialized = []
+    monkeypatch.setattr(
+        XRTHostRuntime,
+        "_run_init_entry",
+        lambda self, context, init_name, kernel_name: initialized.append(context),
+    )
+
+    runtime.run(handle, [])
+    with pytest.raises((RuntimeError, HostRuntimeError)):
+        runtime.run(handle, [])
+    assert runtime._dispatched_context is None
+    runtime.run(handle, [])
+    assert initialized == [context, context]
