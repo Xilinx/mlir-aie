@@ -24,14 +24,14 @@
 // CHECK-NEXT:  ^[[B2]]:
 // CHECK-NEXT:    aie.dma_bd(%[[ARG]] : memref<?xi32> offset = 9 len = 3)
 // CHECK-NEXT:    aie.end
-// CHECK-NEXT:  } {issue_token = true}
+// CHECK-NEXT:  } {aiex.ctrl_pkt_transfer, issue_token = true}
 // CHECK-NEXT:  aiex.dma_start_task(%[[T]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[T]])
 // CHECK-NEXT:  aiex.npu.write32
 // CHECK-NEXT:  %[[U:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
 // CHECK-NEXT:    aie.dma_bd(%[[ARG]] : memref<?xi32> offset = 12 len = 3)
 // CHECK-NEXT:    aie.end
-// CHECK-NEXT:  } {issue_token = true}
+// CHECK-NEXT:  } {aiex.ctrl_pkt_transfer, issue_token = true}
 // CHECK-NEXT:  aiex.dma_start_task(%[[U]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[U]])
 // CHECK-NOT:   aiex.npu.dma_memcpy_nd

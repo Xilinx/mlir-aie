@@ -219,6 +219,8 @@ struct AIECtrlPacketToDmaPass
                            chain.front()->shimDmaAllocName),
         /*issue_token=*/true, /*repeat_count=*/0,
         /*repeat_count_val=*/Value());
+    AIEXDialect::CtrlPktTransferAttrHelper(builder.getContext())
+        .setAttr(task, builder.getUnitAttr());
     OpBuilder::InsertionGuard guard(builder);
     Region &body = task.getBody();
     for (size_t i = 0; i < chain.size(); ++i)
