@@ -1748,6 +1748,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 mlir::OwningOpRef<mlir::ModuleOp> annotated =
                     physicalN.get().get().clone();
                 mlir::PassManager pm(&context);
+                if (loadPdiToCtrlPkt)
+                  pm.addPass(xilinx::AIEX::
+                                 createAIEAnnotateCtrlPacketStartGatingPass());
                 pm.addPass(
                     xilinx::AIE::createAIEAnnotateCoreLockAcquiresPass());
                 if (mlir::failed(pm.run(*annotated)))

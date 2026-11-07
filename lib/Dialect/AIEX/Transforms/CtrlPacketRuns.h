@@ -20,23 +20,33 @@
 
 namespace xilinx::AIEX {
 
-// A packet of a run, with its group.
+// A packet of a run, with its group and the aiex.control_packet_barrier ops
+// before it in the run.
 struct GroupedPacket {
   NpuControlPacketOp packet;
   ControlPacketGroupOp group;
+  unsigned phase = 0;
 };
 
 using GroupRun = llvm::SmallVector<GroupedPacket>;
 
+// Where a run ends besides at an op other than a group or a barrier.
+struct RunSplit {
+  // Where the group kind or device changes.
+  bool byKindAndDevice = true;
+  // At a barrier, rather than going on in the next phase.
+  bool atBarriers = true;
+};
+
 // Whether two groups hold packets of one kind for one device.
 bool sameKindAndDevice(ControlPacketGroupOp a, ControlPacketGroupOp b);
 
-// The runs of adjacent groups of one kind and device in `block`, each in
-// program order. Any other op ends a run.
-llvm::SmallVector<GroupRun> groupRuns(mlir::Block &block);
+// The runs of adjacent groups in `block`, each in program order.
+llvm::SmallVector<GroupRun> groupRuns(mlir::Block &block, RunSplit split = {});
 
 // The runs of every block of `seq` outside the groups.
-llvm::SmallVector<GroupRun> groupRuns(AIE::RuntimeSequenceOp seq);
+llvm::SmallVector<GroupRun> groupRuns(AIE::RuntimeSequenceOp seq,
+                                      RunSplit split = {});
 
 } // namespace xilinx::AIEX
 
