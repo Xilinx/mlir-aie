@@ -153,6 +153,8 @@ packets written outside groups are sent as written.
 - `aie-reorder-ctrl-packets-by-tile` puts each tile's packets together, so they
   go in one transfer, and moves MM2S queue pushes and core enables behind the
   rest of the configuration.
+- `aie-ctrl-packet-to-dma{chain-bds}` sends each run of transfers on one shim
+  channel as one BD chain with one await.
 
 ### Parameterized C++ transaction builders
 
