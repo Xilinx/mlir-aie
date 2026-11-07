@@ -52,6 +52,9 @@ struct Classified {
   }
 };
 
+// Names what `write`, to `tile`, starts, for a diagnostic.
+std::string describeStart(AIE::TileID tile, const Classified &write);
+
 class PacketClassifier {
 public:
   explicit PacketClassifier(const AIE::AIETargetModel &tm) : tm(tm) {}
