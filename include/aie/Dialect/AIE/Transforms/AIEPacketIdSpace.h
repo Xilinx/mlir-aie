@@ -24,7 +24,9 @@ namespace xilinx::AIE {
 /// `aie.trace.packet` with an id.
 class PacketIdSpace {
 public:
-  explicit PacketIdSpace(DeviceOp device);
+  /// Controller ids are taken when the device carries
+  /// aie.reserve_controller_packet_ids or `reserveControllerIds` is set.
+  explicit PacketIdSpace(DeviceOp device, bool reserveControllerIds = false);
 
   /// The largest id the target's header field holds.
   int maxId() const { return max; }

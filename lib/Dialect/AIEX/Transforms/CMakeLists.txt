@@ -26,8 +26,10 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerDynamicBDPool.cpp
   AIEDMATasksToNPU.cpp
   AIESubstituteShimDMAAllocations.cpp
+  AIECheckCtrlPacketDelivery.cpp
   AIEAnnotateCtrlPacketStartGating.cpp
   AIECtrlPacketToDma.cpp
+  AIEDedupCtrlPacketMulticast.cpp
   AIELowerSetLock.cpp
   AIELowerDmaChannelReset.cpp
   AIELowerCoreReset.cpp

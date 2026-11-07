@@ -1277,7 +1277,8 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   let summary = "AIE control packet";
   let arguments = (ins UI32Attr:$address, OptionalAttr<I32Attr>:$length,
       I32Attr:$opcode, I32Attr:$stream_id,
-      OptionalAttr<DenseI32ArrayAttr>:$data);
+      OptionalAttr<DenseI32ArrayAttr>:$data,
+      OptionalAttr<I32Attr>:$multicast_id);
   let results = (outs);
   let assemblyFormat = [{ attr-dict }];
   let description = [{
@@ -1288,8 +1289,21 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
     reserved. A write carries its payload in `data`. A read carries no `data`;
     `length` gives the number of words to read, at most 4. A write payload may
     be longer than 4 words: `aie-legalize-control-packet` splits it.
+
+    With `multicast_id`, the packet goes on that control multicast of the
+    overlay (see `aie.ctrl_pkt_multicast`), and every tile of the multicast
+    applies the write at the address's offset in its own tile. The address
+    names the multicast's lowest tile, which picks the shim channel.
   }];
   let hasVerifier = 1;
+  let builders = [OpBuilder<
+      (ins "::mlir::IntegerAttr":$address, "::mlir::IntegerAttr":$length,
+          "::mlir::IntegerAttr":$opcode, "::mlir::IntegerAttr":$stream_id,
+          "::mlir::DenseI32ArrayAttr":$data),
+      [{
+      build($_builder, $_state, address, length, opcode, stream_id, data,
+            /*multicast_id=*/nullptr);
+    }]>];
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
