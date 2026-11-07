@@ -660,6 +660,8 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
   }
 
   const AIETargetModel &tm = deviceOp.getTargetModel();
+  llvm::DenseMap<TileID, AIE::PacketInfoAttr> controllerIds =
+      AIEX::controllerIdsOf(deviceOp);
   for (AIEX::NpuControlPacketOp packetOp :
        AIEX::controlPacketsOf(seq.getBody().front())) {
 
@@ -691,22 +693,6 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
       return (p % 2) == 0;
     };
 
-    // stream header with routing pkt_id from target tile's controller_id
-    int col = packetOp.getColumnFromAddr();
-    int row = packetOp.getRowFromAddr();
-    DeviceOp deviceOp2 = packetOp->getParentOfType<AIE::DeviceOp>();
-    OpBuilder builder2 = OpBuilder::atBlockBegin(deviceOp2.getBody());
-    auto destTile = TileOp::getOrCreate(builder2, deviceOp2, col, row);
-    auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-    uint32_t hdr = 0;
-    if (info)
-      hdr = (info.getPktType() & 0x7) << 12 | (info.assignedId() & 0xff);
-    // A packet aie-dedup-ctrl-packet-multicast sends to a multicast goes on
-    // its id.
-    if (std::optional<uint32_t> id = packetOp.getMulticastId())
-      hdr = (hdr & ~0xffu) | (*id & 0xff);
-    words[0] = hdr | (0x1 & parity(hdr)) << 31;
-
     // `beats` gets two bits, directly above the address, so an oversized
     // payload corrupts the address instead of truncating, and `size - 1`
     // underflows the same way when size is 0. Enforced here (not by a
@@ -726,6 +712,22 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
              << AIEX::NpuControlPacketOp::getMaxDataWords()
              << " on the wire. Run --aie-legalize-control-packet before "
                 "translating.";
+
+    // The header routes the packet by its tile's controller_id, or by its
+    // multicast's id. A tile without a controller_id has no route.
+    uint32_t hdr = 0;
+    if (std::optional<uint32_t> id = packetOp.getMulticastId()) {
+      hdr = *id & 0xff;
+    } else {
+      TileID tile = packetOp.getTileFromAddr();
+      AIE::PacketInfoAttr info = controllerIds.lookup(tile);
+      if (!info)
+        return packetOp.emitOpError("targets tile (")
+               << tile.col << ", " << tile.row
+               << "), which has no controller_id to route it by";
+      hdr = (info.getPktType() & 0x7) << 12 | (info.assignedId() & 0xff);
+    }
+    words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     uint32_t addr = packetOp.getAddress() & 0xFFFFF;
     uint32_t beats = size - 1;
