@@ -1,0 +1,9 @@
+<map id="xilinx::AIEX::BdTemplateFields" name="xilinx::AIEX::BdTemplateFields">
+<area shape="rect" id="Node000001" title=" " alt="" coords="74,329,254,374"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,80,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="36,51,32,101,31,168,34,203,41,239,53,273,71,304,82,316,98,329,93,329,79,320,66,307,48,275,36,240,29,204,25,168,27,100,37,46"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="135,5,192,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="166,48,166,329,161,329,161,50"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="280,5,346,33"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="320,46,329,101,330,169,326,205,318,241,305,276,286,307,272,321,256,332,254,327,269,317,282,304,300,273,313,240,321,204,325,169,323,101,318,51"/>
+</map>
