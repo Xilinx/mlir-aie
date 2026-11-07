@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "24f2e559fecb7e06246fbd85c427ddafa7b051ad",
- "date": "2026-11-06T07:02:49.364563+00:00",
+ "commit": "afbb857876c1955e72c2a1c15954c6340a353b49",
+ "date": "2026-11-07T06:59:52.339172+00:00",
  "swept": true,
  "kernels": [
   {
@@ -801,7 +801,7 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_glu_core",
@@ -837,7 +837,7 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_decode_attn_kv_kvh2",
@@ -855,7 +855,7 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_decode_attn_qk",
@@ -875,7 +875,7 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_decode_attn_qk_kvh2",
@@ -893,12 +893,12 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_attn_qk_core",
    "family": "flm_gemma4",
-   "summary": "One attn_qk_round of [`flm_gemma4_decode_attn_qk`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], without its k lock.",
+   "summary": "One attn_qk_round of [`flm_gemma4_decode_attn_qk`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], with caller-owned state.",
    "sources": [
     "flm_gemma4/decode_attn_qk_core.cc"
    ],
@@ -917,7 +917,7 @@
   {
    "factory": "flm_gemma4_attn_qk_kvh2_core",
    "family": "flm_gemma4",
-   "summary": "One round of [`flm_gemma4_decode_attn_qk_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], without its k lock.",
+   "summary": "One round of [`flm_gemma4_decode_attn_qk_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], with caller-owned state.",
    "sources": [
     "flm_gemma4/decode_attn_qk_kvh2_core.cc"
    ],
@@ -948,12 +948,12 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_attn_kv_core",
    "family": "flm_gemma4",
-   "summary": "One attn_kv_round of [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] without its v lock.",
+   "summary": "One attn_kv_round of [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] with caller-owned state.",
    "sources": [
     "flm_gemma4/decode_attn_kv_core.cc"
    ],
@@ -970,7 +970,7 @@
   {
    "factory": "flm_gemma4_attn_kv_kvh2_core",
    "family": "flm_gemma4",
-   "summary": "attn_kv_s_begin, then one KV head's attn_kv_v_half, without the v lock.",
+   "summary": "attn_kv_s_begin, then one KV head's attn_kv_v_half, with caller-owned state.",
    "sources": [
     "flm_gemma4/decode_attn_kv_kvh2_core.cc"
    ],
@@ -989,7 +989,7 @@
   {
    "factory": "flm_gemma4_swa_attn_kv_core",
    "family": "flm_gemma4",
-   "summary": "One swa_attn_kv_round of [`flm_gemma4_decode_swa_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] without its v lock.",
+   "summary": "One swa_attn_kv_round of [`flm_gemma4_decode_swa_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] with caller-owned state.",
    "sources": [
     "flm_gemma4/decode_swa_attn_kv_core.cc"
    ],
@@ -1025,7 +1025,7 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_rope_core",
@@ -1070,7 +1070,7 @@
   {
    "factory": "flm_gemma4_decode_rms_residual",
    "family": "flm_gemma4",
-   "summary": "Build the decode layer's four RMS norms and two residual adds, from flm_gemma4/decode_rms_residual.cc.",
+   "summary": "Build three RMS/residual phases: rms_begin, rms_middle, rms_finish.",
    "sources": [
     "flm_gemma4/decode_rms_residual.cc"
    ],
@@ -1084,7 +1084,7 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_rms_residual_core",
@@ -1129,7 +1129,7 @@
   {
    "factory": "flm_gemma4_decode_proj_main",
    "family": "flm_gemma4",
-   "summary": "One of the decode layer's 16 q4nx projection cores, from flm_gemma4/decode_proj_main.cc.",
+   "summary": "Build q4nx projection steps: zero, accumulate, store and packet assembly.",
    "sources": [
     "flm_gemma4/decode_proj_main.cc"
    ],
@@ -1143,7 +1143,7 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_decode_per_layer_up",
@@ -1162,7 +1162,43 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
+  },
+  {
+   "factory": "flm_gemma4_decode_per_layer_up_mvm",
+   "family": "flm_gemma4",
+   "summary": "One MVM block of the per-layer-input up projection, inlined into its core.",
+   "sources": [
+    "flm_gemma4/decode_bf16_proj_helper.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_per_layer_up_mvm"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
+  },
+  {
+   "factory": "flm_gemma4_decode_per_layer_up_store",
+   "family": "flm_gemma4",
+   "summary": "Store one output block of the per-layer-input up projection, inlined into its core.",
+   "sources": [
+    "flm_gemma4/decode_bf16_proj_helper.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_per_layer_up_store"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_bf16_proj_core",
@@ -1183,9 +1219,48 @@
    "flaky": []
   },
   {
+   "factory": "flm_gemma4_decode_bf16_proj_zero",
+   "family": "flm_gemma4",
+   "summary": "Zero one 32-element float projection accumulator, inlined into its core.",
+   "sources": [
+    "flm_gemma4/decode_bf16_proj_helper.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_bf16_proj_zero"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
+  },
+  {
+   "factory": "flm_gemma4_decode_emit",
+   "family": "flm_gemma4",
+   "summary": "Copy one 512-bf16 projection input, reordering attention's head groups.",
+   "sources": [
+    "flm_gemma4/decode_emit.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_emit",
+    "flm_gemma4_decode_emit/attention=False/geometry=gemma4_e4b/sliding_window=False",
+    "flm_gemma4_decode_emit/attention=True/geometry=gemma4_e4b/sliding_window=False",
+    "flm_gemma4_decode_emit/attention=True/geometry=gemma4_e4b/sliding_window=True"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
+  },
+  {
    "factory": "flm_gemma4_decode_proj_layer_embedding",
    "family": "flm_gemma4",
-   "summary": "Build the per-layer-input embedding projection, from flm_gemma4/decode_proj_layer_embedding.cc.",
+   "summary": "Finish the embedding from a packed input object and projected scratch.",
    "sources": [
     "flm_gemma4/decode_proj_layer_embedding.cc"
    ],
@@ -1199,7 +1274,43 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
+  },
+  {
+   "factory": "flm_gemma4_decode_proj_layer_embedding_mvm",
+   "family": "flm_gemma4",
+   "summary": "One MVM block of the per-layer-input embedding projection, inlined into its core.",
+   "sources": [
+    "flm_gemma4/decode_bf16_proj_helper.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_proj_layer_embedding_mvm"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
+  },
+  {
+   "factory": "flm_gemma4_decode_proj_layer_embedding_store",
+   "family": "flm_gemma4",
+   "summary": "Store one output block of the per-layer-input embedding projection, inlined into its core.",
+   "sources": [
+    "flm_gemma4/decode_bf16_proj_helper.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_proj_layer_embedding_store"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_decode_gate_layer_embedding",
@@ -1218,7 +1329,43 @@
    "timing_failed": [],
    "untimed": [],
    "flaky": [],
-   "reason": "blocks on core locks its design releases, so the generic harness can neither run nor time it"
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
+  },
+  {
+   "factory": "flm_gemma4_decode_gate_layer_embedding_mvm",
+   "family": "flm_gemma4",
+   "summary": "One MVM block of the per-layer-input gate projection, inlined into its core.",
+   "sources": [
+    "flm_gemma4/decode_bf16_proj_helper.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_gate_layer_embedding_mvm"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
+  },
+  {
+   "factory": "flm_gemma4_decode_gate_layer_embedding_store",
+   "family": "flm_gemma4",
+   "summary": "Store one output block of the per-layer-input gate projection, inlined into its core.",
+   "sources": [
+    "flm_gemma4/decode_bf16_proj_helper.cc"
+   ],
+   "builds": [
+    "flm_gemma4_decode_gate_layer_embedding_store"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "a compute step whose fused decode design initializes scratch state and sequences calls; the generic harness cannot run or time it in isolation"
   },
   {
    "factory": "flm_gemma4_pli_gelu_core",
