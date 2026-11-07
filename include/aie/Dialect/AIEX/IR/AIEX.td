@@ -1257,6 +1257,10 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
+    /// The tile the address names.
+    AIE::TileID getTileFromAddr();
+    /// The address within that tile.
+    uint32_t getLocalAddress();
 
     /// Most words -- data payload, or read length when there is no data --
     /// one packet can carry on the wire (the header's beat count field is 2
@@ -1289,6 +1293,16 @@ def AIE_ControlPacketGroupOp
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{ $device_ref `(` $kind `)` $body attr-dict }];
   let hasVerifier = 1;
+}
+
+def AIE_ControlPacketBarrierOp
+    : AIEX_Op<
+          "control_packet_barrier", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Order the control packets around it";
+  let description = [{
+    Every control packet before it in its run lands before any after it.
+  }];
+  let assemblyFormat = [{ attr-dict }];
 }
 
 // NPU Bd Write operation

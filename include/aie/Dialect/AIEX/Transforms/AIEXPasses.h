@@ -84,6 +84,11 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELegalizeControlPacketPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEReorderCtrlPacketsByTilePass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEReorderCtrlPacketsByTilePass(
+    const AIEReorderCtrlPacketsByTileOptions &options);
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEXInlineTraceConfigPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

@@ -671,6 +671,38 @@ def AIELegalizeControlPacket
   ];
 }
 
+def AIEReorderCtrlPacketsByTile
+    : Pass<"aie-reorder-ctrl-packets-by-tile", "mlir::ModuleOp"> {
+  let summary = "Group each run of control packets by destination tile";
+  let description = [{
+    In every runtime sequence, reorders each run of adjacent
+    `aiex.control_packet_group`s of one kind and device so every tile's packets
+    are contiguous, keeping each tile's order, which lets
+    `aie-ctrl-packet-to-dma` send them in one transfer. Control packets outside
+    groups are left as they are.
+
+    A run splits into the configuration and the enable phase, each stably sorted
+    by tile (column, then row), with an `aiex.control_packet_barrier` between
+    them. The enable phase holds the pushes to an MM2S channel's start (task)
+    queue and then the core enables (writes setting `Core_Control`'s enable
+    bit). A push starts its channel, which streams at once if its lock allows,
+    so its route has to be configured first; cores start last. A channel's
+    control register (its reset and enable) stays in place, and the push,
+    written before the enable, still starts the channel. With `by-tile=false`
+    the enable phase still moves behind the configuration, but nothing is
+    sorted by tile. The pass needs the target's register database.
+  }];
+
+  let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
+                        "Sort each part of a run by tile">,
+  ];
+
+  let constructor = "xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   let summary =
       "Expand load_pdi operations to explicit configuration sequences";
