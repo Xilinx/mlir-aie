@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt %s -aie-reorder-ctrl-packets-by-tile | FileCheck %s
+// RUN: aie-opt %s -aie-reorder-ctrl-packets-by-tile=gated-enable=true | FileCheck %s --check-prefix=GATED
 
 // A queue push to a channel aie-annotate-ctrl-packet-start-gating proved gated
 // (the device of the packet's group marks that channel's aie.dma_start
@@ -33,6 +34,22 @@
 // CHECK-NEXT:    address = 1705524 : ui32, data = array<i32: 2>
 // CHECK-NEXT:  {{^ *}}}
 // CHECK-NEXT:  address = 2219540 : ui32, data = array<i32: 1>
+
+// With gated-enable, the enable of core (0, 2), which @cfg marks gated, goes
+// last among column 0's packets.
+// GATED-LABEL: aie.runtime_sequence
+// GATED-NEXT:  aiex.control_packet_group @cfg(Config) {
+// GATED-NEXT:    address = 1769472 : ui32, data = array<i32: 11>
+// GATED-NEXT:    address = 1705524 : ui32, data = array<i32: 1>
+// GATED-NEXT:    address = 2355204 : ui32, data = array<i32: 21>
+// GATED-NEXT:    address = 2301952 : ui32, data = array<i32: 1>
+// GATED-NEXT:    address = 35909636 : ui32, data = array<i32: 31>
+// GATED-NEXT:  {{^ *}}}
+// GATED-NEXT:  aiex.control_packet_barrier
+// GATED-NEXT:  aiex.control_packet_group @cfg(Config) {
+// GATED-NEXT:    address = 1705532 : ui32, data = array<i32: 1>
+// GATED-NEXT:    address = 2219540 : ui32, data = array<i32: 2>
+// GATED-NEXT:  {{^ *}}}
 
 module {
   aie.device(npu2) @cfg {
