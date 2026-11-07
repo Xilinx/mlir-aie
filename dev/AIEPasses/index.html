@@ -5451,8 +5451,9 @@ an additional task; subsequent pushes occur once per
 <code>getMaxRepeatCount() + 1</code> released objects (256 on current supported
 targets). A release of multiple objects carries any excess into the next
 counter interval. Each pushed task accepts that same number of objects.</p>
-<p>With <code>check-queue-space=true</code>, a queue-space poll precedes each push.
-The program must still avoid circular waits between core synchronization
+<p>With <code>check-queue-space=true</code>, a queue-space poll precedes each push unless
+the corresponding release has <code>assume_queue_space</code>. The program must still
+avoid circular waits between core synchronization
 and DMA progress; polling only prevents task-queue overflow.</p>
 <h4 id="options_10">Options<a class="headerlink" href="#options_10" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>-check-queue-space : Wait for room on the task queue before each push.
