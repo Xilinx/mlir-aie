@@ -364,8 +364,10 @@ def AIEAssignRuntimeSequenceBDIDs
        Option<"warnUnreleasedTransfers", "warn-unreleased-transfers", "bool",
               /*default=*/"true",
               "Warn when a straight-line runtime sequence leaves DMA transfers "
-              "neither awaited nor freed. Completion established indirectly "
-              "through computation or other channels may not be visible.">,
+              "neither awaited nor freed, or starts a configuration's control "
+              "packets on a shim tile with such transfers since the last "
+              "load_pdi. Completion established indirectly through "
+              "computation or other channels may not be visible.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "

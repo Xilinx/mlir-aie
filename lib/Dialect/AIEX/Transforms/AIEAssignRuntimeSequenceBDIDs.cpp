@@ -225,6 +225,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // A PDI load reconfigures the array, so the tasks configured so far no
   // longer hold ids and allocation restarts around the new static BDs.
   void noteLoadPdi(NpuLoadPdiOp load) {
+    loadOrder = pushCount;
     loadedDevice = {};
     if (FlatSymbolRefAttr ref = load.getDeviceRefAttr())
       if (Operation *parent = getOperation()->getParentOp())
@@ -869,6 +870,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pendingAwaitReleases.clear();
     startedOnChannel.clear();
     pushCount = 0;
+    loadOrder = 0;
     startCount.clear();
     runningCount.clear();
     knownComplete.clear();
@@ -877,10 +879,51 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     releasedTasks.clear();
     liveByTile.clear();
     freedInFlight.clear();
+    warnedLive.clear();
     loadedDevice = {};
     opaqueLoad = {};
     unloaded.clear();
     resetChannels.clear();
+  }
+
+  // Pushes before it came before the latest aiex.npu.load_pdi.
+  uint64_t loadOrder = 0;
+  // The transfers warnLiveAtControl has warned of.
+  llvm::SmallPtrSet<Operation *, 4> warnedLive;
+
+  // Control packets that start on a shim tile where a
+  // transfer since the last load_pdi is neither awaited nor freed can queue
+  // behind that transfer, or reuse its buffer descriptors, since no reset
+  // separates them; an await may also take that transfer's token.
+  void warnLiveAtControl(DMAStartTaskOp start, DMAConfigureTaskOp cfg) {
+    AIEXDialect::CtrlPktTransferAttrHelper transfer(cfg.getContext());
+    if (!warnUnreleasedTransfers || !transfer.isAttrPresent(cfg))
+      return;
+    AIE::TileOp tile = cfg.getTileOp();
+    for (const auto &[key, channel] : startedOnChannel) {
+      if (key[0] != tile.getCol() || key[1] != tile.getRow())
+        continue;
+      for (const StartedTask &push :
+           llvm::drop_begin(channel.tasks, channel.finished)) {
+        if (push.order < loadOrder || warnedLive.contains(push.origin) ||
+            (push.task && (transfer.isAttrPresent(push.task) ||
+                           releasedTasks.contains(push.task) ||
+                           unloaded.contains(push.task))))
+          continue;
+        auto diag =
+            mlir::emitWarning(start.getLoc())
+            << "starts control packets on tile (" << tile.getCol() << ","
+            << tile.getRow()
+            << ") while a DMA transfer there is neither awaited nor freed; "
+               "no reset separates them, so the control packets may queue "
+               "behind it or reuse its buffer descriptors. Await it before "
+               "the reconfiguration, or free it when its completion is "
+               "guaranteed indirectly";
+        diag.attachNote(push.origin->getLoc()) << "the transfer starts here";
+        warnedLive.insert(push.origin);
+        return;
+      }
+    }
   }
 
   void warnLeaks(AIE::RuntimeSequenceOp sequence) {
@@ -973,6 +1016,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               return WalkResult::interrupt();
             knownComplete.erase(cfg);
             pollProven.erase(cfg);
+            warnLiveAtControl(start, cfg);
             notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg), start);
           }
         } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {

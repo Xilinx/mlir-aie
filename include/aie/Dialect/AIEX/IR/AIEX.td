@@ -229,8 +229,11 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   let useStrictPropertiesInAssemblyFormat = 0;
   // started_by marks an aie.dma_start or aie.core proved unable to act during
   // its configuration, listing the tiles (#aie.tile) of the cores whose enables
-  // may let it act; with none, only the host's transfers can.
-  let discardableAttrs = (ins "::mlir::ArrayAttr":$started_by);
+  // may let it act; with none, only the host's transfers can. ctrl_pkt_transfer
+  // marks the DMA tasks aie-ctrl-packet-to-dma sends an
+  // aiex.control_packet_group's packets with.
+  let discardableAttrs = (ins "::mlir::ArrayAttr":$started_by,
+      "::mlir::UnitAttr":$ctrl_pkt_transfer);
 }
 
 //===----------------------------------------------------------------------===//

@@ -169,6 +169,12 @@ packets written outside groups are sent as written.
   `aie-check-ctrl-packet-delivery` checks that each tile's writes land in
   order.
 
+With `--warn-unreleased-transfers` (default: on), a configuration's control
+packets that start on a shim tile where a transfer since the last `load_pdi` is
+neither awaited nor freed get a warning: with teardown no reset separates
+them, so the control packets may queue behind that transfer or reuse its
+buffer descriptors.
+
 ### Parameterized C++ transaction builders
 
 ```bash
