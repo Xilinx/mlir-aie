@@ -577,10 +577,10 @@ void TxnEncoder::encode(Operation &o) {
       })
       .Default([&](Operation *op) {
         // Pure values (constants, the operands above) need no encoding;
-        // control packets have their own translation. Anything else would
-        // be dropped from the binary without a trace.
+        // control packets and their groups have their own translation.
+        // Anything else would be dropped from the binary without a trace.
         if (isMemoryEffectFree(op) || op->hasTrait<OpTrait::IsTerminator>() ||
-            isa<NpuControlPacketOp>(op))
+            isa<NpuControlPacketOp, ControlPacketGroupOp>(op))
           return;
         op->emitOpError("has no static TXN encoding");
         result = failure();
@@ -660,11 +660,8 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
   }
 
   const AIETargetModel &tm = deviceOp.getTargetModel();
-  Block &entry = seq.getBody().front();
-  for (auto &o : entry) {
-    auto packetOp = dyn_cast<AIEX::NpuControlPacketOp>(o);
-    if (!packetOp)
-      continue;
+  for (AIEX::NpuControlPacketOp packetOp :
+       AIEX::controlPacketsOf(seq.getBody().front())) {
 
     uint32_t before =
         static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));

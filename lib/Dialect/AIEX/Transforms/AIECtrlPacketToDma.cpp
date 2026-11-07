@@ -39,6 +39,26 @@ static ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col) {
   return {};
 }
 
+// The packets that start a delivery run. Control packets outside
+// aiex.control_packet_group ops keep their own runs, so a batch never mixes
+// packets the user wrote with generated ones.
+static llvm::DenseSet<Operation *> runStarts(Block &block) {
+  llvm::DenseSet<Operation *> starts;
+  bool prevGroup = false, prevPacket = false;
+  for (Operation &op : block) {
+    if (auto group = dyn_cast<ControlPacketGroupOp>(op)) {
+      Block &body = group.getBody().front();
+      if (!body.empty() && prevPacket)
+        starts.insert(&body.front());
+    } else if (isa<NpuControlPacketOp>(op) && prevGroup) {
+      starts.insert(&op);
+    }
+    prevGroup = isa<ControlPacketGroupOp>(op);
+    prevPacket = isa<NpuControlPacketOp>(op);
+  }
+  return starts;
+}
+
 struct AIECtrlPacketInferTilesPass
     : xilinx::AIEX::impl::AIECtrlPacketInferTilesBase<
           AIECtrlPacketInferTilesPass> {
@@ -49,8 +69,7 @@ struct AIECtrlPacketInferTilesPass
 
     auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
-      auto ctrlPktOps = f.getOps<AIEX::NpuControlPacketOp>();
-      for (auto ctrlPktOp : ctrlPktOps) {
+      for (auto ctrlPktOp : controlPacketsOf(f.getBody().front())) {
         auto tOp = TileOp::getOrCreate(devBuilder, device,
                                        (int)ctrlPktOp.getColumnFromAddr(),
                                        (int)ctrlPktOp.getRowFromAddr());
@@ -82,6 +101,9 @@ struct AIECtrlPacketToDmaPass
     auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
 
+      Block &entry = f.getBody().front();
+      llvm::DenseSet<Operation *> starts = runStarts(entry);
+      inlineControlPacketGroups(entry);
       auto controlPacketOps = f.getOps<AIEX::NpuControlPacketOp>();
       if (controlPacketOps.empty())
         continue;
@@ -124,18 +146,20 @@ struct AIECtrlPacketToDmaPass
       std::vector<BatchInfo> batches;
 
       int64_t ddrOffset = 0;
-      Block &entry = f.getBody().front();
 
       // First pass: collect and batch control packet operations
       bool new_batch = true;
       for (Operation &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
 
-        // A non-control_packet op ends the current batch
+        // A non-control_packet op, or the start of a run, ends the current
+        // batch
         if (!ctrlPktOp) {
           new_batch = true;
           continue;
         }
+        if (starts.contains(&o))
+          new_batch = true;
         int col = ctrlPktOp.getColumnFromAddr();
         int row = ctrlPktOp.getRowFromAddr();
 

@@ -7,13 +7,19 @@
 // The overlay and application occupy different fields of shim register 0x1f000.
 // A full-word control packet must keep the overlay's 0x400 field set.
 // CHECK:      aiex.npu.load_pdi {device_ref = @transport,
-// CHECK-NEXT: aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
+// CHECK-NEXT: aiex.control_packet_group @application(Config) {
+// CHECK-NEXT:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
+// CHECK-NEXT: {{^ *}}}
 // CHECK-NEXT: aiex.npu.load_pdi {device_ref = @transport_copy,
-// CHECK-NEXT: aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
+// CHECK-NEXT: aiex.control_packet_group @application(Config) {
+// CHECK-NEXT:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
 
 // TEARDOWN:      aiex.npu.load_pdi {device_ref = @transport,
-// TEARDOWN-NEXT: aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
-// TEARDOWN-NEXT: aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
+// TEARDOWN-NEXT: aiex.control_packet_group @application(Config) {
+// TEARDOWN-NEXT:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
+// TEARDOWN-NEXT: {{^ *}}}
+// TEARDOWN-NEXT: aiex.control_packet_group @application(Config) {
+// TEARDOWN-NEXT:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
 // TEARDOWN-NOT:  aiex.npu.load_pdi
 
 module {

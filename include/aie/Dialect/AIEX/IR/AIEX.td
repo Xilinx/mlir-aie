@@ -1266,6 +1266,31 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   }];
 }
 
+def AIE_ControlPacketGroupOp
+    : AIEX_Op<"control_packet_group",
+              [HasAncestor<"AIE::RuntimeSequenceOp">, NoTerminator, SingleBlock,
+               DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let summary = "Control packets of one configuration or its teardown";
+  let description = [{
+    The control packets that write the configuration of `device_ref`
+    (`Config`) or undo it (`Teardown`), as aie-expand-load-pdi generates them.
+    aie-ctrl-packet-to-dma inlines them; control packets outside groups keep
+    their own transfers.
+
+    Example:
+    ```
+      aiex.control_packet_group @cfg(Config) {
+        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      }
+    ```
+  }];
+  let arguments = (ins AIEX_ControlPacketGroupKind:$kind,
+      FlatSymbolRefAttr:$device_ref);
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{ $device_ref `(` $kind `)` $body attr-dict }];
+  let hasVerifier = 1;
+}
+
 // NPU Bd Write operation
 def AIE_NpuWriteBdOp : AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";

@@ -68,4 +68,14 @@ def AIEX_ExpandMode
   let cppNamespace = "::xilinx::AIEX";
 }
 
+def AIEX_ControlPacketGroupConfig : I32EnumAttrCase<"Config", 0>;
+def AIEX_ControlPacketGroupTeardown : I32EnumAttrCase<"Teardown", 1>;
+
+def AIEX_ControlPacketGroupKind
+    : I32EnumAttr<
+          "ControlPacketGroupKind", "What a control packet group's packets do",
+          [AIEX_ControlPacketGroupConfig, AIEX_ControlPacketGroupTeardown]> {
+  let cppNamespace = "::xilinx::AIEX";
+}
+
 #endif // AIEX_ATTRS
