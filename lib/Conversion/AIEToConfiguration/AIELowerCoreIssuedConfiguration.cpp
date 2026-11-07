@@ -61,6 +61,9 @@ static LogicalResult
 pushWrites(DmaPushQueueOp op, int col, int row,
            const AIETargetModel &targetModel,
            SmallVectorImpl<std::pair<uint64_t, uint32_t>> &writes) {
+  if (!op.getBdId())
+    return op.emitOpError("names its descriptor by tag; run "
+                          "--aie-assign-bd-ids first");
   AIERTControl ctl(targetModel);
   if (failed(ctl.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
     return op.emitOpError("could not start aie-rt to collect its writes");
@@ -70,8 +73,8 @@ pushWrites(DmaPushQueueOp op, int col, int row,
   // this pushes onto is already configured and running.
   if (failed(ctl.pushToBdQueueAndEnable(
           *op.getOperation(), col, row, op.getChannel(), op.getDirection(),
-          op.getBdId(), op.getRepeatCount(), /*padValue=*/0, op.getOutOfOrder(),
-          /*configureChannel=*/false)))
+          op.getBdId().value_or(0), op.getRepeatCount(), /*padValue=*/0,
+          op.getOutOfOrder(), /*configureChannel=*/false)))
     return failure();
 
   std::vector<uint8_t> txn = ctl.exportSerializedTransaction();

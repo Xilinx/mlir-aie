@@ -98,8 +98,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   llvm::SetVector<Block *> blockVector =
       getOrderedChainOfBlocks(&memOp.getBody());
 
-  llvm::SmallPtrSet<Block *, 8> oooBlocks =
-      collectOutOfOrderBlocks(blockVector);
+  llvm::SmallPtrSet<Block *, 8> unchainedBlocks =
+      collectUnchainedBlocks(blockVector);
 
   for (auto *block : blockVector) {
     bool foundBdPacket = false;
@@ -298,7 +298,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         int enableNextBd = 1;
         if (!nextBlock->getOps<EndOp>().empty())
           enableNextBd = 0;
-        if (oooBlocks.contains(block))
+        if (unchainedBlocks.contains(block))
           enableNextBd = 0;
 
         int nextBdNum = blockMap[nextBlock];
@@ -419,6 +419,15 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       return core.emitOpError("core-issued configuration is not supported by "
                               "the XAIEV2 backend");
   }
+  WalkResult corePushes = targetOp.walk([&](DMAStartOp start) {
+    if (!start.getCorePushes())
+      return WalkResult::advance();
+    start.emitOpError("core-issued configuration is not supported by "
+                      "the XAIEV2 backend");
+    return WalkResult::interrupt();
+  });
+  if (corePushes.wasInterrupted())
+    return failure();
   const auto &targetModel = targetOp.getTargetModel();
 
   collectTiles(targetOp, tiles);

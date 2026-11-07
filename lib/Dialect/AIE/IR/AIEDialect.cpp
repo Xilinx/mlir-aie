@@ -1075,6 +1075,17 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
     return failure();
   }
 
+  if (auto push = getCorePushAttr()) {
+    if (drains())
+      return emitOpError("core_push requires a filling core endpoint");
+    if (auto values = pool.getInitValues(); values && !values->empty())
+      return emitOpError("core_push does not support initialized objects");
+    if (push.getBdTags().size() != static_cast<size_t>(pool.getDepth()))
+      return emitOpError("core_push requires one BD tag per pool buffer");
+    if (llvm::any_of(push.getBdTags(), [](int32_t tag) { return tag < 0; }))
+      return emitOpError("core_push requires nonnegative BD tags");
+  }
+
   // The core sees one memref, so the segments it selects have to be a single
   // run of the object.
   int64_t next = -1;
@@ -1171,7 +1182,9 @@ int64_t ObjectFifoDmaEndpointOp::getRepeat() {
 }
 
 bool ObjectFifoDmaEndpointOp::repeatsInHardware() {
-  return getRepeat() > 1 && getNumDescriptors() == 1 && !getIterCount();
+  return getRepeat() > 1 &&
+         (getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
+          (getNumDescriptors() == 1 && !getIterCount()));
 }
 
 int64_t ObjectFifoDmaEndpointOp::getDispatchPasses() {
@@ -1245,6 +1258,22 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
   }
   if (failed(verifyAssignedPacket(*this, getPacketAttr()))) {
     return failure();
+  }
+
+  if (getReleaseStrategy() == ObjectFifoRelease::PushQueue) {
+    if (!drains() || !getTileLike().isCoreTile() ||
+        getTargetModel(*this).getDmaTaskQueueDepth() == 0)
+      return emitOpError("push_queue requires a sending DMA on a core tile "
+                         "with core-issued task support");
+    if (auto values = pool.getInitValues(); values && !values->empty())
+      return emitOpError("push_queue does not support initialized objects");
+    if (getRepeat() - 1 > getTargetModel(*this).getMaxRepeatCount())
+      return emitOpError(
+          "push_queue repeat_count exceeds the hardware task limit");
+    if (getOutOfOrder() && getRepeat() > 1)
+      return emitOpError(
+          "push_queue cannot repeat out-of-order packets: "
+          "each repetition may need a different destination BD ID");
   }
 
   if (std::optional<ArrayAttr> turns = getDispatch()) {
@@ -3779,6 +3808,9 @@ static uint32_t channelsOfOwnTile(TileOp tile, DMAChannelDir direction,
 LogicalResult DmaPushQueueOp::verify() {
   if (getOutOfOrder() && getDirection() != DMAChannelDir::S2MM)
     return emitOpError("out_of_order is only supported on S2MM channels");
+  if (getBdId().has_value() == getBdTag().has_value())
+    return emitOpError("names the descriptor it pushes either by bd_id or, "
+                       "before aie-assign-bd-ids runs, by bd_tag");
   auto core = (*this)->getParentOfType<CoreOp>();
   const AIETargetModel &targetModel = getTargetModel(*this);
   if (auto tile = core.getTile().getDefiningOp<TileOp>()) {

@@ -55,6 +55,8 @@ module @mismatch {
 // CHECK: aie.dma_bd(%{{.*}}) {bd_id = 1 : i32}
 // CHECK: aie.dma_bd(%{{.*}}) {bd_id = 1 : i32}
 // CHECK: aie.dma_bd(%{{.*}}) {bd_id = 0 : i32, out_of_order_id = 1 : i32}
+// CHECK: aie.dma_push_queue(S2MM : 0) bd_id 1
+// CHECK: aie.dma_push_queue(S2MM : 0) bd_id 1
 module @allocate {
   aie.device(npu2) {
     %x = aie.tile(0, 2) {aiex.reserved_bd_ids = array<i32: 0>}
@@ -93,6 +95,14 @@ module @allocate {
       aie.dma_bd(%bs : memref<8xi32>) {out_of_order_tag = 7 : i32}
       aie.next_bd ^end
     ^end:
+      aie.end
+    }
+    %cx = aie.core(%x) {
+      aie.dma_push_queue(S2MM : 0) {bd_tag = 7 : i32}
+      aie.end
+    }
+    %cy = aie.core(%y) {
+      aie.dma_push_queue(S2MM : 0) {bd_tag = 7 : i32}
       aie.end
     }
   }
