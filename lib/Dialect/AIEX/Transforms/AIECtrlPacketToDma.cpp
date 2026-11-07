@@ -199,7 +199,8 @@ struct AIECtrlPacketToDmaPass
       for (Operation &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
         if (!ctrlPktOp) {
-          builder.clone(o, mapping);
+          if (!isa<ControlPacketBarrierOp>(o))
+            builder.clone(o, mapping);
           continue;
         }
 
