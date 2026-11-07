@@ -287,6 +287,13 @@ verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
   if (!teardown)
     return success();
   for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
+    // A configuration is torn down before its block's next load_pdi, which a
+    // load in a loop or branch may skip or repeat.
+    Operation *parent = loadPdiOp->getParentOp();
+    if (!isa<AIE::RuntimeSequenceOp>(parent))
+      return loadPdiOp.emitOpError("with teardown, must be in the runtime "
+                                   "sequence's body, not inside ")
+             << parent->getName();
     if (expandMode(loadPdiOp) == AIEX::ExpandMode::none)
       continue;
     // write_teardown's verifier checks this too, but inline-config leaves no
@@ -426,12 +433,13 @@ struct AIEExpandLoadPdiPass
       // We need to insert a reset/overlay `load_pdi` if the last configuration
       // was configured using a different mode, or if we did not insert a
       // teardown.
-      auto dev =
-          module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
       auto mode = expandMode(loadPdiOp);
-      ArrayState next = {mode, dev && mode == AIEX::ExpandMode::ctrlpkt
-                                   ? dev.getOverlayAttr()
-                                   : FlatSymbolRefAttr{}};
+      auto dev =
+          mode == AIEX::ExpandMode::ctrlpkt
+              ? module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr())
+              : AIE::DeviceOp{};
+      ArrayState next = {mode,
+                         dev ? dev.getOverlayAttr() : FlatSymbolRefAttr{}};
       bool keepPreload = !clTeardown || state != next;
       state = next;
       AIEX::BlockwriteData *config = nullptr, *teardown = nullptr;
