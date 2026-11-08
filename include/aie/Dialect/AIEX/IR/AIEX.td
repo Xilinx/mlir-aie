@@ -231,9 +231,9 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   // its configuration, listing the tiles (#aie.tile) of the cores whose enables
   // may let it act; with none, only the host's transfers can. ctrl_pkt_transfer
   // marks the DMA tasks aie-ctrl-packet-to-dma sends an
-  // aiex.control_packet_group's packets with.
+  // aiex.control_packet_group's packets with, naming the group's device.
   let discardableAttrs = (ins "::mlir::ArrayAttr":$started_by,
-      "::mlir::UnitAttr":$ctrl_pkt_transfer);
+      "::mlir::FlatSymbolRefAttr":$ctrl_pkt_transfer);
 }
 
 //===----------------------------------------------------------------------===//

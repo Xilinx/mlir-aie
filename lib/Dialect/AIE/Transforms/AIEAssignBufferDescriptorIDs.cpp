@@ -50,7 +50,7 @@ std::optional<uint32_t> BdIdGenerator::nextBdId(int channelIndex,
   uint32_t bdId = 0;
   uint32_t maxBdId = targetModel.getNumBDs(col, row) - 1;
   // Find the next free BD ID. This is not an efficient algorithm, but doesn't
-  for (; (bdIdAlreadyAssigned(bdId) ||
+  for (; (bdIdAlreadyAssigned(bdId) || reserved.count(bdId) ||
           !targetModel.isBdChannelAccessible(col, row, bdId, channelIndex)) &&
          bdId <= maxBdId;
        bdId += alignment)
