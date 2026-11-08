@@ -3,7 +3,7 @@
 
 # utils/regenerate_lockfiles.sh generates this file from pyproject.toml's
 # [build-system].requires. Edit pyproject.toml, then rerun that script.
-setuptools>=84.0.0
+setuptools>=84.2.1
 wheel
 ninja!=1.13.0
 cmake==4.4.4
