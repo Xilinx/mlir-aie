@@ -958,7 +958,13 @@ def AIETraceRegPackWrites : Pass<"aie-trace-pack-reg-writes", "DeviceOp"> {
 def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
   let summary = "Insert packet flows and runtime sequence trace setup";
   let description = [{
-    For each aie.trace operation, this pass:
+    A trace unit takes one configuration. aie.trace operations that configure
+    the same unit of the same tile identically, as when placement puts several
+    logical tiles on one physical tile, are merged into the first, and the
+    references to the others are redirected to it. Different configurations
+    of one unit are an error.
+
+    For each remaining aie.trace operation, this pass:
     - Creates packet flows from trace ports to shim DMA
     - Groups traces by target shim (minimizes shim usage, ideally 1)
     - Inserts shim buffer descriptors and DMA control setup per shim tile

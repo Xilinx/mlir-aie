@@ -12,9 +12,12 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 #include <climits>
 #include <map>
@@ -79,6 +82,106 @@ static bool isDynamicRuntimeSequence(RuntimeSequenceOp seq) {
   });
 }
 
+// The aie.trace.packet of a trace, or null when it has none.
+static TracePacketOp getTracePacketOp(TraceOp trace) {
+  auto packetOps = trace.getBody().getOps<TracePacketOp>();
+  return packetOps.empty() ? TracePacketOp() : *packetOps.begin();
+}
+
+// The trace unit an aie.trace configures is named by its packet type; a trace
+// without an aie.trace.packet takes its tile's default unit.
+static TracePacketType getTraceUnit(TraceOp trace, TileOp tile) {
+  if (TracePacketOp packetOp = getTracePacketOp(trace))
+    return packetOp.getType();
+  if (tile.isShimTile())
+    return TracePacketType::ShimTile;
+  if (tile.isMemTile())
+    return TracePacketType::MemTile;
+  return TracePacketType::Core;
+}
+
+using TraceUnitKey = std::tuple<int, int, int>; // (col, row, packet type)
+
+static TraceUnitKey getTraceUnitKey(TraceOp trace) {
+  auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
+  return {tile.getCol(), tile.getRow(),
+          static_cast<int>(getTraceUnit(trace, tile))};
+}
+
+// Two traces of one unit program it identically when their bodies match op
+// for op and attribute for attribute. Event order matters (it picks the
+// slots), and so does an explicit packet id.
+static bool haveIdenticalConfig(TraceOp a, TraceOp b) {
+  return a->getDiscardableAttrDictionary() ==
+             b->getDiscardableAttrDictionary() &&
+         OperationEquivalence::isRegionEquivalentTo(
+             &a.getBody(), &b.getBody(), OperationEquivalence::IgnoreLocations);
+}
+
+// Each (tile, trace unit) pair can be configured only once: a hardware trace
+// unit emits a single packet stream. Placement can still put several aie.trace
+// ops on one unit (IRON traces each logical shim endpoint, and the placer
+// lands a column's endpoints on one shim tile). When their configurations are
+// identical, keep the first, point every reference to the others at it, and
+// drop a redirected start_config where its block already starts the survivor.
+// Different configurations on one unit are an error. `traces` is updated to
+// the traces that remain.
+static LogicalResult mergeTracesPerUnit(DeviceOp device,
+                                        SmallVectorImpl<TraceOp> &traces) {
+  std::map<TraceUnitKey, TraceOp> unitOwner;
+  llvm::SmallPtrSet<Operation *, 8> redirected;
+  SmallVector<TraceOp> kept;
+  for (TraceOp trace : traces) {
+    auto [it, inserted] = unitOwner.try_emplace(getTraceUnitKey(trace), trace);
+    if (inserted) {
+      kept.push_back(trace);
+      continue;
+    }
+    TraceOp survivor = it->second;
+    if (!haveIdenticalConfig(survivor, trace)) {
+      auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
+      InFlightDiagnostic err =
+          trace.emitError()
+          << "tile (" << tile.getCol() << ", " << tile.getRow()
+          << ") is traced more than once on the same trace unit with "
+             "different configurations; each unit can have only one trace "
+             "configuration";
+      err.attachNote(survivor.getLoc()) << "other trace of this unit";
+      return failure();
+    }
+    // Only the start_configs the rename rewrites may become repeats to drop;
+    // a repeat already in the input is left alone.
+    if (auto uses = SymbolTable::getSymbolUses(trace, &device.getRegion()))
+      for (const SymbolTable::SymbolUse &use : *uses)
+        if (isa<TraceStartConfigOp>(use.getUser()))
+          redirected.insert(use.getUser());
+    if (failed(SymbolTable::replaceAllSymbolUses(
+            trace, survivor.getSymNameAttr(), &device.getRegion())))
+      return trace.emitError()
+             << "cannot redirect the uses of this trace to the identical "
+                "trace @"
+             << survivor.getSymName() << " of the same unit";
+    trace.erase();
+  }
+  traces.assign(kept);
+
+  // A start_config from the input starts its trace in its block wherever it
+  // sits, so the redirected copies are the ones dropped.
+  SmallVector<TraceStartConfigOp> startConfigs;
+  device.walk([&](TraceStartConfigOp op) { startConfigs.push_back(op); });
+  auto startKey = [](TraceStartConfigOp op) {
+    return std::make_pair(op->getBlock(), op.getTraceConfigAttr().getAttr());
+  };
+  llvm::DenseSet<std::pair<Block *, StringAttr>> started;
+  for (TraceStartConfigOp op : startConfigs)
+    if (!redirected.contains(op))
+      started.insert(startKey(op));
+  for (TraceStartConfigOp op : startConfigs)
+    if (redirected.contains(op) && !started.insert(startKey(op)).second)
+      op.erase();
+  return success();
+}
+
 struct AIEInsertTraceFlowsPass
     : xilinx::AIE::impl::AIEInsertTraceFlowsBase<AIEInsertTraceFlowsPass> {
 
@@ -104,6 +207,10 @@ struct AIEInsertTraceFlowsPass
 
     if (traces.empty())
       return;
+
+    // Packet ids are allocated per trace unit below, so merge first.
+    if (failed(mergeTracesPerUnit(device, traces)))
+      return signalPassFailure();
 
     // Phase 1b: Collect every runtime_sequence with an aie.trace.host_config.
     // Each one drives the trace units on its own dispatch, so each one gets a
@@ -287,51 +394,16 @@ struct AIEInsertTraceFlowsPass
       }
     }
 
-    // Each (tile, trace unit) pair may be configured at most once: a hardware
-    // trace unit emits a single packet stream, so two aie.trace ops targeting
-    // the same unit would race on one packet id and corrupt routing. The
-    // packet type identifies the unit (Core/Mem/MemTile/ShimTile).
-    std::set<std::tuple<int, int, int>> seenTraceUnits; // (col, row, pktType)
-
+    // mergeTracesPerUnit left at most one trace per (tile, trace unit).
     for (auto trace : traces) {
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
 
-      // Find packet ID and type from trace body
+      // Find packet ID from trace body
       std::optional<int> packetId;
-      std::optional<TracePacketType> packetType;
-      TracePacketOp existingPacketOp = nullptr;
-      for (auto &op : trace.getBody().getOps()) {
-        if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
-          existingPacketOp = packetOp;
-          if (auto explicitId = packetOp.getId())
-            packetId = explicitId;
-          packetType = packetOp.getType();
-          break;
-        }
-      }
-
-      // Determine packet type from tile type if not specified
-      if (!packetType) {
-        if (tile.isShimTile()) {
-          packetType = TracePacketType::ShimTile;
-        } else if (tile.isMemTile()) {
-          packetType = TracePacketType::MemTile;
-        } else {
-          // Core tile defaults to core type
-          packetType = TracePacketType::Core;
-        }
-      }
-
-      // Reject a second trace op on the same hardware unit of the same tile.
-      auto unitKey = std::make_tuple(tile.getCol(), tile.getRow(),
-                                     static_cast<int>(*packetType));
-      if (!seenTraceUnits.insert(unitKey).second) {
-        trace.emitError() << "tile (" << tile.getCol() << ", " << tile.getRow()
-                          << ") is traced more than once on the same trace "
-                             "unit; each unit can have only one trace "
-                             "configuration";
-        return signalPassFailure();
-      }
+      TracePacketType packetType = getTraceUnit(trace, tile);
+      TracePacketOp existingPacketOp = getTracePacketOp(trace);
+      if (existingPacketOp)
+        packetId = existingPacketOp.getId();
 
       // Allocate packet ID if not specified (precomputed in (col, row)
       // order above).
@@ -346,7 +418,7 @@ struct AIEInsertTraceFlowsPass
                                trace.getBody().front().begin());
         TracePacketOp::create(traceBuilder, trace.getLoc(),
                               traceBuilder.getI32IntegerAttr(*packetId),
-                              *packetType);
+                              packetType);
       } else if (!existingPacketOp.getId().has_value()) {
         existingPacketOp.setIdAttr(
             OpBuilder(existingPacketOp).getI32IntegerAttr(*packetId));
@@ -355,7 +427,7 @@ struct AIEInsertTraceFlowsPass
       // Determine trace port based on packet type
       WireBundle tracePort = WireBundle::Trace;
       int traceChannel = 0;
-      if (*packetType == TracePacketType::Mem) {
+      if (packetType == TracePacketType::Mem) {
         traceChannel = 1; // Mem trace uses port 1
       }
 
@@ -391,7 +463,7 @@ struct AIEInsertTraceFlowsPass
       info.traceOp = trace;
       info.tile = tile;
       info.packetId = *packetId;
-      info.packetType = *packetType;
+      info.packetType = packetType;
       info.tracePort = tracePort;
       info.traceChannel = traceChannel;
       info.startBroadcast = startBroadcast;
