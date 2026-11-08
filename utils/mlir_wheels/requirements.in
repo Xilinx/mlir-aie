@@ -9,5 +9,5 @@ ninja!=1.13.0
 cmake==4.4.4
 pybind11[global]>=3.1.0
 numpy>=2.4.6,<2.5; python_version == '3.11'
-numpy>=2.5.2; python_version >= '3.12'
+numpy>=2.5.4; python_version >= '3.12'
 nanobind==2.12.0
