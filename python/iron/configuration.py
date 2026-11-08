@@ -317,6 +317,49 @@ class DeviceConfiguration(DeviceResources):
         self._core_trace_mode = core_trace_mode
         self._egress_shim_col = egress_shim_col
 
+    def _data_movement_tiles_to_trace(self, all_tiles) -> list:
+        """Return the shim and mem tiles that the set event lists ask to trace.
+
+        Workers only cover compute tiles, so shimtile_events and memtile_events
+        would otherwise trace nothing. all_tiles holds every tile the design
+        places, in first-use order; each tile of a wanted kind is traced once.
+
+        These may be logical tiles that the placer later puts on one physical
+        tile, as it does with the shim endpoints of a column. Their traces are
+        identical, and -aie-insert-trace-flows merges them into one.
+        """
+        wanted = [
+            (
+                "shimtile_events",
+                self._shimtile_events,
+                "shim",
+                lambda op: op.is_shim_tile(),
+            ),
+            (
+                "memtile_events",
+                self._memtile_events,
+                "mem",
+                lambda op: op.is_mem_tile(),
+            ),
+        ]
+        traced = []
+        for name, events, kind, is_kind in wanted:
+            if events is None:
+                continue
+            ops = []
+            for tile in all_tiles:
+                if is_kind(tile.op) and tile.op not in ops:
+                    ops.append(tile.op)
+            if not ops:
+                logger.warning(
+                    "%s was set but the design uses no %s tile, so nothing is traced for it.",
+                    name,
+                    kind,
+                )
+                continue
+            traced += ops
+        return traced
+
     # Device-local symbols share one namespace inside this configuration: an
     # explicit name may be claimed once, and unnamed ones take fresh names.
     def _name_unnamed(self) -> None:
@@ -641,6 +684,7 @@ class DeviceConfiguration(DeviceResources):
                     if worker.trace is not None
                 ]
             if self._trace_size is not None and self._trace_size > 0:
+                tiles_to_trace += self._data_movement_tiles_to_trace(all_tiles)
                 trace_utils.configure_trace(
                     tiles_to_trace,
                     coretile_events=self._coretile_events,
