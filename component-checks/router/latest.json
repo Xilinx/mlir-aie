@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "router",
- "id": "42333433605",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42333433605",
- "date": "2026-11-07T03:18:55+00:00",
+ "id": "42442357016",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42442357016",
+ "date": "2026-11-08T03:21:12+00:00",
  "commit": {
-  "id": "284a8d78687dafefeb4be459d433d3c4bfb25a88",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/284a8d78687dafefeb4be459d433d3c4bfb25a88",
-  "message": "flm_gemma4 decode: expose lock-free compute steps for ObjectFifos (#3912)",
-  "timestamp": "2026-11-06T22:47:12Z"
+  "id": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/e5a3fa14879d2049295e2baff02fcc6a82697e73",
+  "message": "Export AIE2P emulation helpers, q4nx unpacking and FLM Gemma 4 constants (#3865)",
+  "timestamp": "2026-11-07T18:46:36Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V45 96-Core Processor",
+ "device": "AMD EPYC 7763 64-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "284a8d7868",
-  "cpu": "AMD EPYC 9V45 96-Core Processor"
+  "commit": "e5a3fa1487",
+  "cpu": "AMD EPYC 7763 64-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -39,15 +39,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0119,
+    "value": 1.0129,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.023,
+    "value": 14.836,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 10.24,
+    "value": 17.15,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -73,15 +73,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0125,
+    "value": 1.0139,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.0,
+    "value": 14.986,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 19.03,
+    "value": 15.1,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -107,15 +107,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0124,
+    "value": 1.0077,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 18.582,
+    "value": 17.794,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 158.76,
+    "value": 263.16,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -138,75 +138,75 @@
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 400,
-   "killed": 1881,
+   "killed": 1903,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu1",
    "run": "hops-off",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 400,
-   "killed": 1875,
+   "killed": 1896,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 400,
-   "killed": 1877,
+   "killed": 1914,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 400,
-   "killed": 1871,
+   "killed": 1906,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 500,
    "failed": []
   },
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 100,
-   "killed": 420,
+   "killed": 422,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207640000,
+   "first_seed": 207650000,
    "seeds": 100,
-   "killed": 419,
+   "killed": 421,
    "survived": 0,
    "failures": 0
   }
