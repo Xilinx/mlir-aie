@@ -1250,9 +1250,9 @@ pyyaml==6.0.3 \
     # via
     #   -r requirements_dev.txt
     #   pre-commit
-reuse==6.2.0 \
-    --hash=sha256:12b68549bb9d5f4957f06d726a83a9780628810008fb732bb0d0f21607f8c6d6 \
-    --hash=sha256:4feae057a2334c9a513e6933cdb9be819d8b822f3b5b435a36138bd218897d23
+reuse==6.3.0 \
+    --hash=sha256:5a6ca437057c07ca22a67256520e2783ab03b5524d3a4535603c3d49e3d4b001 \
+    --hash=sha256:be6b598aa6d5cdf44af0da265572a72f0adcd30033857af874fd8607188259c1
     # via -r requirements_dev.txt
 ruff==0.16.0 \
     --hash=sha256:0ff4a79ce3ec0172f3241943835de1c4cb4e2dcd07f0f8c2d02603dbbbee4b17 \
