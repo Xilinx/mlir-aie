@@ -24,14 +24,14 @@
 // CHECK-NEXT:  ^[[B2]]:
 // CHECK-NEXT:    aie.dma_bd(%[[ARG]] : memref<?xi32> offset = 9 len = 3)
 // CHECK-NEXT:    aie.end
-// CHECK-NEXT:  } {aiex.ctrl_pkt_transfer, issue_token = true}
+// CHECK-NEXT:  } {aiex.ctrl_pkt_transfer = @cfg, issue_token = true}
 // CHECK-NEXT:  aiex.dma_start_task(%[[T]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[T]])
 // CHECK-NEXT:  aiex.npu.write32
 // CHECK-NEXT:  %[[U:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
 // CHECK-NEXT:    aie.dma_bd(%[[ARG]] : memref<?xi32> offset = 12 len = 3)
 // CHECK-NEXT:    aie.end
-// CHECK-NEXT:  } {aiex.ctrl_pkt_transfer, issue_token = true}
+// CHECK-NEXT:  } {aiex.ctrl_pkt_transfer = @cfg, issue_token = true}
 // CHECK-NEXT:  aiex.dma_start_task(%[[U]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[U]])
 // CHECK-NOT:   aiex.npu.dma_memcpy_nd
@@ -251,6 +251,185 @@ module {
         aie.end
     }
     aie.runtime_sequence @static_bds() {
+      aiex.control_packet_group @cfg(Config) {
+        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      }
+    }
+  }
+}
+
+// -----
+
+// The configured device's static DMA holds 14 of the shim tile's 16 BDs, which
+// its control packets set up, so a chain holds 2, on the other ids.
+
+// CHECK-LABEL: @configured_static_bds
+// CHECK:       aiex.dma_configure_task_for
+// CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
+// CHECK-NEXT:    aie.next_bd
+// CHECK:         aie.dma_bd({{.*}} offset = 3 len = 3)
+// CHECK-NEXT:    aie.end
+// CHECK:       aiex.dma_await_task
+// CHECK-NEXT:  aiex.dma_configure_task_for
+// CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
+// CHECK-NEXT:    aie.end
+
+// NPU-LABEL: @configured_static_bds
+// NPU:         aiex.npu.writebd {{.*}}bd_id = 14 {{.*}}next_bd = 15
+// NPU:         aiex.npu.writebd {{.*}}bd_id = 15 {{.*}}use_next_bd = 0
+// NPU:         aiex.npu.writebd {{.*}}bd_id = 14 {{.*}}use_next_bd = 0
+module {
+  aie.device(npu2_1col) @cfg {
+    %tile_0_0 = aie.tile(0, 0)
+    %buf = aie.external_buffer {sym_name = "buf"} : memref<16xi32>
+    %dma = aie.shim_dma(%tile_0_0) {
+      %0 = aie.dma_start(S2MM, 1, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+        aie.next_bd ^bd1
+      ^bd1:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 1 : i32, next_bd_id = 2 : i32}
+        aie.next_bd ^bd2
+      ^bd2:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 2 : i32, next_bd_id = 3 : i32}
+        aie.next_bd ^bd3
+      ^bd3:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 3 : i32, next_bd_id = 4 : i32}
+        aie.next_bd ^bd4
+      ^bd4:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 4 : i32, next_bd_id = 5 : i32}
+        aie.next_bd ^bd5
+      ^bd5:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 5 : i32, next_bd_id = 6 : i32}
+        aie.next_bd ^bd6
+      ^bd6:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 6 : i32, next_bd_id = 7 : i32}
+        aie.next_bd ^bd7
+      ^bd7:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 7 : i32, next_bd_id = 8 : i32}
+        aie.next_bd ^bd8
+      ^bd8:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 8 : i32, next_bd_id = 9 : i32}
+        aie.next_bd ^bd9
+      ^bd9:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 9 : i32, next_bd_id = 10 : i32}
+        aie.next_bd ^bd10
+      ^bd10:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 10 : i32, next_bd_id = 11 : i32}
+        aie.next_bd ^bd11
+      ^bd11:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 11 : i32, next_bd_id = 12 : i32}
+        aie.next_bd ^bd12
+      ^bd12:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 12 : i32, next_bd_id = 13 : i32}
+        aie.next_bd ^bd13
+      ^bd13:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 13 : i32, next_bd_id = 0 : i32}
+        aie.next_bd ^bd0
+      ^end:
+        aie.end
+    }
+  }
+  aie.device(npu2_1col) {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_1 = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+    %tile_0_2 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+    %buf = aie.external_buffer {sym_name = "buf"} : memref<16xi32>
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.runtime_sequence @configured_static_bds() {
+      aiex.control_packet_group @cfg(Config) {
+        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      }
+    }
+  }
+}
+
+// -----
+
+// The device the load_pdi before loads holds 14 of the shim tile's 16 BDs, so a
+// chain holds 2, on the other ids.
+
+// CHECK-LABEL: @loaded_static_bds
+// CHECK:       aiex.dma_configure_task_for
+// CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
+// CHECK-NEXT:    aie.next_bd
+// CHECK:         aie.dma_bd({{.*}} offset = 3 len = 3)
+// CHECK-NEXT:    aie.end
+// CHECK:       aiex.dma_await_task
+// CHECK-NEXT:  aiex.dma_configure_task_for
+// CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
+// CHECK-NEXT:    aie.end
+
+// NPU-LABEL: @loaded_static_bds
+// NPU:         aiex.npu.writebd {{.*}}bd_id = 14 {{.*}}next_bd = 15
+// NPU:         aiex.npu.writebd {{.*}}bd_id = 15 {{.*}}use_next_bd = 0
+// NPU:         aiex.npu.writebd {{.*}}bd_id = 14 {{.*}}use_next_bd = 0
+module {
+  aie.device(npu2_1col) @cfg {
+  }
+  aie.device(npu2_1col) @ld {
+    %tile_0_0 = aie.tile(0, 0)
+    %buf = aie.external_buffer {sym_name = "buf"} : memref<16xi32>
+    %dma = aie.shim_dma(%tile_0_0) {
+      %0 = aie.dma_start(S2MM, 1, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+        aie.next_bd ^bd1
+      ^bd1:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 1 : i32, next_bd_id = 2 : i32}
+        aie.next_bd ^bd2
+      ^bd2:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 2 : i32, next_bd_id = 3 : i32}
+        aie.next_bd ^bd3
+      ^bd3:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 3 : i32, next_bd_id = 4 : i32}
+        aie.next_bd ^bd4
+      ^bd4:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 4 : i32, next_bd_id = 5 : i32}
+        aie.next_bd ^bd5
+      ^bd5:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 5 : i32, next_bd_id = 6 : i32}
+        aie.next_bd ^bd6
+      ^bd6:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 6 : i32, next_bd_id = 7 : i32}
+        aie.next_bd ^bd7
+      ^bd7:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 7 : i32, next_bd_id = 8 : i32}
+        aie.next_bd ^bd8
+      ^bd8:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 8 : i32, next_bd_id = 9 : i32}
+        aie.next_bd ^bd9
+      ^bd9:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 9 : i32, next_bd_id = 10 : i32}
+        aie.next_bd ^bd10
+      ^bd10:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 10 : i32, next_bd_id = 11 : i32}
+        aie.next_bd ^bd11
+      ^bd11:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 11 : i32, next_bd_id = 12 : i32}
+        aie.next_bd ^bd12
+      ^bd12:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 12 : i32, next_bd_id = 13 : i32}
+        aie.next_bd ^bd13
+      ^bd13:
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 13 : i32, next_bd_id = 0 : i32}
+        aie.next_bd ^bd0
+      ^end:
+        aie.end
+    }
+  }
+  aie.device(npu2_1col) {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_1 = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+    %tile_0_2 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+    %buf = aie.external_buffer {sym_name = "buf"} : memref<16xi32>
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.runtime_sequence @loaded_static_bds() {
+      aiex.npu.load_pdi {device_ref = @ld}
       aiex.control_packet_group @cfg(Config) {
         aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
         aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}

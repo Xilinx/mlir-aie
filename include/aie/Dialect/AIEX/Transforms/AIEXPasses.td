@@ -529,14 +529,17 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     a descriptor ends its stream packet and the switches route each to its
     tile.
 
-    By default each transfer is an `aiex.npu.dma_memcpy_nd` and an
-    `aiex.npu.sync`. With `chain-bds`, consecutive transfers on one channel with
-    no op between them are one `aiex.dma_configure_task_for` with chained
-    descriptors and one await, split into several chains when longer than the
-    descriptors the shim tile's static DMAs and runtime tasks leave. A runtime
-    task holds its descriptors from its configure, after the last
-    `aiex.npu.load_pdi`, to its await or free; a remark notes chains it
-    shortens.
+    Each transfer of an `aiex.control_packet_group` is an awaited
+    `aiex.dma_configure_task_for`, marked `aiex.ctrl_pkt_transfer` with the
+    device the group configures, so `aie-assign-runtime-sequence-bd-ids` keeps
+    that device's static descriptors out of it and later tasks. With
+    `chain-bds`, consecutive transfers on one channel with no op between them
+    are one task with chained descriptors and one await, split into several
+    chains when longer than the descriptors left by runtime tasks and the
+    static DMAs of the host device, the device the latest
+    `aiex.npu.load_pdi` loads and the device configured. A runtime task holds
+    its descriptors from its configure, after the last `aiex.npu.load_pdi`, to
+    its await or free; a remark notes chains it shortens.
 
     A change of group kind or device starts a new run, awaited after the one
     before, so a configuration's teardown has landed before the next
@@ -546,8 +549,8 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     keeps at most one chain, or as many single transfers as its task queue
     holds, outstanding. Serially a barrier only ends a transfer.
 
-    Both options apply to the packets of `aiex.control_packet_group`s; control
-    packets outside groups keep a transfer and a sync each.
+    Control packets outside groups keep an `aiex.npu.dma_memcpy_nd` and an
+    `aiex.npu.sync` per transfer.
   }];
 
   let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",

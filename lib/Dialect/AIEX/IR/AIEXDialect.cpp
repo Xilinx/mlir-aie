@@ -2404,6 +2404,17 @@ AIEX::controllerIdsOf(AIE::DeviceOp device) {
   return ids;
 }
 
+std::set<uint32_t> AIEX::staticBdIds(ArrayRef<AIE::DeviceOp> devices,
+                                     AIE::TileID tile) {
+  std::set<uint32_t> ids;
+  for (AIE::DeviceOp device : devices)
+    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+      if (program.getTileID() == tile)
+        for (uint32_t id : AIE::getAssignedBdIds(program))
+          ids.insert(id);
+  return ids;
+}
+
 void AIEX::inlineControlPacketGroups(Block &block) {
   for (auto group :
        llvm::make_early_inc_range(block.getOps<ControlPacketGroupOp>())) {

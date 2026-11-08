@@ -33,6 +33,7 @@
 #include "llvm/ADT/StringRef.h"
 
 #include <optional>
+#include <set>
 
 namespace xilinx {
 namespace AIEX {
@@ -107,6 +108,10 @@ void inlineControlPacketGroups(mlir::Block &block);
 // control packets to that tile route by.
 llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>
 controllerIdsOf(AIE::DeviceOp device);
+
+// The buffer descriptor ids the static DMAs of `devices` take on `tile`.
+std::set<uint32_t> staticBdIds(llvm::ArrayRef<AIE::DeviceOp> devices,
+                               AIE::TileID tile);
 
 } // namespace AIEX
 } // namespace xilinx

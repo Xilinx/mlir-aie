@@ -6,6 +6,8 @@
 // A configuration's control packets start on shim tile (0, 0) while a data
 // transfer there is still running: no reset separates them.
 module {
+  aie.device(npu2_1col) @cfg {
+  }
   aie.device(npu2_1col) {
     %t00 = aie.tile(0, 0)
     aie.shim_dma_allocation @ctrl(%t00, MM2S, 0)
@@ -18,7 +20,7 @@ module {
       %t = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end
-      } {issue_token = true, aiex.ctrl_pkt_transfer}
+      } {issue_token = true, aiex.ctrl_pkt_transfer = @cfg}
       // expected-warning @+1 {{starts control packets on tile (0,0) while a DMA transfer there is neither awaited nor freed}}
       aiex.dma_start_task(%t)
       aiex.dma_await_task(%t)
@@ -31,6 +33,8 @@ module {
 
 // A second control packet task beside the same transfer warns no more.
 module {
+  aie.device(npu2_1col) @cfg {
+  }
   aie.device(npu2_1col) {
     %t00 = aie.tile(0, 0)
     aie.shim_dma_allocation @ctrl(%t00, MM2S, 0)
@@ -43,14 +47,14 @@ module {
       %t = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end
-      } {issue_token = true, aiex.ctrl_pkt_transfer}
+      } {issue_token = true, aiex.ctrl_pkt_transfer = @cfg}
       // expected-warning @+1 {{starts control packets on tile (0,0)}}
       aiex.dma_start_task(%t)
       aiex.dma_await_task(%t)
       %u = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end
-      } {issue_token = true, aiex.ctrl_pkt_transfer}
+      } {issue_token = true, aiex.ctrl_pkt_transfer = @cfg}
       aiex.dma_start_task(%u)
       aiex.dma_await_task(%u)
       aiex.npu.sync(%c0, %c0, %c1, %c1, %c1, %c1) : i32, i32, i32, i32, i32, i32
@@ -62,6 +66,8 @@ module {
 
 // Awaited first, the transfer is done.
 module {
+  aie.device(npu2_1col) @cfg {
+  }
   aie.device(npu2_1col) {
     %t00 = aie.tile(0, 0)
     aie.shim_dma_allocation @ctrl(%t00, MM2S, 0)
@@ -74,7 +80,7 @@ module {
       %t = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end
-      } {issue_token = true, aiex.ctrl_pkt_transfer}
+      } {issue_token = true, aiex.ctrl_pkt_transfer = @cfg}
       aiex.dma_start_task(%t)
       aiex.dma_await_task(%t)
     }
@@ -85,6 +91,8 @@ module {
 
 // A load_pdi between them resets the array.
 module {
+  aie.device(npu2_1col) @cfg {
+  }
   aie.device(npu2_1col) @other {
     %t00 = aie.tile(0, 0)
   }
@@ -100,7 +108,7 @@ module {
       %t = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end
-      } {issue_token = true, aiex.ctrl_pkt_transfer}
+      } {issue_token = true, aiex.ctrl_pkt_transfer = @cfg}
       aiex.dma_start_task(%t)
       aiex.dma_await_task(%t)
       aiex.npu.sync(%c0, %c0, %c1, %c1, %c1, %c1) : i32, i32, i32, i32, i32, i32
