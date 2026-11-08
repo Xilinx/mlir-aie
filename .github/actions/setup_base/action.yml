@@ -49,7 +49,7 @@ runs:
 
     - name: Set up Visual Studio shell
       if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
-      uses: egor-tensin/vs-shell@54e4148eac794e4580591c2e0b7750f14b7891fc  # v2
+      uses: egor-tensin/vs-shell@24e4d5a36c1100eafc7fe807d0af53797acf1c7a  # v2
       with:
         arch: x64
 
