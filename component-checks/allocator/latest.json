@@ -1,9 +1,9 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "42442357016",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42442357016",
- "date": "2026-11-08T03:21:12+00:00",
+ "id": "42556070302",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42556070302",
+ "date": "2026-11-09T03:22:43+00:00",
  "commit": {
   "id": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
   "url": "https://github.com/Xilinx/mlir-aie/commit/e5a3fa14879d2049295e2baff02fcc6a82697e73",
@@ -12,11 +12,11 @@
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 7763 64-Core Processor",
+ "device": "AMD EPYC 9V74 80-Core Processor",
  "device_raw": null,
  "provenance": {
   "commit": "e5a3fa1487",
-  "cpu": "AMD EPYC 7763 64-Core Processor"
+  "cpu": "AMD EPYC 9V74 80-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 175.9,
+    "value": 215.8,
     "unit": "s"
    }
   }
@@ -102,7 +102,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.0s (max 30s)"
+   "detail": "300/300 placed in 0.1s (max 30s)"
   }
  ]
 }
