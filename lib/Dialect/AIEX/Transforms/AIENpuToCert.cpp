@@ -16,6 +16,8 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringMap.h"
 
 #include <map>
 #include <set>
@@ -232,7 +234,10 @@ struct NpuMaskPollToCertMaskPoll32 : OpConversionPattern<AIEX::NpuMaskPollOp> {
 };
 
 struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
-  using OpConversionPattern::OpConversionPattern;
+  // nextChainId is owned by the caller and shared by every rewrite in one
+  // conversion, so each name search resumes after the last name allocated.
+  NpuBlockWriteToCertUcDma(MLIRContext *ctx, unsigned &nextChainId)
+      : OpConversionPattern(ctx), nextChainId(nextChainId) {}
 
   LogicalResult
   matchAndRewrite(AIEX::NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -244,11 +249,16 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
       return failure();
     MemRefType dataType = cast<MemRefType>(dataOperand.getResult().getType());
     uint32_t dataSize = dataType.getNumElements();
+    // An empty copy is a no-op, and AIEBU rejects a descriptor whose payload
+    // label has no data.
+    if (dataSize == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
 
-    int id = 0;
-    std::string symbolName = "chain_" + std::to_string(id);
+    std::string symbolName = "chain_" + std::to_string(nextChainId++);
     while (op->getParentOfType<AIE::DeviceOp>().lookupSymbol(symbolName))
-      symbolName = "chain_" + std::to_string(++id);
+      symbolName = "chain_" + std::to_string(nextChainId++);
 
     // Create a new uc_dma_write_des_sync operation
     rewriter.replaceOpWithNewOp<AIEX::CertUcDmaWriteDesSyncOp>(op, symbolName);
@@ -291,6 +301,8 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
                                              op->getLoc());
     return success();
   }
+
+  unsigned &nextChainId;
 };
 
 struct NpuSyncToCertWaitTCTS : OpConversionPattern<AIEX::NpuSyncOp> {
@@ -1129,8 +1141,9 @@ struct AIENpuToCertPass
     target.addIllegalOp<AIEX::NpuWrite32Op>();
     target.addIllegalOp<AIEX::NpuLoadPdiOp>();
 
+    unsigned nextChainId = 0;
     RewritePatternSet p2(&getContext());
-    p2.insert<NpuBlockWriteToCertUcDma>(&getContext());
+    p2.insert<NpuBlockWriteToCertUcDma>(&getContext(), nextChainId);
     p2.insert<NpuMaskWrite32ToCertMaskWrite32>(&getContext());
     p2.insert<NpuMaskPollToCertMaskPoll32>(&getContext());
     p2.insert<NpuWrite32ToCertWrite32>(&getContext());
@@ -1228,13 +1241,112 @@ struct AIENpuToCertPass
 
 } // namespace
 
+// The chain a uC DMA push names, synchronous or not.
+static StringRef pushedChain(Operation &o) {
+  if (auto push = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o))
+    return push.getSymbol();
+  if (auto push = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o))
+    return push.getSymbol();
+  return {};
+}
+
+// Registers r0..r7 are local to a job. Splitting a job, or moving some of its
+// ops into a new job, gives each part its own local registers, so a value
+// defined in one part is gone in the other. r8..r23 are shared by all jobs and
+// survive both.
+static bool isLocalRegister(uint32_t r) { return r < 8; }
+
+// The local registers `o` reads (uses) and writes (defs).
+static void collectLocalRegisterDefsUses(Operation &o,
+                                         SmallVectorImpl<uint32_t> &uses,
+                                         SmallVectorImpl<uint32_t> &defs) {
+  auto add = [](SmallVectorImpl<uint32_t> &regs, uint32_t r) {
+    if (isLocalRegister(r))
+      regs.push_back(r);
+  };
+  if (auto op = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o)) {
+    add(defs, op.getWaitHandle());
+  } else if (auto op = dyn_cast<AIEX::CertWaitUcDmaOp>(o)) {
+    add(uses, op.getWaitHandle());
+  } else if (auto op = dyn_cast<AIEX::CertRead32Op>(o)) {
+    add(defs, op.getValue());
+  } else if (auto op = dyn_cast<AIEX::CertRead32DOp>(o)) {
+    add(uses, op.getAddress());
+    add(defs, op.getValue());
+  } else if (auto op = dyn_cast<AIEX::CertWrite32DOp>(o)) {
+    if (op.getAddressIsReg())
+      add(uses, op.getAddress());
+    if (op.getValueIsReg())
+      add(uses, op.getValue());
+  }
+}
+
+// A job touching any local register is never split, which keeps every
+// definition and use of those registers in one job.
+static bool jobUsesLocalRegister(AIEX::CertJobOp job) {
+  SmallVector<uint32_t> uses, defs;
+  for (Operation &o : job.getBody().front())
+    collectLocalRegisterDefsUses(o, uses, defs);
+  return !uses.empty() || !defs.empty();
+}
+
+// The first local register `ops` reads before defining it: its value comes
+// from earlier in the job, so moving `ops` into a new job would lose it.
+static std::optional<uint32_t>
+findLocalRegisterCrossingIn(ArrayRef<Operation *> ops) {
+  llvm::SmallDenseSet<uint32_t> defined;
+  SmallVector<uint32_t> uses, defs;
+  for (Operation *o : ops) {
+    uses.clear();
+    defs.clear();
+    collectLocalRegisterDefsUses(*o, uses, defs);
+    for (uint32_t r : uses)
+      if (!defined.contains(r))
+        return r;
+    defined.insert(defs.begin(), defs.end());
+  }
+  return std::nullopt;
+}
+
+// AIEBU lays down each chain and each payload global once per page, however
+// many pushes on that page name them, so data is charged once per page.
+struct PageDataSeen {
+  llvm::DenseSet<Operation *> chains;
+  llvm::DenseSet<Operation *> payloads;
+};
+
+// A pushed chain's BDs and payloads, charged the first time the page names
+// them.
+static void addChainDataCost(StringRef sym_name, AIE::DeviceOp deviceOp,
+                             uint32_t &data_cost, PageDataSeen &seen) {
+  auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
+      deviceOp.lookupSymbol(sym_name));
+  if (!chain || !seen.chains.insert(chain).second)
+    return;
+  for (auto bdOp : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>()) {
+    data_cost += 16; // bd op
+    auto global = dyn_cast_if_present<memref::GlobalOp>(
+        deviceOp.lookupSymbol(bdOp.getRemoteAddress()));
+    if (!global || !seen.payloads.insert(global).second)
+      continue;
+    auto initVal = global.getInitialValue();
+    if (!initVal)
+      continue;
+    auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
+    if (!data)
+      continue;
+    data_cost += data.getNumElements() * 4; // 4 bytes per element
+  }
+}
+
 // Instruction sizes follow the AIEBU CERT ISA specification so the running
 // total here matches the bytes emitJob actually produces. Keep the cost model
 // and emitter in sync when adding a cert op:
 // an op the emitter can emit but this function ignores is counted as free,
 // which makes the page look smaller than it is.
 static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
-                            uint32_t &text_cost, uint32_t &data_cost) {
+                            uint32_t &text_cost, uint32_t &data_cost,
+                            PageDataSeen &seen) {
   // Several distinct op kinds share an encoded instruction size below --
   // an instruction-size table, not a copy-paste clone.
   // NOLINTBEGIN(bugprone-branch-clone)
@@ -1261,27 +1373,22 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     // NOLINTEND(bugprone-branch-clone)
   } else if (auto syncOp = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o)) {
     text_cost += 4; // ISA_OPSIZE_UC_DMA_WRITE_DES_SYNC
-    // find the uc_dma_chain
-    StringRef sym_name = syncOp.getSymbol();
-    auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        deviceOp.lookupSymbol(sym_name));
-    if (!chain)
-      return;
-    for (auto bdOp : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>()) {
-      data_cost += 16; // bd op
-      StringRef data_sym_name = bdOp.getRemoteAddress();
-      auto global = dyn_cast_if_present<memref::GlobalOp>(
-          deviceOp.lookupSymbol(data_sym_name));
-      if (!global)
-        continue;
-      auto initVal = global.getInitialValue();
-      if (!initVal)
-        continue;
-      auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
-      if (!data)
-        continue;
-      data_cost += data.getNumElements() * 4; // 4 bytes per element
-    }
+    addChainDataCost(syncOp.getSymbol(), deviceOp, data_cost, seen);
+  } else if (auto desOp = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o)) {
+    text_cost += 8; // ISA_OPSIZE_UC_DMA_WRITE_DES
+    addChainDataCost(desOp.getSymbol(), deviceOp, data_cost, seen);
+  } else if (isa<AIEX::CertWaitUcDmaOp>(o)) {
+    text_cost += 4; // ISA_OPSIZE_WAIT_UC_DMA
+  } else if (isa<AIEX::CertRead32Op>(o)) {
+    text_cost += 8; // ISA_OPSIZE_READ_32
+  } else if (isa<AIEX::CertRead32DOp>(o)) {
+    text_cost += 4; // ISA_OPSIZE_READ_32_D
+  } else if (isa<AIEX::CertWrite32DOp>(o)) {
+    text_cost += 12; // ISA_OPSIZE_WRITE_32_D
+  } else if (isa<AIEX::CertSaveTimestampsOp>(o)) {
+    text_cost += 8; // ISA_OPSIZE_SAVE_TIMESTAMPS
+  } else if (isa<AIEX::CertSaveRegisterOp>(o)) {
+    text_cost += 12; // ISA_OPSIZE_SAVE_REGISTER
   }
 }
 
@@ -1291,16 +1398,19 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
                              bool &found_split_point) {
   uint32_t text_cost = 32; // page header: `.align 16` padding plus `.eop`
   uint32_t data_cost = 0;
+  PageDataSeen seen;
   found_split_point = false;
   AIE::DeviceOp deviceOp = op->getParentOfType<AIE::DeviceOp>();
 
   for (auto job : op.getBody().front().getOps<AIEX::CertJobOp>()) {
+    // Cuts inside a job that uses local registers would lose their values.
+    bool splittable = !jobUsesLocalRegister(job);
     // START_JOB precedes the body, so it is already spent at every candidate
     // split point inside this job; END_JOB is charged after the body below.
     text_cost += cert_job_start_cost;
     for (auto &o : job.getBody().front().getOperations()) {
       Block::iterator current(&o);
-      if (!found_split_point && !isa<AIE::EndOp>(o) &&
+      if (splittable && !found_split_point && !isa<AIE::EndOp>(o) &&
           current != job.getBody().front().begin() &&
           (text_cost + data_cost) >= split_target) {
         split_job = job;
@@ -1308,9 +1418,10 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
         found_split_point = true;
       }
 
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      updateCostForOp(o, deviceOp, text_cost, data_cost, seen);
 
-      if (!found_split_point && (text_cost + data_cost) >= split_target) {
+      if (splittable && !found_split_point &&
+          (text_cost + data_cost) >= split_target) {
         Block::iterator next = current;
         ++next;
         if (next != job.getBody().front().end() && !isa<AIE::EndOp>(*next)) {
@@ -1332,12 +1443,38 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
   return text_cost + data_cost;
 }
 
-// A cut inside a barrier's [min, max] textual indices would separate its
-// participants, which must remain co-resident (see
-// checkLocalBarrierColocation).
-static void computeBarrierSpans(AIEX::CertPageOp page,
-                                std::map<Operation *, int> &flatIndex,
-                                std::map<int, std::pair<int, int>> &spans) {
+// A cut before flat index p separates a span [lo, hi] when lo < p <= hi.
+// Local barrier participants must share a page (see
+// checkLocalBarrierColocation). A payload patch must share a page with every
+// later uC-DMA push of that payload: each page carries its own payload copy,
+// so a push on another page would use the unpatched addresses.
+enum class SpanKind { LocalBarrier, PatchedPayload };
+
+struct IndivisibleSpan {
+  int lo, hi;
+  SpanKind kind;
+};
+
+// Index non-terminator ops in textual order and record indivisible spans.
+static void computeIndivisibleSpans(AIEX::CertPageOp page,
+                                    std::map<Operation *, int> &flatIndex,
+                                    SmallVectorImpl<IndivisibleSpan> &spans) {
+  AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
+  std::map<int, std::pair<int, int>> barriers;
+  // Patches accumulate and survive pushes, so later pushes depend on the
+  // earliest patch of their payload.
+  llvm::StringMap<int> firstPatch;
+  auto payloadsOf = [&](StringRef chainSym) {
+    SmallVector<StringRef> payloads;
+    auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
+        deviceOp ? deviceOp.lookupSymbol(chainSym) : nullptr);
+    if (!chain || chain.getBody().empty())
+      return payloads;
+    for (auto bd : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>())
+      payloads.push_back(bd.getRemoteAddress());
+    return payloads;
+  };
+
   int idx = 0;
   for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
     for (auto &o : job.getBody().front().getOperations()) {
@@ -1345,48 +1482,62 @@ static void computeBarrierSpans(AIEX::CertPageOp page,
         continue;
       flatIndex[&o] = idx;
       if (auto bar = dyn_cast<AIEX::CertLocalBarrierOp>(o)) {
-        int id = bar.getLocalBarrierId();
-        auto it = spans.find(id);
-        if (it == spans.end())
-          spans[id] = {idx, idx};
+        int id = static_cast<int>(bar.getLocalBarrierId());
+        auto it = barriers.find(id);
+        if (it == barriers.end())
+          barriers[id] = {idx, idx};
         else {
           it->second.first = std::min(it->second.first, idx);
           it->second.second = std::max(it->second.second, idx);
+        }
+      } else if (auto patch = dyn_cast<AIEX::CertApplyOffset57Op>(o)) {
+        firstPatch.try_emplace(patch.getSymbol(), idx);
+      } else if (StringRef pushed = pushedChain(o); !pushed.empty()) {
+        for (StringRef payload : payloadsOf(pushed)) {
+          auto it = firstPatch.find(payload);
+          if (it != firstPatch.end())
+            spans.push_back({it->second, idx, SpanKind::PatchedPayload});
         }
       }
       ++idx;
     }
   }
+  for (auto &[id, span] : barriers)
+    spans.push_back({span.first, span.second, SpanKind::LocalBarrier});
 }
 
-// A cut before flat index `p` (ops with index < p -> earlier page) separates a
-// local_barrier group iff some participant is before and some at/after the cut.
-static bool cutSeparatesBarrier(const std::map<int, std::pair<int, int>> &spans,
-                                int p) {
-  return llvm::any_of(spans, [p](const auto &entry) {
-    auto [lo, hi] = entry.second;
-    return lo < p && hi >= p;
-  });
+// Return whether the cut separates a span, optionally reporting its kind.
+static bool cutSeparatesSpan(ArrayRef<IndivisibleSpan> spans, int p,
+                             SpanKind *kind = nullptr) {
+  const auto *it = llvm::find_if(
+      spans, [p](const IndivisibleSpan &s) { return s.lo < p && s.hi >= p; });
+  if (it == spans.end())
+    return false;
+  if (kind)
+    *kind = it->kind;
+  return true;
 }
 
-// Choose the barrier-safe cut closest to split_target, allowing both interior
+// Choose the span-safe cut closest to split_target, allowing both interior
 // and job-boundary cuts. Each half needs content so repeated splitting
 // progresses.
 static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
                                 const std::map<Operation *, int> &flatIndex,
-                                const std::map<int, std::pair<int, int>> &spans,
+                                ArrayRef<IndivisibleSpan> spans,
                                 AIEX::CertJobOp &split_job,
                                 Block::iterator &split_iter) {
   AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
   uint32_t text_cost = 32; // page header, mirrors estimateCost
   uint32_t data_cost = 0;
+  PageDataSeen seen;
   bool found = false;
   uint32_t best_delta = 0;
   // Whether some job already visited holds a real op, i.e. whether cutting at
   // the current job's first op would leave content on the earlier page.
   bool sawOpInEarlierJob = false;
   for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
-    text_cost += cert_job_start_cost; // mirrors estimateCost
+    text_cost += cert_job_start_cost;             // mirrors estimateCost
+    bool splittable = !jobUsesLocalRegister(job); // mirrors estimateCost
     bool sawOpInJob = false;
     for (auto &o : job.getBody().front().getOperations()) {
       if (isa<AIE::EndOp>(o))
@@ -1397,10 +1548,10 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
       // Admitting the latter matters for a page built of small jobs whose sizes
       // only sum over the limit: no job has an interior point worth cutting at,
       // yet a cut between two whole jobs splits it perfectly well.
-      if (sawOpInJob || sawOpInEarlierJob) {
+      if (sawOpInJob ? splittable : sawOpInEarlierJob) {
         auto fi = flatIndex.find(&o);
         int p = fi == flatIndex.end() ? 0 : fi->second;
-        if (!cutSeparatesBarrier(spans, p)) {
+        if (!cutSeparatesSpan(spans, p)) {
           uint32_t cost = text_cost + data_cost;
           uint32_t delta =
               cost > split_target ? cost - split_target : split_target - cost;
@@ -1412,7 +1563,7 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
           }
         }
       }
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      updateCostForOp(o, deviceOp, text_cost, data_cost, seen);
       sawOpInJob = true;
     }
     text_cost += cert_job_end_cost; // mirrors estimateCost
@@ -1427,7 +1578,10 @@ namespace {
 // page According to CERT spec: "load_pdi and preempt should take one whole job
 // which in turn should take one whole page"
 struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
-  using OpRewritePattern::OpRewritePattern;
+  // `hadError` is raised with an error diagnostic, as in
+  // SplitCertPageOpPattern.
+  IsolateFullPageOpsPattern(MLIRContext *context, bool *hadError)
+      : OpRewritePattern(context), hadError(hadError) {}
 
   // Create an empty, terminated cert.page directly after `after`, in the same
   // block. Staying in `after`'s block is what keeps a page that was moved into
@@ -1524,6 +1678,19 @@ struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
         if (!isa<AIE::EndOp>(*it))
           afterOps.push_back(&*it);
 
+      // Isolation is mandatory, so a local register written before the
+      // full-page op and read after it cannot be kept; reject the job.
+      if (auto crossing = findLocalRegisterCrossingIn(afterOps)) {
+        StringRef name = fullPageOp->getName().getStringRef();
+        *hadError = true;
+        return jobOp.emitError()
+               << "job " << jobOp.getJobId() << " must be split around its "
+               << name << ", but local register r" << *crossing
+               << " is written before it and read after it; keep that "
+                  "register's uses on one side of the "
+               << name << ", or put them in a separate job";
+      }
+
       auto emitJobPage = [&](uint32_t jobId, ArrayRef<Operation *> ops) {
         auto page = makePageAfter(rewriter, anchor, loc);
         rewriter.setInsertionPoint(page.getBody().front().getTerminator());
@@ -1558,6 +1725,8 @@ struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
 
     return success();
   }
+
+  bool *hadError;
 };
 
 struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
@@ -1588,15 +1757,16 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     bool isImplicit = op->hasAttr("cert.implicit");
 
     std::map<Operation *, int> flatIndex;
-    std::map<int, std::pair<int, int>> barrierSpans;
-    computeBarrierSpans(op, flatIndex, barrierSpans);
+    SmallVector<IndivisibleSpan> spans;
+    computeIndivisibleSpans(op, flatIndex, spans);
 
     // The initial estimate can miss a job-boundary cut or an earlier candidate;
-    // search all positions before declaring the page unsplittable.
+    // search all positions before declaring the page unsplittable. Spans are
+    // not applied here: a page whose cuts are all blocked by a span has split
+    // points, and the span check below reports which constraint blocks them.
     if (!found_split_point)
-      found_split_point =
-          findLegalSplitPoint(op, cert_page_size / 2, flatIndex, barrierSpans,
-                              split_job, split_iter);
+      found_split_point = findLegalSplitPoint(op, cert_page_size / 2, flatIndex,
+                                              {}, split_job, split_iter);
 
     // Over the split trigger but with nowhere to cut. Every cut has to leave at
     // least one op on each side, so a page whose bulk sits in a single one-op
@@ -1605,60 +1775,78 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     // firmware will reject.
     if (!found_split_point) {
       if (cost > cert_page_limit) {
-        op.emitError() << "cert.page is an estimated " << cost
-                       << " bytes, over the " << cert_page_limit
-                       << "-byte microcontroller page limit, and offers no "
-                          "split point (a split must leave at least one op on "
-                          "each page); break the oversized job into smaller "
-                          "jobs";
+        auto jobs = op.getBody().front().getOps<AIEX::CertJobOp>();
+        auto blocker = llvm::find_if(jobs, jobUsesLocalRegister);
+        if (blocker != jobs.end())
+          op.emitError() << "cert.page is an estimated " << cost
+                         << " bytes, over the " << cert_page_limit
+                         << "-byte microcontroller page limit, and cannot be "
+                            "split: job "
+                         << (*blocker).getJobId()
+                         << " uses local registers r0..r7, which do not "
+                            "survive a split; break it into smaller jobs "
+                            "that each keep a register's definition and "
+                            "uses together";
+        else
+          op.emitError() << "cert.page is an estimated " << cost
+                         << " bytes, over the " << cert_page_limit
+                         << "-byte microcontroller page limit, and offers no "
+                            "split point (a split must leave at least one op "
+                            "on each page); break the oversized job into "
+                            "smaller jobs";
         *hadError = true;
       }
       return failure();
     }
 
-    // never split a local_barrier participant set across an .eop
-    // (G-localbar). If the cost-chosen split point would separate a barrier
-    // group, retarget to a legal split point; if none exists the page cannot be
-    // made legal, so fail the compile rather than emit something broken.
-    // an implicit page (formed by formImplicitPages) groups jobs meant to
-    // be cooperatively scheduled together; an explicit page is a user-authored
-    // boundary. This governs the wording of the diagnostics below (the remedy
-    // differs), not whether they fire.
-    if (!barrierSpans.empty()) {
+    // Never split a local_barrier participant set, or a payload patch from a
+    // later push of that payload, across an .eop. If the cost-chosen split
+    // point would, retarget to a legal split point; if none exists the page
+    // cannot be made legal, so fail the compile rather than emit something
+    // broken. An implicit page (formed by formImplicitPages) groups jobs meant
+    // to be cooperatively scheduled together; an explicit page is a
+    // user-authored boundary. This governs the wording of the diagnostics
+    // below (the remedy differs), not whether they fire.
+    if (!spans.empty()) {
       auto fi = flatIndex.find(&*split_iter);
       int p = fi == flatIndex.end() ? 0 : fi->second;
-      if (cutSeparatesBarrier(barrierSpans, p)) {
-        if (!findLegalSplitPoint(op, cert_page_size / 2, flatIndex,
-                                 barrierSpans, split_job, split_iter)) {
-          // No split keeps every local_barrier group intact. Leave the
-          // page whole: severing a barrier hangs the firmware, so an oversized
-          // page is the better of the two. That is only survivable while the
-          // page still fits, though -- past cert_page_limit neither option
-          // works, and both fail silently at runtime, so diagnose and fail the
-          // compile. The remedy differs by page kind: an implicit page just
-          // needs a user-authored boundary in the right place, while an
-          // explicit page is already where the user put it and has to be made
-          // smaller or its participants regrouped. Raise `hadError` so the pass
-          // actually fails -- returning failure() alone only tells the greedy
-          // driver this pattern did not apply.
+      SpanKind kind = SpanKind::LocalBarrier;
+      if (cutSeparatesSpan(spans, p, &kind)) {
+        if (!findLegalSplitPoint(op, cert_page_size / 2, flatIndex, spans,
+                                 split_job, split_iter)) {
+          // Leave the page whole: a severed span hangs the firmware or pushes
+          // stale addresses, so an oversized page is the better of the two.
+          // That is only survivable while the page still fits; past
+          // cert_page_limit, diagnose and raise `hadError` so the pass fails
+          // rather than only this rewrite.
           if (cost > cert_page_limit) {
+            bool barrier = kind == SpanKind::LocalBarrier;
+            StringRef what = barrier
+                                 ? "a local_barrier participant set"
+                                 : "a cert.apply_offset_57 from a uC-DMA push "
+                                   "of the payload it patches";
             if (isImplicit)
               op.emitError()
                   << "implicit cert.page is an estimated " << cost
                   << " bytes, over the " << cert_page_limit
                   << "-byte microcontroller page limit, and cannot be split "
-                     "without separating a local_barrier participant set "
-                     "across pages; insert an explicit cert.page boundary to "
-                     "co-locate the barrier participants";
+                     "without separating "
+                  << what
+                  << " across pages; insert an explicit cert.page boundary to "
+                  << (barrier ? "co-locate the barrier participants"
+                              : "co-locate each apply_offset_57 with its "
+                                "pushes");
             else
               op.emitError()
                   << "cert.page is an estimated " << cost << " bytes, over the "
                   << cert_page_limit
                   << "-byte microcontroller page limit, and cannot be split "
-                     "without separating a local_barrier participant set "
-                     "across pages; reduce the page's contents or regroup its "
-                     "local_barrier participants so that a legal split point "
-                     "exists";
+                     "without separating "
+                  << what << " across pages; reduce the page's contents or "
+                  << (barrier ? "regroup its local_barrier participants"
+                              : "regroup its apply_offset_57 ops and their "
+                                "pushes")
+                  << " so that a legal split point exists";
             *hadError = true;
           }
           return failure();
@@ -1980,11 +2168,15 @@ struct AIECertPagesPass
     lowerPagePlacementToGroups(getOperation());
 
     // First, isolate load_pdi and preempt operations into their own job/page
+    bool isolateError = false;
     RewritePatternSet isolatePatterns(&getContext());
-    isolatePatterns.insert<IsolateFullPageOpsPattern>(&getContext());
+    isolatePatterns.insert<IsolateFullPageOpsPattern>(&getContext(),
+                                                      &isolateError);
     if (failed(
             applyPatternsGreedily(getOperation(), std::move(isolatePatterns))))
       signalPassFailure();
+    if (isolateError)
+      return signalPassFailure();
 
     // Then apply the page splitting pattern. `splitError` catches diagnostics
     // the pattern emits while declining to split (see SplitCertPageOpPattern):

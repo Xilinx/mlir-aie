@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --verify-diagnostics %s
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids %s 2>/dev/null | FileCheck %s
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unreleased-transfers=false' --verify-diagnostics %s
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unreleased-transfers=false' %s 2>/dev/null | FileCheck %s
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unreleased-transfers=false' --aie-dma-tasks-to-npu \
 // RUN:   --aie-dma-to-npu --verify-diagnostics %s
 
 // Enforcement is on by default, but it needs a pollable occupancy register and

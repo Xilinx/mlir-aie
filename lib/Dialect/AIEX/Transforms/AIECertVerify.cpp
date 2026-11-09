@@ -50,7 +50,7 @@ static LogicalResult checkLocalBarrierColocation(AIE::DeviceOp device) {
   device.walk(
       [&](AIEX::CertLocalBarrierOp barrier) {
         int uc = getUcGroupId(barrier);
-        int id = barrier.getLocalBarrierId();
+        int id = static_cast<int>(barrier.getLocalBarrierId());
         Operation *scope = barrier->getParentOfType<AIEX::CertPageOp>();
         if (!scope)
           scope = barrier->getParentOfType<AIEX::CertJobOp>();
@@ -62,8 +62,10 @@ static LogicalResult checkLocalBarrierColocation(AIE::DeviceOp device) {
         }
         if (it->second != scope) {
           barrier.emitError()
-              << "cert.local_barrier with local_barrier_id " << id << " in uC "
-              << uc << " must be on the same page as its other participants";
+              << "cert.local_barrier "
+              << stringifyCertLocalBarrierId(barrier.getLocalBarrierId())
+              << " in uC " << uc
+              << " must be on the same page as its other participants";
           result = failure();
         }
       });
@@ -201,13 +203,14 @@ static LogicalResult checkRemoteBarrierParties(AIE::DeviceOp device) {
   std::set<int> present = computePresentUcs(device);
   LogicalResult result = success();
 
-  std::map<int, SmallVector<AIEX::CertRemoteBarrierOp, 4>> byId;
+  std::map<AIEX::CertRemoteBarrierId, SmallVector<AIEX::CertRemoteBarrierOp, 4>>
+      byId;
   device.walk([&](AIEX::CertRemoteBarrierOp b) {
     byId[b.getRemoteBarrierId()].push_back(b);
   });
 
   for (auto &entry : byId) {
-    int id = entry.first;
+    StringRef id = stringifyCertRemoteBarrierId(entry.first);
     SmallVector<AIEX::CertRemoteBarrierOp, 4> &occs = entry.second;
 
     // All occurrences of an id must describe the same rendezvous.
@@ -217,7 +220,7 @@ static LogicalResult checkRemoteBarrierParties(AIE::DeviceOp device) {
     });
     if (!masksAgree) {
       for (auto b : occs)
-        b.emitError() << "cert.remote_barrier id " << id
+        b.emitError() << "cert.remote_barrier " << id
                       << " occurrences disagree on party_mask";
       result = failure();
       continue;
@@ -229,7 +232,7 @@ static LogicalResult checkRemoteBarrierParties(AIE::DeviceOp device) {
       int own = getUcGroupId(b);
       occPerUc[own]++;
       if (own >= 0 && own < 32 && !((mask >> own) & 1u)) {
-        b.emitError() << "cert.remote_barrier id " << id << " on uC " << own
+        b.emitError() << "cert.remote_barrier " << id << " on uC " << own
                       << " excludes its own uC from party_mask";
         result = failure();
       }
@@ -237,7 +240,7 @@ static LogicalResult checkRemoteBarrierParties(AIE::DeviceOp device) {
     for (auto &[uc, count] : occPerUc)
       if (count > 1) {
         occs.front().emitError()
-            << "cert.remote_barrier id " << id << " has " << count
+            << "cert.remote_barrier " << id << " has " << count
             << " occurrences on uC " << uc
             << " (at most one participant per uC per rendezvous)";
         result = failure();
@@ -249,13 +252,13 @@ static LogicalResult checkRemoteBarrierParties(AIE::DeviceOp device) {
         continue;
       if (!present.count(bit)) {
         occs.front().emitError()
-            << "cert.remote_barrier id " << id << " party_mask references uC "
+            << "cert.remote_barrier " << id << " party_mask references uC "
             << bit << " which is not present in the design";
         result = failure();
       } else if (!occPerUc.count(bit)) {
         occs.front().emitError()
-            << "cert.remote_barrier id " << id << " party_mask includes uC "
-            << bit << " but that uC has no matching remote_barrier(" << id
+            << "cert.remote_barrier " << id << " party_mask includes uC " << bit
+            << " but that uC has no matching remote_barrier(" << id
             << ") to rendezvous with";
         result = failure();
       }
@@ -264,47 +267,51 @@ static LogicalResult checkRemoteBarrierParties(AIE::DeviceOp device) {
   return result;
 }
 
-// G-barlimits: local_barrier_id must be in [0, 15] and remote_barrier_id in
-// [0, 6], matching the assembler operands $rb0..$rb6; a single uC may
-// use at most 16 distinct local ids and 7 distinct
-// remote ids (the firmware barrier-id budget per microcontroller).
-static LogicalResult checkBarrierLimits(AIE::DeviceOp device) {
+// The register `op` writes, if any. cert.write32_d only reads registers.
+static std::optional<uint32_t> registerWrittenBy(Operation &op) {
+  if (auto o = dyn_cast<AIEX::CertUcDmaWriteDesOp>(op))
+    return o.getWaitHandle();
+  if (auto o = dyn_cast<AIEX::CertRead32Op>(op))
+    return o.getValue();
+  if (auto o = dyn_cast<AIEX::CertRead32DOp>(op))
+    return o.getValue();
+  return std::nullopt;
+}
+
+// A cert.wait_uc_dma handle must be a local register r0..r7 whose last write
+// earlier in the same job is a cert.uc_dma_write_des. A read into that register
+// in between replaces the handle.
+static LogicalResult checkUcDmaWaitHandles(AIE::DeviceOp device) {
   LogicalResult result = success();
-  std::map<int, std::set<int>> localIds;
-  std::map<int, std::set<int>> remoteIds;
-
-  device.walk([&](AIEX::CertLocalBarrierOp barrier) {
-    int id = barrier.getLocalBarrierId();
-    if (id < 0 || id > 15) {
-      barrier.emitError() << "cert.local_barrier local_barrier_id " << id
-                          << " out of range [0, 15]";
-      result = failure();
+  device.walk([&](AIEX::CertJobOp job) {
+    llvm::SmallDenseMap<uint32_t, Operation *> lastWrite;
+    for (Operation &o : job.getBody().front()) {
+      if (auto wait = dyn_cast<AIEX::CertWaitUcDmaOp>(o)) {
+        uint32_t r = wait.getWaitHandle();
+        auto it = lastWrite.find(r);
+        if (r >= 8) {
+          wait.emitError() << "cert.wait_uc_dma handle r" << r
+                           << " is a shared register; the handle must be a "
+                              "local register r0..r7 written by a "
+                              "cert.uc_dma_write_des in the same job";
+          result = failure();
+        } else if (it == lastWrite.end()) {
+          wait.emitError() << "cert.wait_uc_dma waits on r" << r
+                           << ", which no earlier cert.uc_dma_write_des in "
+                              "this job writes";
+          result = failure();
+        } else if (!isa<AIEX::CertUcDmaWriteDesOp>(it->second)) {
+          wait.emitError() << "cert.wait_uc_dma waits on r" << r
+                           << ", but its last write is a '"
+                           << it->second->getName().getStringRef()
+                           << "', which replaced the handle";
+          result = failure();
+        }
+      }
+      if (auto r = registerWrittenBy(o))
+        lastWrite[*r] = &o;
     }
-    localIds[getUcGroupId(barrier)].insert(id);
   });
-
-  device.walk([&](AIEX::CertRemoteBarrierOp barrier) {
-    int id = barrier.getRemoteBarrierId();
-    if (id < 0 || id > 6) {
-      barrier.emitError() << "cert.remote_barrier remote_barrier_id " << id
-                          << " out of range [0, 6]";
-      result = failure();
-    }
-    remoteIds[getUcGroupId(barrier)].insert(id);
-  });
-
-  for (auto &[uc, ids] : localIds)
-    if (ids.size() > 16) {
-      device.emitError() << "uC " << uc << " uses " << ids.size()
-                         << " distinct local_barrier ids (max 16)";
-      result = failure();
-    }
-  for (auto &[uc, ids] : remoteIds)
-    if (ids.size() > 7) {
-      device.emitError() << "uC " << uc << " uses " << ids.size()
-                         << " distinct remote_barrier ids (max 7)";
-      result = failure();
-    }
   return result;
 }
 
@@ -322,7 +329,7 @@ struct AIECertVerifyPass
       signalPassFailure();
     if (failed(checkRemoteBarrierParties(device)))
       signalPassFailure();
-    if (failed(checkBarrierLimits(device)))
+    if (failed(checkUcDmaWaitHandles(device)))
       signalPassFailure();
   }
 };

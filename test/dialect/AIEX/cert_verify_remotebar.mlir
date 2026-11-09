@@ -11,17 +11,17 @@
 
 // RUN: aie-opt --aie-cert-verify --split-input-file --verify-diagnostics %s
 
-// Positive: uCs 0 and 1 both have remote_barrier(1, 0x3); masks agree, own bits
+// Positive: uCs 0 and 1 both have remote_barrier(rb1, 0x3); masks agree, own bits
 // set -> OK.
 aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
-      aiex.cert.remote_barrier(1, 0x3)
+      aiex.cert.remote_barrier(rb1, 0x3)
     }
   }
   aiex.cert.attach_to_group(1) {
     aiex.cert.job(1) {
-      aiex.cert.remote_barrier(1, 0x3)
+      aiex.cert.remote_barrier(rb1, 0x3)
     }
   }
 }
@@ -33,7 +33,7 @@ aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
       // expected-error@+1 {{party_mask references uC 2 which is not present in the design}}
-      aiex.cert.remote_barrier(1, 0x5)
+      aiex.cert.remote_barrier(rb1, 0x5)
     }
   }
   aiex.cert.attach_to_group(1) {
@@ -45,13 +45,13 @@ aie.device(xcve3858) {
 
 // -----
 
-// Negative (the key rendezvous check): uC 0 waits on remote_barrier(1, 0x3) but
+// Negative (the key rendezvous check): uC 0 waits on remote_barrier(rb1, 0x3) but
 // uC 1 has no matching barrier -> uC 0 would wait forever.
 aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
-      // expected-error@+1 {{party_mask includes uC 1 but that uC has no matching remote_barrier(1) to rendezvous with}}
-      aiex.cert.remote_barrier(1, 0x3)
+      // expected-error@+1 {{party_mask includes uC 1 but that uC has no matching remote_barrier(rb1) to rendezvous with}}
+      aiex.cert.remote_barrier(rb1, 0x3)
     }
   }
   aiex.cert.attach_to_group(1) {
@@ -68,12 +68,12 @@ aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
       // expected-error@+1 {{on uC 0 excludes its own uC from party_mask}}
-      aiex.cert.remote_barrier(1, 0x2)
+      aiex.cert.remote_barrier(rb1, 0x2)
     }
   }
   aiex.cert.attach_to_group(1) {
     aiex.cert.job(1) {
-      aiex.cert.remote_barrier(1, 0x2)
+      aiex.cert.remote_barrier(rb1, 0x2)
     }
   }
 }

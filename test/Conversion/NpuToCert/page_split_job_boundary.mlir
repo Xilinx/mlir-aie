@@ -151,11 +151,11 @@ aie.device(npu2) {
 // CHECK-NOT: aiex.cert.local_barrier
 // CHECK: aiex.cert.page
 // CHECK: aiex.cert.job(2)
-// CHECK: aiex.cert.local_barrier(0, 2)
+// CHECK: aiex.cert.local_barrier(lb0, 2)
 // CHECK: aiex.cert.uc_dma_write_des_sync(@bar_cb)
 // CHECK: aiex.cert.job(3)
 // CHECK: aiex.cert.uc_dma_write_des_sync(@bar_cc)
-// CHECK: aiex.cert.local_barrier(0, 2)
+// CHECK: aiex.cert.local_barrier(lb0, 2)
 aie.device(npu2) {
   memref.global "private" constant @bar_da : memref<800xi32> = dense<0>
   memref.global "private" constant @bar_db : memref<800xi32> = dense<1>
@@ -174,12 +174,12 @@ aie.device(npu2) {
       aiex.cert.uc_dma_write_des_sync(@bar_ca)
     }
     aiex.cert.job(2) {
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
       aiex.cert.uc_dma_write_des_sync(@bar_cb)
     }
     aiex.cert.job(3) {
       aiex.cert.uc_dma_write_des_sync(@bar_cc)
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
     }
   }
 }

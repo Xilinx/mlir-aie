@@ -79,10 +79,10 @@ aie.device(npu2) {
   }
   // expected-error@+1 {{over the 8192-byte microcontroller page limit, and cannot be split without separating a local_barrier participant set across pages; insert an explicit cert.page boundary}}
   aiex.cert.job(1) {
-    aiex.cert.local_barrier(0, 2)
+    aiex.cert.local_barrier(lb0, 2)
     aiex.cert.uc_dma_write_des_sync(@c1)
     aiex.cert.uc_dma_write_des_sync(@c2)
-    aiex.cert.local_barrier(0, 2)
+    aiex.cert.local_barrier(lb0, 2)
   }
 }
 
@@ -105,10 +105,10 @@ aie.device(npu2) {
   // expected-error@+1 {{over the 8192-byte microcontroller page limit, and cannot be split without separating a local_barrier participant set across pages; reduce the page's contents or regroup its local_barrier participants}}
   aiex.cert.page {
     aiex.cert.job(1) {
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
       aiex.cert.uc_dma_write_des_sync(@c1)
       aiex.cert.uc_dma_write_des_sync(@c2)
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
     }
   }
 }
@@ -189,5 +189,95 @@ aie.device(npu2) {
   // expected-error@+1 {{cert.page is an estimated 8200 bytes, over the 8192-byte microcontroller page limit, and offers no split point}}
   aiex.cert.job(1) {
     aiex.cert.uc_dma_write_des_sync(@c1)
+  }
+}
+
+// -----
+
+// Patches accumulate across pushes, including through a second chain that
+// shares the payload, so @tA's first patch must share a page with its last
+// push. That span covers the whole page, which is over the 8192-byte limit
+// even with @tA's data counted once.
+aie.device(xcve3858) {
+  memref.global "private" constant @tA : memref<980xi32> = dense<0>
+  memref.global "private" constant @tB : memref<1200xi32> = dense<0>
+  aiex.cert.uc_dma_chain @chainTA {
+    aiex.cert.uc_dma_bd @tA, 0, 980, false
+  }
+  aiex.cert.uc_dma_chain @chainTB {
+    aiex.cert.uc_dma_bd @tB, 0, 1200, false
+  }
+  aiex.cert.uc_dma_chain @chainTA2 {
+    aiex.cert.uc_dma_bd @tA, 4096, 980, false
+  }
+  // expected-error@+1 {{cannot be split without separating a cert.apply_offset_57 from a uC-DMA push of the payload it patches across pages; reduce the page's contents or regroup its apply_offset_57 ops and their pushes}}
+  aiex.cert.page {
+    aiex.cert.job(1) {
+      aiex.cert.apply_offset_57(@tA, 1, 0)
+      aiex.cert.uc_dma_write_des_sync(@chainTA)
+      aiex.cert.write32(0x1000, 1)
+      aiex.cert.uc_dma_write_des_sync(@chainTB)
+      aiex.cert.apply_offset_57(@tA, 1, 2)
+      aiex.cert.uc_dma_write_des_sync(@chainTA2)
+    }
+  }
+}
+
+// -----
+
+// Every job holds one op, so no cut is interior to a job, and the patch span
+// on @oA blocks every job boundary. The diagnostic must name the span, not ask
+// for the jobs to be broken up.
+aie.device(xcve3858) {
+  memref.global "private" constant @oA : memref<1000xi32> = dense<0>
+  memref.global "private" constant @oB : memref<1000xi32> = dense<0>
+  memref.global "private" constant @oC : memref<1000xi32> = dense<0>
+  aiex.cert.uc_dma_chain @chainOA {
+    aiex.cert.uc_dma_bd @oA, 0, 1000, false
+  }
+  aiex.cert.uc_dma_chain @chainOB {
+    aiex.cert.uc_dma_bd @oB, 0, 1000, false
+  }
+  aiex.cert.uc_dma_chain @chainOCA {
+    aiex.cert.uc_dma_bd @oC, 0, 1000, true
+    aiex.cert.uc_dma_bd @oA, 4096, 1000, false
+  }
+  // expected-error@+1 {{cannot be split without separating a cert.apply_offset_57 from a uC-DMA push of the payload it patches across pages}}
+  aiex.cert.page {
+    aiex.cert.job(1) {
+      aiex.cert.apply_offset_57(@oA, 1, 0)
+    }
+    aiex.cert.job(2) {
+      aiex.cert.uc_dma_write_des_sync(@chainOA)
+    }
+    aiex.cert.job(3) {
+      aiex.cert.uc_dma_write_des_sync(@chainOB)
+    }
+    aiex.cert.job(4) {
+      aiex.cert.uc_dma_write_des_sync(@chainOCA)
+    }
+  }
+}
+
+// -----
+
+// The only job uses a local register, so it offers no cut, and the page is
+// over the limit. The diagnostic names the job and the register constraint.
+aie.device(xcve3858) {
+  memref.global "private" constant @rA : memref<1200xi32> = dense<0>
+  memref.global "private" constant @rB : memref<1200xi32> = dense<0>
+  aiex.cert.uc_dma_chain @chainRA {
+    aiex.cert.uc_dma_bd @rA, 0, 1200, false
+  }
+  aiex.cert.uc_dma_chain @chainRB {
+    aiex.cert.uc_dma_bd @rB, 0, 1200, false
+  }
+  // expected-error@+1 {{cannot be split: job 1 uses local registers r0..r7, which do not survive a split}}
+  aiex.cert.page {
+    aiex.cert.job(1) {
+      aiex.cert.uc_dma_write_des(1, @chainRA)
+      aiex.cert.uc_dma_write_des_sync(@chainRB)
+      aiex.cert.wait_uc_dma(1)
+    }
   }
 }

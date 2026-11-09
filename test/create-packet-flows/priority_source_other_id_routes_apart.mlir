@@ -9,14 +9,14 @@
 
 // Id 21 shares its source with the prioritized id 0 but reaches only one of
 // its destinations. Following id 0's tree, it would leave (2, 4) by South:0
-// without DMA:1, a master set a control-packet reload does not keep, so it
-// routes apart from the tree and meets it where they go to the same place.
+// without DMA:1, which would require a different master set. It routes
+// apart from the tree and meets it where they go to the same place.
 
 // CHECK-LABEL: aie.switchbox(%tile_0_5)
 // CHECK-DAG:     aie.masterset(South : 0, %[[OWN:[0-9]+]]){{$}}
-// CHECK-DAG:     aie.masterset(East : 1, %[[KEPT:[0-9]+]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG:     aie.masterset(East : 1, %[[KEPT:[0-9]+]]) {aie.priority_route}
 // CHECK:         aie.packet_rules(DMA : 0) {
-// CHECK-DAG:       aie.rule(31, 0, %[[KEPT]]) {aie.is_ctrl_pkt_overlay, aie.priority_route}
+// CHECK-DAG:       aie.rule(31, 0, %[[KEPT]]) {aie.priority_route}
 // CHECK-DAG:       aie.rule(31, 21, %[[OWN]])
 // CHECK:         }
 // CHECK-LABEL: aie.switchbox(%tile_2_4)

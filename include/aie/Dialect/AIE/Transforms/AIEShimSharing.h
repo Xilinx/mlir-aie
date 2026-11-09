@@ -11,22 +11,18 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <optional>
+#include <tuple>
 
 namespace xilinx::AIE {
 
-/// When the runtime sequences have each shim end's transfers in flight, so
-/// that ends never in flight together can take turns on one shim channel.
-/// Different runtime sequences never overlap (a dispatch finishes its
-/// transfers before the next starts). Within one, a receiving end's transfers
-/// must all be awaited or freed before the other's first, and a loop spans
-/// its body; a sending end stays in flight to the end of its sequence, as a
-/// shim MM2S task reports itself complete before its words leave the shim.
-/// Ends are known by their objectFIFO's name, before or after split.
-/// The placer and objectFIFO allocation both decide by this, so they agree.
+/// Shim endpoint lifetimes, including calls to self-contained runtime
+/// sequences. MM2S transfers conservatively remain live until their sequence
+/// returns.
 class ShimTransferSpans {
 public:
   /// A shim end a runtime sequence transfers through.
@@ -42,8 +38,14 @@ public:
       DeviceOp device,
       llvm::function_ref<std::optional<End>(mlir::StringAttr)> endOf);
 
-  /// Whether the ends of `a` and `b` are never in flight together.
+  ShimTransferSpans(
+      mlir::ModuleOp module,
+      llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf);
+
+  /// Whether both ends permit sharing, explicitly or by MM2S lifetime analysis.
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
+
+  bool isUsed(mlir::StringAttr end) const;
 
   /// Splits `ends` into groups whose members are pairwise apart, each group
   /// taking one channel: first fit, ordered by the ends' spans in flight.
@@ -52,14 +54,18 @@ public:
   groups(llvm::ArrayRef<mlir::StringAttr> ends) const;
 
 private:
-  struct Span {
-    int64_t first = std::numeric_limits<int64_t>::max();
-    int64_t last = -1;
-    int64_t lastIssue = -1;
-    int64_t lastDone = -1;
-    bool sends = false;
-  };
-  llvm::SmallVector<llvm::DenseMap<mlir::StringAttr, Span>> spans;
+  void analyze(
+      mlir::Operation *root,
+      llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf);
+
+  llvm::DenseMap<mlir::StringAttr,
+                 llvm::SmallVector<std::tuple<unsigned, int64_t, int64_t>>>
+      lifetimes;
+  llvm::DenseSet<mlir::StringAttr> used;
+  llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<mlir::StringAttr>>
+      permissions;
+  llvm::DenseSet<std::pair<mlir::StringAttr, mlir::StringAttr>> overlaps;
+  bool unknown = false;
 };
 
 } // namespace xilinx::AIE

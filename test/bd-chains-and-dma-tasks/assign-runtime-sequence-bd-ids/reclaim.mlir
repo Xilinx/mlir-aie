@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' --verify-diagnostics %s \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true warn-unreleased-transfers=false' --verify-diagnostics %s \
 // RUN:   | FileCheck %s
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' --aie-dma-tasks-to-npu \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true warn-unreleased-transfers=false' --aie-dma-tasks-to-npu \
 // RUN:   --aie-dma-to-npu %s | FileCheck %s --check-prefix=LOWERED
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' %s -o /dev/null 2>&1 \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true warn-unreleased-transfers=false' %s -o /dev/null 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=REMARK
 
 // The remark carries no "see current operation" note: printing the poll for

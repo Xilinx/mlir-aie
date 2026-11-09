@@ -268,6 +268,19 @@ mlir::LogicalResult AIEX::verifyStridesWraps(
 // UseTokenOp
 //===----------------------------------------------------------------------===//
 
+// A field flagged as a register must name one of r0..r23. The bound cannot be
+// an attribute constraint, because the same field holds a full 32-bit
+// immediate when unflagged.
+LogicalResult AIEX::CertWrite32DOp::verify() {
+  if (getAddressIsReg() && getAddress() > 23)
+    return emitOpError("has address_is_reg, so address ")
+           << getAddress() << " must be a register index in [0, 23]";
+  if (getValueIsReg() && getValue() > 23)
+    return emitOpError("has value_is_reg, so value ")
+           << getValue() << " must be a register index in [0, 23]";
+  return success();
+}
+
 LogicalResult AIEX::UseTokenOp::verify() {
   auto *parentOp = (*this)->getParentOp();
   if (isa<func::FuncOp>(parentOp) || isa<AIE::CoreOp>(parentOp) ||

@@ -563,6 +563,7 @@ static Value resolveEndpointTile(Operation *op) {
 // that user flows and the control overlay share, and then it stays. Each lifted
 // packet flow is listed with the ops it traversed.
 struct LiftedOps {
+  llvm::DenseSet<Operation *> fixed;
   llvm::DenseSet<Operation *> consumed;
   llvm::DenseSet<Operation *> kept;
   std::vector<std::pair<PacketFlowOp, SmallVector<Operation *, 8>>> packetFlows;
@@ -583,17 +584,16 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     if (!destTile) {
       continue;
     }
-    // The routing of a priority_route flow carries the is_ctrl_pkt_overlay
-    // marker. The control overlay's flows, which start or end at a TileControl
-    // port, stay materialized, since a lifted flow cannot rebuild the overlay.
+    // A lifted flow cannot reproduce the overlay's fixed switch settings.
     bool marked = llvm::any_of(c.usedOps, [&](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
-      return (op && overlay.isAttrPresent(op)) ||
+      return lifted.fixed.contains(op) ||
+             (op && overlay.isAttrPresent(op) &&
+              !(isa<ConnectOp>(op) && isa<ShimMuxOp>(op->getParentOp()))) ||
              (rulesParent && overlay.isAttrPresent(rulesParent));
     });
-    if (marked && (srcBundle == WireBundle::TileControl ||
-                   destPort.bundle == WireBundle::TileControl)) {
+    if (marked) {
       for (Operation *op : c.usedOps) {
         if (op) {
           lifted.kept.insert(op);
@@ -632,21 +632,21 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
       // flow that has both is a priority_route one or comes from the same
       // source as one, which routes the same.
       BoolAttr keepPktHeader, priorityRoute;
-      bool markedDest = false, markedSource = false;
+      bool markedDest = false;
+      std::optional<bool> markedSource;
       for (Operation *op : c.usedOps) {
         if (auto ms = dyn_cast_or_null<MasterSetOp>(op)) {
           if (ms.getDestBundle() == destPort.bundle &&
               ms.getDestChannel() == destPort.channel) {
             keepPktHeader = ms.getKeepPktHeaderAttr();
-            markedDest = overlay.isAttrPresent(ms);
+            markedDest = prioritizedRule.isAttrPresent(ms);
           }
         }
-        if (isa_and_nonnull<PacketRuleOp>(op) &&
-            prioritizedRule.isAttrPresent(op)) {
-          markedSource = true;
-        }
+        if (!markedSource && isa_and_nonnull<PacketRuleOp>(op))
+          markedSource = prioritizedRule.isAttrPresent(op) ||
+                         prioritizedRule.isAttrPresent(op->getParentOp());
       }
-      if (markedDest && markedSource) {
+      if (markedDest && markedSource.value_or(false)) {
         priorityRoute = rewriter.getBoolAttr(true);
       }
       // The rules along the path accept every id that agrees with value on the
@@ -1007,6 +1007,13 @@ struct AIEFindFlowsPass
   void runOnOperation() override {
 
     DeviceOp d = getOperation();
+    ModuleOp module = d->getParentOfType<ModuleOp>();
+    if (d.getSymNameAttr() &&
+        llvm::any_of(module.getOps<DeviceOp>(), [&](DeviceOp user) {
+          return user.getOverlayAttr() && user.getOverlayAttr().getValue() ==
+                                              d.getSymNameAttr().getValue();
+        }))
+      return;
     ConnectivityAnalysis analysis(d);
     d.getTargetModel().validate();
     if (clEmitVias) {
@@ -1018,6 +1025,27 @@ struct AIEFindFlowsPass
         (1 << llvm::Log2_32_Ceil(d.getTargetModel().getMaxPacketId() + 1)) - 1;
 
     LiftedOps lifted;
+    if (auto ref = d.getOverlayAttr()) {
+      if (auto overlay = module.lookupSymbol<DeviceOp>(ref.getValue())) {
+        std::set<std::pair<TileID, Port>> outputs;
+        auto output = [](Operation &op) -> std::optional<Port> {
+          if (auto connect = dyn_cast<ConnectOp>(op))
+            return connect.destPort();
+          if (auto master = dyn_cast<MasterSetOp>(op))
+            return master.destPort();
+          return std::nullopt;
+        };
+        for (auto box : overlay.getOps<SwitchboxOp>())
+          for (Operation &op : box.getConnections().front())
+            if (auto port = output(op))
+              outputs.emplace(box.getTileOp().getTileID(), *port);
+        for (auto box : d.getOps<SwitchboxOp>())
+          for (Operation &op : box.getConnections().front())
+            if (auto port = output(op))
+              if (outputs.count({box.getTileOp().getTileID(), *port}))
+                lifted.fixed.insert(&op);
+      }
+    }
     lifted.kept.insert_range(analysis.getPacketMergeOps());
     FlowKeySet seen;
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
@@ -1132,10 +1160,11 @@ struct AIEFindFlowsPass
         op->erase();
       }
     }
-    auto cleanupInterconnect = [](Region &connections) {
+    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
+    auto cleanupInterconnect = [&](Region &connections) {
       for (auto amselOp :
            llvm::make_early_inc_range(connections.getOps<AMSelOp>())) {
-        if (amselOp.use_empty()) {
+        if (amselOp.use_empty() && !overlay.isAttrPresent(amselOp)) {
           amselOp.erase();
         }
       }

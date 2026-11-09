@@ -6,13 +6,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "decode_attn_qk_common.h"
-#include "decode_layout.h"
+#include "decode_geometry.h"
 #include "decode_lut_exp.h"
 #include "utils.h"
 
-// FLM_GEMMA4_DECODE_ATTN_QK_SWA picks the head dim, as the RoPE flag does in
-// decode_rope.cc. Only its =1 build takes the 2x4x1 path below:
-// decode_attn_qk_kvh2.cc serves two KV heads at the other head dim.
 #ifndef FLM_GEMMA4_DECODE_ATTN_QK_SWA
 #define FLM_GEMMA4_DECODE_ATTN_QK_SWA 0
 #endif
@@ -26,33 +23,17 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
               bf16 *__restrict m, float *__restrict c, aie::mask<16> &mask,
               bool &is_first);
 
-constexpr int k_prod_lock = FLM_GEMMA4_DECODE_ATTN_QK_K_PROD_LOCK;
-constexpr int k_cons_lock = FLM_GEMMA4_DECODE_ATTN_QK_K_CONS_LOCK;
-
-// ---------------------------------------------------------------------------
-// Entry points. See decode_attn_kv.cc; k has the role of v there. q arrives
-// through an ObjectFifo, so this kernel has no q lock. The k parity persists
-// across dispatches and never resets. One round covers every KV head of the
-// core.
-static PingPong k_pingpong;
-
 extern "C" {
 
-// Primes the running max. The Worker acquires q before this call, and q
-// arrives only after the host writes the RTPs, so the Worker may read L only
-// after this function returns.
 void attn_qk_begin(bf16 *m) {
   static const aie::vector<bf16, 16> neg_inf =
       aie::broadcast<bf16, 16>(-0x1.FEp127f);
   aie::store_v(m, neg_inf);
 }
 
-// One round. iter is the round index and sets the causal mask. s is the
-// ObjectFifo object.
-void attn_qk_round(bf16 *q, bf16 *k_ping, bf16 *k_pong, bf16 *s, bf16 *m,
-                   float *c_local, int iter, int L0) {
-  bf16 *k = k_pingpong.acquire(k_ping, k_pong, k_cons_lock);
-
+// Process 16 key rows at round iter, masking positions beyond L0.
+void attn_qk_round(bf16 *q, bf16 *k, bf16 *s, bf16 *m, float *c_local, int iter,
+                   int L0) {
   int i = L0 - 16 * iter;
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
   bool is_first = (iter == 0);
@@ -64,11 +45,9 @@ void attn_qk_round(bf16 *q, bf16 *k_ping, bf16 *k_pong, bf16 *s, bf16 *m,
 
   _attn_qk<QK_DH / 8, GQA_R, GQA_S, GQA_T>(q, k, s, m, c_local, mask, is_first);
 
-  // c goes in the tail of the s object, after the scores.
+  // Store the eight float32 correction factors after the bf16 scores.
   aie::vector<float, 8> c_vec = aie::load_v<8>(c_local);
   aie::store_v(c, c_vec);
-
-  _lock_release_p(k, k_prod_lock);
 }
 }
 
@@ -88,8 +67,7 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,
   {
     bf16 *__restrict pQ1 = pQ;
 
-    // Do not add AIE_TRY_INITIATION_INTERVAL here. colQ is SWA_DH/8 = 32 here,
-    // too few iterations to fill the pipeline. See decode_attn_qk_kvh2.cc.
+    // At QK_DH=256, 32 iterations are too few to fill a software pipeline.
     MMUL C00(aie::zeros<bf16, MMUL::size_C>());
     MMUL C01(aie::zeros<bf16, MMUL::size_C>());
 
@@ -132,7 +110,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,
   {
     bf16 *__restrict pQ1 = pQ;
 
-    // No AIE_TRY_INITIATION_INTERVAL; see the loop above.
     MMUL C00(aie::zeros<bf16, MMUL::size_C>());
     MMUL C01(aie::zeros<bf16, MMUL::size_C>());
 
@@ -175,7 +152,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,
 
 #elif ATTN_IMPL == ATTN_IMPL_1x8x1
 
-// The QK mmul for one KV head per core.
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,
               bf16 *__restrict m, float *__restrict c, aie::mask<16> &mask,
