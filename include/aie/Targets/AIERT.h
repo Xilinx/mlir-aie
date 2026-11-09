@@ -49,12 +49,12 @@ struct AIERTControl {
   ~AIERTControl();
 
   mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug);
-  mlir::LogicalResult pushToBdQueueAndEnable(mlir::Operation &op, int col,
-                                             int row, int chNum,
-                                             const DMAChannelDir &channelDir,
-                                             int bdId, int repeatCount,
-                                             uint32_t padValue = 0,
-                                             bool outOfOrder = false);
+  mlir::LogicalResult
+  pushToBdQueueAndEnable(mlir::Operation &op, int col, int row, int chNum,
+                         const DMAChannelDir &channelDir, int bdId,
+                         int repeatCount, uint32_t padValue = 0,
+                         bool outOfOrder = false, bool configureChannel = true,
+                         bool pushTask = true);
   mlir::LogicalResult configureLocksAndBd(mlir::Block &block, int col, int row,
                                           bool outOfOrder = false);
   mlir::LogicalResult initLocks(DeviceOp &targetOp);
@@ -63,7 +63,8 @@ struct AIERTControl {
                                         bool skipCtrlPktOverlay = false);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
                                     bool skipCtrlPktOverlay = false);
-  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp);
+  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp,
+                                       bool skipCtrlPktOverlay = false);
   mlir::LogicalResult disableCores(DeviceOp &targetOp);
   mlir::LogicalResult resetDmaChannels(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);

@@ -695,20 +695,30 @@ class Transport:
     Lowers to the ``transport`` attribute on ``aie.objectfifo``. Build one with
     `auto`, `shared_mem` or `dma`, for example ``Transport.dma()`` or
     ``Transport.dma(packet=Packet(id=3))``.
+
+    ``out_of_order=True`` requires a ``Packet`` and makes packet headers select
+    receiving buffer descriptors, allowing FIFOs to share an S2MM channel.
+    It changes descriptor selection, not packet arrival order. The receiving
+    BD ID is separate from the packet ID used for routing. With ``auto``, these
+    settings apply only when DMA is selected. FIFOs pinned to one receiving
+    channel must explicitly request ``out_of_order=True``.
     """
 
     mode: str
     packet: Packet | None = None
+    out_of_order: bool = False
 
     @staticmethod
-    def auto(packet: Packet | None = None) -> "Transport":
+    def auto(
+        packet: Packet | None = None, *, out_of_order: bool = False
+    ) -> "Transport":
         """Leave the path to the lowering.
 
         It uses shared memory when both ends reach one memory module and
         nothing else forces DMAs. A packet header only matters if the DMAs end
         up carrying the fifo.
         """
-        return Transport("auto", packet)
+        return Transport("auto", packet, out_of_order)
 
     @staticmethod
     def shared_mem() -> "Transport":
@@ -716,14 +726,16 @@ class Transport:
         return Transport("shared_mem")
 
     @staticmethod
-    def dma(packet: Packet | None = None) -> "Transport":
+    def dma(packet: Packet | None = None, *, out_of_order: bool = False) -> "Transport":
         """The DMAs, packet-switched when given a `Packet`."""
-        return Transport("dma", packet)
+        return Transport("dma", packet, out_of_order)
 
     def __str__(self) -> str:
         fields = [self.mode]
         if self.packet is not None:
             fields.append(f"packet = {self.packet}")
+        if self.out_of_order:
+            fields.append("out_of_order = true")
         return f"#aie.transport<{', '.join(fields)}>"
 
     def to_attr(self) -> Attribute:
@@ -897,8 +909,14 @@ class object_fifo(ObjectFifoCreateOp):
             return acq.objects[0]
         return list(acq.objects)
 
-    def release(self, port, num_elem):
-        return objectfifo_release(self.sym_name.value, num_elem, port=port)
+    def release(self, port, num_elem, *, assume_queue_space: bool = False):
+        """Release objects, optionally asserting room for all generated DMA pushes."""
+        return objectfifo_release(
+            self.sym_name.value,
+            num_elem,
+            port=port,
+            assume_queue_space=assume_queue_space,
+        )
 
     def register_external_buffers(self, tile, external_buffers):
         return objectfifo_register_external_buffers(
@@ -922,6 +940,11 @@ class object_fifo(ObjectFifoCreateOp):
         """One entry per consumer; None is a DMA channel allocation picks."""
         self.attributes["cons_ports"] = _arrayAttr(
             [(Port.dma() if p is None else p).to_attr() for p in ports], None
+        )
+
+    def set_release_strategy(self, strategy):
+        self.attributes["release_strategy"] = Attribute.parse(
+            f"#aie.release_strategy<{strategy}>"
         )
 
 

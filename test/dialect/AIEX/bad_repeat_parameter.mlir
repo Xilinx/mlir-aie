@@ -73,6 +73,7 @@ aie.device(npu2) {
     } {repeat_count = 3 : i32}
     // expected-error @+1 {{bd_id must be a multiple of 4, got 1}}
     aiex.dma_start_task(%task) {repeat_parameter = @n}
+    aiex.dma_free_task(%task)
   }
 }
 
@@ -89,6 +90,7 @@ aie.device(npu2) {
     } {repeat_count = 3 : i32}
     // expected-error @+1 {{repeat_parameter is only supported on shim NOC and mem tiles, got tile (0, 2)}}
     aiex.dma_start_task(%task) {repeat_parameter = @n}
+    aiex.dma_free_task(%task)
   }
 }
 

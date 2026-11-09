@@ -66,6 +66,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1403,7 +1404,9 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     mlir::MLIRContext *ctx, mlir::ModuleOp mod, bool dynamicObjFifos,
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
-    bool skipObjectFifoVerify = false, bool assignAddresses = true) {
+    bool skipObjectFifoVerify = false, bool assignAddresses = true,
+    llvm::ArrayRef<int> coverColumns = {}, bool adaptiveOverlay = true,
+    bool checkQueueSpace = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1425,7 +1428,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // params.txt is materialized as a separate graph edge, so the scratchpad
   // lowering in this stage writes no `outputParamsFile`.
   X::addLoweringStage(*pm, dynamicObjFifos, packetSwObjFifos, ctrlPktOverlay,
-                      loadPdiToCtrlPkt, skipObjectFifoVerify);
+                      loadPdiToCtrlPkt, skipObjectFifoVerify, coverColumns,
+                      adaptiveOverlay, checkQueueSpace);
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   if (assignAddresses) {
@@ -1919,6 +1923,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
+  bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
@@ -1989,6 +1994,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
+  bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   // Without region simplification; see getNpuDmaLoweringPipeline.
   mlir::GreedyRewriteConfig canonicalize;

@@ -14,12 +14,12 @@ from aie.iron.device import NPU1Col1
 # whether it is given as a Transport or as a bare mode name.
 # CHECK: aie.objectfifo @of_in({{.*}}) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<16xi32>>
 # CHECK: aie.objectfifo @of_out({{.*}}) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<16xi32>>
-def test_objectfifo_transport():
+def test_objectfifo_transport(output_transport="dma"):
     dev = NPU1Col1()
     tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
     of_in = ObjectFifo(tile_ty, depth=2, name="of_in", transport=Transport.dma())
-    of_out = ObjectFifo(tile_ty, depth=2, name="of_out", transport="dma")
+    of_out = ObjectFifo(tile_ty, depth=2, name="of_out", transport=output_transport)
 
     def body(of_in_c, of_out_p):
         for _ in range_(2):
@@ -93,7 +93,29 @@ def test_stream_port():
     print(module)
 
 
+# The transport flag survives IRON resolution and reaches the dialect builder.
+# CHECK: aie.objectfifo @of_out({{.*}}) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>, out_of_order = true>}
+# CHECK: #aie.transport<auto, packet = #aie.packet_info<>, out_of_order = true>
+# CHECK: ObjectFifo 'ooo_in' is out_of_order, so each fill names the buffer it lands in: pass out_of_order_id
+def test_out_of_order_transport():
+    test_objectfifo_transport(Transport.dma(packet=Packet(id=3), out_of_order=True))
+    print(Transport.auto(packet=Packet(), out_of_order=True))
+    tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
+    of_in = ObjectFifo(
+        tile_ty,
+        name="ooo_in",
+        transport=Transport.dma(packet=Packet(), out_of_order=True),
+    )
+    try:
+        of_in.prod().fill(None)
+    except ValueError as e:
+        print(e)
+    else:
+        raise AssertionError("out-of-order fill must require a receiving BD ID")
+
+
 if __name__ == "__main__":
     test_objectfifo_transport()
     test_spellings()
     test_stream_port()
+    test_out_of_order_transport()

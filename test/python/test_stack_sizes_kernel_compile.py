@@ -195,6 +195,75 @@ extern "C" void large_frame(int *a, int n) {
     assert small.frame_bytes("aie2p", entry=large.name) == other.data + other.stack
 
 
+def test_reached_data_is_the_tables_an_entry_reaches(tmp_path):
+    """Each entry reaches only its own table; the object's data holds both."""
+    first = ExternalFunction(
+        "first_table",
+        source_string="""
+static int first[256];
+static int second[1024];
+extern "C" void first_table(int *a, int n) {
+  for (int i = 0; i < n; i++)
+    first[i % 256] += a[i % 64];
+}
+extern "C" void second_table(int *a, int n) {
+  for (int i = 0; i < n; i++)
+    second[i % 1024] += a[i % 64];
+}
+""",
+        arg_types=[np.ndarray[(64,), np.dtype[np.int32]], np.int32],
+    )
+    second = first.object_file.bind("second_table", first.arg_types())
+    cache = KernelObjectCache(tmp_path, 60)
+    own = first.measure("aie2p", cache)
+    other = first.measure("aie2p", cache, entry=second.name)
+    assert own.data == other.data >= 4 * (256 + 1024)
+    assert other.reached_data - own.reached_data == 4 * (1024 - 256)
+    assert own.reached_data < own.data
+    assert first.frame_bytes("aie2p", cache, reached_only=True) == (
+        own.reached_data + (own.stack or 0)
+    )
+
+
+def test_data_counts_the_padding_between_aligned_sections(tmp_path):
+    """Two 4-byte statics, each 64-byte aligned, take 68 bytes, not 8."""
+    pair = ExternalFunction(
+        "aligned_pair",
+        source_string="""
+alignas(64) static int lo;
+alignas(64) static int hi;
+extern "C" void aligned_pair(int *a, int n) {
+  lo += a[0];
+  hi += a[n - 1];
+}
+""",
+        arg_types=[np.ndarray[(64,), np.dtype[np.int32]], np.int32],
+    )
+    found = pair.measure("aie2p", KernelObjectCache(tmp_path, 60))
+    assert found.reached_data == found.data == 64 + 4
+
+
+def test_data_lays_out_bss_after_data_as_the_link_script_does(tmp_path):
+    """.bss, .data, .bss (object order) still costs what the link gives .data
+    before .bss: the uninitialized pair doesn't share one alignment step."""
+    mixed = ExternalFunction(
+        "mixed_sections",
+        source_string="""
+alignas(64) static int lo;
+static int mid = 1;
+alignas(64) static int hi;
+extern "C" void mixed_sections(int *a, int n) {
+  lo += a[0];
+  mid += a[0];
+  hi += a[n - 1];
+}
+""",
+        arg_types=[np.ndarray[(64,), np.dtype[np.int32]], np.int32],
+    )
+    found = mixed.measure("aie2p", KernelObjectCache(tmp_path, 60))
+    assert found.reached_data == found.data == 64 + 64 + 4
+
+
 def test_measure_refuses_an_arch_the_recipe_was_not_built_for():
     """A factory's recipe is its bound device's; measuring it for another
     arch is refused before Peano compiles the wrong source.

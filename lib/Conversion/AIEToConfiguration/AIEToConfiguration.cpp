@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "../PassDetail.h"
+#include "TransactionBinary.h"
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -48,54 +49,6 @@ using namespace xilinx::AIE;
 
 namespace {
 
-// A TransactionBinaryOperation encapsulates an aie-rt XAie_TxnCmd struct and
-// any additional metadata needed for custom operations that do not map cleanly
-// onto the core command fields.
-struct TransactionBinaryOperation {
-  struct XAie_TxnCmd cmd = {};
-
-  struct SyncPayload {
-    int32_t column;
-    int32_t row;
-    int32_t direction;
-    int32_t channel;
-    int32_t columnCount;
-    int32_t rowCount;
-  };
-
-  struct LoadPdiPayload {
-    uint32_t id;
-    uint32_t size;
-    uint64_t address;
-  };
-
-  struct AddressPatchPayload {
-    uint32_t action;
-    uint32_t addr;
-    int32_t argIdx;
-    // Words 10-11 of the op; see txn_append_address_patch.
-    uint64_t argPlus;
-  };
-
-  std::optional<SyncPayload> sync;
-  std::optional<LoadPdiPayload> loadPdi;
-  std::optional<AddressPatchPayload> addressPatch;
-  std::optional<mlir::Location> sourceLoc;
-
-  TransactionBinaryOperation() = default;
-
-  TransactionBinaryOperation(XAie_TxnOpcode opc, uint32_t mask, uint64_t addr,
-                             uint32_t value, const uint8_t *data,
-                             uint32_t size) {
-    cmd.Opcode = opc;
-    cmd.Mask = mask;
-    cmd.RegOff = addr;
-    cmd.Value = value;
-    cmd.DataPtr = reinterpret_cast<uint64_t>(data);
-    cmd.Size = size;
-  }
-};
-
 constexpr size_t kTxnHeaderBytes = 16;
 
 struct TxnPreemptHeader {
@@ -115,9 +68,9 @@ struct TxnLoadPdiHeader {
 
 // Parse a TXN binary blob. On success return the number of columns from the
 // header and a vector of parsed operations. On failure return std::nullopt.
-static std::optional<int>
-parseTransactionBinary(const std::vector<uint8_t> &data,
-                       std::vector<TransactionBinaryOperation> &ops) {
+std::optional<int> xilinx::AIE::parseTransactionBinary(
+    const std::vector<uint8_t> &data,
+    std::vector<TransactionBinaryOperation> &ops) {
 
   if (data.size() < kTxnHeaderBytes) {
     llvm::errs() << "Transaction binary is too small for header\n";
@@ -567,22 +520,55 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
   return success();
 }
 
+// Scans back from the insertion point to the last PDI load, which reprograms
+// the array.
+static llvm::DenseMap<uint32_t, uint32_t>
+registersWrittenSinceLoad(OpBuilder &builder) {
+  llvm::DenseMap<uint32_t, uint32_t> registers;
+  Block *block = builder.getInsertionBlock();
+  if (!block)
+    return registers;
+  Block::iterator it = builder.getInsertionPoint();
+  while (it != block->begin()) {
+    Operation &op = *--it;
+    if (isa<AIEX::NpuLoadPdiOp>(op))
+      break;
+    auto packet = dyn_cast<AIEX::NpuControlPacketOp>(op);
+    std::optional<ArrayRef<int32_t>> data =
+        packet ? packet.getData() : std::nullopt;
+    if (!data)
+      continue;
+    for (auto [i, word] : llvm::enumerate(*data))
+      registers.try_emplace(packet.getAddress() + i * sizeof(int32_t), word);
+  }
+  return registers;
+}
+
 // Translate vector of TransactionBinaryOperation to a sequence of control
 // packet ops. Each emitted op gets the per-op `sourceLoc` from AIERT's
 // instruction-range bracketing if available; otherwise it falls back to
 // `fallbackLoc`.
-static LogicalResult
-emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
-                     std::vector<TransactionBinaryOperation> &operations,
-                     std::vector<memref::GlobalOp> &global_data) {
+static LogicalResult emitControlPacketOps(
+    OpBuilder &builder, Location fallbackLoc,
+    std::vector<TransactionBinaryOperation> &operations,
+    std::vector<memref::GlobalOp> &global_data,
+    const llvm::DenseMap<uint32_t, uint32_t> &initialRegisters) {
 
   auto *ctx = builder.getContext();
+
+  // A control packet writes whole words, so a masked write becomes a write of
+  // the value the register would hold after it.
+  llvm::DenseMap<uint32_t, uint32_t> registers =
+      registersWrittenSinceLoad(builder);
+  for (auto [address, value] : initialRegisters)
+    registers.try_emplace(address, value);
 
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
     Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
+      registers[op.cmd.RegOff] = op.cmd.Value;
       AIEX::NpuControlPacketOp::create(
           builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
@@ -606,6 +592,8 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
         SmallVector<int32_t> splitData =
             SmallVector<int32_t>(blockWriteDataValues.begin() + i,
                                  blockWriteDataValues.begin() + last);
+        for (auto [j, word] : llvm::enumerate(splitData))
+          registers[currAddr + j * sizeof(int32_t)] = word;
         AIEX::NpuControlPacketOp::create(
             builder, loc, builder.getUI32IntegerAttr(currAddr), nullptr,
             /*opcode*/ builder.getI32IntegerAttr(0),
@@ -615,11 +603,14 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
       }
 
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
+      uint32_t &reg = registers[op.cmd.RegOff];
+      reg = (reg & ~op.cmd.Mask) | (op.cmd.Value & op.cmd.Mask);
+      int32_t value = reg;
       AIEX::NpuControlPacketOp::create(
           builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
-          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
+          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(value)));
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
       return failure();
@@ -628,63 +619,13 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
   return success();
 }
 
-// Perform bitwise or on consecutive control packets operating on the same
-// address, to resolve the lack of mask write in control packets.
-static LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
-  SmallVector<AIEX::NpuControlPacketOp> ctrlPktOps;
-  body->walk(
-      [&](AIEX::NpuControlPacketOp cpOp) { ctrlPktOps.push_back(cpOp); });
-  if (ctrlPktOps.empty())
-    return success();
-
-  SmallVector<Operation *> erased;
-  int addrBuffer = ctrlPktOps[0].getAddress();
-  AIEX::NpuControlPacketOp ctrlPktBuffer = ctrlPktOps[0];
-  for (size_t i = 1; i < ctrlPktOps.size(); i++) {
-    int currentAddrBuffer = ctrlPktOps[i].getAddress();
-    if (addrBuffer != currentAddrBuffer) {
-      addrBuffer = currentAddrBuffer;
-      ctrlPktBuffer = ctrlPktOps[i];
-      continue;
-    }
-    auto bufferedDataAttr = ctrlPktBuffer.getData();
-    auto currentDataAttr = ctrlPktOps[i].getData();
-    if (!bufferedDataAttr || !currentDataAttr) {
-      ctrlPktOps[i].emitError(
-          "cannot OR consecutive control packets on the same address: "
-          "control packet has no data payload");
-      return failure();
-    }
-    auto bufferedData = *bufferedDataAttr;
-    auto currentData = *currentDataAttr;
-    SmallVector<int> newData;
-    for (unsigned j = 0; j < std::max(bufferedData.size(), currentData.size());
-         j++) {
-      if (j < std::min(bufferedData.size(), currentData.size())) {
-        newData.push_back(bufferedData[j] | currentData[j]);
-        continue;
-      }
-      newData.push_back(j < bufferedData.size() ? bufferedData[j]
-                                                : currentData[j]);
-    }
-    ctrlPktBuffer.getProperties().data = DenseI32ArrayAttr::get(
-        ctrlPktBuffer->getContext(), ArrayRef<int>{newData});
-    erased.push_back(ctrlPktOps[i]);
-  }
-
-  for (auto *e : erased)
-    e->erase();
-
-  return success();
-}
-
 // Take transaction operations and insert them at the _current_ insertion point
 // of the supplied builder.
-static LogicalResult
-convertTransactionOpsToMLIR(OpBuilder builder,
-                            AIE::AIEToConfigurationOutputType outputType,
-                            std::vector<TransactionBinaryOperation> &operations,
-                            AIEX::BlockwriteData &blockwriteData) {
+static LogicalResult convertTransactionOpsToMLIR(
+    OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
+    std::vector<TransactionBinaryOperation> &operations,
+    AIEX::BlockwriteData &blockwriteData,
+    const llvm::DenseMap<uint32_t, uint32_t> &initialRegisters = {}) {
 
   // for each blockwrite in the binary, find or create a GlobalOp with the data
   // at the device level
@@ -710,10 +651,8 @@ convertTransactionOpsToMLIR(OpBuilder builder,
     if (failed(emitTransactionOps(builder, loc, operations, global_data)))
       return failure();
   } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
-    if (failed(emitControlPacketOps(builder, loc, operations, global_data)))
-      return failure();
-    // resolve mask writes; control packet doesn't natively support mask write.
-    if (failed(orConsecutiveWritesOnSameAddr(builder.getBlock())))
+    if (failed(emitControlPacketOps(builder, loc, operations, global_data,
+                                    initialRegisters)))
       return failure();
   } else {
     llvm_unreachable("bad output type");
@@ -755,7 +694,7 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
                                  AIEDevice::npu1_3col, AIEDevice::npu1};
   auto device = DeviceOp::create(builder, loc, devices[columns - 1],
-                                 DeviceOp::getDefaultDeviceName());
+                                 DeviceOp::getDefaultDeviceName(), nullptr);
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
   builder.setInsertionPointToStart(device.getBody());
@@ -774,7 +713,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 static LogicalResult
 insertRecordedTransaction(AIERTControl &ctl, OpBuilder &builder,
                           AIE::AIEToConfigurationOutputType outputType,
-                          AIEX::BlockwriteData &blockwriteData) {
+                          AIEX::BlockwriteData &blockwriteData,
+                          DeviceOp configured = {}) {
   // Export the transactions to a binary buffer
   std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
 
@@ -804,8 +744,36 @@ insertRecordedTransaction(AIERTControl &ctl, OpBuilder &builder,
     if (!isa<UnknownLoc>(opLocs[i]))
       operations[i].sourceLoc = opLocs[i];
 
+  llvm::DenseMap<uint32_t, uint32_t> initialRegisters;
+  if (outputType == AIEToConfigurationOutputType::ControlPacket && configured &&
+      configured.getOverlayAttr()) {
+    auto overlay = SymbolTable::lookupNearestSymbolFrom<DeviceOp>(
+        configured->getParentOp(), configured.getOverlayAttr());
+    if (!overlay)
+      return configured.emitOpError("references an unknown overlay device");
+    AIERTControl overlayCtl(overlay.getTargetModel());
+    if (failed(overlayCtl.setIOBackend(false, false)))
+      return failure();
+    overlayCtl.startTransaction();
+    if (failed(overlayCtl.configureSwitches(overlay)))
+      return failure();
+    auto overlayData = overlayCtl.exportSerializedTransaction();
+    std::vector<TransactionBinaryOperation> overlayOps;
+    if (!parseTransactionBinary(overlayData, overlayOps))
+      return failure();
+    // Masked writes must preserve fields installed by the overlay's PDI.
+    for (const auto &op : overlayOps) {
+      uint32_t &value = initialRegisters[op.cmd.RegOff];
+      if (op.cmd.Opcode == XAIE_IO_WRITE)
+        value = op.cmd.Value;
+      else if (op.cmd.Opcode == XAIE_IO_MASKWRITE)
+        value = (value & ~op.cmd.Mask) | (op.cmd.Value & op.cmd.Mask);
+      else
+        return overlay.emitOpError("has a non-register switch configuration");
+    }
+  }
   return convertTransactionOpsToMLIR(builder, outputType, operations,
-                                     blockwriteData);
+                                     blockwriteData, initialRegisters);
 }
 
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
@@ -833,13 +801,14 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
                                   true, true, skipCtrlPktOverlay)))
     return failure();
 
-  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData);
+  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
+                                   skipCtrlPktOverlay ? device : DeviceOp{});
 }
 
 LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device,
     AIEX::BlockwriteData &blockwriteData,
-    AIE::AIEToConfigurationOutputType outputType) {
+    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
   if (!targetModel.hasProperty(AIETargetModel::IsNPU))
@@ -849,10 +818,11 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (failed(ctl.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
     return failure();
   ctl.startTransaction();
-  if (failed(ctl.teardownSwitches(device)) ||
+  if (failed(ctl.teardownSwitches(device, skipCtrlPktOverlay)) ||
       failed(ctl.disableCores(device)) || failed(ctl.resetDmaChannels(device)))
     return failure();
-  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData);
+  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
+                                   skipCtrlPktOverlay ? device : DeviceOp{});
 }
 
 LogicalResult

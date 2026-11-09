@@ -219,11 +219,6 @@ def must_reject(d):
     for x, ss in into.items():
         if len(ss) > 1:
             return f"circuit flows from {len(ss)} sources into {rp.fmt_ep(x)}"
-    for x, _ in rp.overlay_keep_conflicts(d) if d.reload else ():
-        return (
-            f"the last flow into {rp.fmt_ep(x)} keeps headers otherwise than "
-            "the prioritized flows into it"
-        )
     csrc = {s for s, _ in d.flows}
     for f in d.packet_flows:
         for s in f["srcs"]:
@@ -1186,7 +1181,7 @@ def k_masterset(rng, out, ctx):
         out.boxes[tile][i] = (op[0], op[1], op[2], keep, op[4])
         return f"keep_pkt_header on {rp.fmt_port(op[1])} at {tile} -> {keep}"
     out.boxes[tile][i] = (op[0], op[1], op[2], op[3], not op[4])
-    return f"is_ctrl_pkt_overlay on {rp.fmt_port(op[1])} at {tile} -> {not op[4]}"
+    return f"priority_route on {rp.fmt_port(op[1])} at {tile} -> {not op[4]}"
 
 
 def k_mux(rng, out, ctx):

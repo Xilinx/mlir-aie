@@ -15,7 +15,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, Buffer
 from aie.iron.device import NPU2Col1
 
 
-# CHECK:  module {
+# CHECK:  module{{( attributes .*)?}} {
 # CHECK:    aie.device(npu2_1col) {
 # CHECK:      %pinned_local_buf = aie.buffer(%{{.*}}) {address = 8192 : i32, sym_name = "pinned_local_buf"} : memref<4096xui8>
 # CHECK:      %default_local_buf = aie.buffer(%{{.*}}) {sym_name = "default_local_buf"} : memref<4096xui8>
