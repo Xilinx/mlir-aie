@@ -90,8 +90,14 @@ struct AIEPlaceTilesPass
             << effort;
         return signalPassFailure();
       }
+      int64_t budget = clPlacementBudget;
+      if (budget <= 0) {
+        device.emitError("placement-budget must be positive, got ") << budget;
+        return signalPassFailure();
+      }
       SAConfig config;
       config.effort = effort;
+      config.placementBudget = budget;
       placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
     }

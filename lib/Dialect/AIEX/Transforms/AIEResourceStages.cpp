@@ -102,6 +102,7 @@ void AIEX::registerAIEResourceStagesPipeline() {
         place.clCoresPerCol = options.coresPerCol;
         place.clSASeed = options.saSeed;
         place.clSAEffort = options.saEffort;
+        place.clPlacementBudget = options.placementBudget;
         addPlacementStage(pm, place);
         addTraceStage(pm);
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,

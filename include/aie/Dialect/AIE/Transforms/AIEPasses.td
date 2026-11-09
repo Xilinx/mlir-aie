@@ -113,7 +113,11 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
               /*default=*/"1.0",
               "Scales the SA placer's moves per temperature step and its "
               "greedy tail. Below 1.0 trades placement cost for compile "
-              "time.">];
+              "time.">,
+       Option<"clPlacementBudget", "placement-budget", "int64_t",
+              /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
+              "aie-assign-buffer-addresses' placement-budget, which the SA "
+              "placer lays core tiles out with as addressing will.">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,

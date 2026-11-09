@@ -1064,11 +1064,11 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto &traced =
       withDefaultStackSize
-          .map<ModRef>(
-              "placed.mlir",
-              PassPipeline{getPlacementPipeline(
-                  &context, coresPerCol.getValue(), placerType.getValue(),
-                  saSeed.getValue(), saEffort.getValue())})
+          .map<ModRef>("placed.mlir",
+                       PassPipeline{getPlacementPipeline(
+                           &context, coresPerCol.getValue(),
+                           placerType.getValue(), saSeed.getValue(),
+                           saEffort.getValue(), placementBudget.getValue())})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
   // Everything a core needs before it can be compiled: objectFifo lowering

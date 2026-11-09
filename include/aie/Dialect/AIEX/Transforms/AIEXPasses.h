@@ -155,7 +155,7 @@ struct AIEResourceStagesOptions
   Option<int64_t> placementBudget{
       *this, "placement-budget",
       llvm::cl::desc("Buffer placements to try per tile before giving up"),
-      llvm::cl::init(100000)};
+      llvm::cl::init(AIE::kDefaultPlacementBudget)};
   Option<bool> allowDeadlockProneRouting{
       *this, "allow-deadlock-prone-routing",
       llvm::cl::desc("Warn of, rather than fail on, deadlock-prone flows"),

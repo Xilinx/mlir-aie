@@ -731,6 +731,8 @@ struct SAConfig {
   int minMaxIters = 10000;
   int greedyMultiplier = 50;       // greedyIters = multiplier * numMovable
   double effort = 1.0;             // scales movesPerIter and greedyIters
+  // assign-buffer-addresses' placement-budget, for core tile layouts.
+  int64_t placementBudget = kDefaultPlacementBudget;
   double tempScaleEstimate = 10.0; // initTemp cap: scale * estimated T
   double tempScaleCost = 2.0;      // initTemp cap: scale * totalCost
 

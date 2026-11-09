@@ -849,7 +849,7 @@ int64_t SAPlacer::coreUnplaced(TileID pos, const std::map<int64_t, int> &added,
   problem.tileAlignBitWidth = limits.tileAlignBitWidth;
   problem.maxVecAlignBits = limits.maxVecAlignBits;
   problem.maxDataMemorySize = limits.maxDataMemorySize;
-  problem.budget = kDefaultPlacementBudget;
+  problem.budget = config.placementBudget;
   for (auto [bytes, count] : fifo)
     for (int i = 0; i < count; ++i)
       problem.buffers.push_back(
