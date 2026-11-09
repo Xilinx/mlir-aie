@@ -4187,6 +4187,16 @@ MemoryRun CoreOp::getStackRun() {
   return {getStackAddress().value_or(0), getEffectiveStackSize()};
 }
 
+int64_t CoreOp::getSectionAlignment(std::optional<int32_t> bank) {
+  if (!bank)
+    return getMeasuredDataAlignment().value_or(1);
+  auto alignments = getMeasuredBankAlignments();
+  if (alignments && *bank >= 0 &&
+      static_cast<size_t>(*bank) < alignments->size())
+    return std::max<int64_t>((*alignments)[*bank], 1);
+  return 1;
+}
+
 SmallVector<CoreSectionReservation> CoreOp::getSectionReservations() {
   using Kind = CoreSectionReservation::Kind;
   SmallVector<CoreSectionReservation> held;
@@ -4194,11 +4204,14 @@ SmallVector<CoreSectionReservation> CoreOp::getSectionReservations() {
   // design asked for, and may deliberately exceed what this build measures.
   int64_t data = getDataSize().value_or(getMeasuredDataSize().value_or(0));
   if (data > 0)
-    held.push_back({Kind::DataRegion, data});
+    held.push_back(
+        {Kind::DataRegion, data, 0, getSectionAlignment(std::nullopt)});
   if (auto sizes = getMeasuredBankSizes())
-    for (auto [bank, size] : llvm::enumerate(*sizes))
+    for (auto [index, size] : llvm::enumerate(*sizes)) {
+      auto bank = static_cast<int32_t>(index);
       if (size > 0)
-        held.push_back({Kind::Bank, size, static_cast<int32_t>(bank)});
+        held.push_back({Kind::Bank, size, bank, getSectionAlignment(bank)});
+    }
   if (auto ranges = getMeasuredDataRanges())
     for (size_t i = 0; i + 1 < ranges->size(); i += 2)
       if ((*ranges)[i + 1] > 0)

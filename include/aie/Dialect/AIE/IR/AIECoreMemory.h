@@ -87,6 +87,8 @@ struct CoreSectionReservation {
   int64_t bytes;
   // The bank for Bank, the address for Prebaked.
   int32_t at = 0;
+  // The linked sections' own alignment (CoreOp::getSectionAlignment).
+  int64_t alignBytes = 1;
   // A prebaked run sits at the ELF's own address, unpadded.
   bool aligned() const { return kind != Kind::Prebaked; }
 };

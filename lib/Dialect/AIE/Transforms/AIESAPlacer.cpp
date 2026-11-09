@@ -1497,11 +1497,18 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     // memory as the stack.
     int64_t bytes = alignedBufferBytes(*targetModel, AIETileType::CoreTile,
                                        coreOp.getEffectiveStackSize());
+    TileMemoryLimits limits =
+        tileMemoryLimits(*targetModel, AIETileType::CoreTile);
     for (const CoreSectionReservation &held : coreOp.getSectionReservations())
-      bytes += held.aligned()
-                   ? alignedBufferBytes(*targetModel, AIETileType::CoreTile,
-                                        held.bytes)
-                   : held.bytes;
+      bytes += llvm::alignTo(
+          held.bytes,
+          std::max<int64_t>(
+              held.alignBytes,
+              held.aligned() ? requiredBufferAlignBits(limits.tileAlignBitWidth,
+                                                       limits.maxVecAlignBits,
+                                                       held.bytes) /
+                                   8
+                             : 1));
     stackSizes[tileOp] = bytes;
   });
 

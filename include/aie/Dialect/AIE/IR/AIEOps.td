@@ -562,6 +562,9 @@ def AIE_CoreOp
     /// `data_size`, else `measured_data_size`; each `measured_bank_sizes`
     /// bank; each `measured_data_ranges` run.
     llvm::SmallVector<CoreSectionReservation> getSectionReservations();
+    /// The measured alignment of the sections in the data region (no
+    /// `bank`) or pinned to `bank`; 1 when unmeasured.
+    int64_t getSectionAlignment(std::optional<int32_t> bank);
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }

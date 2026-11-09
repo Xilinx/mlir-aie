@@ -223,13 +223,9 @@ static int64_t getMeasuredDataAlignBytes(BufferOp buffer) {
   if (!core)
     return 1;
   if (buffer.getCoreData())
-    return core.getMeasuredDataAlignment().value_or(1);
+    return core.getSectionAlignment(std::nullopt);
   auto bank = buffer.getMemBank();
-  auto alignments = core.getMeasuredBankAlignments();
-  if (bank && alignments && *bank >= 0 &&
-      static_cast<size_t>(*bank) < alignments->size())
-    return std::max<int64_t>((*alignments)[*bank], 1);
-  return 1;
+  return bank ? core.getSectionAlignment(*bank) : 1;
 }
 
 // Check alignment (when `aligned` is set) and that no two buffers overlap. The
