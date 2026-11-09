@@ -135,7 +135,7 @@ public:
 
   /// One walkSetsThatFit set per mem tile of a spill component
   /// (memTileSpillComponents), by index; `placed` when its buffers place,
-  /// `stopped` when the search gave up at kMaxWalkPlacements tries.
+  /// `stopped` when the search gave up at `maxTries` tries.
   struct WalkChoice {
     llvm::SmallVector<unsigned> sets;
     bool placed = false;
@@ -147,7 +147,8 @@ public:
   /// over the component) accepts one; the first choice when none does.
   static WalkChoice
   searchWalkProduct(llvm::ArrayRef<llvm::SmallVector<int64_t>> bytes,
-                    llvm::function_ref<bool(llvm::ArrayRef<unsigned>)> places);
+                    llvm::function_ref<bool(llvm::ArrayRef<unsigned>)> places,
+                    unsigned maxTries);
   static constexpr unsigned kMaxWalkPlacements = 1024;
 
   /// Claim a raw stream port for `user`, reporting on it when the port is

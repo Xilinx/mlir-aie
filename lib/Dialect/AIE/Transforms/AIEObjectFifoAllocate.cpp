@@ -1406,13 +1406,15 @@ struct AIEObjectFifoAllocatePass
       };
       DMAChannelAnalysis::WalkChoice choice =
           DMAChannelAnalysis::searchWalkProduct(
-              bytes, [&](ArrayRef<unsigned> choice) {
+              bytes,
+              [&](ArrayRef<unsigned> choice) {
                 apply(choice);
                 SmallVector<ObjectFifoPoolOp> trial(componentPools);
                 sizeOrder(trial);
                 localPools.clear();
                 return succeeded(planBuffers(trial));
-              });
+              },
+              DMAChannelAnalysis::kMaxWalkPlacements);
       apply(choice.sets);
       walkSearchStopped |= choice.stopped;
       for (Tile *tile : members) {

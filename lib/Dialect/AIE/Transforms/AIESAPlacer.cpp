@@ -832,7 +832,8 @@ int SAPlacer::computeMemSpilloverPenalty() {
     DMAChannelAnalysis::WalkChoice choice;
     choice.sets.assign(members.size(), 0);
     if (needed <= room)
-      choice = DMAChannelAnalysis::searchWalkProduct(bytes, places);
+      choice = DMAChannelAnalysis::searchWalkProduct(
+          bytes, places, config.walkPlacementsPerStep);
     if (!choice.placed)
       (void)places(choice.sets);
     for (auto [member, set] : llvm::zip_equal(members, choice.sets))

@@ -481,7 +481,7 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
 
 DMAChannelAnalysis::WalkChoice DMAChannelAnalysis::searchWalkProduct(
     ArrayRef<SmallVector<int64_t>> bytes,
-    function_ref<bool(ArrayRef<unsigned>)> places) {
+    function_ref<bool(ArrayRef<unsigned>)> places, unsigned maxTries) {
   using Choice = std::vector<unsigned>;
   auto total = [&](const Choice &choice) {
     int64_t sum = 0;
@@ -500,7 +500,7 @@ DMAChannelAnalysis::WalkChoice DMAChannelAnalysis::searchWalkProduct(
   WalkChoice result;
   result.sets.assign(first.begin(), first.end());
   for (unsigned tries = 0; !frontier.empty(); ++tries) {
-    if (tries == kMaxWalkPlacements) {
+    if (tries == maxTries) {
       result.stopped = true;
       return result;
     }

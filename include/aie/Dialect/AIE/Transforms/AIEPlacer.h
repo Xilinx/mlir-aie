@@ -720,6 +720,10 @@ struct SAConfig {
   int memPenaltyPerKB = 30;       // per KB of unresolved memory overflow
   int dmaPenaltyPerChannel = 20;  // per DMA channel or BD over limit
   int delegateWeightPerDist = 30; // per distance from an allocate's delegate
+  // Walk choices one step tries per spill component, short of allocation's
+  // DMAChannelAnalysis::kMaxWalkPlacements: a state left unsettled counts as
+  // unplaced, never as fitting.
+  unsigned walkPlacementsPerStep = 16;
 
   // Cascade penalty (cost 3)
   int cascadeWeightPerDist = 30; // per Manhattan distance to valid position
