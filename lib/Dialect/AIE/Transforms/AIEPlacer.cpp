@@ -61,6 +61,7 @@ void Placer::initialize(DeviceOp device) {
     if (auto tile = dyn_cast_or_null<TileOp>(core.getTile().getDefiningOp()))
       availability.physicalCores.insert(tile.getTileID());
   availability.compTiles.clear();
+  availability.overBudgetCompTiles.clear();
   availability.nonCompTiles.clear();
   for (int col = 0; col < tm.columns(); col++) {
     for (int row = 0; row < tm.rows(); row++) {
@@ -185,6 +186,9 @@ void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns,
         std::max(0, maxCoresPerCol - heldInColumn.lookup(col)));
     limitedTiles.insert(limitedTiles.end(), tilesInCol.begin(),
                         tilesInCol.begin() + numToTake);
+    availability.overBudgetCompTiles.insert(
+        availability.overBudgetCompTiles.end(), tilesInCol.begin() + numToTake,
+        tilesInCol.end());
   }
 
   placeableCores = limitedTiles.size();
@@ -491,8 +495,14 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           computePeerAdjacency, needNeighborIn,
           needNeighborOut,      isReservedForOtherBound,
           preferredCols};
-      auto search =
-          findUnconstrainedCoreCandidate(logicalTile, col, row, inputs);
+      auto search = findUnconstrainedCoreCandidate(
+          logicalTile, col, row, inputs, availability.compTiles);
+      if (!search.placement && (col || row)) {
+        auto overBudget = findUnconstrainedCoreCandidate(
+            logicalTile, col, row, inputs, availability.overBudgetCompTiles);
+        if (overBudget.placement)
+          search = overBudget;
+      }
       std::optional<TileID> placement = search.placement;
       bool sawConstraintMatch = search.sawConstraintMatch;
       bool allConstraintMatchesFailedAdjacency =
@@ -746,7 +756,7 @@ bool SequentialPlacer::PlacementContext::isReservedForOther(
 SequentialPlacer::UnpinnedSearchResult
 SequentialPlacer::findUnconstrainedCoreCandidate(
     LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
-    const UnpinnedPlacementInputs &inputs) {
+    const UnpinnedPlacementInputs &inputs, ArrayRef<TileID> candidates) {
   UnpinnedSearchResult result;
   auto neighborDemand = [&](Operation *op) {
     return inputs.needNeighborIn.lookup(op) + inputs.needNeighborOut.lookup(op);
@@ -769,8 +779,7 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       ++n;
     return n;
   };
-  SmallVector<TileID> orderedCandidates(availability.compTiles.begin(),
-                                        availability.compTiles.end());
+  SmallVector<TileID> orderedCandidates(candidates);
   if (neighborDemand(logicalTile.getOperation()) > 0) {
     llvm::stable_sort(orderedCandidates, [&](TileID a, TileID b) {
       if (a.col != b.col)
@@ -2398,6 +2407,7 @@ void TileAvailability::removeTile(TileID tile, AIETileType type) {
   switch (type) {
   case AIETileType::CoreTile:
     removeFromVector(compTiles);
+    removeFromVector(overBudgetCompTiles);
     compTilesSet.erase(tile);
     break;
   case AIETileType::MemTile:

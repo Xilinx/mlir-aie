@@ -68,6 +68,9 @@ struct TileAvailability {
   llvm::DenseSet<TileID> compTilesSet;
   // Core positions a physical aie.tile's own aie.core already holds.
   llvm::DenseSet<TileID> physicalCores;
+  // Compute tiles cores-per-col leaves out. A core pinned by column or row
+  // outranks the budget and may still take one.
+  std::vector<TileID> overBudgetCompTiles;
 
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
@@ -576,10 +579,9 @@ private:
   // pass falls back to reserved candidates. Each candidate is filtered
   // by buffer adjacency, cascade adjacency, and the compute-peer DMA
   // budget. Does not mutate placer state.
-  UnpinnedSearchResult
-  findUnconstrainedCoreCandidate(LogicalTileOp logicalTile,
-                                 std::optional<int> col, std::optional<int> row,
-                                 const UnpinnedPlacementInputs &inputs);
+  UnpinnedSearchResult findUnconstrainedCoreCandidate(
+      LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
+      const UnpinnedPlacementInputs &inputs, llvm::ArrayRef<TileID> candidates);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
   // SequentialPlacer-only: walks CoreOps and BufferOps, and takes each end of

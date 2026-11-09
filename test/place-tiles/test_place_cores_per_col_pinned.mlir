@@ -56,3 +56,35 @@ module @pinned_without_core {
     aie.core(%l2) { aie.end }
   }
 }
+
+// -----
+
+// Explicit pins outrank the budget: a core pinned only by column, or only
+// by row, takes a tile the budget left out when none within it matches, as a
+// fully pinned core already may. Before, both failed ("no compute tile
+// available matching constraint").
+// ONE-LABEL: module @column_pinned
+// ONE: aie.core(%tile_0_5)
+// ONE: aie.core(%tile_0_2)
+module @column_pinned {
+  aie.device(npu2) {
+    %l0 = aie.logical_tile<CoreTile>(0, 5)
+    %l1 = aie.logical_tile<CoreTile>(0, ?)
+    aie.core(%l0) { aie.end }
+    aie.core(%l1) { aie.end }
+  }
+}
+
+// -----
+
+// ONE-LABEL: module @row_pinned
+// ONE: aie.core(%tile_0_4)
+// ONE: aie.core(%tile_0_2)
+module @row_pinned {
+  aie.device(npu2) {
+    %l1 = aie.logical_tile<CoreTile>(?, 4)
+    %l2 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%l1) { aie.end }
+    aie.core(%l2) { aie.end }
+  }
+}
