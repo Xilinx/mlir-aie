@@ -2043,6 +2043,44 @@ uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
   return colInt;
 }
 
+LogicalResult AIEX::NpuControlPacketOp::verify() {
+  // The 2-bit operation field: 0 write, 1 read, 2 write with response, 3
+  // reserved. A wider value would also spill into the stream ID.
+  uint32_t opcode = getOpcode();
+  if (opcode > 2)
+    return emitOpError("opcode ")
+           << opcode
+           << " is reserved; expected 0 (write), 1 (read), or 2 (write with "
+              "response)";
+
+  bool isRead = opcode == 1;
+  if (isRead && getData())
+    return emitOpError("read control packet must not carry a data payload; "
+                       "the requested word count goes in the length attribute");
+  if (!isRead && !getData())
+    return emitOpError(
+        "control packet with a write opcode requires a data payload");
+
+  // The word count is encoded as (words - 1), so 0 cannot be represented.
+  std::optional<uint32_t> words;
+  if (auto data = getData())
+    words = data->size();
+  else
+    words = getLength();
+  if (!words)
+    return emitOpError("read control packet requires a length attribute");
+  if (*words < 1)
+    return emitOpError("control packet payload must be at least 1 word");
+
+  // Reads are never split, so their length must already fit one packet.
+  if (isRead && *words > getMaxDataWords())
+    return emitOpError("read control packet length ")
+           << *words << " exceeds the maximum of " << getMaxDataWords()
+           << " 32-bit words";
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // SetLockOp
 //===----------------------------------------------------------------------===//

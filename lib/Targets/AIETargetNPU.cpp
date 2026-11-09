@@ -707,20 +707,12 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // `beats` gets two bits, directly above the address, so an oversized
-    // payload corrupts the address instead of truncating, and `size - 1`
-    // underflows the same way when size is 0. Enforced here (not by a
-    // verifier) since ops may carry more before
-    // --aie-legalize-control-packet splits them.
-    bool sizeFromLength = !data && length;
-    const char *what = sizeFromLength ? "length" : "payload";
-    if (size == 0)
-      return packetOp.emitOpError()
-             << what
-             << " is empty; a control packet must carry at least 1 "
-                "word on the wire";
+    // payload corrupts the address instead of truncating. The op verifier
+    // rejects empty payloads and long reads; a long write is legal until
+    // --aie-legalize-control-packet splits it, so it is caught here.
     if (size > AIEX::NpuControlPacketOp::getMaxDataWords())
       return packetOp.emitOpError()
-             << what << " is " << size
+             << "payload is " << size
              << " words; a control packet carries at most "
              << AIEX::NpuControlPacketOp::getMaxDataWords()
              << " on the wire. Run --aie-legalize-control-packet before "
@@ -734,10 +726,7 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     words[1] = hdr | (0x1 & parity(hdr)) << 31;
 
     // configuration data
-    if (opc == 0x0 || opc == 0x2) {
-      if (!data)
-        return packetOp.emitOpError(
-            "control packet with a write opcode requires a data payload");
+    if (data && (opc == 0x0 || opc == 0x2)) {
       for (unsigned i = 0; i < size; i++)
         words[i + 2] = (*data)[i];
     }
