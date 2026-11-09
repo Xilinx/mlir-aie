@@ -35,3 +35,36 @@ module {
     }
   }
 }
+
+// -----
+
+// A reset under a branch may not run, and the passes that count resets (the
+// BD-id pass's looping-program check, verify's held-at-end re-arm) read only
+// those directly in the sequence, so neither reset op may sit under one.
+module {
+  aie.device(npu2) {
+    %t0 = aie.tile(0, 0)
+    %t2 = aie.tile(0, 2)
+    aie.objectfifo @of (%t0, {%t2}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%flag: i1) {
+      scf.if %flag {
+        // expected-error @+1 {{expects parent op 'aie.runtime_sequence'}}
+        aiex.dma_channel_reset_for(@of)
+      }
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) {
+    %t0 = aie.tile(0, 0)
+    aie.runtime_sequence(%flag: i1) {
+      scf.if %flag {
+        // expected-error @+1 {{expects parent op 'aie.runtime_sequence'}}
+        aiex.dma_channel_reset(%t0, S2MM, 0)
+      }
+    }
+  }
+}

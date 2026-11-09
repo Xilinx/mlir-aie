@@ -351,6 +351,38 @@ def AIEAssignRuntimeSequenceBDIDs
     : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary =
       "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
+  let description = [{
+    Gives each `aie.dma_bd` of an `aiex.dma_configure_task` in a runtime
+    sequence a buffer descriptor id on its tile, in program order, and takes
+    a task's ids back once it is known to have finished, for later tasks to
+    reuse. The sequence must be straight-line (constant loops unrolled,
+    constant branches folded); runtime-valued `scf` ops are rejected.
+
+    An await (`aiex.dma_await_task`, `aiex.npu.sync`, `aiex.npu.dma_wait`)
+    takes the oldest completion token on its channel, which proves that push
+    and every push queued ahead of it finished. `aiex.dma_free_task` releases
+    a task's ids without waiting; reusing ids a free released with nothing
+    proving the task finished is a warning (`warn-unsafe-bd-reuse`).
+
+    An await on an output also finishes inputs, through the
+    `#aie.consumed_by` proofs `aie-objectfifo-verify` records on the inputs'
+    `aie.shim_dma_allocation`s: once the output has taken some bytes, every
+    input push within the bytes its proof says were consumed before them has
+    finished. A task carries its allocation's proofs through `alloc`. A proof
+    with `granule_bytes` counts the output only in whole granules, and a
+    proof that names a `device` counts only while that device is loaded.
+
+    A sequence that ends with another device's PDI loaded leaves that array to
+    the next dispatch, whose proofs count on a clean start, so the stretch
+    since the latest load must balance under that device's proofs: no more
+    through an input than its output proves taken, the output not partway
+    through a granule, no other traffic on their channels, and transfer sizes
+    the pass can count. Otherwise the `aiex.npu.load_pdi` is an error.
+
+    Before allocating, the pass checks each channel's completion tokens (an
+    await with no token to take would deadlock the host) and task queue
+    (`enforce-queue-depth`).
+  }];
 
   let options =
       [Option<
@@ -372,11 +404,14 @@ def AIEAssignRuntimeSequenceBDIDs
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "
-              "task that was never released instead of failing, inserting an "
-              "aiex.npu.maskpoll that proves it finished if no existing poll "
-              "does. Emits a remark for each inserted poll. Off by default: "
-              "the poll hangs if the task's completion depends, through a "
-              "core or another tile, on a push issued after it.">];
+              "task that was never released and is not started again, instead "
+              "of failing: one already proven finished (by an await, a poll or "
+              "a consumed_by proof), or else, inserting an aiex.npu.maskpoll "
+              "that proves it finished, one on a channel whose status can be "
+              "polled that waits on no lock a later task releases. Emits a "
+              "remark for each inserted poll. Off by default: the poll hangs "
+              "if the task's completion depends, through a core or another "
+              "tile, on a push issued after it.">];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",

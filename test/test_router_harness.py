@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ sys.path.insert(0, str(ROUTER_TESTING))
 import router_mutation  # noqa: E402
 import router_properties as rp  # noqa: E402  (paths set just above)
 import router_shrink  # noqa: E402
+from hw_case import HwCase  # noqa: E402
 
 # A case module with one variant, for router_hw.py's argument validation:
 # these never route, compile or touch an NPU.
@@ -191,6 +193,25 @@ def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
     outcome, detail = router_mutation.judge_strict(d, "route", True, broken)
     assert outcome == "illegal", detail
     assert "id 3 from (0, 2) DMA:0" in detail
+
+
+def test_a_strict_rejection_without_a_witness_says_so(priority):
+    d, _ = priority
+    assert rp.strict_witness(d, rp.Analysis(d)) is None
+    rejected = subprocess.CompletedProcess([], 1, "", "error: no legal routing")
+    assert router_mutation.judge_strict(d, "route", True, rejected) == (
+        "ok",
+        "rejected strict, and no routing without a hold cycle is known",
+    )
+
+
+def test_a_packet_owed_twice_and_received_once_counts_as_missing():
+    a, b = [1, 2], [3, 4]
+    got = np.array([a, b, b], dtype=np.int32)
+    assert HwCase().check_packets([got], [[a, a, b]], 2) == [
+        "output 0: packets differ from the expected set (1 missing, 1 unexpected)"
+    ]
+    assert HwCase().check_packets([np.array([b, a], dtype=np.int32)], [[a, b]], 2) == []
 
 
 def test_a_router_timeout_is_not_called_a_crash(priority):

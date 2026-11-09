@@ -817,7 +817,7 @@ def judge_strict(e, expect, hops_on, s):
     if s.returncode:
         if rp.strict_witness(e, rp.Analysis(e)) is not None:
             return "strict-miss", "fails without allow-deadlock-prone, needlessly"
-        return "ok", f"routed ({expect})"
+        return "ok", "rejected strict, and no routing without a hold cycle is known"
     try:
         problems, stats = rp.verify(e, rp.Analysis(e), s.stdout, hops_on)
     except Exception as x:
@@ -1590,13 +1590,15 @@ def main():
         f"kill rate: {kills['killed']}/{total}"
         + (f" = {kills['killed'] / total:.3f}" if total else "")
     )
+    print(f"strict misses: {len(misses)}")
     seen = Counter()
     for seed, kind, outcome, name, detail, payload in failures + misses:
         seen[(kind, outcome, name)] += 1
-        if outcome != "strict-miss" and seen[(kind, outcome, name)] <= (
-            10 if args.v else 3
-        ):
-            print(f"FAIL seed {seed} {kind} {name} {outcome}: {detail.strip()[:400]}")
+        if seen[(kind, outcome, name)] <= (10 if args.v else 3):
+            label = "MISS" if outcome == "strict-miss" else "FAIL"
+            print(
+                f"{label} seed {seed} {kind} {name} {outcome}: {detail.strip()[:400]}"
+            )
         if args.out and payload is not None:
             args.out.mkdir(parents=True, exist_ok=True)
             text = (
@@ -1627,6 +1629,10 @@ def main():
                             "detail": detail.strip()[:300],
                         }
                         for seed, kind, outcome, name, detail, _ in failures
+                    ],
+                    "strict_misses": [
+                        {"seed": seed, "kind": kind, "name": name}
+                        for seed, kind, _, name, _, _ in misses
                     ],
                 },
                 indent=1,
