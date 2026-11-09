@@ -495,23 +495,14 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           computePeerAdjacency, needNeighborIn,
           needNeighborOut,      isReservedForOtherBound,
           preferredCols};
+      // A pin outranks the budget, so a pinned core searches the tiles it
+      // left out as well.
+      bool searchedPastBudget = col || row;
       auto search = findUnconstrainedCoreCandidate(
-          logicalTile, col, row, inputs, availability.compTiles);
-      // A pin outranks the budget, so the tiles it left out are searched as
-      // well, and a failure has the causes both searches met.
-      bool searchedPastBudget = !search.placement && (col || row);
-      if (searchedPastBudget) {
-        auto overBudget = findUnconstrainedCoreCandidate(
-            logicalTile, col, row, inputs, availability.overBudgetCompTiles);
-        search.placement = overBudget.placement;
-        search.allConstraintMatchesFailedAdjacency =
-            (!search.sawConstraintMatch ||
-             search.allConstraintMatchesFailedAdjacency) &&
-            (!overBudget.sawConstraintMatch ||
-             overBudget.allConstraintMatchesFailedAdjacency);
-        search.sawConstraintMatch |= overBudget.sawConstraintMatch;
-        search.computePeerWasCause |= overBudget.computePeerWasCause;
-      }
+          logicalTile, col, row, inputs, availability.compTiles,
+          searchedPastBudget
+              ? ArrayRef<TileID>(availability.overBudgetCompTiles)
+              : ArrayRef<TileID>());
       std::optional<TileID> placement = search.placement;
       bool sawConstraintMatch = search.sawConstraintMatch;
       bool allConstraintMatchesFailedAdjacency =
@@ -766,7 +757,8 @@ bool SequentialPlacer::PlacementContext::isReservedForOther(
 SequentialPlacer::UnpinnedSearchResult
 SequentialPlacer::findUnconstrainedCoreCandidate(
     LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
-    const UnpinnedPlacementInputs &inputs, ArrayRef<TileID> candidates) {
+    const UnpinnedPlacementInputs &inputs, ArrayRef<TileID> candidates,
+    ArrayRef<TileID> pastBudget) {
   UnpinnedSearchResult result;
   auto neighborDemand = [&](Operation *op) {
     return inputs.needNeighborIn.lookup(op) + inputs.needNeighborOut.lookup(op);
@@ -811,6 +803,11 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       return rankOf(a) < rankOf(b);
     });
   }
+
+  // Tiles past the budget come after it, so a pinned core exceeds the budget
+  // only when no tile within it passes a pass's checks; the strict passes see
+  // them before the last pass takes a tile a floating peer needs.
+  llvm::append_range(orderedCandidates, pastBudget);
 
   // A candidate that leaves no free core tile for one of this LTO's
   // unplaced shared-L1 peers is tried only in the final pass. Each peer

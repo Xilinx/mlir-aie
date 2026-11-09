@@ -88,3 +88,26 @@ module @row_pinned {
     aie.core(%l2) { aie.end }
   }
 }
+
+// -----
+
+// A pinned core takes a tile past the budget that passes every check before
+// it takes, in the last, relaxed pass, the budget's one tile that its floating
+// shared-L1 peer needs. Before, %c took (0, 2) and %f had no tile ("no
+// available compute tiles for placement").
+// ONE-LABEL: module @column_pinned_with_floating_peer
+// ONE: aie.core(%tile_0_3)
+// ONE: aie.core(%tile_0_2)
+module @column_pinned_with_floating_peer {
+  aie.device(npu2_1col) {
+    %c = aie.logical_tile<CoreTile>(0, ?)
+    %f = aie.logical_tile<CoreTile>(?, ?)
+    %buf = aie.buffer(%c) {sym_name = "shared"} : memref<16xi32>
+    aie.core(%c) { aie.end }
+    aie.core(%f) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}

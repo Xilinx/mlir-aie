@@ -581,7 +581,8 @@ private:
   // budget. Does not mutate placer state.
   UnpinnedSearchResult findUnconstrainedCoreCandidate(
       LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
-      const UnpinnedPlacementInputs &inputs, llvm::ArrayRef<TileID> candidates);
+      const UnpinnedPlacementInputs &inputs, llvm::ArrayRef<TileID> candidates,
+      llvm::ArrayRef<TileID> pastBudget);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
   // SequentialPlacer-only: walks CoreOps and BufferOps, and takes each end of
