@@ -4197,6 +4197,27 @@ int64_t CoreOp::getSectionAlignment(std::optional<int32_t> bank) {
   return 1;
 }
 
+BufferOp
+CoreOp::getSectionReservationBuffer(const CoreSectionReservation &held) {
+  using Kind = CoreSectionReservation::Kind;
+  BufferOp holder;
+  (*this)->getParentOp()->walk([&](BufferOp buffer) {
+    if (buffer.getTile() != getTile())
+      return WalkResult::advance();
+    bool holds = held.kind == Kind::DataRegion ? buffer.getCoreData()
+                 : held.kind == Kind::Bank
+                     ? buffer.getBankReserved() && buffer.getAligned() &&
+                           buffer.getMemBank() == held.at
+                     : buffer.getBankReserved() && !buffer.getAligned() &&
+                           buffer.getAddress() == held.at;
+    if (!holds)
+      return WalkResult::advance();
+    holder = buffer;
+    return WalkResult::interrupt();
+  });
+  return holder;
+}
+
 SmallVector<CoreSectionReservation> CoreOp::getSectionReservations() {
   using Kind = CoreSectionReservation::Kind;
   SmallVector<CoreSectionReservation> held;

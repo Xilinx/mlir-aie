@@ -57,3 +57,41 @@ module @prebaked_ranges {
     aie.core(%p) { aie.end } {elf_file = "prebaked.elf", measured_data_ranges = array<i32: 1024, 2048>}
   }
 }
+
+// -----
+
+// A reservation whose aie.buffer is already there is charged once, through
+// that buffer, as addressing then reserves it once
+// (CoreOp::getSectionReservationBuffer). Before, the SA charged it again and
+// warned for a design that addresses.
+// WARN-NOT: over capacity
+module @bank_present {
+  aie.device(npu2_1col) {
+    %p = aie.logical_tile<CoreTile>(?, ?)
+    %r = aie.buffer(%p) {sym_name = "bank_reserved_0_2_3", bank_reserved, mem_bank = 3 : i32} : memref<12000xi8>
+    %b = aie.buffer(%p) {sym_name = "big"} : memref<41000xi8>
+    aie.core(%p) { aie.end } {measured_bank_sizes = array<i32: 0, 0, 0, 12000>}
+  }
+}
+
+// -----
+
+module @data_present {
+  aie.device(npu2_1col) {
+    %p = aie.tile(0, 2)
+    %cd = aie.buffer(%p) {sym_name = "mine", core_data} : memref<20000xi8>
+    %l = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @f(%p, {%l}, 2 : i32) : !aie.objectfifo<memref<1024xi8>>
+    aie.core(%p) {
+      %0 = aie.objectfifo.acquire @f(Produce, 1) : memref<1024xi8>
+      aie.objectfifo.release @f(Produce, 1)
+      aie.end
+    } {data_size = 20000 : i32}
+    aie.core(%l) {
+      %0 = aie.objectfifo.acquire @f(Consume, 1) : memref<1024xi8>
+      aie.objectfifo.release @f(Consume, 1)
+      aie.end
+    }
+    %b = aie.buffer(%p) {sym_name = "big"} : memref<24000xi8>
+  }
+}

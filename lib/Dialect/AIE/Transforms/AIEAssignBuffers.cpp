@@ -107,15 +107,7 @@ static LogicalResult materializeCoreSections(DeviceOp device) {
           : held.kind == Kind::Bank
               ? "bank_reserved_" + at + "_" + std::to_string(held.at)
               : "prebaked_" + at + "_" + std::to_string(held.at);
-      bool present = false;
-      device.walk([&](BufferOp buffer) {
-        if (held.kind == Kind::DataRegion
-                ? buffer.getCoreData() && buffer.getTileOp() == tile
-                : buffer.name() == name) {
-          present = true;
-        }
-      });
-      if (present) {
+      if (core.getSectionReservationBuffer(held)) {
         continue;
       }
       builder.setInsertionPoint(core);

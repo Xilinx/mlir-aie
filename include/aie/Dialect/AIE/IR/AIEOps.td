@@ -565,6 +565,9 @@ def AIE_CoreOp
     /// The measured alignment of the sections in the data region (no
     /// `bank`) or pinned to `bank`; 1 when unmeasured.
     int64_t getSectionAlignment(std::optional<int32_t> bank);
+    /// The aie.buffer on this core's tile that already holds `held`, which
+    /// assign-buffer-addresses then does not reserve again.
+    BufferOp getSectionReservationBuffer(const CoreSectionReservation &held);
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }
