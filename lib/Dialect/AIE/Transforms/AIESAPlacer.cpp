@@ -469,11 +469,11 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
                       types.consumers[ci] == AIETileType::ShimPLTile;
 
     using SharedMemory = AIETargetModel::SharedMemory;
-    SharedMemory shared =
-        fb.forcesDMA
-            ? SharedMemory::None
-            : ObjectFifoCreateOp::sharedMemoryOf(*targetModel, prodPos, consPos,
-                                                 delegatePos, fb.linked);
+    SharedMemory shared = fb.forcesDMA
+                              ? SharedMemory::None
+                              : ObjectFifoCreateOp::sharedMemoryOf(
+                                    *targetModel, prodPos, consPos, delegatePos,
+                                    positionOf(fb.linkTile));
     bool isSharedMem = shared != SharedMemory::None;
     int64_t sharedBytes =
         std::max(fb.producerSizeBytes, fb.consumerSizeBytes) * fb.sharedDepth;
@@ -1790,7 +1790,8 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
 
     std::optional<ObjectFifoLinkOp> link = ofOp.getLink();
     fb.forcesDMA = ofOp.dmaReason().has_value();
-    fb.linked = link.has_value();
+    if (link)
+      fb.linkTile = link->getOptionalSharedTile()->getDefiningOp();
     // A link output's producer objects are the link input's consumer pool.
     fb.linkSharedProd =
         link && llvm::is_contained(link->getOutputObjectFifos(), ofOp);

@@ -2621,18 +2621,35 @@ def AIE_ObjectFifoCreateOp
     /// Whether a delegate on `delegate` holds objects both ends reach.
     static bool delegateReaches(const AIETargetModel &target, TileID delegate,
                                 TileID producer, TileID consumer);
+    /// Where the split keeps the objects of a fifo whose
+    /// aie.objectfifo.allocate names a delegate on `delegate`, with its
+    /// producer on `producer` and consumer on `consumer`: the delegate's
+    /// memory, or for a fifo whose link sits on `linkTile`, the link's pool
+    /// there. Nothing when the allocate is not honoured: the split then moves
+    /// the fifo by DMA if allocateFallsBackToDMA(), and rejects it otherwise.
+    static std::optional<TileID>
+    allocatedHome(const AIETargetModel &target, TileID producer,
+                  TileID consumer, TileID delegate,
+                  std::optional<TileID> linkTile);
+    /// Whether the split moves the fifo by DMA, ignoring its
+    /// aie.objectfifo.allocate, when allocatedHome finds no home: a link's
+    /// participant that does not own the link's pool.
+    bool allocateFallsBackToDMA();
+    /// Whether the fifo's objects can be its link's pool's: it owns the pool
+    /// or has the owner's object type. Always true for an unlinked fifo.
+    bool fitsLinkPool();
 
     /// Why the fifo moves by DMA wherever its ends are placed; nothing when
     /// shared memory may carry it, which sharedMemoryOf then decides.
     std::optional<llvm::StringRef> dmaReason();
     /// The memory module a fifo dmaReason() leaves open shares with its
     /// producer on `producer`, its consumer on `consumer`, its
-    /// aie.objectfifo.allocate's delegate, if any, on `delegate`, and
-    /// `linked` when an aie.objectfifo.link names it; None means DMA.
+    /// aie.objectfifo.allocate's delegate, if any, on `delegate`, and its
+    /// aie.objectfifo.link's tile, if any, on `linkTile`; None means DMA.
     static AIETargetModel::SharedMemory
     sharedMemoryOf(const AIETargetModel &target, TileID producer,
                    TileID consumer, std::optional<TileID> delegate,
-                   bool linked);
+                   std::optional<TileID> linkTile);
 
     /// Objects in the pool an end keeps on its own tile when the fifo moves by
     /// DMA: the producer's when `consumer` is empty, else that consumer's. An

@@ -1947,6 +1947,31 @@ bool ObjectFifoCreateOp::delegateReaches(const AIETargetModel &target,
   });
 }
 
+std::optional<TileID>
+ObjectFifoCreateOp::allocatedHome(const AIETargetModel &target, TileID producer,
+                                  TileID consumer, TileID delegate,
+                                  std::optional<TileID> linkTile) {
+  if (!delegateReaches(target, delegate, producer, consumer))
+    return std::nullopt;
+  return linkTile.value_or(delegate);
+}
+
+bool ObjectFifoCreateOp::allocateFallsBackToDMA() {
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (link.getOptionalSharedTile() && link.getPoolOwner() == *this)
+      return false;
+  return getLink().has_value();
+}
+
+bool ObjectFifoCreateOp::fitsLinkPool() {
+  std::optional<ObjectFifoLinkOp> link = getLink();
+  if (!link || !link->getOptionalSharedTile())
+    return true;
+  ObjectFifoCreateOp owner = link->getPoolOwner();
+  return owner == *this || owner.getElemType() == getElemType();
+}
+
 std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
   if (forcesDMA())
     return "it asks for a dma transport";
@@ -1972,15 +1997,16 @@ std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
 
 AIETargetModel::SharedMemory ObjectFifoCreateOp::sharedMemoryOf(
     const AIETargetModel &target, TileID producer, TileID consumer,
-    std::optional<TileID> delegate, bool linked) {
+    std::optional<TileID> delegate, std::optional<TileID> linkTile) {
   using SharedMemory = AIETargetModel::SharedMemory;
   // A delegate both ends reach holds the objects even where the ends share no
   // memory of their own; a link's objects need one.
-  if (delegate && delegateReaches(target, *delegate, producer, consumer)) {
+  if (delegate &&
+      allocatedHome(target, producer, consumer, *delegate, linkTile)) {
     SharedMemory own = target.getSharedMemory(producer, consumer);
     return own == SharedMemory::None ? SharedMemory::Either : own;
   }
-  if (linked)
+  if (linkTile)
     return SharedMemory::None;
   return target.getSharedMemory(producer, consumer);
 }
@@ -2158,12 +2184,22 @@ LogicalResult ObjectFifoAllocateOp::verify() {
                      "that moves by DMA: ")
            << *reason;
   // A linked fifo that shares memory keeps its objects in the link's one
-  // pool, which a core fills or drains one pool object per acquire.
-  if (std::optional<ObjectFifoLinkOp> link = objFifo.getLink();
-      link && !link->getInputObjectFifos().empty() &&
-      !link->getOutputObjectFifos().empty()) {
-    ObjectFifoCreateOp owner = link->getPoolOwner();
-    if (owner != objFifo && owner.getElemType() != objFifo.getElemType())
+  // pool, which a core fills or drains one pool object per acquire. Whether
+  // it shares depends on where its tiles are placed.
+  if (!objFifo.fitsLinkPool()) {
+    ObjectFifoLinkOp link = *objFifo.getLink();
+    auto producer = dyn_cast<TileOp>(objFifo.getProducerTile().getDefiningOp());
+    auto consumer =
+        dyn_cast<TileOp>(objFifo.getConsumerTiles()[0].getDefiningOp());
+    auto delegate = dyn_cast<TileOp>(getDelegateTile().getDefiningOp());
+    auto linkTile =
+        dyn_cast<TileOp>(link.getOptionalSharedTile()->getDefiningOp());
+    ObjectFifoCreateOp owner = link.getPoolOwner();
+    if (producer && consumer && delegate && linkTile &&
+        ObjectFifoCreateOp::allocatedHome(
+            (*this)->getParentOfType<DeviceOp>().getTargetModel(),
+            producer.getTileID(), consumer.getTileID(), delegate.getTileID(),
+            linkTile.getTileID()))
       return emitOpError("places @")
              << objFifo.name().getValue()
              << "'s objects in the link's pool, whose objects are @"

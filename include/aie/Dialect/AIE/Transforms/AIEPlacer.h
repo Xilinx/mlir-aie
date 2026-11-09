@@ -863,7 +863,8 @@ private:
     llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerLinkPlans;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
-    bool linked = false;
+    // The tile of the link naming the fifo, if any.
+    mlir::Operation *linkTile = nullptr;
     bool linkSharedProd = false;
   };
   llvm::SmallVector<NetInfo> nets;
