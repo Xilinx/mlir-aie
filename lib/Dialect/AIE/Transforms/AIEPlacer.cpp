@@ -522,6 +522,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                  "to a different coordinate so this LTO's constraints become "
                  "satisfiable";
         }
+        if (adjacencyWasCause || hasCascade || hasSharedMem ||
+            computePeerWasCause)
+          diag.attachNote()
+              << "the sequential placer places tiles one at a time and never "
+                 "moves a placed peer; if these constraints can be met "
+                 "together, --placer=sa_placer, which searches placements "
+                 "jointly, may place them";
         return failure();
       }
 
