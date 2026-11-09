@@ -808,6 +808,7 @@ public:
   int getFinalCost() const { return finalCost; }
   int getFinalLockGroups() const { return finalLockGroups; }
   int getFinalLockPenalty() const { return finalLockPenalty; }
+  bool getFinalLockStopped() const { return finalLockStopped; }
 
 private:
   // Configuration
@@ -815,6 +816,7 @@ private:
   SAConfig config;
   int finalCost = 0;
   int finalLockGroups = 0, finalLockPenalty = 0;
+  bool finalLockStopped = false;
   std::mt19937 rng;
   SASchedule schedule;
 
@@ -1076,8 +1078,9 @@ private:
       lastCoreFitPlan.reset();
   }
   /// The locks aie-objectfifo-allocate cannot place, by LockPlan on the pools
-  /// the split gives each fifo where its ends sit, charged per lock.
-  int computeLockPenalty() const;
+  /// the split gives each fifo where its ends sit, charged per lock. Sets
+  /// `stopped`, when given, to whether LockPlan's packing search stopped.
+  int computeLockPenalty(bool *stopped = nullptr) const;
   /// The lock groups aie-objectfifo-allocate gives the pools the split makes
   /// where the tiles sit now: how many locks each takes (two a segment, or a
   /// pool's depth on AIE1) and the tiles using them, a compute tile's DMA

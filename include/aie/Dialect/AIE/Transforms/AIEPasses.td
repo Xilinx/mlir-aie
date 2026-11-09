@@ -122,6 +122,9 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
                               "kept">,
                     Statistic<"saLockPenalty", "sa-lock-penalty",
                               "SA lock penalty of the placement it kept">,
+                    Statistic<"saLockStopped", "sa-lock-stopped",
+                              "Devices whose kept placement's lock packing "
+                              "search stopped before it decided">,
   ];
 }
 

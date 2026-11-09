@@ -104,6 +104,7 @@ struct AIEPlaceTilesPass
       saFinalCost += saPlacer->getFinalCost();
       saLockGroups += saPlacer->getFinalLockGroups();
       saLockPenalty += saPlacer->getFinalLockPenalty();
+      saLockStopped += saPlacer->getFinalLockStopped();
     }
 
     ConversionTarget target(getContext());

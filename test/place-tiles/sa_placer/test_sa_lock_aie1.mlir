@@ -13,6 +13,7 @@
 // place, as allocation fails.
 // CHECK: 2 sa-lock-groups
 // CHECK-NEXT: 180 sa-lock-penalty
+// CHECK-NEXT: 0 sa-lock-stopped
 // ALLOC: could not place locks within tile lock capacity
 
 module @aie1_deep_pools {

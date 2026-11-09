@@ -1111,7 +1111,9 @@ SAPlacer::lockGroups() const {
   return groups;
 }
 
-int SAPlacer::computeLockPenalty() const {
+int SAPlacer::computeLockPenalty(bool *stopped) const {
+  if (stopped)
+    *stopped = false;
   // Each group taking its locks at home always fits there.
   auto fitsAtHome = [&](const DenseMap<TileID, int> &atHome) {
     return llvm::all_of(atHome, [&](const auto &entry) {
@@ -1176,6 +1178,8 @@ int SAPlacer::computeLockPenalty() const {
         /*local=*/false, {}, records, ranked));
   }
   LockPlan::Assignment assignment = plan.assign(planned);
+  if (stopped)
+    *stopped = assignment.stopped;
   for (auto [group, tile] : llvm::zip(planned, assignment.tiles))
     if (!tile)
       penalty += group.count * config.dmaPenaltyPerChannel;
@@ -2538,7 +2542,7 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
   // Generate allocates (state is fresh from initResourceTracking)
   generateAllocates();
   finalLockGroups = lockGroups().size();
-  finalLockPenalty = computeLockPenalty();
+  finalLockPenalty = computeLockPenalty(&finalLockStopped);
 
   auto endTime = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
