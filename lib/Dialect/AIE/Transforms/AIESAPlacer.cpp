@@ -220,16 +220,15 @@ void SAPlacer::buildRouteModel(
 
   for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
     Operation *tileOp = pool.getTile().getDefiningOp();
-    if (!isa_and_nonnull<LogicalTileOp>(tileOp))
+    if (!isa_and_nonnull<TileLike>(tileOp))
       continue;
     staticBufferSizes[tileOp] += pool.getObjectSizeInBytes() * pool.getDepth();
   }
   // Ends already split take the BD ids they count; other DMA ends a channel.
   for (auto endpoint : device.getOps<RouteEndpoint>()) {
-    Operation *tileOp = endpoint.getTile().getDefiningOp();
-    if (endpoint.getRouteBundle() != WireBundle::DMA ||
-        !isa_and_nonnull<LogicalTileOp>(tileOp) ||
-        tileTypes.lookup(tileOp) != AIETileType::MemTile)
+    auto tile = dyn_cast_or_null<TileLike>(endpoint.getTile().getDefiningOp());
+    if (endpoint.getRouteBundle() != WireBundle::DMA || !tile ||
+        tile.getTileType() != AIETileType::MemTile)
       continue;
     PlannedDmaEnd end{0, nullptr, -1, 0, false, 0, 0};
     if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation())) {
@@ -242,7 +241,7 @@ void SAPlacer::buildRouteModel(
              pool.getObjectSizeInBytes(),
              pool.getContiguous() ? pool.getObjectsPerBuffer() : 0};
     }
-    memTileEnds[tileOp].push_back({endpoint.getRouteDirection(), end});
+    memTileEnds[tile].push_back({endpoint.getRouteDirection(), end});
   }
 }
 
@@ -553,11 +552,9 @@ void SAPlacer::initResourceTracking() {
 
   // Static buffers and stacks go first: a shared-memory fifo picks the emptier
   // of its two tiles as it is added, and must see what they already hold.
-  for (auto &[op, bufSize] : staticBufferSizes) {
-    auto posIt = currentPlacement.find(op);
-    if (posIt != currentPlacement.end())
-      currentMemUsage[posIt->second] += bufSize;
-  }
+  for (auto &[op, bufSize] : staticBufferSizes)
+    if (std::optional<TileID> pos = positionOf(op))
+      currentMemUsage[*pos] += bufSize;
   // Add core stack overhead (reserved by assign-buffer-addresses pass)
   for (auto &[op, pos] : currentPlacement) {
     auto typeIt = tileTypes.find(op);
@@ -667,20 +664,20 @@ int SAPlacer::computeMemSpilloverPenalty() {
         tiles.push_back({targetModel->getMemTileSize(), {}});
       }
   for (auto &[op, fixed] : memTileFixed)
-    if (auto at = currentPlacement.find(op); at != currentPlacement.end())
-      llvm::append_range(tiles[index.lookup(at->second)].fixed, fixed);
+    if (std::optional<TileID> at = positionOf(op))
+      llvm::append_range(tiles[index.lookup(*at)].fixed, fixed);
 
   // Per pool, in the allocator's size-first order: as split, and as walked.
   SmallVector<std::pair<SpillPool, TileID>> split, walkedPools;
   bool anyWalked = false;
   DenseSet<TileID> positions;
   for (auto &[tile, _] : memTileEnds) {
-    auto at = currentPlacement.find(tile);
-    if (at == currentPlacement.end() || !positions.insert(at->second).second)
+    std::optional<TileID> at = positionOf(tile);
+    if (!at || !positions.insert(*at).second)
       continue;
-    SmallVector<Operation *> here = memTilesAt(at->second);
+    SmallVector<Operation *> here = memTilesAt(*at);
     DenseSet<std::pair<Operation *, int>> walked;
-    (void)bdShortfall(at->second, here, &walked);
+    (void)bdShortfall(*at, here, &walked);
     anyWalked |= !walked.empty();
     llvm::MapVector<std::pair<Operation *, int>,
                     std::pair<const PlannedDmaEnd *, std::pair<int, int>>>
@@ -695,19 +692,19 @@ int SAPlacer::computeMemSpilloverPenalty() {
         first = first ? first : &plan;
         ++(end.dir == DMAChannelDir::S2MM ? demand.first : demand.second);
       }
-    unsigned home = index.lookup(at->second);
+    unsigned home = index.lookup(*at);
     for (auto &[key, entry] : pools) {
       auto [plan, demand] = entry;
       int busier = std::max(demand.first, demand.second);
       int64_t whole = plan->contiguousObjects;
       split.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
                         whole ? 1 : plan->depth, home, busier},
-                       at->second});
+                       *at});
       if (!whole && walked.contains(key))
         whole = plan->depth;
       walkedPools.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
                               whole ? 1 : plan->depth, home, busier},
-                             at->second});
+                             *at});
     }
   }
   for (auto *pools : {&split, &walkedPools}) {
@@ -886,8 +883,7 @@ int SAPlacer::computeDMAChannelPenalty() {
 SmallVector<Operation *> SAPlacer::memTilesAt(TileID position) const {
   SmallVector<Operation *> tiles;
   for (auto &[tile, ends] : memTileEnds)
-    if (auto at = currentPlacement.find(tile);
-        at != currentPlacement.end() && at->second == position)
+    if (positionOf(tile) == position)
       tiles.push_back(tile);
   return tiles;
 }
@@ -1001,11 +997,11 @@ int SAPlacer::computeBDCountPenalty() {
   bdShortfallAt.clear();
   int64_t penalty = 0;
   for (auto &[tile, ends] : memTileEnds) {
-    auto at = currentPlacement.find(tile);
-    if (at == currentPlacement.end() || bdShortfallAt.count(at->second))
+    std::optional<TileID> at = positionOf(tile);
+    if (!at || bdShortfallAt.count(*at))
       continue;
-    int64_t shortfall = bdShortfall(at->second, memTilesAt(at->second));
-    bdShortfallAt[at->second] = shortfall;
+    int64_t shortfall = bdShortfall(*at, memTilesAt(*at));
+    bdShortfallAt[*at] = shortfall;
     penalty += shortfall * config.dmaPenaltyPerChannel;
   }
   return static_cast<int>(penalty);
@@ -1483,21 +1479,21 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   for (auto lt : logicalTiles)
     tileTypes[lt.getOperation()] = lt.getTileType();
 
-  // Collect static buffer sizes per logical tile
+  // Collect static buffer sizes per tile
   device.walk([&](BufferOp bufOp) {
-    auto *tileOp = bufOp.getTile().getDefiningOp();
-    if (!tileOp || !isa<LogicalTileOp>(tileOp))
+    auto tile = dyn_cast_or_null<TileLike>(bufOp.getTile().getDefiningOp());
+    if (!tile)
       return;
     int64_t bytes = bufOp.getAllocationSize();
-    if (tileTypes.lookup(tileOp) == AIETileType::MemTile)
-      memTileFixed[tileOp].push_back(
+    if (tile.getTileType() == AIETileType::MemTile)
+      memTileFixed[tile].push_back(
           {bytes,
            bufOp.getAligned() ? targetModel->getMemTileLoadStoreBusWidth() / 8
                               : 1,
            bufOp.getAddress()});
-    staticBufferSizes[tileOp] +=
+    staticBufferSizes[tile] +=
         bufOp.getAligned()
-            ? alignedBufferBytes(*targetModel, tileTypes.lookup(tileOp), bytes)
+            ? alignedBufferBytes(*targetModel, tile.getTileType(), bytes)
             : bytes;
   });
 
@@ -1615,15 +1611,17 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
       fb.consumerEnds.push_back(ofOp.plannedDmaEnd(ci));
     auto onMemTile = [&](Operation *tile) {
-      return tile && tileTypes.lookup(tile) == AIETileType::MemTile;
+      auto like = dyn_cast_or_null<TileLike>(tile);
+      return like && like.getTileType() == AIETileType::MemTile;
     };
-    if (fb.producerEnd && onMemTile(fb.producer))
-      memTileEnds[fb.producer].push_back(
+    if (fb.producerEnd && onMemTile(fb.producerTile))
+      memTileEnds[fb.producerTile].push_back(
           {DMAChannelDir::MM2S, *fb.producerEnd});
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
       if (const std::optional<PlannedDmaEnd> &end = fb.consumerEnds[ci];
-          end && onMemTile(fb.consumers[ci]))
-        memTileEnds[fb.consumers[ci]].push_back({DMAChannelDir::S2MM, *end});
+          end && onMemTile(fb.consumerTiles[ci]))
+        memTileEnds[fb.consumerTiles[ci]].push_back(
+            {DMAChannelDir::S2MM, *end});
 
     std::optional<ObjectFifoLinkOp> link = ofOp.getLink();
     fb.forcesDMA = ofOp.dmaReason().has_value();

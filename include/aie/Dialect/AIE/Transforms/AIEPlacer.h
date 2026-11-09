@@ -864,8 +864,8 @@ private:
   };
   llvm::SmallVector<RouteEndInfo> routeEnds;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
-  // The DMA ends of each logical mem tile and the BD ids each takes, as the
-  // split will make them.
+  // The DMA ends of each mem tile, logical or physical, and the BD ids each
+  // takes, as the split will make them.
   struct MemTileEnd {
     DMAChannelDir dir;
     PlannedDmaEnd end;
@@ -889,8 +889,8 @@ private:
   // recomputes one only when it moves a tile the term reads.
   int memSpilloverPenalty = 0, bdCountPenalty = 0, delegatePenalty = 0;
   llvm::DenseSet<mlir::Operation *> spillTiles, delegateTermTiles, pairedTiles;
-  // The buffers each logical mem tile already holds, as the allocator lays
-  // them out.
+  // The buffers each mem tile, logical or physical, already holds, as the
+  // allocator lays them out.
   llvm::MapVector<mlir::Operation *, llvm::SmallVector<BufferAllocation>>
       memTileFixed;
   // The BD ids the mem tile ends at each position are short of, what the
@@ -964,7 +964,7 @@ private:
   int64_t bdShortfall(
       TileID position, llvm::ArrayRef<mlir::Operation *> tiles,
       llvm::DenseSet<std::pair<mlir::Operation *, int>> *walked = nullptr);
-  /// The logical mem tiles at `position`, in memTileEnds order.
+  /// The mem tiles at `position`, in memTileEnds order.
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
   int computeMemSpilloverPenalty();
   int computeCoreOverflowPenalty() const;
