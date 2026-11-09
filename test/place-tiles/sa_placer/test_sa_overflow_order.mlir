@@ -25,10 +25,10 @@ module @two_overflows_one_neighbour {
     %m = aie.logical_tile<CoreTile>(0, 3)
     %b = aie.logical_tile<CoreTile>(0, 4)
     %f = aie.logical_tile<CoreTile>(0, 5)
-    %wa = aie.buffer(%a) {sym_name = "wa"} : memref<14080xi32>
-    %wm = aie.buffer(%m) {sym_name = "wm"} : memref<13312xi32>
-    %wb = aie.buffer(%b) {sym_name = "wb"} : memref<14080xi32>
-    %wf = aie.buffer(%f) {sym_name = "wf"} : memref<15360xi32>
+    %wa = aie.buffer(%a) {sym_name = "wa"} : memref<14848xi32>
+    %wm = aie.buffer(%m) {sym_name = "wm"} : memref<14080xi32>
+    %wb = aie.buffer(%b) {sym_name = "wb"} : memref<14848xi32>
+    %wf = aie.buffer(%f) {sym_name = "wf"} : memref<16128xi32>
     aie.objectfifo @ia(%a, {%a}, 1 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<6144xi8>>
     aie.objectfifo @ib(%b, {%b}, 1 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<6144xi8>>
     aie.core(%a) { aie.end }

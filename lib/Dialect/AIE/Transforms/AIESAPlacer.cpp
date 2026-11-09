@@ -1498,10 +1498,9 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     stackSizes[tileOp] =
         alignedBufferBytes(*targetModel, AIETileType::CoreTile,
                            coreOp.getEffectiveStackSize()) +
-        alignedBufferBytes(
-            *targetModel, AIETileType::CoreTile,
-            coreOp.getDataSize().value_or(coreOp.getMeasuredDataSize().value_or(
-                config.coreSectionsBytes)));
+        alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                           coreOp.getDataSize().value_or(
+                               coreOp.getMeasuredDataSize().value_or(0)));
   });
 
   // Build net model, fifo buffer info, and cascade groups

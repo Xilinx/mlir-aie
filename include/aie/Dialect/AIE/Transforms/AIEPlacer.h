@@ -705,10 +705,6 @@ struct SAConfig {
   // fifo's worth of memory overflow, which a neighbour's spare room absorbs.
   int sharedMemWeightPerDist = 300;
 
-  // The core's own sections (tables, constants) a core that declares no
-  // data_size is taken to need, before aiecc measures them after placement.
-  int coreSectionsBytes = 3 * 1024;
-
   // Memory pressure (cost 4)
   int pressurePerKB = 3;           // quadratic pressure above threshold
   double pressureThreshold = 0.75; // utilization fraction triggering pressure
