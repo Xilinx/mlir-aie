@@ -165,20 +165,41 @@ static LogicalResult mergeTracesPerUnit(DeviceOp device,
   }
   traces.assign(kept);
 
-  // A start_config from the input starts its trace in its block wherever it
-  // sits, so the redirected copies are the ones dropped.
-  SmallVector<TraceStartConfigOp> startConfigs;
-  device.walk([&](TraceStartConfigOp op) { startConfigs.push_back(op); });
-  auto startKey = [](TraceStartConfigOp op) {
-    return std::make_pair(op->getBlock(), op.getTraceConfigAttr().getAttr());
+  // A start_config lowers to register writes at its position, so a redirected
+  // copy is dropped only where another start_config of the same trace sits in
+  // the same run of adjacent start_configs: any other op between them (one
+  // that turns the trace off, or work the earlier start must precede) keeps
+  // both. In a run, the start_configs from the input stay, and a redirected
+  // copy stays only if it is the trace's first and none came from the input.
+  auto dropRedirectedRepeats = [&](ArrayRef<TraceStartConfigOp> run) {
+    llvm::DenseSet<StringAttr> fromInput;
+    for (TraceStartConfigOp op : run)
+      if (!redirected.contains(op))
+        fromInput.insert(op.getTraceConfigAttr().getAttr());
+    llvm::DenseSet<StringAttr> started(fromInput);
+    for (TraceStartConfigOp op : run)
+      if (redirected.contains(op) &&
+          !started.insert(op.getTraceConfigAttr().getAttr()).second)
+        op.erase();
   };
-  llvm::DenseSet<std::pair<Block *, StringAttr>> started;
-  for (TraceStartConfigOp op : startConfigs)
-    if (!redirected.contains(op))
-      started.insert(startKey(op));
-  for (TraceStartConfigOp op : startConfigs)
-    if (redirected.contains(op) && !started.insert(startKey(op)).second)
-      op.erase();
+  SmallVector<Block *> blocks;
+  llvm::SmallPtrSet<Block *, 4> seenBlocks;
+  device.walk([&](TraceStartConfigOp op) {
+    if (seenBlocks.insert(op->getBlock()).second)
+      blocks.push_back(op->getBlock());
+  });
+  for (Block *block : blocks) {
+    SmallVector<TraceStartConfigOp> run;
+    for (Operation &op : *block) {
+      if (auto start = dyn_cast<TraceStartConfigOp>(op)) {
+        run.push_back(start);
+        continue;
+      }
+      dropRedirectedRepeats(run);
+      run.clear();
+    }
+    dropRedirectedRepeats(run);
+  }
   return success();
 }
 

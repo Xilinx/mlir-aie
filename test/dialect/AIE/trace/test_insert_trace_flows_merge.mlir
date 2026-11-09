@@ -155,8 +155,8 @@ module @different_tiles_untouched {
 
 // -----
 
-// Only the start_configs the merge redirects are dropped as repeats, wherever
-// they sit in the block; a repeat already in the input is kept.
+// Only the start_configs the merge redirects are dropped as repeats; a repeat
+// already in the input is kept.
 // CHECK-LABEL: module @input_repeat_kept
 // CHECK: aie.runtime_sequence
 // CHECK: aie.trace.start_config @trace_a
@@ -184,6 +184,47 @@ module @input_repeat_kept {
       aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_b
       aie.trace.start_config @trace_a
+      aie.trace.start_config @trace_a
+    }
+  }
+}
+
+// -----
+
+// A start_config lowers to register writes where it sits, so a redirected copy
+// is dropped only next to a start_config of the same trace. Here a write
+// separates them (it could turn the trace off, or be work the first start must
+// precede), so both stay, the first now naming the merged trace.
+// CHECK-LABEL: module @separated_repeat_kept
+// CHECK: aie.runtime_sequence
+// CHECK: aie.trace.start_config @trace_a
+// CHECK-NEXT: aiex.npu.write32
+// CHECK-NEXT: aie.trace.start_config @trace_a
+// CHECK-NOT: aie.trace.start_config
+module @separated_repeat_kept {
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    %tile00 = aie.tile(0, 0)
+
+    aie.trace @trace_a(%tile02) {
+      aie.trace.packet type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.trace @trace_b(%tile02) {
+      aie.trace.packet type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      %addr = arith.constant 2224128 : i32
+      %val = arith.constant 1 : i32
+      aie.trace.start_config @trace_b
+      aiex.npu.write32(%addr, %val) : i32, i32
       aie.trace.start_config @trace_a
     }
   }
