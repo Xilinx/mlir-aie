@@ -13297,12 +13297,16 @@ the two:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a>operation ::= `aiex.npu.blockwrite` `(` $data `)` attr-dict `:` type($data)
 </code></pre></div>
 <p>blockwrite operator writes the data from the memref 'data' to the AIE array.
-If 'buffer' is present then 'address' is interpreted as an offset into the
-aie.buffer with symbol name 'buffer'.
-If 'column' and 'row' are present then 'address' is interpreted as an offset
+If 'buffer' is present then 'address' is interpreted as a 32-bit word offset
+into the aie.buffer with symbol name 'buffer'. The payload must have a
+static, fixed-size extent with 32-bit elements. The write must fit the
+buffer and its tile's data memory, and its resolved byte address must be
+4-byte aligned. The buffer need not have an assigned address yet;
+placement-dependent bounds are checked once it does.
+Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
 into the memory space of aie.tile(column, row).
-If 'buffer' is not present and 'column' and 'row' are not present then
-'address' is interpreted as a full 32-bit address in the AIE array.</p>
+Otherwise, 'address' is a full 32-bit byte address in the AIE array.</p>
+<p>Interfaces: <code>NamedOpUserOpInterface</code></p>
 <h4 id="attributes_42">Attributes:<a class="headerlink" href="#attributes_42" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
@@ -13611,9 +13615,11 @@ precondition.</p>
 own default (see <code>XAIE_IO_MASKPOLL</code> in aie-rt's xaie_txn.c). A condition
 that never becomes true therefore surfaces as a dispatch timeout rather
 than hanging forever.</p>
-<p>Address interpretation matches <code>npu.maskwrite32</code>: an offset into 'buffer'
-if present, else an offset into aie.tile('column', 'row') if those are
-present, else a full 32-bit array address.</p>
+<p>Address interpretation and the buffer bounds check match
+<code>npu.maskwrite32</code>: an offset into 'buffer' if present, else an offset into
+aie.tile('column', 'row') if those are present, else a full 32-bit array
+address.</p>
+<p>Interfaces: <code>NamedOpUserOpInterface</code></p>
 <h4 id="attributes_47">Attributes:<a class="headerlink" href="#attributes_47" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
@@ -13654,12 +13660,16 @@ present, else a full 32-bit array address.</p>
 <p>'address', 'value', and 'mask' are SSA operands; use arith.constant for
 compile-time-known values or pass runtime sequence values for
 runtime-parameterized sequences.</p>
-<p>If 'buffer' is present then 'address' is interpreted as an offset into the
-aie.buffer with symbol name 'buffer'.
-If 'column' and 'row' are present then 'address' is interpreted as an offset
+<p>If 'buffer' is present then 'address' must be constant and is interpreted
+as a 32-bit word offset into the aie.buffer with symbol name 'buffer'.
+The addressed word must fit the buffer and its tile's data memory, and its
+resolved byte address must be 4-byte aligned, regardless of the mask.
+The buffer need not have an assigned address yet; placement-dependent
+bounds are checked once it does.
+Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
 into the memory space of aie.tile(column, row).
-If 'buffer' is not present and 'column' and 'row' are not present then
-'address' is interpreted as a full 32-bit address in the AIE array.</p>
+Otherwise, 'address' is a full 32-bit byte address in the AIE array.</p>
+<p>Interfaces: <code>NamedOpUserOpInterface</code></p>
 <h4 id="attributes_48">Attributes:<a class="headerlink" href="#attributes_48" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
@@ -13923,12 +13933,15 @@ Because of this, this always writes 48 bits (size of BD addresses) and the lower
 <p>'address' and 'value' are SSA operands; use arith.constant for
 compile-time-known values or pass runtime sequence values for
 runtime-parameterized sequences.</p>
-<p>If 'buffer' is present then 'address' is interpreted as an offset into the
-aie.buffer with symbol name 'buffer'.
-If 'column' and 'row' are present then 'address' is interpreted as an offset
+<p>If 'buffer' is present then 'address' must be constant and is interpreted
+as a 32-bit word offset into the aie.buffer with symbol name 'buffer'.
+The write must fit the buffer and its tile's data memory, and its resolved
+byte address must be 4-byte aligned. The buffer need not have an assigned
+address yet; placement-dependent bounds are checked once it does.
+Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
 into the memory space of aie.tile(column, row).
-If 'buffer' is not present and 'column' and 'row' are not present then
-'address' is interpreted as a full 32-bit address in the AIE array.</p>
+Otherwise, 'address' is a full 32-bit byte address in the AIE array.</p>
+<p>Interfaces: <code>NamedOpUserOpInterface</code></p>
 <h4 id="attributes_54">Attributes:<a class="headerlink" href="#attributes_54" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>

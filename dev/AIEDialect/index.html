@@ -12488,7 +12488,15 @@ a portion of a device which may be relocatable, the intention would be to provid
 operation, for instance maybe <code>aie.segment</code>.
 The design itself is described using a region of code contained by the device
 operation.</p>
-<p>The optional <code>overlay</code> symbol references a routed device whose resources
+<p>Graph-dependent named-use checks run in this device's region verifier,
+after its children have passed their invariants. Verify the containing
+device or module, rather than only a named user, to check those references.</p>
+<p>The optional <code>has_ctrl_pkt_overlay</code> attribute marks a design that a
+control-packet reload (<code>aiecc --load-pdi-to-ctrl-pkt</code>) installs. The reload
+configures the <code>@ctrl_pkt_overlay</code> device first and the rest of the design
+through it, so the router keeps the switch settings the overlay's flows
+take on their own. <code>aie-generate-column-control-overlay</code> sets it.
+The optional <code>overlay</code> symbol references a routed device whose resources
 remain resident while this design executes. <code>aie-import-overlay</code> imports
 those fixed resources before application allocation and routing.</p>
 <p>Example:
