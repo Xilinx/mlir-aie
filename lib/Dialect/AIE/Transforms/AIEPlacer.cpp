@@ -188,6 +188,7 @@ void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns,
                         tilesInCol.begin() + numToTake);
   }
 
+  placeableCores = limitedTiles.size();
   availability.compTiles = limitedTiles;
   availability.compTilesSet.clear();
   availability.compTilesSet.insert(availability.compTiles.begin(),
@@ -533,7 +534,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           int columns = targetModel->columns();
           diag.attachNote()
               << "cores-per-col=" << *coresPerCol << " leaves "
-              << columns * *coresPerCol << " of this device's "
+              << placeableCores << " of this device's "
               << columns * deviceCoresPerCol
               << " compute tiles placeable and may be limiting placement; "
                  "consider raising it or reducing the design's core count";

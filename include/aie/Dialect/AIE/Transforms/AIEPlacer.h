@@ -383,6 +383,8 @@ private:
   // non-core aie.logical_tile onto a tile that already hosts one.
   llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
+  // The compute tiles cores-per-col leaves to unpinned logical cores.
+  int placeableCores = 0;
 
   // Shim channels are counted one per end until a shim tile runs out; then
   // ends never in flight together count once, as allocation will share them.
