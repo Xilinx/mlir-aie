@@ -572,7 +572,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   void indexLockReleases(AIE::RuntimeSequenceOp seq) {
     unsigned position = 0;
-    for (Operation &op : seq.getBody().front()) {
+    for (Operation &op : seq.getBody().getOps()) {
       positionOf[&op] = position++;
       DMAConfigureTaskOp cfg = dyn_cast<DMAConfigureTaskOp>(op);
       if (auto start = dyn_cast<DMAStartTaskOp>(op))
