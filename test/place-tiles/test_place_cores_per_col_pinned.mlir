@@ -41,3 +41,18 @@ module @pinned_high {
     aie.core(%l2) { aie.end }
   }
 }
+
+// -----
+
+// A pinned logical CoreTile that runs no core holds no core of the budget,
+// as a physical tile without one does not.
+// ONE-LABEL: module @pinned_without_core
+// ONE: aie.core(%tile_0_2)
+module @pinned_without_core {
+  aie.device(npu2_1col) {
+    %l1 = aie.logical_tile<CoreTile>(0, 4)
+    %b = aie.buffer(%l1) {sym_name = "hold"} : memref<16xi32>
+    %l2 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%l2) { aie.end }
+  }
+}

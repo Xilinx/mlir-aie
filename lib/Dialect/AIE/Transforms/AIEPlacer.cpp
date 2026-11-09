@@ -152,12 +152,11 @@ void SequentialPlacer::initialize(DeviceOp device) {
     }
     DenseSet<TileID> held(availability.physicalCores.begin(),
                           availability.physicalCores.end());
-    for (LogicalTileOp tile : device.getOps<LogicalTileOp>()) {
-      auto col = tile.tryGetCol();
-      auto row = tile.tryGetRow();
-      if (tile.getTileType() == AIETileType::CoreTile && col && row)
-        held.insert({*col, *row});
-    }
+    for (CoreOp core : device.getOps<CoreOp>())
+      if (auto tile =
+              dyn_cast_or_null<LogicalTileOp>(core.getTile().getDefiningOp()))
+        if (auto col = tile.tryGetCol(), row = tile.tryGetRow(); col && row)
+          held.insert({*col, *row});
     limitCoresPerColumn(*coresPerCol, targetModel->columns(), held);
   }
 }
