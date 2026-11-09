@@ -760,6 +760,121 @@ def test_cache_key_covers_mutable_class_level_state(tmp_path):
         sys.modules.pop("class_state", None)
 
 
+def test_swapped_factory_closures_rekey_their_positions():
+    """Factory closures share code and qualname but capture different flags.
+
+    ``def make(flag): return lambda: [flag]`` products have identical code;
+    only the closure cell differs.  Swapping them in a sequence must move
+    the key or ``OPS[0]()`` keeps the old binary with the new flags.
+    """
+
+    def make(flag):
+        return lambda: [flag]
+
+    la, lb = make(1), make(2)
+
+    def key(order):
+        ns = {"__name__": "ops_mod", "OPS": order}
+        exec("def gen(a, b, N=None):\n    return OPS[0]()\n", ns)
+        return _compute_recipe_hash(ns["gen"], {}, (), ())
+
+    forward = key([la, lb])
+    assert key([la, lb]) == forward, "the same order must key alike"
+    assert key([lb, la]) != forward, "swapping closures must move the key"
+
+
+def test_class_digest_skips_private_registries():
+    """Private class attributes are implementation detail and never keyed.
+
+    Config lives in public class attributes (``Config.FLAGS``); registries
+    like ``_instances`` churn with unrelated constructions and must not move
+    the key.  The class digest walks public attributes only.
+    """
+
+    class Config:
+        FLAGS = ["-DSTEP=1"]
+        _instances = []
+
+    def key():
+        ns = {"__name__": "cfg_mod", "Config": Config}
+        exec("def gen(a, b, N=None):\n    return Config.FLAGS[0]\n", ns)
+        return _compute_recipe_hash(ns["gen"], {}, (), ())
+
+    before = key()
+    Config._instances.append(object())
+    assert key() == before, "a private registry must not move the key"
+    Config.FLAGS.append("-O2")
+    assert key() != before, "public class state must move the key"
+
+
+def test_generation_cache_key_follows_mutable_inputs(tmp_path):
+    """The in-process generation cache must not outlive a mutable-input edit.
+
+    ``_generation_cache_key`` keyed on device+full_elf only, so a design
+    whose flag source changed between compiles would have been served the
+    previously generated MLIR.  The recipe hash now rides the key.
+    """
+    (tmp_path / "gen_state.py").write_text("FLAGS = ['-DSTEP=1']\n")
+    (tmp_path / "gen_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import gen_state\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void k(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def k(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "k",\n'
+        '        object_file_name="k.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=gen_state.FLAGS,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import gen_design
+
+        design = CompilableDesign(gen_design.k, compile_kwargs={"N": 64})
+        before = design._generation_cache_key(full_elf=False)
+        sys.modules["gen_state"].FLAGS.append("-O2")
+        after = design._generation_cache_key(full_elf=False)
+        assert after != before, "an edit to a keyed input must rekey generation"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("gen_design", None)
+        sys.modules.pop("gen_state", None)
+
+
+def test_mask_keepalive_covers_every_pinned_object():
+    """The keepalive must hold every pinned id's object, across runs.
+
+    The mask accumulates ids (mask.update(moved)); a keepalive that only
+    holds the latest run's objects would let an earlier pin's object die
+    and its id be reused -- masking a new object with a dead pin.
+    """
+    from aie.utils.compile.jit import _hash as hash_mod
+
+    calls = {"n": 0}
+    lists = [[], []]
+
+    def gen():
+        lists[calls["n"] % 2].append(1)
+        calls["n"] += 1
+        return None
+
+    with hash_mod._mask_generator_mutations(gen):
+        gen()
+    with hash_mod._mask_generator_mutations(gen):
+        gen()
+    keep = getattr(gen, "__iron_key_mask_keepalive__")
+    assert lists[0] in keep and lists[1] in keep
+
+
 def test_cache_key_survives_a_self_configuring_generator(tmp_path):
     """A generator that records what it learns keeps finding its own entry.
 

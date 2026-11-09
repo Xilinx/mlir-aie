@@ -2291,7 +2291,10 @@ class CompilableDesign:
         except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
             device = None
 
-        return ("device", full_elf) + _device_identity_key(device)
+        # The recipe rides along: mutable inputs the key now covers can move
+        # between two compiles of this same object, and the cached MLIR must
+        # regenerate with them rather than serve the previous contents.
+        return ("device", full_elf) + _device_identity_key(device) + (self.recipe_hash,)
 
     def _generated_for(self, *, full_elf: bool) -> _GeneratedDesign:
         """Return the cached generated design for the given mode."""

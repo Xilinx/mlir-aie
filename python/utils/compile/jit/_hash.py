@@ -435,7 +435,7 @@ def _python_identity(
                 # products of one factory share module and qualname while
                 # their constants differ.
                 if isinstance(value, FunctionType):
-                    ident = _code_identity(value.__code__).hex()
+                    ident = _callable_identity(value, where, depth)
                     return (
                         f"{_import_name(value.__module__)}.{value.__qualname__}"
                         f"#{ident}"
@@ -505,10 +505,28 @@ def _python_identity(
                 # bind the code, or swapping them leaves the key unchanged.
                 # Classes have no __code__; their binding is the name.
                 if isinstance(value, FunctionType):
-                    ident = _code_identity(value.__code__).hex()
+                    ident = _callable_identity(value, where, depth)
                     return f"{value.__module__}.{value.__qualname__}#{ident}"
                 return f"{value.__module__}.{value.__qualname__}"
         return "<not-followed>"
+
+    def _callable_identity(fn, where: str, depth: int) -> str:
+        """Code identity plus the closure cells a factory lambda/closure captures.
+
+        Two products of one factory share code and qualname while their cells
+        differ (``def make(flag): return lambda: [flag]``), so the position
+        must bind the cells or swapping the products leaves the key unchanged.
+        """
+        parts = [_code_identity(fn.__code__).hex()]
+        cells = fn.__closure__ or ()
+        for n, cell in zip(fn.__code__.co_freevars, cells):
+            try:
+                content = cell.cell_contents
+            except ValueError:  # an empty cell
+                parts.append(f"<{n}:empty>")
+                continue
+            parts.append(f"<{n}={describe(content, f'{where}.<cell>.{n}', depth)}>")
+        return "|".join(parts)
 
     def _digest(value, where: str, depth: int) -> str:
         """Digest a container's content: its kind, length and member identities."""
@@ -517,10 +535,16 @@ def _python_identity(
             h = hashlib.sha256()
             h.update(f"<{type(value).__name__}:{len(value)}>".encode())
             if isinstance(value, dict):
-                # A mapping entry's key qualifies its value, so a value
-                # reassigned between keys cannot keep the old entry's
-                # digest, and the entries fold in the keys' order so equal
-                # mappings built in different orders agree.  The key is
+                # Insertion order is deliberately not an input: equal
+                # mappings built in different orders (say, folded from a
+                # set) must agree, at the price that a generator reading
+                # ``list(d.values())`` order after a pop-and-reinsert sees
+                # new order at the old key -- such a generator must rebuild
+                # the mapping to rekey.  A mapping entry's key qualifies its
+                # value, so a value reassigned between keys cannot keep the
+                # old entry's digest, and the entries fold in the keys'
+                # order so equal mappings built in different orders agree.
+                # The key is
                 # named the way a value is: ``repr(key)`` would embed a
                 # function's address and move the key in every process.
                 entries = []
@@ -564,9 +588,10 @@ def _python_identity(
             h = hashlib.sha256()
             h.update(binding.encode())
             for attr, member in sorted(vars(value).items()):
-                # Same convention as the type walk below: dunder entries are
-                # skipped unless they are functions.
-                if attr.startswith("__") and not isinstance(member, FunctionType):
+                # Public class attributes are configuration surface; private
+                # ones (registries like ExternalFunction._instances) are
+                # implementation detail whose churn must not move the key.
+                if attr.startswith("_"):
                     continue
                 d = describe(member, f"{where}.{attr}", depth + 1)
                 h.update(f".{attr}={d}\0".encode())
@@ -737,7 +762,17 @@ def _mask_generator_mutations(
                         # hold the pinned objects so no new object can
                         # inherit their pins by reusing an id.
                         keep = [pre_objs[i] for i in moved if i in pre_objs]
-                        setattr(generator, "__iron_key_mask_keepalive__", keep)
+                        prev = (
+                            getattr(generator, "__iron_key_mask_keepalive__", None)
+                            or []
+                        )
+                        # The mask accumulates ids across runs; the keepalive
+                        # must cover every pinned id, not just this run's.
+                        setattr(
+                            generator,
+                            "__iron_key_mask_keepalive__",
+                            [*prev, *keep],
+                        )
                     except (AttributeError, TypeError):
                         logger.debug(
                             "generator %r cannot hold a key mask; its own "
