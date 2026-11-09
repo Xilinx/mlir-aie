@@ -636,9 +636,14 @@ struct AIEObjectFifoAllocatePass
   /// Both buffers and locks must be local to use the local-only channels.
   /// Distinct unresolved tiles may be neighbors after placement, so they
   /// cannot be assumed local when assigning a placed endpoint's channels.
+  /// An end whose channel others take turns on reaches what they reach too.
   bool reachesAdjacentTile(RouteEndpoint endpoint) {
     if (auto route = dyn_cast<RouteEndpointOp>(endpoint.getOperation()))
       return programReachesAdjacentTile(route);
+    for (auto [sharer, owner] : channelSharers)
+      if (owner == endpoint.getOperation() &&
+          reachesAdjacentTile(cast<RouteEndpoint>(sharer)))
+        return true;
     auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
     if (!dma || !dma.getTileLike().isMemTile()) {
       return false;
