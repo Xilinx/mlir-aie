@@ -407,7 +407,10 @@ private:
   // attributes) or chosen by the placer.
   enum class PlacementOrigin { Pinned, Selected };
 
-  void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
+  /// Keeps at most `maxCoresPerCol` cores in each column, counting the
+  /// `held` positions a physical or pinned core already takes.
+  void limitCoresPerColumn(int maxCoresPerCol, int numColumns,
+                           const llvm::DenseSet<TileID> &held);
 
   // targetCol == nullopt means no routing anchor is known, so candidates are
   // ranked by DMA load rather than by distance to a column. `withinBudgets`
