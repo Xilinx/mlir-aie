@@ -361,7 +361,7 @@ public:
 
   /// Steps the exact packing of groups of different counts may take on each
   /// connected component.
-  static constexpr int64_t kPackBudget = 100000;
+  static constexpr int64_t kPackBudget = 1000000;
 
 private:
   /// Puts each group in `chosen` on a tile in `eligible` with room for it,

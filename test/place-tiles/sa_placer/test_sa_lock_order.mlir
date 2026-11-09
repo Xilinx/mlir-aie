@@ -11,8 +11,8 @@
 // order. The 6x4 grid's pools of 1 to 7 locks take 376 of its 384, and how
 // many steps the exact packing takes depends on the order it searches in.
 // The packing searches in an order of its own, so the SA and allocation
-// reach the same verdict.
-// CHECK: agree=1 mismatch=0 skipped=0 agreeing_lock_failures=0 agreeing_lock_stops=1
+// reach the same verdict: the locks fit.
+// CHECK: agree=1 mismatch=0 skipped=0 agreeing_lock_failures=0 agreeing_lock_stops=0
 
 module @lock_order {
   aie.device(xcvc1902) {

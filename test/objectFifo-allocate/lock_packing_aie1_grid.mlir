@@ -10,7 +10,7 @@
 // Each tile's 16 locks are split into pools of depths 2 to 7, each owned by
 // that tile or a vertical neighbour, so a packing that fills all 128 locks
 // exists. Placing the 34 pools one at a time, largest first, takes some 271k
-// steps to find it, past the search budget; filling a tile at a time does not.
+// steps to find it; filling a tile at a time takes under 100k.
 // CHECK-COUNT-16: aie.lock(%tile_5_1)
 // CHECK-COUNT-16: aie.lock(%tile_5_2)
 // CHECK-COUNT-16: aie.lock(%tile_5_3)
