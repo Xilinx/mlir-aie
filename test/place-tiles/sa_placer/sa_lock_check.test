@@ -3,5 +3,5 @@
 
 // utils/component_checks/sa_lock_check.py holds the SA's lock groups to what
 // aie-objectfifo-allocate makes; run it on this directory's lock designs.
-// RUN: %python %S/../../../utils/component_checks/sa_lock_check.py --aie-opt aie-opt --seed 1 --seed 3 %S/test_sa_locks.mlir %S/test_sa_placed_ends.mlir %S/test_sa_lock_constants.mlir %S/test_sa_lock_input_pools.mlir %S/test_sa_lock_links.mlir %S/test_sa_lock_spill.mlir | FileCheck %s
-// CHECK: agree=14 mismatch=0 skipped=0 agreeing_lock_failures=2 agreeing_lock_stops=0
+// RUN: %python %S/../../../utils/component_checks/sa_lock_check.py --aie-opt aie-opt --seed 1 --seed 3 %S/test_sa_locks.mlir %S/test_sa_placed_ends.mlir %S/test_sa_lock_constants.mlir %S/test_sa_lock_input_pools.mlir %S/test_sa_lock_links.mlir %S/test_sa_lock_spill.mlir %S/test_sa_lock_spill_turns.mlir | FileCheck %s
+// CHECK: agree=16 mismatch=0 skipped=0 agreeing_lock_failures=2 agreeing_lock_stops=0
