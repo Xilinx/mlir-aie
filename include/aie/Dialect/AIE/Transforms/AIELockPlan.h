@@ -130,7 +130,8 @@ public:
   struct Assignment {
     llvm::SmallVector<std::optional<unsigned>> tiles;
     /// A group no assignment finds room for, and why: the first placing them
-    /// in order misses, or, after the matching, the first it leaves out.
+    /// in order misses (when packing, in a component no packing exists for),
+    /// or, after the matching, the first it leaves out.
     std::optional<size_t> failed;
     Placed failure;
     /// How many groups no assignment finds room for.
@@ -151,9 +152,11 @@ public:
   Assignment assign(llvm::ArrayRef<Group> groups) {
     Assignment result;
     llvm::DenseMap<TileID, int> before = used;
+    llvm::SmallVector<Placed> misses;
     for (auto [index, group] : llvm::enumerate(groups)) {
       Placed placed = place(group);
       result.tiles.push_back(placed.tile);
+      misses.push_back(placed);
       if (!placed.tile && !result.failed) {
         result.failed = index;
         result.failure = placed;
@@ -175,7 +178,8 @@ public:
     if (llvm::any_of(groups,
                      [&](const Group &g) { return g.count != count; })) {
       llvm::SmallVector<std::optional<unsigned>> packed;
-      Packing packing = pack(groups, eligible, before, packed);
+      llvm::SmallVector<unsigned> blocked;
+      Packing packing = pack(groups, eligible, before, packed, blocked);
       if (packing == Packing::Found) {
         result.tiles = std::move(packed);
         result.failed.reset();
@@ -186,6 +190,12 @@ public:
         return result;
       }
       result.stopped = packing == Packing::Stopped;
+      for (unsigned group : blocked)
+        if (!result.tiles[group]) {
+          result.failed = group;
+          result.failure = misses[group];
+          break;
+        }
       result.unassigned = llvm::count(result.tiles, std::nullopt);
       return result;
     }
@@ -259,7 +269,8 @@ public:
     return result;
   }
 
-  /// Steps the exact packing of groups of different counts may take.
+  /// Steps the exact packing of groups of different counts may take on each
+  /// connected component.
   static constexpr int64_t kPackBudget = 100000;
 
 private:
@@ -273,17 +284,23 @@ private:
   /// wastes no more room than the component can spare, then closed. A state
   /// whose groups do not fit even when split is cut off. Groups of one count
   /// and one set of positions are interchangeable, so a subset takes how many
-  /// of each. Stopped when kPackBudget steps did not decide.
+  /// of each. Each component may take kPackBudget steps; one that does not
+  /// decide in them leaves the packing Stopped unless another has none. With
+  /// None, `blocked` holds the groups of the component that has none.
   Packing pack(llvm::ArrayRef<Group> groups,
                llvm::ArrayRef<llvm::SmallVector<unsigned>> eligible,
                const llvm::DenseMap<TileID, int> &before,
-               llvm::SmallVectorImpl<std::optional<unsigned>> &chosen) const {
+               llvm::SmallVectorImpl<std::optional<unsigned>> &chosen,
+               llvm::SmallVectorImpl<unsigned> &blocked) const {
     chosen.assign(groups.size(), std::nullopt);
+    blocked.clear();
     llvm::SmallVector<TileID> positions;
     llvm::SmallVector<llvm::SmallVector<unsigned>> reach(groups.size());
     for (auto [group, tilesOf] : llvm::enumerate(eligible)) {
-      if (tilesOf.empty())
+      if (tilesOf.empty()) {
+        blocked.push_back(group);
         return Packing::None;
+      }
       for (unsigned tile : tilesOf) {
         if (!tiles[tile].at) {
           chosen[group] = tile;
@@ -312,11 +329,12 @@ private:
         for (unsigned position : own)
           component[root(position)] = root(own.front());
 
-    int64_t steps = kPackBudget;
-    bool stopped = false;
+    bool anyStopped = false;
     for (unsigned top : llvm::seq<unsigned>(0, positions.size())) {
       if (root(top) != top)
         continue;
+      int64_t steps = kPackBudget;
+      bool stopped = false;
       llvm::SmallVector<unsigned> local;
       for (unsigned position : llvm::seq<unsigned>(0, positions.size()))
         if (root(position) == top)
@@ -514,15 +532,23 @@ private:
           failed.insert({open, taken});
         return done;
       };
-      if (!complete())
-        return stopped ? Packing::Stopped : Packing::None;
+      if (!complete()) {
+        if (stopped) {
+          anyStopped = true;
+          continue;
+        }
+        for (auto [group, own] : llvm::enumerate(reach))
+          if (!chosen[group] && !own.empty() && root(own.front()) == top)
+            blocked.push_back(group);
+        return Packing::None;
+      }
       for (auto [kind, k] : llvm::enumerate(kinds))
         for (auto [group, position] : llvm::zip(k.members, where[kind]))
           chosen[group] = *llvm::find_if(eligible[group], [&](unsigned tile) {
             return tiles[tile].at == positions[position];
           });
     }
-    return Packing::Found;
+    return anyStopped ? Packing::Stopped : Packing::Found;
   }
 
   const AIETargetModel &target;
