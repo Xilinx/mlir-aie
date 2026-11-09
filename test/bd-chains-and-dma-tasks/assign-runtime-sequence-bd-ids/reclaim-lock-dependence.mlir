@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true warn-unreleased-transfers=false' \
 // RUN:   --verify-diagnostics --split-input-file %s
 
 // A mem tile's odd channels share BD ids 24-47. A fill chain and a peek chain,
