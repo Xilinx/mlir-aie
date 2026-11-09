@@ -854,11 +854,13 @@ private:
     std::optional<PlannedDmaEnd> producerEnd;
     llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerEnds;
     // Whether an end on a link's tile holds the link's one pool, which the
-    // split builds from getPoolOwner and getPoolDepth as the end's plan says,
-    // or shares one another end holds.
+    // split builds from getPoolOwner and getPoolDepth as the plan says, or
+    // shares one another end holds.
     enum class LinkPool { None, Holds, Shares };
     LinkPool producerLinkPool = LinkPool::None;
     llvm::SmallVector<LinkPool> consumerLinkPools;
+    std::optional<PlannedDmaEnd> producerLinkPlan;
+    llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerLinkPlans;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
     bool linked = false;

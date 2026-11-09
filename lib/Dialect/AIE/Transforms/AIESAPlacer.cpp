@@ -458,7 +458,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   // split builds the link's one pool on its tile.
   bool prodLinked = fb.producerLinkPool != LinkPool::None;
   if (fb.producerLinkPool == LinkPool::Holds)
-    chargeLinkPool(prodPos, *fb.producerEnd);
+    chargeLinkPool(prodPos, *fb.producerLinkPlan);
 
   for (size_t ci = 0; ci < fb.consumerTiles.size(); ci++) {
     std::optional<TileID> consAt = positionOf(fb.consumerTiles[ci]);
@@ -481,7 +481,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     int64_t sharedRaw = std::max(fb.producerRawBytes, fb.consumerRawBytes);
     bool consLinked = fb.consumerLinkPools[ci] != LinkPool::None;
     if (fb.consumerLinkPools[ci] == LinkPool::Holds)
-      chargeLinkPool(consPos, *fb.consumerEnds[ci]);
+      chargeLinkPool(consPos, *fb.consumerLinkPlans[ci]);
     bool sharedPool = isSharedMem && !prodLinked && !consLinked;
     if (prodPos == consPos && sharedPool) {
       currentMemUsage[delegatePos.value_or(prodPos)] += sign * sharedBytes;
@@ -1797,20 +1797,48 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     fifoBuffers.push_back(fb);
   }
 
-  // A link's ends on its tile plan one pool; the first end to name it holds
-  // it, as the split builds it once.
-  DenseSet<Operation *> heldLinkPools;
-  auto linkPoolOf = [&](const std::optional<PlannedDmaEnd> &end) {
-    using LinkPool = FifoBufferInfo::LinkPool;
-    if (!end || !isa_and_nonnull<ObjectFifoLinkOp>(end->pool))
-      return LinkPool::None;
-    return heldLinkPools.insert(end->pool).second ? LinkPool::Holds
-                                                  : LinkPool::Shares;
+  // Every end of a link on its tile shares the link's one pool, as the split
+  // builds it once; the first end holds it. A merge's or dispatch's later
+  // participants plan no DMA end of their own, so the pool's plan is the
+  // first end's that names it.
+  auto linkOf = [&](ObjectFifoCreateOp fifo,
+                    std::optional<unsigned> consumer) -> ObjectFifoLinkOp {
+    if (consumer)
+      return fifo.getConsumerLink(*consumer);
+    for (ObjectFifoLinkOp link : device.getOps<ObjectFifoLinkOp>())
+      if (link.getOptionalSharedTile() == fifo.getProducerTile() &&
+          llvm::is_contained(link.getOutputObjectFifos(), fifo))
+        return link;
+    return {};
   };
+  DenseMap<Operation *, PlannedDmaEnd> linkPlans;
+  for (FifoBufferInfo &fb : fifoBuffers)
+    for (const std::optional<PlannedDmaEnd> &end :
+         llvm::concat<const std::optional<PlannedDmaEnd>>(
+             fb.consumerEnds, ArrayRef(fb.producerEnd)))
+      if (end && isa_and_nonnull<ObjectFifoLinkOp>(end->pool))
+        linkPlans.try_emplace(end->pool, *end);
+  DenseSet<Operation *> heldLinkPools;
   for (FifoBufferInfo &fb : fifoBuffers) {
-    for (const std::optional<PlannedDmaEnd> &end : fb.consumerEnds)
-      fb.consumerLinkPools.push_back(linkPoolOf(end));
-    fb.producerLinkPool = linkPoolOf(fb.producerEnd);
+    auto fifo = cast<ObjectFifoCreateOp>(fb.fifoOp);
+    auto linkPoolOf = [&](std::optional<unsigned> consumer)
+        -> std::pair<FifoBufferInfo::LinkPool, std::optional<PlannedDmaEnd>> {
+      using LinkPool = FifoBufferInfo::LinkPool;
+      ObjectFifoLinkOp link = linkOf(fifo, consumer);
+      auto plan = link ? linkPlans.find(link) : linkPlans.end();
+      if (plan == linkPlans.end())
+        return {LinkPool::None, std::nullopt};
+      if (!heldLinkPools.insert(link).second)
+        return {LinkPool::Shares, std::nullopt};
+      return {LinkPool::Holds, plan->second};
+    };
+    for (unsigned ci = 0, e = fb.consumerEnds.size(); ci < e; ++ci) {
+      auto [pool, plan] = linkPoolOf(ci);
+      fb.consumerLinkPools.push_back(pool);
+      fb.consumerLinkPlans.push_back(plan);
+    }
+    std::tie(fb.producerLinkPool, fb.producerLinkPlan) =
+        linkPoolOf(std::nullopt);
   }
 
   LLVM_DEBUG(llvm::dbgs() << "[SA] seed=" << rngSeed << "\n");
