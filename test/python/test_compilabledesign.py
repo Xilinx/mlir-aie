@@ -793,6 +793,8 @@ def test_class_digest_skips_private_registries():
 
     class Config:
         FLAGS = ["-DSTEP=1"]
+        STEP = 1
+        _STEP = 1
         _instances = []
 
     def key():
@@ -802,7 +804,10 @@ def test_class_digest_skips_private_registries():
 
     before = key()
     Config._instances.append(object())
-    assert key() == before, "a private registry must not move the key"
+    assert key() == before, "a private container registry must not move the key"
+    Config._STEP = 2
+    assert key() != before, "a private scalar is configuration and must move the key"
+    Config._STEP = 1
     Config.FLAGS.append("-O2")
     assert key() != before, "public class state must move the key"
 
@@ -873,6 +878,27 @@ def test_mask_keepalive_covers_every_pinned_object():
         gen()
     keep = getattr(gen, "__iron_key_mask_keepalive__")
     assert lists[0] in keep and lists[1] in keep
+
+
+def test_self_referential_closure_terminates():
+    """A closure capturing itself must not recurse the position identity.
+
+    ``def make(): def f(): return f; return f`` puts ``f`` in its own
+    closure; describing the cell used to recurse without end.  The
+    re-entrant frame now contributes code identity only.
+    """
+
+    def make():
+        def f():
+            return f
+
+        return f
+
+    f = make()
+    ns = {"__name__": "rec_mod", "f": f}
+    exec("def gen(a, b, N=None):\n    return f()\n", ns)
+    h = _compute_recipe_hash(ns["gen"], {}, (), ())
+    assert isinstance(h, str) and h
 
 
 def test_cache_key_survives_a_self_configuring_generator(tmp_path):

@@ -516,17 +516,31 @@ def _python_identity(
         Two products of one factory share code and qualname while their cells
         differ (``def make(flag): return lambda: [flag]``), so the position
         must bind the cells or swapping the products leaves the key unchanged.
+
+        Cells are described like any other read, with the function itself in
+        ``active`` so a self-referential closure (``def f(): return f``)
+        terminates: the re-entrant frame contributes code identity only.
         """
         parts = [_code_identity(fn.__code__).hex()]
-        cells = fn.__closure__ or ()
-        for n, cell in zip(fn.__code__.co_freevars, cells):
-            try:
-                content = cell.cell_contents
-            except ValueError:  # an empty cell
-                parts.append(f"<{n}:empty>")
-                continue
-            parts.append(f"<{n}={describe(content, f'{where}.<cell>.{n}', depth)}>")
-        return "|".join(parts)
+        if id(fn) in active:
+            return parts[0]
+        active.add(id(fn))
+        try:
+            cells = fn.__closure__ or ()
+            for n, cell in zip(fn.__code__.co_freevars, cells):
+                if depth + 1 >= _MAX_KEY_DEPTH:
+                    raise _too_deep(where)
+                try:
+                    content = cell.cell_contents
+                except ValueError:  # an empty cell
+                    parts.append(f"<{n}:empty>")
+                    continue
+                parts.append(
+                    f"<{n}={describe(content, f'{where}.<cell>.{n}', depth + 1)}>"
+                )
+            return "|".join(parts)
+        finally:
+            active.discard(id(fn))
 
     def _digest(value, where: str, depth: int) -> str:
         """Digest a container's content: its kind, length and member identities."""
@@ -588,10 +602,12 @@ def _python_identity(
             h = hashlib.sha256()
             h.update(binding.encode())
             for attr, member in sorted(vars(value).items()):
-                # Public class attributes are configuration surface; private
-                # ones (registries like ExternalFunction._instances) are
-                # implementation detail whose churn must not move the key.
-                if attr.startswith("_"):
+                # Private *containers* are registries (ExternalFunction._instances)
+                # whose churn must not move the key; private scalars and
+                # callables are configuration (Config._STEP) and stay keyed.
+                # Skipping a private scalar would be a stale hit, which is
+                # worse than the churn a registry costs.
+                if attr.startswith("_") and isinstance(member, _CONTAINER):
                     continue
                 d = describe(member, f"{where}.{attr}", depth + 1)
                 h.update(f".{attr}={d}\0".encode())
