@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-11-09T06:54:57+00:00",
+ "generated_at": "2026-11-09T12:51:20+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -713,8 +713,8 @@
    ],
    "pull_requests": {
     "passed": 106,
-    "failed": 99,
-    "rate": 0.517
+    "failed": 98,
+    "rate": 0.52
    },
    "merge_queue": {
     "passed": 70,
@@ -1119,8 +1119,8 @@
    ],
    "pull_requests": {
     "passed": 160,
-    "failed": 119,
-    "rate": 0.573
+    "failed": 118,
+    "rate": 0.576
    },
    "merge_queue": {
     "passed": 75,
@@ -1424,8 +1424,8 @@
    ],
    "pull_requests": {
     "passed": 210,
-    "failed": 92,
-    "rate": 0.695
+    "failed": 91,
+    "rate": 0.698
    },
    "merge_queue": {
     "passed": 83,
@@ -1729,8 +1729,8 @@
    ],
    "pull_requests": {
     "passed": 221,
-    "failed": 90,
-    "rate": 0.711
+    "failed": 89,
+    "rate": 0.713
    },
    "merge_queue": {
     "passed": 84,
@@ -2034,8 +2034,8 @@
    ],
    "pull_requests": {
     "passed": 240,
-    "failed": 100,
-    "rate": 0.706
+    "failed": 99,
+    "rate": 0.708
    },
    "merge_queue": {
     "passed": 84,
@@ -2056,7 +2056,7 @@
   "merged": 74,
   "hours_median": 32.0,
   "hours_p90": 1429.0,
-  "open": 45,
+  "open": 46,
   "open_drafts": 15,
   "open_over_30_days": 27
  },
@@ -2276,11 +2276,11 @@
     {
      "id": 42575080485,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42575080485",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-09T06:46:04Z",
      "run_started_at": "2026-11-09T06:46:04Z",
-     "updated_at": "2026-11-09T06:47:29Z",
+     "updated_at": "2026-11-09T07:38:00Z",
      "head_sha": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
      "title": "Nightly Component Checks",
      "attempt": 1
@@ -2422,11 +2422,12 @@
     {
      "name": "SA placer seed sweep (CPU-only)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42575080485/job/129020863116",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-09T06:46:05Z",
      "started_at": "2026-11-09T06:46:14Z",
-     "runner": "GitHub Actions 1010421280"
+     "runner": "GitHub Actions 1010421280",
+     "outcome": "passed"
     },
     {
      "name": "runners / pick",
@@ -2441,11 +2442,22 @@
     {
      "name": "Design checks on hardware (mobilenet, llama, yolo26n; npu2)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42575080485/job/129021267582",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-09T06:47:21Z",
      "started_at": "2026-11-09T06:47:28Z",
-     "runner": "aie8"
+     "runner": "aie8",
+     "outcome": "passed"
+    },
+    {
+     "name": "publish",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42575080485/job/129037695372",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-09T07:37:06Z",
+     "started_at": "2026-11-09T07:37:15Z",
+     "runner": "GitHub Actions 1010423386",
+     "outcome": "passed"
     }
    ]
   },
@@ -3086,13 +3098,37 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 42615530128,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42615530128",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-09T12:15:45Z",
+     "run_started_at": "2026-11-09T12:15:45Z",
+     "updated_at": "2026-11-09T12:40:11Z",
+     "head_sha": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 42584688831,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42584688831",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-09T08:16:01Z",
+     "run_started_at": "2026-11-09T08:16:01Z",
+     "updated_at": "2026-11-09T08:45:36Z",
+     "head_sha": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 42560563415,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42560563415",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-09T04:13:02Z",
      "run_started_at": "2026-11-09T04:13:02Z",
-     "updated_at": "2026-11-09T04:13:22Z",
+     "updated_at": "2026-11-09T07:28:31Z",
      "head_sha": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
      "title": "MLIR Distro",
      "attempt": 1
@@ -3201,30 +3237,6 @@
      "created_at": "2026-11-07T16:09:11Z",
      "run_started_at": "2026-11-07T16:09:11Z",
      "updated_at": "2026-11-07T16:15:24Z",
-     "head_sha": "afbb857876c1955e72c2a1c15954c6340a353b49",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 42371514675,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42371514675",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-11-07T12:13:26Z",
-     "run_started_at": "2026-11-07T12:13:26Z",
-     "updated_at": "2026-11-07T12:39:24Z",
-     "head_sha": "afbb857876c1955e72c2a1c15954c6340a353b49",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 42354415389,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42354415389",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-11-07T08:11:36Z",
-     "run_started_at": "2026-11-07T08:11:36Z",
-     "updated_at": "2026-11-07T08:35:44Z",
      "head_sha": "afbb857876c1955e72c2a1c15954c6340a353b49",
      "title": "MLIR Distro",
      "attempt": 1
@@ -3879,6 +3891,18 @@
    "why": "opens the Peano bump pull request each Monday",
    "runs": [
     {
+     "id": 42582467617,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42582467617",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-09T07:56:25Z",
+     "run_started_at": "2026-11-09T07:56:25Z",
+     "updated_at": "2026-11-09T07:56:55Z",
+     "head_sha": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
+     "title": "Update Peano Version",
+     "attempt": 1
+    },
+    {
      "id": 41409572909,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41409572909",
      "status": "completed",
@@ -4007,18 +4031,6 @@
      "run_started_at": "2026-08-24T06:03:34Z",
      "updated_at": "2026-08-24T06:04:10Z",
      "head_sha": "ff62313ab45d7f1772d92c94cd4a0625576e6eeb",
-     "title": "Update Peano Version",
-     "attempt": 1
-    },
-    {
-     "id": 32000018218,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/32000018218",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-08-17T06:02:03Z",
-     "run_started_at": "2026-08-17T06:02:03Z",
-     "updated_at": "2026-08-17T06:02:45Z",
-     "head_sha": "c95544269f0c074d6d3e213ee43cc34dc4100801",
      "title": "Update Peano Version",
      "attempt": 1
     }
