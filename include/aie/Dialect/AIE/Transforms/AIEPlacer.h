@@ -66,6 +66,8 @@ struct TileAvailability {
   // kept in sync with `compTiles` by any code that mutates the vector
   // (initialize(), limitCoresPerColumn(), removeTile()).
   llvm::DenseSet<TileID> compTilesSet;
+  // Core positions a physical aie.tile's own aie.core already holds.
+  llvm::DenseSet<TileID> physicalCores;
 
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;

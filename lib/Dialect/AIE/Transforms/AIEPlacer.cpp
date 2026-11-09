@@ -56,10 +56,10 @@ void Placer::Adjacency::addEdgeFromValues(Value a, Value b) {
 void Placer::initialize(DeviceOp device) {
   const AIETargetModel &tm = device.getTargetModel();
   targetModel = &tm;
-  DenseSet<TileID> physicalCores;
+  availability.physicalCores.clear();
   for (CoreOp core : device.getOps<CoreOp>())
     if (auto tile = dyn_cast_or_null<TileOp>(core.getTile().getDefiningOp()))
-      physicalCores.insert(tile.getTileID());
+      availability.physicalCores.insert(tile.getTileID());
   availability.compTiles.clear();
   availability.nonCompTiles.clear();
   for (int col = 0; col < tm.columns(); col++) {
@@ -67,7 +67,7 @@ void Placer::initialize(DeviceOp device) {
       TileID id = {col, row};
       switch (tm.getTileType(col, row)) {
       case AIETileType::CoreTile:
-        if (!physicalCores.contains(id))
+        if (!availability.physicalCores.contains(id))
           availability.compTiles.push_back(id);
         break;
       case AIETileType::MemTile:
@@ -159,16 +159,21 @@ void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
   for (const auto &tile : availability.compTiles)
     tilesByColumn[tile.col].push_back(tile);
 
-  // Keep the first maxCoresPerCol tiles from each column. The per-column
-  // vectors are already row-sorted because compTiles is column-major.
+  // Keep the first maxCoresPerCol tiles from each column, less the column's
+  // physical cores. The per-column vectors are already row-sorted because
+  // compTiles is column-major.
+  DenseMap<int, int> physicalInColumn;
+  for (TileID tile : availability.physicalCores)
+    ++physicalInColumn[tile.col];
   std::vector<TileID> limitedTiles;
   for (int col = 0; col < numColumns; col++) {
     auto it = tilesByColumn.find(col);
     if (it == tilesByColumn.end())
       continue;
     const auto &tilesInCol = it->second;
-    size_t numToTake =
-        std::min(tilesInCol.size(), static_cast<size_t>(maxCoresPerCol));
+    size_t numToTake = std::min<size_t>(
+        tilesInCol.size(),
+        std::max(0, maxCoresPerCol - physicalInColumn.lookup(col)));
     limitedTiles.insert(limitedTiles.end(), tilesInCol.begin(),
                         tilesInCol.begin() + numToTake);
   }
