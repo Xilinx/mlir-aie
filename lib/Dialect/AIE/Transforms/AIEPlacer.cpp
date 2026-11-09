@@ -497,11 +497,20 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           preferredCols};
       auto search = findUnconstrainedCoreCandidate(
           logicalTile, col, row, inputs, availability.compTiles);
-      if (!search.placement && (col || row)) {
+      // A pin outranks the budget, so the tiles it left out are searched as
+      // well, and a failure has the causes both searches met.
+      bool searchedPastBudget = !search.placement && (col || row);
+      if (searchedPastBudget) {
         auto overBudget = findUnconstrainedCoreCandidate(
             logicalTile, col, row, inputs, availability.overBudgetCompTiles);
-        if (overBudget.placement)
-          search = overBudget;
+        search.placement = overBudget.placement;
+        search.allConstraintMatchesFailedAdjacency =
+            (!search.sawConstraintMatch ||
+             search.allConstraintMatchesFailedAdjacency) &&
+            (!overBudget.sawConstraintMatch ||
+             overBudget.allConstraintMatchesFailedAdjacency);
+        search.sawConstraintMatch |= overBudget.sawConstraintMatch;
+        search.computePeerWasCause |= overBudget.computePeerWasCause;
       }
       std::optional<TileID> placement = search.placement;
       bool sawConstraintMatch = search.sawConstraintMatch;
@@ -539,7 +548,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         }
         // A cores-per-col budget leaves no trace in the message above: the
         // tiles it removed are simply absent from `availability.compTiles`.
-        if (coresPerCol.has_value() && deviceCoresPerCol > 0) {
+        if (coresPerCol.has_value() && deviceCoresPerCol > 0 &&
+            !searchedPastBudget) {
           int columns = targetModel->columns();
           diag.attachNote()
               << "cores-per-col=" << *coresPerCol << " leaves "
