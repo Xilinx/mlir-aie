@@ -4197,25 +4197,33 @@ int64_t CoreOp::getSectionAlignment(std::optional<int32_t> bank) {
   return 1;
 }
 
-BufferOp
-CoreOp::getSectionReservationBuffer(const CoreSectionReservation &held) {
+SmallVector<BufferOp> CoreOp::getSectionReservationBuffers(
+    ArrayRef<CoreSectionReservation> reservations) {
   using Kind = CoreSectionReservation::Kind;
-  BufferOp holder;
+  SmallVector<BufferOp> onTile;
   (*this)->getParentOp()->walk([&](BufferOp buffer) {
-    if (buffer.getTile() != getTile())
-      return WalkResult::advance();
-    bool holds = held.kind == Kind::DataRegion ? buffer.getCoreData()
-                 : held.kind == Kind::Bank
-                     ? buffer.getBankReserved() && buffer.getAligned() &&
-                           buffer.getMemBank() == held.at
-                     : buffer.getBankReserved() && !buffer.getAligned() &&
-                           buffer.getAddress() == held.at;
-    if (!holds)
-      return WalkResult::advance();
-    holder = buffer;
-    return WalkResult::interrupt();
+    if (buffer.getTile() == getTile())
+      onTile.push_back(buffer);
   });
-  return holder;
+  SmallVector<BufferOp> holders;
+  DenseSet<Operation *> claimed;
+  for (const CoreSectionReservation &held : reservations) {
+    auto holds = [&](BufferOp buffer) {
+      if (claimed.contains(buffer) || buffer.getAllocationSize() != held.bytes)
+        return false;
+      if (held.kind == Kind::DataRegion)
+        return static_cast<bool>(buffer.getCoreData());
+      return buffer.getBankReserved() &&
+             buffer.getAligned() == held.aligned() &&
+             (held.kind == Kind::Bank ? buffer.getMemBank() == held.at
+                                      : buffer.getAddress() == held.at);
+    };
+    auto it = llvm::find_if(onTile, holds);
+    holders.push_back(it == onTile.end() ? BufferOp() : *it);
+    if (it != onTile.end())
+      claimed.insert(*it);
+  }
+  return holders;
 }
 
 SmallVector<CoreSectionReservation> CoreOp::getSectionReservations() {
@@ -4253,6 +4261,12 @@ int64_t BufferOp::getAllocationSize() {
 LogicalResult BufferOp::verify() {
   if (UsesAreAccessible::verifyTrait(*this).failed()) {
     return failure();
+  }
+
+  // Each marks space held for a different reservation of the core's sections.
+  if (getCoreData() && getBankReserved()) {
+    return emitOpError("cannot be both core_data and bank_reserved; a buffer "
+                       "holds one reservation of a core's sections");
   }
 
   // A logical tile stands for a placement the compiler has yet to choose, so

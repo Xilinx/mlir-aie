@@ -1499,8 +1499,11 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
                                        coreOp.getEffectiveStackSize());
     TileMemoryLimits limits =
         tileMemoryLimits(*targetModel, AIETileType::CoreTile);
-    for (const CoreSectionReservation &held : coreOp.getSectionReservations())
-      if (!coreOp.getSectionReservationBuffer(held))
+    SmallVector<CoreSectionReservation> reservations =
+        coreOp.getSectionReservations();
+    for (auto [held, holder] : llvm::zip_equal(
+             reservations, coreOp.getSectionReservationBuffers(reservations)))
+      if (!holder)
         bytes += llvm::alignTo(
             held.bytes,
             std::max<int64_t>(held.alignBytes,

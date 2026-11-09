@@ -101,14 +101,30 @@ static LogicalResult materializeCoreSections(DeviceOp device) {
     }
     std::string at =
         std::to_string(tile.getCol()) + "_" + std::to_string(tile.getRow());
-    for (const CoreSectionReservation &held : reservations) {
+    SmallVector<BufferOp> holders =
+        core.getSectionReservationBuffers(reservations);
+    for (auto [held, holder] : llvm::zip_equal(reservations, holders)) {
+      if (holder) {
+        continue;
+      }
       std::string name =
           held.kind == Kind::DataRegion ? "core_data_" + at
           : held.kind == Kind::Bank
               ? "bank_reserved_" + at + "_" + std::to_string(held.at)
               : "prebaked_" + at + "_" + std::to_string(held.at);
-      if (core.getSectionReservationBuffer(held)) {
-        continue;
+      // A buffer that is not the reservation's exact extent cannot stand in
+      // for it, and a second one cannot be made beside it.
+      BufferOp clash;
+      device.walk([&](BufferOp buffer) {
+        if (buffer.getSymName() == StringRef(name) ||
+            (held.kind == Kind::DataRegion && buffer.getCoreData() &&
+             buffer.getTile() == tile.getResult()))
+          clash = buffer;
+      });
+      if (clash) {
+        return clash.emitOpError("does not match the ")
+               << held.bytes << "-byte reservation core (" << tile.getCol()
+               << ", " << tile.getRow() << ") makes for its own sections";
       }
       builder.setInsertionPoint(core);
       auto type = MemRefType::get({held.bytes}, builder.getI8Type());
