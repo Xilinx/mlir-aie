@@ -377,14 +377,23 @@ private:
         return Packing::None;
       }
       for (unsigned tile : tilesOf) {
+        if (!tiles[tile].at)
+          break;
+        positions.push_back(*tiles[tile].at);
+      }
+    }
+    // The search visits positions and kinds in an order of their own, so
+    // whoever lists the groups (allocation or the SA) gets the same steps.
+    llvm::sort(positions);
+    positions.erase(llvm::unique(positions), positions.end());
+    for (auto [group, tilesOf] : llvm::enumerate(eligible)) {
+      for (unsigned tile : tilesOf) {
         if (!tiles[tile].at) {
           chosen[group] = tile;
           break;
         }
         unsigned position =
             llvm::find(positions, *tiles[tile].at) - positions.begin();
-        if (position == positions.size())
-          positions.push_back(*tiles[tile].at);
         if (!llvm::is_contained(reach[group], position))
           reach[group].push_back(position);
       }
@@ -405,9 +414,12 @@ private:
           component[root(position)] = root(own.front());
 
     bool anyStopped = false;
-    for (unsigned top : llvm::seq<unsigned>(0, positions.size())) {
-      if (root(top) != top)
+    llvm::SmallVector<bool> seen(positions.size(), false);
+    for (unsigned first : llvm::seq<unsigned>(0, positions.size())) {
+      unsigned top = root(first);
+      if (seen[top])
         continue;
+      seen[top] = true;
       int64_t steps = kPackBudget;
       bool stopped = false;
       llvm::SmallVector<unsigned> local;
@@ -445,7 +457,7 @@ private:
         kind->members.push_back(group);
       }
       llvm::stable_sort(kinds, [](const Kind &a, const Kind &b) {
-        return a.count > b.count;
+        return a.count != b.count ? a.count > b.count : a.reach < b.reach;
       });
 
       // The state is which positions are open and how many of each kind
