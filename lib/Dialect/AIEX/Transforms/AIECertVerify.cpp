@@ -33,6 +33,27 @@ using namespace xilinx;
 
 namespace {
 
+// The firmware indexes job contexts by job_id % 64 and reuses them on the next
+// page, so job IDs on one page must differ modulo 64.
+static LogicalResult checkJobSlots(AIE::DeviceOp device) {
+  LogicalResult result = success();
+  device.walk([&](AIEX::CertPageOp page) {
+    llvm::DenseMap<unsigned, AIEX::CertJobOp> slots;
+    for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
+      unsigned slot = job.getJobId() % AIEX::CertJobOp::NumSlots;
+      auto [it, inserted] = slots.try_emplace(slot, job);
+      if (!inserted) {
+        job.emitError() << "job ID " << job.getJobId()
+                        << " collides with job ID " << it->second.getJobId()
+                        << " modulo " << AIEX::CertJobOp::NumSlots
+                        << " on the same page";
+        result = failure();
+      }
+    }
+  });
+  return result;
+}
+
 // The uC (CERT group) id of a cert op is the group_id of its nearest enclosing
 // cert.attach_to_group, or 0 if it is at device level.
 static int getUcGroupId(Operation *op) {
@@ -319,6 +340,8 @@ struct AIECertVerifyPass
     : xilinx::AIEX::impl::AIECertVerifyBase<AIECertVerifyPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
+    if (failed(checkJobSlots(device)))
+      signalPassFailure();
     if (failed(checkGroupIds(device)))
       signalPassFailure();
     if (failed(checkLocalBarrierColocation(device)))

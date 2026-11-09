@@ -28,7 +28,7 @@
 // CHECK: aiex.cert.uc_dma_write_des_sync(@c2)
 // CHECK-NOT: aiex.cert.wait_tcts
 // CHECK: aiex.cert.page
-// CHECK: aiex.cert.job(3)
+// CHECK: aiex.cert.job(2)
 // CHECK: aiex.cert.wait_tcts(0, 6, 1)
 
 module {

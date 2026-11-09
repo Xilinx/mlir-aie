@@ -234,7 +234,9 @@ def AIECertPages : Pass<"cert-legalize-pages", "AIE::DeviceOp"> {
   let description = [{
     This pass splits cert jobs into smaller jobs that fit into 8k pages.
     It is used to ensure that the generated code does not exceed the page size
-    limit of the aiebu tools and cert firmware.
+    limit of the aiebu tools and cert firmware. After splitting, it moves job
+    IDs that collide modulo 64 on a page to unused slots. A page with more
+    than 64 jobs is an error.
   }];
 
   let constructor = "xilinx::AIEX::createAIECertPagesPass()";
