@@ -2125,7 +2125,9 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
                            objectBytes(getConsumerElemTypeOrDefault()),
                            0};
     int64_t repeat = getRepeatCount().value_or(1);
-    bool inHardware = repeat > 1 && depth == 1 && !getIterCount();
+    bool inHardware =
+        repeat > 1 && (getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
+                       (depth == 1 && !getIterCount()));
     return PlannedDmaEnd{depth * (inHardware ? 1 : repeat),
                          *this,
                          -1,
@@ -2163,7 +2165,10 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
       contiguousObjects = depth + window.top + window.bottom;
   }
   int64_t repeat = drains ? link.getRepeatCount().value_or(1) : 1;
-  bool inHardware = repeat > 1 && descriptors == 1 && !getIterCount();
+  bool inHardware =
+      repeat > 1 &&
+      ((drains && getReleaseStrategy() == ObjectFifoRelease::PushQueue) ||
+       (descriptors == 1 && !getIterCount()));
   int64_t passes = 1;
   if (drains && link.isDispatch()) {
     int64_t objects = std::max<int64_t>(depth, 1);
