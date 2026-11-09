@@ -107,8 +107,6 @@ struct AIEObjectFifoAllocatePass
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
-  /// Whether a search for which pools to walk whole stopped at its bound,
-  /// DMAChannelAnalysis::kMaxWalkPlacements, before finding one that places.
   bool walkSearchStopped = false;
 
   bool sameTile(Value a, Value b) {
@@ -1337,8 +1335,6 @@ struct AIEObjectFifoAllocatePass
       if (tile.isMemTile() && col && row && dma.getPoolOp())
         ends[{*col, *row}].push_back(dma);
     }
-    // Walk sets per spill component, as the SA placer chooses them
-    // (DMAChannelAnalysis::searchWalkProduct).
     struct Tile {
       TileID at;
       HomeBDPlan home;

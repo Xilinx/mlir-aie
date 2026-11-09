@@ -930,8 +930,6 @@ private:
   // sharing a position, by its tiles in order.
   llvm::DenseMap<TileID, int64_t> bdShortfallAt;
   llvm::SmallVector<std::pair<TileID, int64_t>> bdUndo;
-  /// Sets of pools, by (pool, id), that a mem tile may walk whole, in the
-  /// order DMAChannelAnalysis::walkSetsThatFit tries them.
   using WalkSets =
       llvm::SmallVector<llvm::SmallVector<std::pair<mlir::Operation *, int>>>;
   struct BDShortfall {

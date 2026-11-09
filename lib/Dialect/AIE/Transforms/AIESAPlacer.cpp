@@ -759,9 +759,8 @@ int SAPlacer::computeMemSpilloverPenalty() {
   auto inOrder = [](size_t size) {
     return llvm::to_vector(llvm::seq<unsigned>(0, size));
   };
-  // Walk sets per spill component, as aie-objectfifo-allocate chooses them
-  // (DMAChannelAnalysis::searchWalkProduct). An outcome depends on the
-  // component's tiles' contents and its walk sets alone, so it is kept.
+  // A component's outcome depends only on its tiles' contents and its walk
+  // sets, so it is cached.
   DenseMap<TileID, std::vector<Operation *>> opsAt;
   for (auto &[op, _] : memTileEnds)
     if (auto at = currentPlacement.find(op); at != currentPlacement.end())

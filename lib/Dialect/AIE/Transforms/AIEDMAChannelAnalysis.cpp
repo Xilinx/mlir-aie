@@ -417,7 +417,6 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
   if (fitsWalking(whole, /*weighted=*/true))
     return result;
 
-  // The walkable pools in nextPoolToWalk's order, whose position ranks them.
   SmallVector<unsigned> ranked;
   while (std::optional<unsigned> next =
              nextPoolToWalk(ends, poolOf, pools, whole)) {
