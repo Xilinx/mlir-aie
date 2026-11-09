@@ -4187,6 +4187,25 @@ MemoryRun CoreOp::getStackRun() {
   return {getStackAddress().value_or(0), getEffectiveStackSize()};
 }
 
+SmallVector<CoreSectionReservation> CoreOp::getSectionReservations() {
+  using Kind = CoreSectionReservation::Kind;
+  SmallVector<CoreSectionReservation> held;
+  // A declared data_size wins over the measurement: it is a reservation the
+  // design asked for, and may deliberately exceed what this build measures.
+  int64_t data = getDataSize().value_or(getMeasuredDataSize().value_or(0));
+  if (data > 0)
+    held.push_back({Kind::DataRegion, data});
+  if (auto sizes = getMeasuredBankSizes())
+    for (auto [bank, size] : llvm::enumerate(*sizes))
+      if (size > 0)
+        held.push_back({Kind::Bank, size, static_cast<int32_t>(bank)});
+  if (auto ranges = getMeasuredDataRanges())
+    for (size_t i = 0; i + 1 < ranges->size(); i += 2)
+      if ((*ranges)[i + 1] > 0)
+        held.push_back({Kind::Prebaked, (*ranges)[i + 1], (*ranges)[i]});
+  return held;
+}
+
 //===----------------------------------------------------------------------===//
 // BufferOp
 //===----------------------------------------------------------------------===//

@@ -78,70 +78,30 @@ static StringRef mapLabel(BufferOp buffer) {
   return buffer.name().getValue();
 }
 
-// Give each core's `data_size` an aie.buffer, so placement treats the core's
-// own sections as one more extent to fit. Idempotent: this pass runs standalone
-// and inside larger pipelines.
-static void materializeCoreDataBuffers(DeviceOp device) {
+// Give each extent a core's own sections hold (CoreOp::getSectionReservations)
+// an aie.buffer, so placement fits around it: the data region as one more
+// extent; the room a bank's pinned static data will need, held before
+// unconstrained buffers take it; and a prebaked `elf_file` core's runs, pinned
+// at the addresses its image already uses. Idempotent: this pass runs
+// standalone and inside larger pipelines.
+static void materializeCoreSections(DeviceOp device) {
+  using Kind = CoreSectionReservation::Kind;
   OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
   for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
-    // A declared `data_size` still wins: it is a reservation the design asked
-    // for, and may deliberately exceed what this build happens to measure.
-    // Without one, the probe's measurement stands in, so the region is an
-    // extent placement fits rather than whatever space is left over.
-    int64_t size = core.getDataSize().value_or(
-        static_cast<int64_t>(core.getMeasuredDataSize().value_or(0)));
-    if (size <= 0) {
-      continue;
-    }
     auto tile = cast<TileOp>(core.getTile().getDefiningOp());
-    bool present = false;
-    device.walk([&](BufferOp buffer) {
-      if (buffer.getCoreData() && buffer.getTileOp() == tile) {
-        present = true;
-      }
-    });
-    if (present) {
-      continue;
-    }
-    builder.setInsertionPoint(core);
-    auto type = MemRefType::get({size}, builder.getI8Type());
-    auto buffer =
-        BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                         /*sym_name=*/nullptr, /*address=*/nullptr,
-                         /*initial_value=*/nullptr,
-                         /*mem_bank=*/nullptr,
-                         /*core_data=*/builder.getUnitAttr(),
-                         /*bank_reserved=*/nullptr,
-                         /*aligned=*/nullptr);
-    buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                    builder.getStringAttr("core_data_" +
-                                          std::to_string(tile.getCol()) + "_" +
-                                          std::to_string(tile.getRow())));
-  }
-}
-
-// Give each bank a core pins static data to an aie.buffer of its own, so the
-// room the linker will need there is held before unconstrained buffers take it.
-// Sizes come from `measured_bank_sizes`, which aiecc fills from a probe link.
-// Idempotent, like materializeCoreDataBuffers.
-static void materializeBankReservations(DeviceOp device) {
-  OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
-  for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
-    auto sizes = core.getMeasuredBankSizes();
-    if (!sizes) {
-      continue;
-    }
-    auto tile = cast<TileOp>(core.getTile().getDefiningOp());
-    for (auto [bank, size] : llvm::enumerate(*sizes)) {
-      if (size <= 0) {
-        continue;
-      }
-      std::string name = "bank_reserved_" + std::to_string(tile.getCol()) +
-                         "_" + std::to_string(tile.getRow()) + "_" +
-                         std::to_string(bank);
+    std::string at =
+        std::to_string(tile.getCol()) + "_" + std::to_string(tile.getRow());
+    for (const CoreSectionReservation &held : core.getSectionReservations()) {
+      std::string name =
+          held.kind == Kind::DataRegion ? "core_data_" + at
+          : held.kind == Kind::Bank
+              ? "bank_reserved_" + at + "_" + std::to_string(held.at)
+              : "prebaked_" + at + "_" + std::to_string(held.at);
       bool present = false;
       device.walk([&](BufferOp buffer) {
-        if (buffer.name() == name) {
+        if (held.kind == Kind::DataRegion
+                ? buffer.getCoreData() && buffer.getTileOp() == tile
+                : buffer.name() == name) {
           present = true;
         }
       });
@@ -149,64 +109,22 @@ static void materializeBankReservations(DeviceOp device) {
         continue;
       }
       builder.setInsertionPoint(core);
-      auto type = MemRefType::get({size}, builder.getI8Type());
-      auto buffer =
-          BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                           /*sym_name=*/nullptr, /*address=*/nullptr,
-                           /*initial_value=*/nullptr,
-                           /*mem_bank=*/builder.getI32IntegerAttr(bank),
-                           /*core_data=*/nullptr,
-                           /*bank_reserved=*/builder.getUnitAttr(),
-                           /*aligned=*/nullptr);
-      buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                      builder.getStringAttr(name));
-    }
-  }
-}
-
-// Give a prebaked `elf_file` core's occupied extents an aie.buffer each, so
-// placement keeps the tile's buffers clear of memory that ELF already holds.
-// aiecc fills `measured_data_ranges` by reading the ELF; without it the
-// allocator has no way to know a prebaked core owns anything at all.
-//
-// The same shape as materializeBankReservations, pinned by address rather than
-// by bank: the addresses in a prebaked image are already final. Idempotent.
-static void materializePrebakedRanges(DeviceOp device) {
-  OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
-  for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
-    auto ranges = core.getMeasuredDataRanges();
-    if (!ranges) {
-      continue;
-    }
-    auto tile = cast<TileOp>(core.getTile().getDefiningOp());
-    for (size_t i = 0; i + 1 < ranges->size(); i += 2) {
-      int32_t address = (*ranges)[i], size = (*ranges)[i + 1];
-      if (size <= 0) {
-        continue;
-      }
-      std::string name = "prebaked_" + std::to_string(tile.getCol()) + "_" +
-                         std::to_string(tile.getRow()) + "_" +
-                         std::to_string(address);
-      bool present = false;
-      device.walk([&](BufferOp buffer) {
-        if (buffer.name() == name) {
-          present = true;
-        }
-      });
-      if (present) {
-        continue;
-      }
-      builder.setInsertionPoint(core);
-      auto type = MemRefType::get({size}, builder.getI8Type());
-      auto buffer =
-          BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                           /*sym_name=*/nullptr,
-                           /*address=*/builder.getI32IntegerAttr(address),
-                           /*initial_value=*/nullptr,
-                           /*mem_bank=*/nullptr,
-                           /*core_data=*/nullptr,
-                           /*bank_reserved=*/builder.getUnitAttr(),
-                           /*aligned=*/builder.getBoolAttr(false));
+      auto type = MemRefType::get({held.bytes}, builder.getI8Type());
+      auto buffer = BufferOp::create(
+          builder, core.getLoc(), type, tile.getResult(),
+          /*sym_name=*/nullptr,
+          /*address=*/
+          held.kind == Kind::Prebaked ? builder.getI32IntegerAttr(held.at)
+                                      : nullptr,
+          /*initial_value=*/nullptr,
+          /*mem_bank=*/
+          held.kind == Kind::Bank ? builder.getI32IntegerAttr(held.at)
+                                  : nullptr,
+          /*core_data=*/
+          held.kind == Kind::DataRegion ? builder.getUnitAttr() : nullptr,
+          /*bank_reserved=*/
+          held.kind == Kind::DataRegion ? nullptr : builder.getUnitAttr(),
+          /*aligned=*/held.aligned() ? nullptr : builder.getBoolAttr(false));
       buffer->setAttr(SymbolTable::getSymbolAttrName(),
                       builder.getStringAttr(name));
     }
@@ -1619,9 +1537,7 @@ struct AIEAssignBufferAddressesPass
     if (failed(applySignatureBankConstraints(device))) {
       return signalPassFailure();
     }
-    materializeCoreDataBuffers(device);
-    materializeBankReservations(device);
-    materializePrebakedRanges(device);
+    materializeCoreSections(device);
 
     // One allocator, one answer. There used to be two schemes and a fallback
     // between them, which meant a tile that ran out of room reported twice and

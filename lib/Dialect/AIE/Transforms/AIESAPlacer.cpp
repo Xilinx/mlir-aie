@@ -1493,14 +1493,16 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
     if (!isa_and_nonnull<TileLike>(tileOp))
       return;
-    // The data region a core sets aside for its own sections is as much its
+    // What addressing reserves for the core's own sections is as much its
     // memory as the stack.
-    stackSizes[tileOp] =
-        alignedBufferBytes(*targetModel, AIETileType::CoreTile,
-                           coreOp.getEffectiveStackSize()) +
-        alignedBufferBytes(*targetModel, AIETileType::CoreTile,
-                           coreOp.getDataSize().value_or(
-                               coreOp.getMeasuredDataSize().value_or(0)));
+    int64_t bytes = alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                                       coreOp.getEffectiveStackSize());
+    for (const CoreSectionReservation &held : coreOp.getSectionReservations())
+      bytes += held.aligned()
+                   ? alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                                        held.bytes)
+                   : held.bytes;
+    stackSizes[tileOp] = bytes;
   });
 
   // Build net model, fifo buffer info, and cascade groups

@@ -558,6 +558,10 @@ def AIE_CoreOp
     /// existed. A stack_bank-only pin must first be resolved by the allocator
     /// before consumers use this run as its final placement.
     MemoryRun getStackRun();
+    /// What assign-buffer-addresses reserves for this core's own sections:
+    /// `data_size`, else `measured_data_size`; each `measured_bank_sizes`
+    /// bank; each `measured_data_ranges` run.
+    llvm::SmallVector<CoreSectionReservation> getSectionReservations();
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }

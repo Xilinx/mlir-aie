@@ -78,6 +78,19 @@ largestFreeRunIn(MemoryRun window,
   return best;
 }
 
+// An extent assign-buffer-addresses holds as an aie.buffer for a core's own
+// sections: its data region, the static data it pins to one bank, or a run a
+// prebaked ELF already occupies.
+struct CoreSectionReservation {
+  enum class Kind { DataRegion, Bank, Prebaked };
+  Kind kind;
+  int64_t bytes;
+  // The bank for Bank, the address for Prebaked.
+  int32_t at = 0;
+  // A prebaked run sits at the ELF's own address, unpadded.
+  bool aligned() const { return kind != Kind::Prebaked; }
+};
+
 inline MemoryRun
 largestFreeRun(int64_t memSize,
                llvm::SmallVector<std::pair<int64_t, int64_t>> occupied,
