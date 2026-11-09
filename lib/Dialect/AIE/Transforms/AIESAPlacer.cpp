@@ -556,14 +556,9 @@ void SAPlacer::initResourceTracking() {
     if (std::optional<TileID> pos = positionOf(op))
       currentMemUsage[*pos] += bufSize;
   // Add core stack overhead (reserved by assign-buffer-addresses pass)
-  for (auto &[op, pos] : currentPlacement) {
-    auto typeIt = tileTypes.find(op);
-    if (typeIt == tileTypes.end() || typeIt->second != AIETileType::CoreTile)
-      continue;
-    auto it = stackSizes.find(op);
-    if (it != stackSizes.end())
-      currentMemUsage[pos] += it->second;
-  }
+  for (auto &[op, bytes] : stackSizes)
+    if (std::optional<TileID> pos = positionOf(op))
+      currentMemUsage[*pos] += bytes;
 
   for (size_t i = 0; i < fifoBuffers.size(); i++)
     addFifoContribution(i, +1);
@@ -1496,7 +1491,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   // Collect core stack and data regions (reserved by assign-buffer-addresses)
   device.walk([&](CoreOp coreOp) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
-    if (!tileOp || !isa<LogicalTileOp>(tileOp))
+    if (!isa_and_nonnull<TileLike>(tileOp))
       return;
     // The data region a core sets aside for its own sections is as much its
     // memory as the stack.
