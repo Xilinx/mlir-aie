@@ -3288,12 +3288,13 @@ def pins_hops_fn(d, hops_on):
     return lambda tile: not hops_on or d.target.kind(tile) == "shim"
 
 
-def priority_trees(d, cache):
+def priority_trees(d, cache, deadline=None):
     """The trees from `d`'s prioritized sources, {source: trace_output ends},
     as the router routes the prioritized packets without the rest of the
     design: priority_route promises they keep that routing whatever else the
     design asks for, so a witness has to route around them. A source's other
-    ids are no part of it. None if the router cannot route them."""
+    ids are no part of it. None if the router cannot route them. A run that
+    timed out raises RouterTimeout again for as long as `cache` lives."""
     prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
     if not prio:
         return {}
@@ -3305,8 +3306,17 @@ def priority_trees(d, cache):
         if (srcs := [s for s in f["srcs"] if (s, f["id"]) in prio])
     ]
     text = c.emit()
+    if isinstance(cache.get(text), RouterTimeout):
+        raise cache[text]
     if text not in cache:
-        p = aie_opt(text, hops_on=False, timeout=120)
+        try:
+            p = model_run(
+                aie_opt(text, hops_on=False, deadline=deadline),
+                "routing the prioritized flows alone",
+            )
+        except RouterTimeout as x:
+            cache[text] = x
+            raise
         trees = None
         if p.returncode == 0:
             out, trees = load_design(p.stdout), defaultdict(dict)
@@ -3401,14 +3411,14 @@ def overlay_problems(out, alone):
     return problems
 
 
-def construct(d, seed, attempts=40):
+def construct(d, seed, attempts=40, deadline=None):
     """Route `d` on exclusive links and plan its arbiters with the router's
     rules, dropping streams until both hop modes accept the witness. Returns
     (construction, analysis, plan) or None; `d` is pruned in place."""
     cache = {}
     for attempt in range(attempts):
         con = Construction(d, random.Random(f"route-{seed}-{attempt}"))
-        pinned = priority_trees(d, cache)
+        pinned = priority_trees(d, cache, deadline)
         if pinned is None:
             prio = {s for f in d.packet_flows if f["priority"] for s in f["srcs"]}
             blame = [st for st in requested_streams(d) if st.src in prio]
@@ -4451,12 +4461,13 @@ def devices_of(device):
     return FAMILIES.get(device, (device,))
 
 
-def routable_case(seed, device):
-    """A design the generator routed itself. None if it gave up."""
+def routable_case(seed, device, deadline=None):
+    """A design the generator routed itself. None if it gave up; the model's
+    router runs stop by `deadline` (ModelRunFailed) if given."""
     devs = devices_of(device)
     rng = random.Random(seed)
     d = canonical(random_design(rng, devs[seed % len(devs)]))
-    built = construct(d, seed)
+    built = construct(d, seed, deadline=deadline)
     if built is None:
         return None
     shape = "random"
@@ -4464,7 +4475,7 @@ def routable_case(seed, device):
         fixed = fix_ir(rng, d, built[0])
         if fixed is not None:
             fd = canonical(fixed)
-            fbuilt = construct(fd, seed)
+            fbuilt = construct(fd, seed, deadline=deadline)
             if fbuilt is not None and (fd.flows or fd.packet_flows):
                 d, built, shape = fd, fbuilt, "fixed-ir"
     con, an, _ = built
@@ -4787,7 +4798,7 @@ def generate(seed, params=None, device="npu2", tier="routable"):
     }[tier](seed, device)
 
 
-def verdict(d, hops_on=True, seed=0):
+def verdict(d, hops_on=True, seed=0, deadline=None):
     """What the model says about routing `d`: routable True (the generator
     found a witness), False (the router's pre-routing check rejects it, with
     its exact reason), or None; and every pair of requested streams that can
@@ -4812,7 +4823,7 @@ def verdict(d, hops_on=True, seed=0):
         return out
     c = d.copy()
     before = design_signature(c)
-    built = construct(c, seed)
+    built = construct(c, seed, deadline=deadline)
     if built is not None and design_signature(c) == before:
         out["routable"] = True
         out["witness"] = built[0].solution()
@@ -5200,28 +5211,24 @@ def lower_witness(d, con, plan):
     return out.emit()
 
 
-def witness_problem(d, an, text):
+def witness_problem(d, an, text, deadline=None):
     """None if the lowered routing `text` of `d` passes the C++ verifier,
     verify() with no shared-receiver cycle, and --aie-find-flows lifts it back
     to exactly the requested flows; else what fails."""
     # With nothing left to route, the router only adds the wires find-flows
     # follows.
-    wired = aie_opt(text, strict=True, timeout=120)
+    wired = model_run(
+        aie_opt(text, strict=True, deadline=deadline), "wiring a strict witness"
+    )
     if wired.returncode:
         return "C++ verifier: " + first_error(wired.stderr)[:120]
     problems, stats = verify(d, an, text, hops_on=False)
     if problems or stats.get("shared_receiver_cycle") is not None:
         return "verify: " + (problems[0][:80] if problems else "shared-receiver cycle")
-    try:
-        lifted = subprocess.run(
-            [aie_opt_path(), "--aie-find-flows=keep-partial-flows=true", "-"],
-            input=wired.stdout,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-    except subprocess.TimeoutExpired:
-        return "find-flows: timeout after 120s"
+    lifted = model_run(
+        find_flows(wired.stdout, keep_partial=True, deadline=deadline),
+        "lifting a strict witness",
+    )
     if lifted.returncode:
         return "find-flows: " + first_error(lifted.stderr)[:120]
     got = load_design(lifted.stdout)
@@ -5247,7 +5254,7 @@ def witness_problem(d, an, text):
     return None
 
 
-def strict_witness(d, an, witnesses=2, tries=10):
+def strict_witness(d, an, witnesses=2, tries=10, deadline=None):
     """A routing of `d` with no shared-receiver hold cycle, lowered to
     switchbox configuration, or None if the search found none."""
     if not shared_receiver_pairs(d):
@@ -5255,7 +5262,7 @@ def strict_witness(d, an, witnesses=2, tries=10):
     for w in range(witnesses):
         c = d.copy()
         before = design_signature(c)
-        built = construct(c, w)
+        built = construct(c, w, deadline=deadline)
         if built is None or design_signature(c) != before:
             continue
         for k in range(tries):
@@ -5271,7 +5278,7 @@ def strict_witness(d, an, witnesses=2, tries=10):
             if plan["reason"] is not None or plan["shared_receiver_cycle"] is not None:
                 continue
             text = lower_witness(d, search.con, plan)
-            if text is not None and witness_problem(d, an, text) is None:
+            if text is not None and witness_problem(d, an, text, deadline) is None:
                 return text
     return None
 
@@ -5828,9 +5835,23 @@ def aie_opt_path():
     return os.environ.get("AIE_OPT") or shutil.which("aie-opt") or str(here)
 
 
-def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=False):
-    """Run the router, letting flows that can deadlock route with a warning
-    unless strict. A timeout comes back as returncode TIMEOUT."""
+def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=None):
+    """Run the router on `text` within `run_end(deadline)`; a batch that runs
+    out of time is for the caller to rerun a design at a time.
+
+    Args:
+        text: The design, or with `split` designs separated by `// -----`.
+        hops_on: Whether circuit-switch hops are on.
+        split: Whether `text` holds several designs.
+        extra: More aie-opt arguments.
+        strict: Whether flows that can deadlock fail instead of routing with a
+            warning.
+        deadline: A `time.monotonic()` value to stop by, if that comes first.
+
+    Returns:
+        The run's result, with returncode `TIMEOUT` if it ran out of time.
+    """
+    end = run_end(deadline)
     opts = [] if hops_on else ["circuit-switch-hops=false"]
     if not strict:
         opts.append("allow-deadlock-prone=true")
@@ -5840,22 +5861,117 @@ def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=Fals
         + (["--split-input-file"] if split else [])
         + ["-"]
     )
+    crashed = None
     for _ in range(2):
+        timeout = max(0.0, end - time.monotonic())
         try:
             p = subprocess.run(
                 cmd, input=text, capture_output=True, text=True, timeout=timeout
             )
         except subprocess.TimeoutExpired:
+            if crashed is not None:
+                return crashed
             return subprocess.CompletedProcess(
                 cmd, TIMEOUT, "", f"timeout after {timeout}s"
             )
         # The binary may be relinked under us; a crash is worth one retry.
         if p.returncode >= 0:
             break
+        crashed = p
     return p
 
 
 TIMEOUT = -1000
+SPLIT = "\n// -----\n"
+
+# Room for the slowest design the mutation nightly judges, on a busy runner.
+ROUTE_TIMEOUT_S = 360
+
+
+def run_end(deadline=None):
+    """The `time.monotonic()` value an aie-opt run starting now stops by.
+
+    Args:
+        deadline: A `time.monotonic()` value to stop by, if that comes before
+            `ROUTE_TIMEOUT_S` from now.
+
+    Returns:
+        The earlier of the two.
+    """
+    end = time.monotonic() + ROUTE_TIMEOUT_S
+    return end if deadline is None else min(end, deadline)
+
+
+class ModelRunFailed(Exception):
+    """A run the model relies on gave no answer, so the model cannot say."""
+
+
+class RouterTimeout(ModelRunFailed):
+    outcome = "timeout"
+
+
+class RouterCrash(ModelRunFailed):
+    outcome = "crash"
+
+
+def run_failure(p):
+    """How a run gave no answer, if it did not.
+
+    Args:
+        p: The run's result.
+
+    Returns:
+        ("timeout", detail) or ("crash", detail), else None.
+    """
+    if p.returncode == TIMEOUT:
+        return "timeout", p.stderr
+    if p.returncode < 0:
+        return "crash", first_error(p.stderr)[:300]
+    return None
+
+
+def model_run(p, what):
+    """`p`, a run the model relies on, if it answered.
+
+    Args:
+        p: The run's result.
+        what: What the run was for, to name it.
+
+    Returns:
+        `p`, whatever it decided.
+
+    Raises:
+        RouterTimeout: The run ran out of time.
+        RouterCrash: The run crashed.
+    """
+    if failure := run_failure(p):
+        kind = RouterTimeout if failure[0] == "timeout" else RouterCrash
+        raise kind(f"{what}: {failure[0]} {failure[1]}")
+    return p
+
+
+def find_flows(text, keep_partial=False, deadline=None):
+    """Lift a routing back into flows with --aie-find-flows.
+
+    Args:
+        text: The routed design.
+        keep_partial: Whether to keep what it cannot lift as switchbox
+            configuration.
+        deadline: As `aie_opt`.
+
+    Returns:
+        The run's result, with returncode `TIMEOUT` if it ran out of time.
+    """
+    limit = max(0.0, run_end(deadline) - time.monotonic())
+    opt = "--aie-find-flows" + ("=keep-partial-flows=true" if keep_partial else "")
+    cmd = [aie_opt_path(), opt, "-"]
+    try:
+        return subprocess.run(
+            cmd, input=text, capture_output=True, text=True, timeout=limit
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, TIMEOUT, "", f"timeout after {limit}s")
+
 
 MODULE_TAG_RE = re.compile(r"^module @s(\d+)\b", re.M)
 
@@ -5865,14 +5981,14 @@ def route_batch(tagged, hops_on, extra=(), strict=False):
     output, so designs missing from it are rerun alone. Returns ({tag:
     output}, {tag: (returncode, stderr)}, {tag: debug output})."""
     p = aie_opt(
-        "\n// -----\n".join(m for _, m in tagged),
+        SPLIT.join(m for _, m in tagged),
         hops_on,
         split=True,
         extra=extra,
         strict=strict,
     )
     out, errs, debug = {}, {}, {}
-    for chunk in p.stdout.split("\n// -----\n"):
+    for chunk in p.stdout.split(SPLIT):
         if m := MODULE_TAG_RE.search(chunk):
             out[int(m.group(1))] = chunk.removeprefix("// -----\n")
     logs = p.stderr.split(PASS_BEGIN)[1:]
@@ -6190,6 +6306,92 @@ def known_bug(d, problems):
     return next((label for label, test in KNOWN_BUGS if test(d, problems)), None)
 
 
+def generated_cases(first, count, device, deadline=None):
+    """Generate the routable designs of seeds `first` to `first + count`.
+
+    Args:
+        first: The first seed.
+        count: How many seeds to try.
+        device: The device or family to generate for.
+        deadline: As `aie_opt`, for the model's router runs.
+
+    Yields:
+        (seed, case, outcome): the case, else None with outcome None where the
+        generator gave up, or the outcome of the model's router run
+        ("timeout", "crash") where the model could not decide.
+    """
+    for seed in range(first, first + count):
+        try:
+            case = routable_case(seed, device, deadline)
+        except ModelRunFailed as x:
+            yield seed, None, x.outcome
+            continue
+        yield seed, case, None
+
+
+class PropertiesReport:
+    """The properties run's report, replaced whole each time it changes, so a
+    run its step stops early still leaves the properties and seeds it got to.
+
+    Args:
+        path: Where to write it; None to only print the properties.
+        device: The run's device.
+        first_seed: The run's first seed.
+        seeds: How many seeds the generator is to try.
+    """
+
+    def __init__(self, path, device, first_seed, seeds):
+        self.path, self.device = path, device
+        self.first_seed, self.seeds = first_seed, seeds
+        self.properties, self.regressions = [], []
+        self.tried, self.undecided = 0, []
+
+    def seed_tried(self, seed, outcome):
+        """Count a seed the generator tried.
+
+        Args:
+            seed: The seed.
+            outcome: The outcome of the model's router run where the model
+                could not decide the seed ("timeout", "crash"), else None.
+        """
+        self.tried += 1
+        if outcome:
+            self.undecided.append(f"seed {seed}: {outcome}")
+        self.write(partial=True)
+
+    def add(self, label, ok, detail):
+        """Print a property's verdict and add it to the report."""
+        print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
+        self.properties.append({"name": label, "ok": bool(ok), "detail": detail})
+        if not ok:
+            self.regressions.append(label)
+        self.write(partial=True)
+
+    def write(self, partial, counts=None):
+        """Replace the report whole.
+
+        Args:
+            partial: Whether the run is not done.
+            counts: The run's counts, once it has them.
+        """
+        if self.path is None:
+            return
+        out = {
+            "device": self.device,
+            "first_seed": self.first_seed,
+            "seeds": self.seeds,
+            "seeds_tried": self.tried,
+            "undecided": self.undecided,
+            "partial": partial,
+            "properties": self.properties,
+        }
+        if counts is not None:
+            out["counts"] = counts
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_text(json.dumps(out, indent=1))
+        tmp.replace(self.path)
+
+
 def main(argv=None):
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--device", default="npu2", help="npu1, npu2 or a device name")
@@ -6215,14 +6417,8 @@ def main(argv=None):
     t_start = time.monotonic()
     first = args.first_seed
 
-    regressions = []
-    properties = []
-
-    def report(label, ok, detail):
-        print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
-        properties.append({"name": label, "ok": bool(ok), "detail": detail})
-        if not ok:
-            regressions.append(label)
+    run_report = PropertiesReport(args.report, args.device, first, PARAMS["routable"])
+    report = run_report.add
 
     def save(case, what, text, stderr=""):
         if args.out:
@@ -6280,14 +6476,25 @@ def main(argv=None):
         for hops_on in (True, False):
             pending[hops_on, k] = pool.submit(route, hops_on, cases[k : k + size])
 
-    for seed in range(first, first + PARAMS["routable"]):
-        case = routable_case(seed, args.device)
+    for seed, case, outcome in generated_cases(first, PARAMS["routable"], args.device):
+        run_report.seed_tried(seed, outcome)
+        if outcome:
+            continue
         if case is None:
             gave_up += 1
-            continue
-        cases.append(case)
-        if len(cases) % size == 0:
-            submit(len(cases) - size)
+        else:
+            cases.append(case)
+            if len(cases) % size == 0:
+                submit(len(cases) - size)
+    undecided = run_report.undecided
+    for line in undecided[:10]:
+        print("UNDECIDED:", line)
+    report(
+        "generation",
+        not undecided,
+        f"{len(undecided)} seeds the model could not decide, its router run "
+        f"timed out or crashed: {', '.join(undecided[:10])}",
+    )
     if len(cases) % size:
         submit(len(cases) - len(cases) % size)
     shapes = Counter(c["shape"] for c in cases)
@@ -6538,9 +6745,9 @@ def main(argv=None):
         tag = f"seed {c['seed']} ({c['shape']})"
         if p.returncode >= 0:
             check_inherent(tag, c, p.stderr)
-        if p.returncode < 0:
-            unknown_illegal.append(f"{tag}: crashed: {first_error(p.stderr)[:300]}")
-            save(c, "crash", c["design"].emit(), p.stderr)
+        if failure := run_failure(p):
+            unknown_illegal.append(f"{tag}: {failure[0]}: {failure[1]}")
+            save(c, failure[0], c["design"].emit(), p.stderr)
         elif p.returncode == 0:
             problems, _ = verify(c["design"], c["analysis"], p.stdout, c["hops_on"])
             if problems and (label := known_bug(c["design"], problems)):
@@ -6561,7 +6768,7 @@ def main(argv=None):
     report(
         "unknown-legality",
         not unknown_illegal,
-        f"{len(unknown_illegal)} illegal or crashed of {len(kcases)}",
+        f"{len(unknown_illegal)} illegal, crashed or timed out of {len(kcases)}",
     )
     for line in inherent_wrong[:10]:
         print("WRONG WARNING:", line)
@@ -6591,24 +6798,32 @@ def main(argv=None):
         f"hold cycle, {strict['shared']} fail on one, {strict['inherent']} fail "
         f"on flows that deadlock however they are routed)",
     )
-    misses = []
+    misses, strict_undecided = [], []
     for seed, c in sorted(strict_shared.items()):
-        witness = strict_witness(c["design"], c["analysis"])
+        try:
+            witness = strict_witness(c["design"], c["analysis"])
+        except ModelRunFailed:
+            strict_undecided.append(seed)
+            continue
         if witness is not None:
             misses.append(seed)
             save(c, "strict-miss", c["design"].emit())
             save(c, "strict-witness", witness)
     for seed in misses[:10]:
         print(f"STRICT MISS: seed {seed}")
+    for seed in strict_undecided[:10]:
+        print(f"STRICT WITNESS UNDECIDED: seed {seed}")
     report(
         "strict-completeness",
-        len(misses)
+        not strict_undecided
+        and len(misses)
         <= PARAMS["max_strict_misses"] * totals["designs"]
         + PARAMS["strict_miss_allowance"],
         f"{len(misses)}/{len(strict_shared)} designs that fail without "
         f"allow-deadlock-prone on a shared-receiver hold cycle have a routing "
         f"without one (max {PARAMS['max_strict_misses']} per design + "
-        f"{PARAMS['strict_miss_allowance']})",
+        f"{PARAMS['strict_miss_allowance']}); {len(strict_undecided)} undecided, the "
+        f"router timed out or crashed",
     )
 
     for label, count in sorted(known.items()):
@@ -6680,24 +6895,14 @@ def main(argv=None):
             "ms_per_design": round(per_design, 2),
             "wall_s": round(time.monotonic() - t_start, 1),
         }
-        args.report.write_text(
-            json.dumps(
-                {
-                    "device": args.device,
-                    "first_seed": first,
-                    "seeds": PARAMS["routable"],
-                    "properties": properties,
-                    "counts": counts,
-                },
-                indent=1,
-            )
-        )
-    return 1 if regressions else 0
+        run_report.write(partial=False, counts=counts)
+    return 1 if run_report.regressions else 0
 
 
 # CHECK: model-validation: {{.*}} : OK
 # CHECK: verifier-validation: {{.*}} : OK
 
+# CHECK: generation: {{.*}} : OK
 # CHECK: completeness: {{.*}} : OK
 # CHECK: legality: {{.*}} : OK
 # CHECK: determinism: {{.*}} : OK

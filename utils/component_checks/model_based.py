@@ -77,6 +77,8 @@ def router(
     """Return the router's rows, failed ids and detail, a case per device."""
     cases: dict[str, dict] = {}
     missed: Counter[str] = Counter()
+    # A trend point from a run stopped early counts only the seeds it got to.
+    partial: dict[tuple[str, str], list[str]] = {}
     failed, detail = [], []
     for stem, lit in lits.items():
         if lit is None:
@@ -99,15 +101,27 @@ def router(
             bad = [p["name"] for p in report["properties"] if not p["ok"]]
             span = f"seed={first}+{report['seeds']}"
             failed += [f"{device}/properties/{span}/{name}" for name in bad]
+            stopped = report.get("partial", False)
+            if stopped:
+                failed.append(
+                    f"{device}/properties/stopped after {report['seeds_tried']} "
+                    f"of {report['seeds']} seeds"
+                )
+                partial.setdefault((device, "failed_properties"), []).append(
+                    f"properties {report['seeds_tried']} of {report['seeds']} seeds"
+                )
             cells["failed_properties"] = (len(bad), "properties")
-            for metric, unit in ROUTER_COUNTS.items():
-                cells[metric] = (report["counts"][metric], unit)
+            if "counts" in report:
+                for metric, unit in ROUTER_COUNTS.items():
+                    cells[metric] = (report["counts"][metric], unit)
             detail.append(
                 {
                     "device": device,
                     "run": "properties",
                     "first_seed": first,
                     "seeds": report["seeds"],
+                    "partial": stopped,
+                    "seeds_tried": report.get("seeds_tried", report["seeds"]),
                     "failed": bad,
                 }
             )
@@ -119,6 +133,16 @@ def router(
             )
             continue
         part = f"hops-{report['hops']}"
+        stopped = report.get("partial", False)
+        if stopped:
+            failed.append(
+                f"{device}/{part}/stopped after {report['seeds_done']} of "
+                f"{report['seeds']} seeds"
+            )
+            for metric in ("failed_mutations", "survived_corruptions"):
+                partial.setdefault((device, metric), []).append(
+                    f"{part} {report['seeds_done']} of {report['seeds']} seeds"
+                )
         seen = set()
         for f in report["failures"]:
             what = " ".join(x for x in (f["kind"], f["name"], f["outcome"]) if x)
@@ -136,6 +160,8 @@ def router(
                 "run": part,
                 "first_seed": first,
                 "seeds": report["seeds"],
+                "partial": stopped,
+                "seeds_done": report.get("seeds_done", report["seeds"]),
                 "killed": report["killed"],
                 "survived": report["survived"],
                 "failures": len(report["failures"]),
@@ -151,7 +177,17 @@ def router(
         found = cases[device].get("strict_misses", (0, ""))[0]
         cases[device]["strict_misses"] = (found + count, "designs")
     rows = [
-        row(device, metric, value, unit)
+        row(
+            device,
+            metric,
+            value,
+            unit,
+            (
+                "partial: " + ", ".join(partial[device, metric])
+                if (device, metric) in partial
+                else None
+            ),
+        )
         for device, cells in cases.items()
         for metric, (value, unit) in cells.items()
     ]

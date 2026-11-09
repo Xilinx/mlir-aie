@@ -10,6 +10,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -560,6 +561,74 @@ def test_the_router_reports_become_a_case_per_device(aie_opt, tmp_path):
         ("npu1", "hops-on"),
     ]
     assert meta["provenance"].startswith("commit ")
+
+
+def test_a_mutation_run_its_time_limit_stops_leaves_a_partial_report(aie_opt, tmp_path):
+    report = tmp_path / "npu1-hops-on.json"
+    run = subprocess.Popen(
+        [sys.executable, ROOT / "utils/router_testing/router_mutation.py"]
+        + ["--device", "npu1", "--seeds", "400", "--jobs", "1", "--report", report],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = time.monotonic() + 120
+    while not report.exists() and run.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.2)
+    run.kill()
+    run.wait()
+    assert report.exists(), "the run wrote no report before it was stopped"
+    partial = json.loads(report.read_text())
+    assert partial["partial"]
+    assert 1 <= partial["seeds_done"] < 400
+
+    result, _, meta = collect(tmp_path, "router", report)
+    assert result.returncode == 1
+    done = partial["seeds_done"]
+    assert f"npu1/hops-on/stopped after {done} of 400 seeds" in meta["failed"]
+    assert (meta["detail"][0]["partial"], meta["detail"][0]["seeds_done"]) == (
+        True,
+        done,
+    )
+    perf = {r["name"]: r for r in json.loads((tmp_path / "perf.json").read_text())}
+    note = f"partial: hops-on {done} of 400 seeds"
+    assert perf["npu1/failed_mutations"]["range"] == note
+    assert perf["npu1/survived_corruptions"]["range"] == note
+
+
+def test_a_properties_run_its_time_limit_stops_leaves_a_partial_report(
+    aie_opt, tmp_path
+):
+    report = tmp_path / "npu1-properties.json"
+    run = subprocess.Popen(
+        [sys.executable, ROOT / "test/create-packet-flows/nightly/router_properties.py"]
+        + ["--device", "npu1", "--seeds", "2000", "--report", report],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and run.poll() is None:
+        if report.exists() and json.loads(report.read_text())["seeds_tried"]:
+            break
+        time.sleep(0.2)
+    run.kill()
+    run.wait()
+    assert report.exists(), "the run wrote no report before it was stopped"
+    partial = json.loads(report.read_text())
+    assert partial["partial"]
+    assert 1 <= partial["seeds_tried"] < 2000
+    assert partial["undecided"] == []
+
+    result, _, meta = collect(tmp_path, "router", report)
+    assert result.returncode == 1
+    tried = partial["seeds_tried"]
+    assert f"npu1/properties/stopped after {tried} of 2000 seeds" in meta["failed"]
+    assert (meta["detail"][0]["partial"], meta["detail"][0]["seeds_tried"]) == (
+        True,
+        tried,
+    )
+    perf = {r["name"]: r for r in json.loads((tmp_path / "perf.json").read_text())}
+    note = f"partial: properties {tried} of 2000 seeds"
+    assert perf["npu1/failed_properties"]["range"] == note
 
 
 def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
