@@ -944,6 +944,7 @@ const SAPlacer::CoreFitPlan &SAPlacer::planCoreFit() const {
     if (known->second > 0)
       overflowing.push_back(tilePos);
   }
+  llvm::sort(overflowing);
 
   if (lastCoreFitPlan && overflowing == lastOverflowing)
     return *lastCoreFitPlan;
