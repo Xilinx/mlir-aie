@@ -64,6 +64,10 @@ static std::string bufferLabel(BufferOp buffer) {
     return "this core's static data pinned to bank " +
            std::to_string(buffer.getMemBank().value_or(0));
   }
+  // aie-prepare-buffers names every buffer, but this pass also runs alone.
+  if (!buffer.hasName()) {
+    return "an unnamed buffer";
+  }
   return ("buffer \"" + buffer.name().getValue() + "\"").str();
 }
 
@@ -74,6 +78,9 @@ static StringRef mapLabel(BufferOp buffer) {
   }
   if (buffer.getBankReserved()) {
     return StringRef("(bank-pinned static data)");
+  }
+  if (!buffer.hasName()) {
+    return StringRef("(unnamed buffer)");
   }
   return buffer.name().getValue();
 }
