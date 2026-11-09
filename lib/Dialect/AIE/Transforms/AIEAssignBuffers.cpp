@@ -84,14 +84,24 @@ static StringRef mapLabel(BufferOp buffer) {
 // unconstrained buffers take it; and a prebaked `elf_file` core's runs, pinned
 // at the addresses its image already uses. Idempotent: this pass runs
 // standalone and inside larger pipelines.
-static void materializeCoreSections(DeviceOp device) {
+static LogicalResult materializeCoreSections(DeviceOp device) {
   using Kind = CoreSectionReservation::Kind;
   OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
   for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
-    auto tile = cast<TileOp>(core.getTile().getDefiningOp());
+    SmallVector<CoreSectionReservation> reservations =
+        core.getSectionReservations();
+    if (reservations.empty()) {
+      continue;
+    }
+    auto tile = dyn_cast_or_null<TileOp>(core.getTile().getDefiningOp());
+    if (!tile) {
+      return core.emitOpError(
+          "reserves memory for its own sections, but its tile is not placed; "
+          "run --aie-place-tiles first");
+    }
     std::string at =
         std::to_string(tile.getCol()) + "_" + std::to_string(tile.getRow());
-    for (const CoreSectionReservation &held : core.getSectionReservations()) {
+    for (const CoreSectionReservation &held : reservations) {
       std::string name =
           held.kind == Kind::DataRegion ? "core_data_" + at
           : held.kind == Kind::Bank
@@ -129,6 +139,7 @@ static void materializeCoreSections(DeviceOp device) {
                       builder.getStringAttr(name));
     }
   }
+  return success();
 }
 
 // Peano models a bank as an address space (`aiebase_resources.h`: a..d are
@@ -1537,7 +1548,9 @@ struct AIEAssignBufferAddressesPass
     if (failed(applySignatureBankConstraints(device))) {
       return signalPassFailure();
     }
-    materializeCoreSections(device);
+    if (failed(materializeCoreSections(device))) {
+      return signalPassFailure();
+    }
 
     // One allocator, one answer. There used to be two schemes and a fallback
     // between them, which meant a tile that ran out of room reported twice and
