@@ -53,8 +53,13 @@ void Placer::Adjacency::addEdgeFromValues(Value a, Value b) {
     addEdge(aT, bT);
 }
 
-void Placer::initialize(const AIETargetModel &tm) {
+void Placer::initialize(DeviceOp device) {
+  const AIETargetModel &tm = device.getTargetModel();
   targetModel = &tm;
+  DenseSet<TileID> physicalCores;
+  for (CoreOp core : device.getOps<CoreOp>())
+    if (auto tile = dyn_cast_or_null<TileOp>(core.getTile().getDefiningOp()))
+      physicalCores.insert(tile.getTileID());
   availability.compTiles.clear();
   availability.nonCompTiles.clear();
   for (int col = 0; col < tm.columns(); col++) {
@@ -62,7 +67,8 @@ void Placer::initialize(const AIETargetModel &tm) {
       TileID id = {col, row};
       switch (tm.getTileType(col, row)) {
       case AIETileType::CoreTile:
-        availability.compTiles.push_back(id);
+        if (!physicalCores.contains(id))
+          availability.compTiles.push_back(id);
         break;
       case AIETileType::MemTile:
       case AIETileType::ShimNOCTile:
@@ -113,8 +119,8 @@ bool Placer::satisfiesConstraints(Operation *tile, TileID pos) {
   return true;
 }
 
-void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
-  Placer::initialize(targetModel);
+void SequentialPlacer::initialize(DeviceOp device) {
+  Placer::initialize(device);
 
   // Compute tiles iterate column-major (fill a column top-to-bottom before
   // moving right); non-compute tiles iterate row-major.
@@ -137,14 +143,14 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
                                    availability.compTiles.end());
 
   if (coresPerCol.has_value()) {
-    llvm::DenseMap<int, int> coresInColumn;
-    for (const auto &tile : availability.compTiles)
-      coresInColumn[tile.col]++;
-    int maxDeviceCoresPerCol = 0;
-    for (const auto &[col, count] : coresInColumn)
-      maxDeviceCoresPerCol = std::max(maxDeviceCoresPerCol, count);
-    deviceCoresPerCol = maxDeviceCoresPerCol;
-    limitCoresPerColumn(*coresPerCol, targetModel.columns());
+    deviceCoresPerCol = 0;
+    for (int col = 0; col < targetModel->columns(); col++) {
+      int cores = 0;
+      for (int row = 0; row < targetModel->rows(); row++)
+        cores += targetModel->getTileType(col, row) == AIETileType::CoreTile;
+      deviceCoresPerCol = std::max(deviceCoresPerCol, cores);
+    }
+    limitCoresPerColumn(*coresPerCol, targetModel->columns());
   }
 }
 

@@ -85,7 +85,7 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(const AIETargetModel &tm);
+  virtual void initialize(DeviceOp device);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -364,7 +364,7 @@ public:
       : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles),
         spreadUnanchoredTiles(spreadUnanchoredTiles) {}
 
-  void initialize(const AIETargetModel &targetModel) override;
+  void initialize(DeviceOp device) override;
 
   mlir::LogicalResult place(DeviceOp device) override;
 

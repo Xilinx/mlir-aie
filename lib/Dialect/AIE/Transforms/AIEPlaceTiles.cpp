@@ -97,7 +97,7 @@ struct AIEPlaceTilesPass
     }
     }
 
-    placer->initialize(device.getTargetModel());
+    placer->initialize(device);
     if (failed(placer->place(device)))
       return signalPassFailure();
     if (saPlacer)
