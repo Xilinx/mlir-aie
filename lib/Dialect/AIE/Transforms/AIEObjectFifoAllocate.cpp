@@ -101,8 +101,8 @@ struct AIEObjectFifoAllocatePass
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
-  /// Neighbors made for a spill planBuffers weighed. The ones no buffer or
-  /// lock ends up on are erased once allocation is done.
+  /// Neighbors made for a spill planBuffers weighed. The ones no buffer ends
+  /// up on are erased once allocation is done.
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
@@ -320,7 +320,7 @@ struct AIEObjectFifoAllocatePass
     }
     bool placed = search.place(buffers);
     // A spill weighed from a placed home makes its neighbors' tile ops; the
-    // ones no buffer or lock ends up on are erased once allocation is done.
+    // ones no buffer ends up on are erased once allocation is done.
     for (auto [buffer, pool] : llvm::zip(buffers, owners)) {
       auto homeOp = dyn_cast<TileOp>(pool.getTile().getDefiningOp());
       if (!homeOp || !search.weighed[buffer.home])
@@ -446,7 +446,8 @@ struct AIEObjectFifoAllocatePass
         lockFailure = lock.getTile();
         return failure();
       }
-    // Neighbors created to weigh a spill have no rank and come last.
+    // Neighbors created to weigh a spill take no locks: the placers count
+    // locks only on the tiles that exist before allocation.
     SmallVector<TileLike> tiles(device.getOps<TileLike>());
     llvm::stable_sort(tiles, [&](TileLike a, TileLike b) {
       auto aRank = structuralRank.find(a), bRank = structuralRank.find(b);
@@ -456,13 +457,14 @@ struct AIEObjectFifoAllocatePass
     });
     SmallVector<unsigned> ranked;
     for (auto tile : tiles)
-      ranked.push_back(indexOf(tile->getResult(0)));
+      if (!llvm::is_contained(spillTiles, tile.getOperation()))
+        ranked.push_back(indexOf(tile->getResult(0)));
     SmallVector<LockPlan::Group> groups;
     SmallVector<Operation *> groupOps;
     auto add = [&](ObjectFifoPoolOp pool, Operation *group, int count) {
       SmallVector<unsigned> buffers;
       for (Value tile : bufferPlacements[pool])
-        if (tile)
+        if (tile && !llvm::is_contained(spillTiles, tile.getDefiningOp()))
           buffers.push_back(indexOf(tile));
       SmallVector<LockPlan::User> users;
       for (Operation *user : lockUsers[group]) {
