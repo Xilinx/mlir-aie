@@ -14,7 +14,9 @@ import sys
 import numpy as np
 
 from aie import ir
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import Bd, Buffer, DmaEndpoint, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1, NPU1Col2, Tile
 from aie.passmanager import PassManager
 from aie.utils.trace.events import MemTileEvent, ShimTileEvent
@@ -136,5 +138,46 @@ print(build(False, shimtile_events=SHIM, memtile_events=MEM))
 # CHECK-NOT: aie.packet_flow(
 print("\nTEST: two_shim_columns")
 module = build_two_columns(shimtile_events=SHIM)
+print("PLACED")
+print(place_and_trace(module))
+
+
+def build_runtime_mem_tile(**events):
+    """A mem tile that only the runtime sequence reaches: a task places its buffer."""
+    buf_ty = np.ndarray[(64,), np.dtype[np.int32]]
+    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
+    buf = Buffer(tile=mem_tile, type=buf_ty, name="resident")
+
+    def sequence(_host):
+        bd = Bd(buf, tap=TensorAccessPattern((64,), 0, [4, 16], [16, 1]), bd_id=0)
+        DmaEndpoint(mem_tile, DMAChannelDir.MM2S, 0).task(
+            bd, wait=True
+        ).start().await_()
+
+    rt = Runtime(sequence, [buf_ty])
+    prog = Program(NPU1Col1(), rt)
+    prog.enable_trace(trace_size=8192, **events)
+    return prog.resolve_program()
+
+
+# A mem tile only a runtime task reaches is traced too, after the tile op the
+# task placed, and started with the others right after the host_config.
+# CHECK-LABEL: TEST: runtime_mem_tile
+# CHECK-NOT: LOG: memtile_events was set
+# CHECK: aie.buffer({{.*}}) {sym_name = "resident"}
+# CHECK: aie.trace @trace_memtile_1
+# CHECK-NOT: aie.trace @
+# CHECK: aie.runtime_sequence
+# CHECK-NEXT: aie.trace.host_config
+# CHECK-NEXT: aie.trace.start_config @trace_memtile_1
+# CHECK-NEXT: aiex.dma_configure_task
+print("\nTEST: runtime_mem_tile")
+module = build_runtime_mem_tile(memtile_events=MEM)
+print(module)
+
+# CHECK: PLACED
+# CHECK: aie.trace @trace_memtile_1(%{{.*}}tile_0_1)
+# CHECK-COUNT-1: aie.packet_flow(
+# CHECK-NOT: aie.packet_flow(
 print("PLACED")
 print(place_and_trace(module))
