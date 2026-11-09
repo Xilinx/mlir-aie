@@ -443,6 +443,17 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   // producer, whose objects are the link input's consumer pool.
   bool prodCharged = false;
   bool prodNeedsDMA = false;
+  using LinkPool = FifoBufferInfo::LinkPool;
+  auto chargeLinkPool = [&](TileID pos, const PlannedDmaEnd &end) {
+    int count = end.contiguousObjects ? 1 : end.depth;
+    int64_t bytes =
+        end.objectBytes * std::max<int64_t>(end.contiguousObjects, 1);
+    currentMemUsage[pos] +=
+        sign * count *
+        alignedBufferBytes(*targetModel,
+                           targetModel->getTileType(pos.col, pos.row), bytes);
+    chargeCoreFifo(pos, bytes, sign * count);
+  };
 
   for (size_t ci = 0; ci < fb.consumerTiles.size(); ci++) {
     std::optional<TileID> consAt = positionOf(fb.consumerTiles[ci]);
@@ -495,13 +506,21 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       currentMemUsage[bufTile] += sign * sharedBytes;
       chargeCoreFifo(bufTile, sharedRaw, sign * fb.sharedDepth);
     } else {
+      if (!prodCharged && fb.producerLinkPool != LinkPool::None) {
+        if (fb.producerLinkPool == LinkPool::Holds)
+          chargeLinkPool(prodPos, *fb.producerEnd);
+        prodCharged = true;
+      }
       if (!prodCharged && !prodIsShim && !fb.linkSharedProd) {
         currentMemUsage[prodPos] +=
             sign * fb.producerSizeBytes * fb.producerDepth;
         chargeCoreFifo(prodPos, fb.producerRawBytes, sign * fb.producerDepth);
         prodCharged = true;
       }
-      if (!consIsShim) {
+      if (fb.consumerLinkPools[ci] != LinkPool::None) {
+        if (fb.consumerLinkPools[ci] == LinkPool::Holds)
+          chargeLinkPool(consPos, *fb.consumerEnds[ci]);
+      } else if (!consIsShim) {
         currentMemUsage[consPos] +=
             sign * fb.consumerSizeBytes * fb.consumerDepths[ci];
         chargeCoreFifo(consPos, fb.consumerRawBytes,
@@ -1775,6 +1794,22 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     fb.linkSharedProd =
         link && llvm::is_contained(link->getOutputObjectFifos(), ofOp);
     fifoBuffers.push_back(fb);
+  }
+
+  // A link's ends on its tile plan one pool; the first end to name it holds
+  // it, as the split builds it once.
+  DenseSet<Operation *> heldLinkPools;
+  auto linkPoolOf = [&](const std::optional<PlannedDmaEnd> &end) {
+    using LinkPool = FifoBufferInfo::LinkPool;
+    if (!end || !isa_and_nonnull<ObjectFifoLinkOp>(end->pool))
+      return LinkPool::None;
+    return heldLinkPools.insert(end->pool).second ? LinkPool::Holds
+                                                  : LinkPool::Shares;
+  };
+  for (FifoBufferInfo &fb : fifoBuffers) {
+    for (const std::optional<PlannedDmaEnd> &end : fb.consumerEnds)
+      fb.consumerLinkPools.push_back(linkPoolOf(end));
+    fb.producerLinkPool = linkPoolOf(fb.producerEnd);
   }
 
   LLVM_DEBUG(llvm::dbgs() << "[SA] seed=" << rngSeed << "\n");

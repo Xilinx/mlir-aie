@@ -851,6 +851,12 @@ private:
     // ObjectFifoCreateOp::plannedDmaEnd of each end.
     std::optional<PlannedDmaEnd> producerEnd;
     llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerEnds;
+    // Whether an end on a link's tile holds the link's one pool, which the
+    // split builds from getPoolOwner and getPoolDepth as the end's plan says,
+    // or shares one another end holds.
+    enum class LinkPool { None, Holds, Shares };
+    LinkPool producerLinkPool = LinkPool::None;
+    llvm::SmallVector<LinkPool> consumerLinkPools;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
     bool linked = false;
