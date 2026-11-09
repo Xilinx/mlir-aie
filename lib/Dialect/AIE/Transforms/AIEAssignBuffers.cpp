@@ -1301,6 +1301,45 @@ static SmallVector<size_t> placementOrder(ArrayRef<size_t> buffersToAlloc,
   return order;
 }
 
+TileLayoutBuffer xilinx::AIE::tileLayoutBuffer(BufferOp buffer,
+                                               const TileMemoryLimits &limits) {
+  return {buffer.getAllocationSize(),
+          bufferAlignBytes(buffer, limits.tileAlignBitWidth,
+                           limits.maxVecAlignBits),
+          buffer.getSectionAlignment(),
+          buffer.getAligned(),
+          buffer.getAddress(),
+          buffer.getMemBank(),
+          banksFromMemorySpace(buffer.getType()),
+          buffer.getInitialValue().has_value()};
+}
+
+// The buffer materializeCoreSections makes for `held`, as tileLayoutBuffer
+// above reads it back.
+TileLayoutBuffer
+xilinx::AIE::tileLayoutBuffer(const CoreSectionReservation &held,
+                              const TileMemoryLimits &limits) {
+  using Kind = CoreSectionReservation::Kind;
+  if (held.kind == Kind::Prebaked)
+    return {held.bytes,   1,  1,    /*aligned=*/false, held.at,
+            std::nullopt, {}, false};
+  int64_t vectorAlign =
+      requiredBufferAlignBits(limits.tileAlignBitWidth, limits.maxVecAlignBits,
+                              held.bytes) /
+      8;
+  std::optional<int32_t> bank;
+  if (held.kind == Kind::Bank)
+    bank = held.at;
+  return {held.bytes,
+          std::max(vectorAlign, held.alignBytes),
+          held.alignBytes,
+          /*aligned=*/true,
+          std::nullopt,
+          bank,
+          {},
+          false};
+}
+
 TileLayout xilinx::AIE::layoutTile(const TileLayoutProblem &problem,
                                    TileLayoutStats &stats) {
   TileLayout layout;
@@ -1460,13 +1499,7 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
     if (buffer.getTileOp() != tile)
       return;
     buffers.push_back(buffer);
-    problem.buffers.push_back(
-        {buffer.getAllocationSize(),
-         bufferAlignBytes(buffer, problem.tileAlignBitWidth,
-                          problem.maxVecAlignBits),
-         buffer.getSectionAlignment(), buffer.getAligned(), buffer.getAddress(),
-         buffer.getMemBank(), banksFromMemorySpace(buffer.getType()),
-         buffer.getInitialValue().has_value()});
+    problem.buffers.push_back(tileLayoutBuffer(buffer, limits));
   });
 
   TileLayout layout = layoutTile(problem, stats);

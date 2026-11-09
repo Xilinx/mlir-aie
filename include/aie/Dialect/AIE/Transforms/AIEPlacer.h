@@ -19,6 +19,7 @@
 #include <deque>
 #include <map>
 #include <random>
+#include <unordered_map>
 
 namespace xilinx::AIE {
 
@@ -840,6 +841,9 @@ private:
     mlir::Operation *delegate = nullptr;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;
+    // Each end's object bytes, unaligned, as addressing lays the buffers out.
+    int64_t producerRawBytes = 0;
+    int64_t consumerRawBytes = 0;
     // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
     int sharedDepth = 0;
     int producerDepth = 0;
@@ -894,6 +898,41 @@ private:
   // The resource terms that read only some tiles' positions, kept so a move
   // recomputes one only when it moves a tile the term reads.
   int memSpilloverPenalty = 0, bdCountPenalty = 0, delegatePenalty = 0;
+  // What each core tile op holds besides objectFIFO buffers, as
+  // assign-buffer-addresses lays it out: its aie.buffers and unsplit pools,
+  // the buffers its core's section reservations become, and the stack.
+  struct CoreTileContents {
+    llvm::SmallVector<TileLayoutBuffer> buffers;
+    bool hasCore = false;
+    MemoryRun stackRun;
+    std::optional<int> stackBank;
+    int64_t stackAlignBytes = 1;
+  };
+  llvm::DenseMap<mlir::Operation *, CoreTileContents> coreContents;
+  // The objectFIFO buffers on each core tile by size, the changes to them
+  // since the last accepted move, for undo, and their net change in the
+  // current one.
+  llvm::DenseMap<TileID, std::map<int64_t, int>> coreFifoBuffers;
+  llvm::SmallVector<std::tuple<TileID, int64_t, int>> coreFifoLog;
+  llvm::DenseMap<TileID, std::map<int64_t, int>> coreFifoChange;
+  // coreUnplaced of each core tile, the tiles whose ops a move changed, and
+  // what the last move overwrote.
+  llvm::DenseMap<TileID, int64_t> coreUnplacedAt;
+  llvm::DenseSet<TileID> coreDirty;
+  llvm::SmallVector<std::pair<TileID, int64_t>> coreUndo;
+  // The core overflow penalty, kept while no tile it reads changes, and the
+  // overflowing tiles it was computed for.
+  int coreOverflowPenalty = 0;
+  llvm::SmallVector<TileID> coreOverflowTiles;
+  // coreUnplaced by layout problem, and by tile ops and objectFIFO buffers;
+  // a result equals a fresh layoutTile.
+  struct KeyHash {
+    size_t operator()(const std::vector<int64_t> &key) const {
+      return llvm::hash_combine_range(key.begin(), key.end());
+    }
+  };
+  mutable std::unordered_map<std::vector<int64_t>, int64_t, KeyHash>
+      coreUnplacedOf, coreUnplacedByTile;
   llvm::DenseSet<mlir::Operation *> spillTiles, delegateTermTiles, pairedTiles;
   // The buffers each mem tile, logical or physical, already holds, as the
   // allocator lays them out.
@@ -974,6 +1013,26 @@ private:
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
   int computeMemSpilloverPenalty();
   int computeCoreOverflowPenalty() const;
+  /// Charges `count` objectFIFO buffers of `bytes` to the core tile at `pos`.
+  void chargeCoreFifo(TileID pos, int64_t bytes, int count);
+  /// The bytes assign-buffer-addresses' layout (layoutTile) leaves unplaced
+  /// on the core tile at `pos`, with `added` objectFIFO buffers more and
+  /// `removed` fewer.
+  int64_t coreUnplaced(TileID pos, const std::map<int64_t, int> &added = {},
+                       const std::map<int64_t, int> &removed = {}) const;
+  /// Relocates the intratile fifos of the core tile at `pos` to neighbours
+  /// whose layout still places everything with them and what `lent` already
+  /// gave them, as generateAllocates' allocates do; records each in `moves`
+  /// and returns the bytes the tile's layout still leaves unplaced.
+  int64_t
+  planCoreFit(TileID pos, llvm::DenseMap<TileID, std::map<int64_t, int>> &lent,
+              llvm::SmallVectorImpl<std::pair<size_t, TileID>> *moves) const;
+  /// Recomputes coreUnplacedAt for the core tiles whose contents changed, and
+  /// returns them.
+  llvm::SmallVector<TileID> refreshCoreUnplaced();
+  /// The overflowing core tiles and their neighbours, which the core
+  /// overflow penalty reads.
+  llvm::DenseSet<TileID> coreOverflowReads() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();
   int computeTileDMAPenalty(TileID tilePos) const;

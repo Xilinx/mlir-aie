@@ -445,6 +445,19 @@ struct TileLayout {
 /// Lays out `problem` as assign-buffer-addresses does, without touching IR.
 TileLayout layoutTile(const TileLayoutProblem &problem, TileLayoutStats &stats);
 
+/// assign-buffer-addresses' placement-budget unless set.
+constexpr int64_t kDefaultPlacementBudget = 100000;
+
+/// What assign-buffer-addresses lays `buffer` out as, on a tile with
+/// `limits`.
+TileLayoutBuffer tileLayoutBuffer(BufferOp buffer,
+                                  const TileMemoryLimits &limits);
+
+/// What assign-buffer-addresses lays out the buffer it makes for `held` as,
+/// on a core tile with `limits`.
+TileLayoutBuffer tileLayoutBuffer(const CoreSectionReservation &held,
+                                  const TileMemoryLimits &limits);
+
 } // namespace xilinx::AIE
 
 #endif // AIE_DIALECT_AIE_TRANSFORMS_AIEBUFFERALLOCATION_H

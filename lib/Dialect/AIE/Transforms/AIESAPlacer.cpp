@@ -462,8 +462,11 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     int64_t sharedBytes =
         std::max(fb.producerSizeBytes, fb.consumerSizeBytes) * fb.sharedDepth;
 
+    int64_t sharedRaw = std::max(fb.producerRawBytes, fb.consumerRawBytes);
     if (prodPos == consPos && isSharedMem) {
       currentMemUsage[delegatePos.value_or(prodPos)] += sign * sharedBytes;
+      chargeCoreFifo(delegatePos.value_or(prodPos), sharedRaw,
+                     sign * fb.sharedDepth);
     } else if (isSharedMem) {
       TileID bufTile;
       if (delegatePos) {
@@ -490,15 +493,20 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
         bufTile = prodPos;
       }
       currentMemUsage[bufTile] += sign * sharedBytes;
+      chargeCoreFifo(bufTile, sharedRaw, sign * fb.sharedDepth);
     } else {
       if (!prodCharged && !prodIsShim && !fb.linkSharedProd) {
         currentMemUsage[prodPos] +=
             sign * fb.producerSizeBytes * fb.producerDepth;
+        chargeCoreFifo(prodPos, fb.producerRawBytes, sign * fb.producerDepth);
         prodCharged = true;
       }
-      if (!consIsShim)
+      if (!consIsShim) {
         currentMemUsage[consPos] +=
             sign * fb.consumerSizeBytes * fb.consumerDepths[ci];
+        chargeCoreFifo(consPos, fb.consumerRawBytes,
+                       sign * fb.consumerDepths[ci]);
+      }
     }
 
     // DMA contribution: a fifo shared memory does not carry runs through the
@@ -521,6 +529,7 @@ void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentDMAUsage.clear();
   sharedMemDestination.clear();
+  coreFifoBuffers.clear();
 
   auto typeOf = [&](Operation *tile) -> std::optional<AIETileType> {
     if (auto it = tileTypes.find(tile); it != tileTypes.end())
@@ -562,6 +571,12 @@ void SAPlacer::initResourceTracking() {
 
   for (size_t i = 0; i < fifoBuffers.size(); i++)
     addFifoContribution(i, +1);
+  coreFifoLog.clear();
+  coreUnplacedAt.clear();
+  for (auto &[op, _] : coreContents)
+    if (std::optional<TileID> pos = positionOf(op))
+      coreDirty.insert(*pos);
+  refreshCoreUnplaced();
 
   tileToRouteEnds.clear();
   for (size_t i = 0; i < routeEnds.size(); i++) {
@@ -594,7 +609,9 @@ void SAPlacer::initResourceTracking() {
   bdCountPenalty = computeBDCountPenalty();
   delegatePenalty = computeDelegatePenalty();
   dmaPenalty = computeDMAChannelPenalty();
-  cachedResourcePenalty = memSpilloverPenalty + computeCoreOverflowPenalty() +
+  coreOverflowTiles = overflowingCoreTiles();
+  coreOverflowPenalty = computeCoreOverflowPenalty();
+  cachedResourcePenalty = memSpilloverPenalty + coreOverflowPenalty +
                           dmaPenalty + bdCountPenalty + delegatePenalty;
   cachedPressure = computeMemoryPressure();
 }
@@ -745,88 +762,236 @@ int SAPlacer::computeMemSpilloverPenalty() {
 // order decides the outcome and must not follow the map's hashing.
 SmallVector<TileID> SAPlacer::overflowingCoreTiles() const {
   SmallVector<TileID> tiles;
-  for (auto &[tilePos, used] : currentMemUsage)
-    if (targetModel->getTileType(tilePos.col, tilePos.row) ==
-            AIETileType::CoreTile &&
-        used > targetModel->getLocalMemorySize())
+  for (auto &[tilePos, unplaced] : coreUnplacedAt)
+    if (unplaced > 0)
       tiles.push_back(tilePos);
   llvm::sort(tiles);
   return tiles;
 }
 
-// Penalizes core tiles whose buffer usage exceeds local memory, accounting
-// for intratile fifos that can be relocated to a neighbor via allocate.
+void SAPlacer::chargeCoreFifo(TileID pos, int64_t bytes, int count) {
+  if (count == 0 ||
+      targetModel->getTileType(pos.col, pos.row) != AIETileType::CoreTile)
+    return;
+  std::map<int64_t, int> &held = coreFifoBuffers[pos];
+  if ((held[bytes] += count) == 0)
+    held.erase(bytes);
+  coreFifoLog.push_back({pos, bytes, count});
+  std::map<int64_t, int> &change = coreFifoChange[pos];
+  if ((change[bytes] += count) == 0)
+    change.erase(bytes);
+}
+
+int64_t SAPlacer::coreUnplaced(TileID pos, const std::map<int64_t, int> &added,
+                               const std::map<int64_t, int> &removed) const {
+  SmallVector<const CoreTileContents *, 2> here;
+  int numBanks = targetModel->getNumBanks(pos.col, pos.row);
+  // The tile ops and objectFIFO buffers decide the layout, so they key it.
+  std::vector<int64_t> tileKey = {numBanks};
+  auto addOp = [&](Operation *op) {
+    if (auto it = coreContents.find(op); it != coreContents.end()) {
+      here.push_back(&it->second);
+      tileKey.push_back(reinterpret_cast<intptr_t>(op));
+    }
+  };
+  if (auto physical = physicalTiles.find(pos); physical != physicalTiles.end())
+    for (Operation *op : physical->second)
+      addOp(op);
+  if (Operation *op = physToLogical.lookup(pos))
+    if (auto at = currentPlacement.find(op);
+        at != currentPlacement.end() && at->second == pos)
+      addOp(op);
+  tileKey.push_back(-1);
+  static const std::map<int64_t, int> none;
+  auto held = coreFifoBuffers.find(pos);
+  const std::map<int64_t, int> &base =
+      held == coreFifoBuffers.end() ? none : held->second;
+  std::map<int64_t, int> adjusted;
+  if (!added.empty() || !removed.empty()) {
+    adjusted = base;
+    for (auto [bytes, count] : added)
+      adjusted[bytes] += count;
+    for (auto [bytes, count] : removed)
+      adjusted[bytes] -= count;
+  }
+  const std::map<int64_t, int> &fifo =
+      added.empty() && removed.empty() ? base : adjusted;
+  for (auto [bytes, count] : fifo)
+    if (count > 0)
+      tileKey.insert(tileKey.end(), {bytes, count});
+  if (auto cached = coreUnplacedByTile.find(tileKey);
+      cached != coreUnplacedByTile.end())
+    return cached->second;
+
+  TileMemoryLimits limits =
+      tileMemoryLimits(*targetModel, AIETileType::CoreTile);
+  TileLayoutProblem problem;
+  problem.numBanks = numBanks;
+  problem.tileAlignBitWidth = limits.tileAlignBitWidth;
+  problem.maxVecAlignBits = limits.maxVecAlignBits;
+  problem.maxDataMemorySize = limits.maxDataMemorySize;
+  problem.budget = kDefaultPlacementBudget;
+  for (auto [bytes, count] : fifo)
+    for (int i = 0; i < count; ++i)
+      problem.buffers.push_back(
+          {bytes, requiredBufferAlignBits(limits.tileAlignBitWidth,
+                                          limits.maxVecAlignBits, bytes) /
+                      8});
+  for (const CoreTileContents *contents : here) {
+    llvm::append_range(problem.buffers, contents->buffers);
+    if (contents->hasCore) {
+      problem.hasCore = true;
+      problem.stackRun = contents->stackRun;
+      problem.stackBank = contents->stackBank;
+      problem.stackAlignBytes = contents->stackAlignBytes;
+    }
+  }
+
+  // Different tiles holding the same buffers share a layout.
+  std::vector<int64_t> key = {problem.numBanks,
+                              problem.hasCore,
+                              problem.stackRun.start,
+                              problem.stackRun.size,
+                              problem.stackBank.value_or(-1),
+                              problem.stackAlignBytes};
+  for (const TileLayoutBuffer &buffer : problem.buffers) {
+    key.insert(key.end(),
+               {buffer.size, buffer.alignBytes, buffer.sectionAlignBytes,
+                buffer.aligned, buffer.address.value_or(-1),
+                buffer.memBank.value_or(-1), buffer.initialized,
+                static_cast<int64_t>(buffer.spaceBanks.size())});
+    llvm::append_range(key, buffer.spaceBanks);
+  }
+  // Both bounded, since a run meets more layouts than a design has tiles.
+  if (coreUnplacedByTile.size() > (1u << 18))
+    coreUnplacedByTile.clear();
+  if (auto cached = coreUnplacedOf.find(key); cached != coreUnplacedOf.end()) {
+    coreUnplacedByTile[std::move(tileKey)] = cached->second;
+    return cached->second;
+  }
+  if (coreUnplacedOf.size() > (1u << 16))
+    coreUnplacedOf.clear();
+  // More bytes than the tile holds fail any layout, so the excess is
+  // charged without searching for the bytes the search would leave.
+  int64_t bytes = problem.stackRun.size;
+  for (const TileLayoutBuffer &buffer : problem.buffers)
+    bytes += buffer.size;
+  if (bytes > problem.maxDataMemorySize) {
+    int64_t excess = bytes - problem.maxDataMemorySize;
+    coreUnplacedOf[std::move(key)] = excess;
+    coreUnplacedByTile[std::move(tileKey)] = excess;
+    return excess;
+  }
+  TileLayoutStats stats;
+  TileLayout layout = layoutTile(problem, stats);
+  int64_t unplaced = 0;
+  if (layout.status == TileLayout::Status::NoRoom) {
+    unplaced = layout.unplacedBytes;
+  } else if (layout.status != TileLayout::Status::Placed) {
+    // A pin or stack the tile cannot honour fails addressing whatever is
+    // placed with it.
+    for (const TileLayoutBuffer &buffer : problem.buffers)
+      unplaced += buffer.size;
+    unplaced = std::max<int64_t>(unplaced, 1);
+  }
+  coreUnplacedOf[std::move(key)] = unplaced;
+  coreUnplacedByTile[std::move(tileKey)] = unplaced;
+  return unplaced;
+}
+
+SmallVector<TileID> SAPlacer::refreshCoreUnplaced() {
+  // A fifo a move takes off a tile and puts back leaves it as it was.
+  for (auto &[pos, change] : coreFifoChange)
+    if (!change.empty())
+      coreDirty.insert(pos);
+  coreFifoChange.clear();
+  SmallVector<TileID> changed;
+  for (TileID pos : coreDirty) {
+    if (targetModel->getTileType(pos.col, pos.row) != AIETileType::CoreTile)
+      continue;
+    coreUndo.push_back({pos, coreUnplacedAt.lookup(pos)});
+    coreUnplacedAt[pos] = coreUnplaced(pos);
+    changed.push_back(pos);
+  }
+  coreDirty.clear();
+  return changed;
+}
+
+DenseSet<TileID> SAPlacer::coreOverflowReads() const {
+  DenseSet<TileID> reads;
+  for (TileID pos : coreOverflowTiles) {
+    reads.insert(pos);
+    for (TileID nbr : getMemAffinityNeighbors(*targetModel, pos))
+      reads.insert(nbr);
+  }
+  return reads;
+}
+
+int64_t
+SAPlacer::planCoreFit(TileID pos,
+                      DenseMap<TileID, std::map<int64_t, int>> &lent,
+                      SmallVectorImpl<std::pair<size_t, TileID>> *moves) const {
+  // The intratile fifos an allocate can move to a neighbour, largest first.
+  SmallVector<std::pair<size_t, int64_t>, 8> relocatable;
+  if (Operation *op = physToLogical.lookup(pos))
+    if (auto fifoIt = tileToFifoIndices.find(op);
+        fifoIt != tileToFifoIndices.end()) {
+      DenseSet<size_t> seen;
+      for (size_t fi : fifoIt->second) {
+        if (!seen.insert(fi).second)
+          continue;
+        const auto &fb = fifoBuffers[fi];
+        if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0] ||
+            fb.delegate || fb.forcesDMA)
+          continue;
+        auto prodIt = currentPlacement.find(fb.producer);
+        auto consIt = currentPlacement.find(fb.consumers[0]);
+        if (prodIt == currentPlacement.end() ||
+            consIt == currentPlacement.end() || prodIt->second != pos ||
+            consIt->second != pos)
+          continue;
+        relocatable.push_back(
+            {fi, std::max(fb.producerSizeBytes, fb.consumerSizeBytes) *
+                     fb.sharedDepth});
+      }
+    }
+  llvm::stable_sort(relocatable, [](const auto &a, const auto &b) {
+    return a.second > b.second;
+  });
+
+  // Neighbours in position order, so the plan reads only the tiles' contents.
+  SmallVector<TileID, 4> neighbours(getMemAffinityNeighbors(*targetModel, pos));
+  llvm::sort(neighbours);
+
+  std::map<int64_t, int> removed;
+  for (auto [fi, size] : relocatable) {
+    const auto &fb = fifoBuffers[fi];
+    int64_t bytes = std::max(fb.producerRawBytes, fb.consumerRawBytes);
+    for (TileID nbr : neighbours) {
+      std::map<int64_t, int> added = lent.lookup(nbr);
+      added[bytes] += fb.sharedDepth;
+      if (coreUnplaced(nbr, added) != 0)
+        continue;
+      lent[nbr] = std::move(added);
+      removed[bytes] += fb.sharedDepth;
+      if (moves)
+        moves->push_back({fi, nbr});
+      break;
+    }
+  }
+  return coreUnplaced(pos, lent.lookup(pos), removed);
+}
+
 int SAPlacer::computeCoreOverflowPenalty() const {
-  int64_t coreCapacity = targetModel->getLocalMemorySize();
   int penalty = 0;
   // Room a neighbour gives one overflowing tile is gone for the next, as
   // generateAllocates hands it out.
-  llvm::DenseMap<TileID, int64_t> lent;
-
+  DenseMap<TileID, std::map<int64_t, int>> lent;
   for (TileID tilePos : overflowingCoreTiles()) {
-    int64_t overflow = currentMemUsage.lookup(tilePos) - coreCapacity;
-
-    // Build accessible neighbor spare capacities.
-    llvm::SmallVector<std::pair<int64_t, TileID>, 4> nbrSpares;
-    for (TileID nbr : getMemAffinityNeighbors(*targetModel, tilePos)) {
-      auto it = currentMemUsage.find(nbr);
-      int64_t nbrUsed = (it != currentMemUsage.end()) ? it->second : 0;
-      int64_t spare =
-          std::max(coreCapacity - nbrUsed - lent.lookup(nbr), int64_t{0});
-      if (spare > 0)
-        nbrSpares.push_back({spare, nbr});
-    }
-    llvm::sort(nbrSpares,
-               [](const auto &a, const auto &b) { return a.first > b.first; });
-
-    // Collect relocatable intratile fifo sizes on this tile.
-    int64_t unresolved = overflow;
-    auto opIt = physToLogical.find(tilePos);
-    if (opIt != physToLogical.end()) {
-      auto fifoIt = tileToFifoIndices.find(opIt->second);
-      if (fifoIt != tileToFifoIndices.end()) {
-        llvm::SmallVector<int64_t, 8> fifoSizes;
-        llvm::DenseSet<size_t> seen;
-        for (size_t fi : fifoIt->second) {
-          if (!seen.insert(fi).second)
-            continue;
-          const auto &fb = fifoBuffers[fi];
-          if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0] ||
-              fb.delegate)
-            continue;
-          auto prodIt = currentPlacement.find(fb.producer);
-          auto consIt = currentPlacement.find(fb.consumers[0]);
-          if (prodIt == currentPlacement.end() ||
-              consIt == currentPlacement.end())
-            continue;
-          if (prodIt->second != tilePos || consIt->second != tilePos)
-            continue;
-          int64_t sz = std::max(fb.producerSizeBytes, fb.consumerSizeBytes) *
-                       fb.sharedDepth;
-          fifoSizes.push_back(sz);
-        }
-        llvm::sort(fifoSizes, std::greater<int64_t>());
-
-        // Greedy packing: assign each fifo to the first neighbor that fits.
-        int64_t totalAbsorbed = 0;
-        for (int64_t sz : fifoSizes) {
-          for (auto &[spare, nbr] : nbrSpares) {
-            if (spare >= sz) {
-              spare -= sz;
-              lent[nbr] += sz;
-              totalAbsorbed += sz;
-              break;
-            }
-          }
-        }
-        unresolved = overflow - std::min(totalAbsorbed, overflow);
-      }
-    }
-
+    int64_t unresolved = planCoreFit(tilePos, lent, nullptr);
     if (unresolved > 0)
       penalty += ((unresolved + 1023) / 1024) * config.memPenaltyPerKB;
   }
-
   return penalty;
 }
 
@@ -1048,78 +1213,20 @@ int SAPlacer::computePairingPenalty() const {
 }
 
 void SAPlacer::generateAllocates() {
-  int64_t coreCapacity = targetModel->getLocalMemorySize();
   DenseSet<size_t> emittedFifoIndices;
 
-  // Case A: Intratile fifo relocation for overflowing core tiles.
-  // Snapshot overflowing tiles first to avoid iterator invalidation
-  // (delegate updates modify currentMemUsage during packing).
+  // Case A: the moves planCoreFit plans.
+  DenseMap<TileID, std::map<int64_t, int>> lent;
   for (TileID tilePos : overflowingCoreTiles()) {
-
-    // Build accessible neighbor spare capacities: (tilePos, spare)
-    SmallVector<std::pair<TileID, int64_t>, 4> nbrSpares;
-    for (TileID nbr : getMemAffinityNeighbors(*targetModel, tilePos)) {
-      auto it = currentMemUsage.find(nbr);
-      int64_t nbrUsed = (it != currentMemUsage.end()) ? it->second : 0;
-      int64_t spare = std::max(coreCapacity - nbrUsed, int64_t{0});
-      if (spare > 0)
-        nbrSpares.push_back({nbr, spare});
-    }
-    llvm::sort(nbrSpares, [](const auto &a, const auto &b) {
-      return a.second > b.second;
-    });
-
-    // Collect relocatable intratile fifos on this tile
-    auto opIt = physToLogical.find(tilePos);
-    if (opIt == physToLogical.end())
-      continue;
-    auto fifoIt = tileToFifoIndices.find(opIt->second);
-    if (fifoIt == tileToFifoIndices.end())
-      continue;
-
-    // (fifoIndex, totalSize)
-    SmallVector<std::pair<size_t, int64_t>, 8> relocFifos;
-    DenseSet<size_t> seen;
-    for (size_t fi : fifoIt->second) {
-      if (!seen.insert(fi).second)
-        continue;
-      const auto &fb = fifoBuffers[fi];
-      if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0] ||
-          fb.delegate || fb.forcesDMA)
-        continue;
-      auto prodIt = currentPlacement.find(fb.producer);
-      auto consIt = currentPlacement.find(fb.consumers[0]);
-      if (prodIt == currentPlacement.end() || consIt == currentPlacement.end())
-        continue;
-      if (prodIt->second != tilePos || consIt->second != tilePos)
-        continue;
-      int64_t sz =
-          std::max(fb.producerSizeBytes, fb.consumerSizeBytes) * fb.sharedDepth;
-      relocFifos.push_back({fi, sz});
-    }
-    llvm::sort(relocFifos, [](const auto &a, const auto &b) {
-      return a.second > b.second;
-    });
-
-    // Greedy: assign each whole fifo to the first neighbor that fits.
-    // Verify against actual currentMemUsage to avoid overflowing delegate.
-    for (auto &[fifoIdx, fifoSize] : relocFifos) {
+    SmallVector<std::pair<size_t, TileID>> moves;
+    (void)planCoreFit(tilePos, lent, &moves);
+    for (auto [fifoIdx, nbrPos] : moves) {
       if (!emittedFifoIndices.insert(fifoIdx).second)
         continue;
-      for (auto &[nbrPos, nbrSpare] : nbrSpares) {
-        if (nbrSpare >= fifoSize) {
-          // Double-check: delegate won't overflow after adding this fifo
-          auto memIt = currentMemUsage.find(nbrPos);
-          int64_t delegateUsed =
-              (memIt != currentMemUsage.end()) ? memIt->second : 0;
-          if (delegateUsed + fifoSize > coreCapacity)
-            continue;
-          nbrSpare -= fifoSize;
-          currentMemUsage[nbrPos] += fifoSize;
-          allocates.push_back({fifoBuffers[fifoIdx].fifoOp, nbrPos});
-          break;
-        }
-      }
+      const auto &fb = fifoBuffers[fifoIdx];
+      currentMemUsage[nbrPos] +=
+          std::max(fb.producerSizeBytes, fb.consumerSizeBytes) * fb.sharedDepth;
+      allocates.push_back({fb.fifoOp, nbrPos});
     }
   }
 
@@ -1194,6 +1301,21 @@ int SAPlacer::updateResourcePenalty(
     if (stackIt != stackSizes.end())
       currentMemUsage[newPos] += stackIt->second;
   }
+  coreUndo.clear();
+  for (auto &[op, oldPos] : oldPlacements)
+    if (coreContents.count(op)) {
+      coreDirty.insert(oldPos);
+      coreDirty.insert(currentPlacement[op]);
+    }
+  SmallVector<TileID> coreChanged = refreshCoreUnplaced();
+  SmallVector<TileID> overflowing = overflowingCoreTiles();
+  DenseSet<TileID> overflowReads = coreOverflowReads();
+  if (overflowing != coreOverflowTiles ||
+      llvm::any_of(coreChanged,
+                   [&](TileID pos) { return overflowReads.contains(pos); })) {
+    coreOverflowTiles = std::move(overflowing);
+    coreOverflowPenalty = computeCoreOverflowPenalty();
+  }
 
   auto reads = [&](const DenseSet<Operation *> &tiles) {
     return llvm::any_of(oldPlacements, [&](const auto &moved) {
@@ -1243,7 +1365,7 @@ int SAPlacer::updateResourcePenalty(
     at = now;
   }
 
-  cachedResourcePenalty = memSpilloverPenalty + computeCoreOverflowPenalty() +
+  cachedResourcePenalty = memSpilloverPenalty + coreOverflowPenalty +
                           dmaPenalty + bdCountPenalty + delegatePenalty;
   return cachedResourcePenalty;
 }
@@ -1487,7 +1609,24 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     staticBufferSizes[tile] +=
         llvm::alignTo(bytes, bufferAlignBytes(bufOp, limits.tileAlignBitWidth,
                                               limits.maxVecAlignBits));
+    if (tile.getTileType() == AIETileType::CoreTile)
+      coreContents[tile].buffers.push_back(tileLayoutBuffer(bufOp, limits));
   });
+  TileMemoryLimits coreLimits =
+      tileMemoryLimits(*targetModel, AIETileType::CoreTile);
+  // An unsplit pool becomes the buffers aie-objectfifo-allocate gives it.
+  for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
+    auto tile = dyn_cast_or_null<TileLike>(pool.getTile().getDefiningOp());
+    if (!tile || tile.getTileType() != AIETileType::CoreTile ||
+        pool.getBuffers())
+      continue;
+    int64_t bytes = pool.getObjectSizeInBytes() * pool.getObjectsPerBuffer();
+    for (int i = 0, e = pool.getContiguous() ? 1 : pool.getDepth(); i < e; ++i)
+      coreContents[tile].buffers.push_back(
+          {bytes, requiredBufferAlignBits(coreLimits.tileAlignBitWidth,
+                                          coreLimits.maxVecAlignBits, bytes) /
+                      8});
+  }
 
   // Collect core stack and data regions (reserved by assign-buffer-addresses)
   device.walk([&](CoreOp coreOp) {
@@ -1498,22 +1637,22 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     // memory as the stack.
     int64_t bytes = alignedBufferBytes(*targetModel, AIETileType::CoreTile,
                                        coreOp.getEffectiveStackSize());
-    TileMemoryLimits limits =
-        tileMemoryLimits(*targetModel, AIETileType::CoreTile);
+    CoreTileContents &contents = coreContents[tileOp];
+    contents.hasCore = true;
+    contents.stackRun = coreOp.getStackRun();
+    if (!coreOp.getStackAddress() && coreOp.getStackBank()) {
+      contents.stackBank = static_cast<int>(*coreOp.getStackBank());
+      contents.stackAlignBytes = targetModel->getCoreStackAlignment();
+    }
     SmallVector<CoreSectionReservation> reservations =
         coreOp.getSectionReservations();
     for (auto [held, holder] : llvm::zip_equal(
              reservations, coreOp.getSectionReservationBuffers(reservations)))
-      if (!holder)
-        bytes += llvm::alignTo(
-            held.bytes,
-            std::max<int64_t>(held.alignBytes,
-                              held.aligned()
-                                  ? requiredBufferAlignBits(
-                                        limits.tileAlignBitWidth,
-                                        limits.maxVecAlignBits, held.bytes) /
-                                        8
-                                  : 1));
+      if (!holder) {
+        TileLayoutBuffer buffer = tileLayoutBuffer(held, coreLimits);
+        bytes += llvm::alignTo(buffer.size, buffer.alignBytes);
+        contents.buffers.push_back(buffer);
+      }
     stackSizes[tileOp] = bytes;
   });
 
@@ -1585,6 +1724,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
         prodLike ? prodLike.getTileType() : AIETileType::CoreTile;
     fb.producerSizeBytes =
         alignedBufferBytes(*targetModel, prodType, producerBytes);
+    fb.producerRawBytes = producerBytes;
 
     // Consumer element size (may differ with consumerElemType)
     int64_t consumerBytes = producerBytes;
@@ -1605,6 +1745,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
         *targetModel,
         coreConsumer ? AIETileType::CoreTile : AIETileType::MemTile,
         consumerBytes);
+    fb.consumerRawBytes = consumerBytes;
 
     fb.sharedDepth = ofOp.sharedDepth();
     fb.producerDepth = ofOp.dmaDepth(std::nullopt);
@@ -1921,6 +2062,9 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   auto savedMemUsage = currentMemUsage;
   auto savedDMAUsage = currentDMAUsage;
   auto savedSharedMemDest = sharedMemDestination;
+  coreFifoLog.clear();
+  int oldCoreOverflow = coreOverflowPenalty;
+  SmallVector<TileID> oldCoreOverflowTiles = coreOverflowTiles;
 
   // Apply moves: update placement maps and compute HPWL delta.
   for (auto &[t, _] : moves)
@@ -2002,6 +2146,15 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       dmaPenaltyAt[tile] = at;
     for (auto &[tile, at] : llvm::reverse(bdUndo))
       bdShortfallAt[tile] = at;
+    for (auto &[pos, bytes, count] : llvm::reverse(coreFifoLog)) {
+      std::map<int64_t, int> &held = coreFifoBuffers[pos];
+      if ((held[bytes] -= count) == 0)
+        held.erase(bytes);
+    }
+    for (auto &[pos, unplaced] : llvm::reverse(coreUndo))
+      coreUnplacedAt[pos] = unplaced;
+    coreOverflowPenalty = oldCoreOverflow;
+    coreOverflowTiles = std::move(oldCoreOverflowTiles);
     rejectedMoves++;
     schedule.record(false);
   }
