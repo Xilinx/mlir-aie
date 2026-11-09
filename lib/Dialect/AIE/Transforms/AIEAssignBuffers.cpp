@@ -224,18 +224,6 @@ static bool isBufferPreAllocated(BufferOp buffer) {
   return (addr != std::nullopt || memBank != std::nullopt);
 }
 
-static int64_t getMeasuredDataAlignBytes(BufferOp buffer) {
-  if (!buffer.getCoreData() && !buffer.getBankReserved())
-    return 1;
-  CoreOp core = buffer.getTileOp().getCoreOp();
-  if (!core)
-    return 1;
-  if (buffer.getCoreData())
-    return core.getSectionAlignment(std::nullopt);
-  auto bank = buffer.getMemBank();
-  return bank ? core.getSectionAlignment(*bank) : 1;
-}
-
 // Check alignment (when `aligned` is set) and that no two buffers overlap. The
 // input vector must be sorted by ascending address. Returns false and emits an
 // error on the first offending buffer; true otherwise.
@@ -524,21 +512,6 @@ private:
 };
 } // namespace
 
-// Alignment a buffer must be placed at, in bytes.
-static int64_t getBufferAlignBytes(BufferOp buffer, uint32_t tileAlignBitWidth,
-                                   uint32_t maxVecAlignBits) {
-  // Linker section alignment still applies when vector alignment is disabled.
-  int64_t measuredAlign = getMeasuredDataAlignBytes(buffer);
-  if (!buffer.getAligned()) {
-    return measuredAlign;
-  }
-  return std::max<int64_t>(requiredBufferAlignBits(tileAlignBitWidth,
-                                                   maxVecAlignBits,
-                                                   buffer.getAllocationSize()) /
-                               8,
-                           measuredAlign);
-}
-
 // Index of the bank owning `addr`, or -1 when it falls outside every bank.
 static int getBankContaining(int64_t addr, int numBanks,
                              ArrayRef<MemoryRun> bankLimits) {
@@ -588,7 +561,7 @@ checkAndAddBufferWithAddress(BufferOp buffer, const BankAwareContext &ctx,
   }
 
   int64_t addr = *addrOpt;
-  int64_t measuredAlign = getMeasuredDataAlignBytes(buffer);
+  int64_t measuredAlign = buffer.getSectionAlignment();
   if (addr % measuredAlign != 0)
     return buffer.emitOpError("data reservation address must be aligned to ")
            << measuredAlign
@@ -777,7 +750,7 @@ rankedPlacements(BufferOp buffer, const BankAwareContext &ctx,
   const MemoryOccupancy &occupancy = guarded ? *guarded : tileOccupancy;
   int64_t size = buffer.getAllocationSize();
   int64_t alignBytes =
-      getBufferAlignBytes(buffer, ctx.tileAlignBitWidth, ctx.maxVecAlignBits);
+      bufferAlignBytes(buffer, ctx.tileAlignBitWidth, ctx.maxVecAlignBits);
   SmallVector<Placement> out;
 
   // A requested bank set is a hard constraint, and the round-robin cursor stays
@@ -1093,8 +1066,8 @@ struct CompactionSearch {
     for (size_t i = 0; i < order.size(); ++i) {
       BufferOp buffer = order[i];
       sizes.push_back(buffer.getAllocationSize());
-      aligns.push_back(getBufferAlignBytes(buffer, ctx.tileAlignBitWidth,
-                                           ctx.maxVecAlignBits));
+      aligns.push_back(
+          bufferAlignBytes(buffer, ctx.tileAlignBitWidth, ctx.maxVecAlignBits));
       SmallVector<MemoryRun, 2> allowed;
       auto required = requiredBanks.find(buffer);
       if (required == requiredBanks.end()) {

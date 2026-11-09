@@ -8,6 +8,7 @@
 #ifndef AIE_DIALECT_AIE_TRANSFORMS_AIEBUFFERALLOCATION_H
 #define AIE_DIALECT_AIE_TRANSFORMS_AIEBUFFERALLOCATION_H
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -344,6 +345,20 @@ private:
   llvm::SmallVector<int64_t> plannedBytes;
   llvm::SmallVector<int> misaligned;
 };
+
+/// The alignment assign-buffer-addresses places `buffer` at, in bytes: the
+/// vector rule when `aligned`, and the measured section alignment either way.
+inline int64_t bufferAlignBytes(BufferOp buffer, uint32_t tileAlignBitWidth,
+                                uint32_t maxVecAlignBits) {
+  int64_t sectionAlign = buffer.getSectionAlignment();
+  if (!buffer.getAligned())
+    return sectionAlign;
+  return std::max<int64_t>(requiredBufferAlignBits(tileAlignBitWidth,
+                                                   maxVecAlignBits,
+                                                   buffer.getAllocationSize()) /
+                               8,
+                           sectionAlign);
+}
 
 } // namespace xilinx::AIE
 

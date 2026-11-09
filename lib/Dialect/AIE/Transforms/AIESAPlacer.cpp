@@ -1482,10 +1482,11 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
            bufOp.getAligned() ? targetModel->getMemTileLoadStoreBusWidth() / 8
                               : 1,
            bufOp.getAddress()});
+    TileMemoryLimits limits =
+        tileMemoryLimits(*targetModel, tile.getTileType());
     staticBufferSizes[tile] +=
-        bufOp.getAligned()
-            ? alignedBufferBytes(*targetModel, tile.getTileType(), bytes)
-            : bytes;
+        llvm::alignTo(bytes, bufferAlignBytes(bufOp, limits.tileAlignBitWidth,
+                                              limits.maxVecAlignBits));
   });
 
   // Collect core stack and data regions (reserved by assign-buffer-addresses)

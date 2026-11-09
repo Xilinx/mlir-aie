@@ -4252,6 +4252,19 @@ SmallVector<CoreSectionReservation> CoreOp::getSectionReservations() {
 // BufferOp
 //===----------------------------------------------------------------------===//
 
+int64_t BufferOp::getSectionAlignment() {
+  if (!getCoreData() && !getBankReserved())
+    return 1;
+  for (Operation *user : getTile().getUsers())
+    if (auto core = dyn_cast<CoreOp>(user)) {
+      if (getCoreData())
+        return core.getSectionAlignment(std::nullopt);
+      std::optional<int32_t> bank = getMemBank();
+      return bank ? core.getSectionAlignment(*bank) : 1;
+    }
+  return 1;
+}
+
 int64_t BufferOp::getAllocationSize() {
   auto type = llvm::cast<MemRefType>(getType());
   DataLayout dataLayout = DataLayout::closest(getOperation());

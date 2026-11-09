@@ -1940,6 +1940,9 @@ def AIE_BufferOp
     TileOp getTileOp();
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
+    /// For a core_data or bank_reserved buffer, the measured alignment of the
+    /// core sections it holds (CoreOp::getSectionAlignment); otherwise 1.
+    int64_t getSectionAlignment();
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
