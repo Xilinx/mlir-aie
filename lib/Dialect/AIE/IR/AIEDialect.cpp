@@ -2157,6 +2157,24 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     return emitError("cannot allocate a shared memory module to an objectfifo "
                      "that moves by DMA: ")
            << *reason;
+  // A linked fifo that shares memory keeps its objects in the link's one
+  // pool, which a core fills or drains one pool object per acquire.
+  if (std::optional<ObjectFifoLinkOp> link = objFifo.getLink();
+      link && !link->getInputObjectFifos().empty() &&
+      !link->getOutputObjectFifos().empty()) {
+    ObjectFifoCreateOp owner = link->getPoolOwner();
+    if (owner != objFifo && owner.getElemType() != objFifo.getElemType())
+      return emitOpError("places @")
+             << objFifo.name().getValue()
+             << "'s objects in the link's pool, whose objects are @"
+             << owner.name().getValue() << "'s "
+             << cast<AIEObjectFifoType>(owner.getElemType()).getElementType()
+             << "; a fifo that shares memory with a link must have the pool's "
+                "object type (@"
+             << objFifo.name().getValue() << "'s is "
+             << cast<AIEObjectFifoType>(objFifo.getElemType()).getElementType()
+             << ")";
+  }
   for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
     if (auto other = dyn_cast<ObjectFifoAllocateOp>(op);
         other && other.getObjFifoName() == getObjFifoName())
