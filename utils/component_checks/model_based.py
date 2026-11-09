@@ -139,7 +139,7 @@ def router(
                 f"{device}/{part}/stopped after {report['seeds_done']} of "
                 f"{report['seeds']} seeds"
             )
-            for metric in ("failed_mutations", "survived_corruptions"):
+            for metric in ("failed_mutations", "survived_corruptions", "strict_misses"):
                 partial.setdefault((device, metric), []).append(
                     f"{part} {report['seeds_done']} of {report['seeds']} seeds"
                 )

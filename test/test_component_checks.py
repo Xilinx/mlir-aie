@@ -593,6 +593,7 @@ def test_a_mutation_run_its_time_limit_stops_leaves_a_partial_report(aie_opt, tm
     note = f"partial: hops-on {done} of 400 seeds"
     assert perf["npu1/failed_mutations"]["range"] == note
     assert perf["npu1/survived_corruptions"]["range"] == note
+    assert perf["npu1/strict_misses"]["range"] == note
 
 
 def test_a_properties_run_its_time_limit_stops_leaves_a_partial_report(
