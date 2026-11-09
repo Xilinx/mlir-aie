@@ -1549,10 +1549,22 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
       deAllocationBuffers(allocatedBuffers, requiredBanks);
       return failure();
     }
-    InFlightDiagnostic diag = failed.emitOpError("could not be placed: ")
+    InFlightDiagnostic diag = failed.emitOpError(kNoTileRoom)
                               << bufferLabel(failed) << " needs "
                               << failed.getAllocationSize()
                               << " bytes and this tile has no room left for it";
+    if (CoreOp core = tile.getCoreOp())
+      if (int64_t data = core.getDataSize().value_or(
+              static_cast<int64_t>(core.getMeasuredDataSize().value_or(0)))) {
+        auto device = core->getParentOfType<DeviceOp>();
+        auto cores = device.getOps<CoreOp>();
+        diag.attachNote() << kCoreSectionsNote << data << " bytes (core "
+                          << std::distance(cores.begin(),
+                                           llvm::find(cores, core))
+                          << " of "
+                          << FlatSymbolRefAttr::get(device.getSymNameAttr())
+                          << ")";
+      }
     if (searchExhausted) {
       diag.attachNote() << "the search hit its " << budget
                         << "-placement budget with arrangements still untried, "

@@ -136,6 +136,21 @@ inline cl::opt<double> saEffort(
     cl::desc("Scale on the SA placer's search budget (1.0 = full; lower "
              "trades placement cost for compile time)"),
     cl::init(1.0));
+inline cl::list<std::string> saWalkedFifos(
+    "sa-walked-fifos", cl::CommaSeparated,
+    cl::desc("ObjectFIFOs whose mem tile pools the SA placer counts as "
+             "walked whole, as <device>:<fifo>; aiecc adds those allocation "
+             "finds no room for "
+             "when it places again, unless this option is given"));
+inline cl::list<std::string> saCoreDataSizes(
+    "sa-core-data-sizes", cl::CommaSeparated,
+    cl::desc("Bytes the SA placer reserves for a core's own sections, as "
+             "<device>:<core>=<bytes> (the device's aie.core ops counted in "
+             "order), unless the core declares data_size or "
+             "measured_data_size; aiecc adds what the probe link measured when "
+             "a core's "
+             "buffers find no room and it places again, unless this option "
+             "is given"));
 inline cl::opt<int64_t> placementBudget(
     "placement-budget",
     cl::desc("Buffer placements aie-assign-buffer-addresses may try per tile "

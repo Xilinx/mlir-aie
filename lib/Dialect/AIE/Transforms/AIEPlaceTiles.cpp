@@ -13,6 +13,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "llvm/ADT/StringSet.h"
+
 #include <cmath>
 
 namespace xilinx::AIE {
@@ -68,6 +70,31 @@ struct AIEPlaceTilesPass
   AIEPlaceTilesPass(const AIEPlaceTilesOptions &options)
       : AIEPlaceTilesBase(options) {}
 
+  // Parses the SA's charges once, before any device is placed.
+  LogicalResult initialize(MLIRContext *context) override {
+    walked.clear();
+    coreSizes.clear();
+    for (StringRef entry : clSAWalkedFifos) {
+      auto [name, fifo] = entry.rsplit(':');
+      if (name.empty() || fifo.empty() || name == entry)
+        return emitError(UnknownLoc::get(context), "sa-walked-fifos entry '")
+               << entry << "' is not <device>:<fifo>";
+      walked.push_back({name.str(), fifo.str()});
+    }
+    for (StringRef entry : clSACoreDataSizes) {
+      auto [core, bytes] = entry.rsplit('=');
+      auto [name, ordinal] = core.rsplit(':');
+      unsigned index;
+      int64_t size;
+      if (name.empty() || ordinal.getAsInteger(10, index) ||
+          bytes.getAsInteger(10, size) || size < 0)
+        return emitError(UnknownLoc::get(context), "sa-core-data-sizes entry '")
+               << entry << "' is not <device>:<core>=<bytes>";
+      coreSizes.push_back({name.str(), index, size});
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -92,6 +119,47 @@ struct AIEPlaceTilesPass
       }
       SAConfig config;
       config.effort = effort;
+      // A device another device's entry names is reported once, by the
+      // module's first device; each device checks the entries naming it.
+      auto module = device->getParentOfType<ModuleOp>();
+      if (module && *module.getOps<DeviceOp>().begin() == device) {
+        llvm::StringSet<> devices;
+        for (DeviceOp other : module.getOps<DeviceOp>())
+          devices.insert(other.getSymName());
+        llvm::SmallVector<StringRef> named;
+        for (auto &[name, fifo] : walked)
+          named.push_back(name);
+        for (auto &[name, index, size] : coreSizes)
+          named.push_back(name);
+        for (StringRef name : named)
+          if (!devices.contains(name)) {
+            device.emitError("SA placer charges name no device @") << name;
+            return signalPassFailure();
+          }
+      }
+      for (auto &[name, fifo] : walked) {
+        if (name != device.getSymName())
+          continue;
+        if (!isa_and_nonnull<ObjectFifoCreateOp>(
+                SymbolTable::lookupSymbolIn(device, fifo))) {
+          device.emitError("sa-walked-fifos names no objectFIFO @")
+              << fifo << " in @" << name;
+          return signalPassFailure();
+        }
+        config.walkedFifos.push_back(fifo);
+      }
+      size_t cores = llvm::range_size(device.getOps<CoreOp>());
+      for (auto &[name, index, size] : coreSizes) {
+        if (name != device.getSymName())
+          continue;
+        if (index >= cores) {
+          device.emitError("sa-core-data-sizes names core ")
+              << index << " of @" << name << ", which has " << cores
+              << " cores";
+          return signalPassFailure();
+        }
+        config.coreDataBytes[index] = size;
+      }
       placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
     }
@@ -143,6 +211,12 @@ struct AIEPlaceTilesPass
       }
     }
   }
+
+private:
+  // sa-walked-fifos, as (device, fifo).
+  llvm::SmallVector<std::pair<std::string, std::string>> walked;
+  // sa-core-data-sizes, as (device, core, bytes).
+  llvm::SmallVector<std::tuple<std::string, unsigned, int64_t>> coreSizes;
 };
 
 } // namespace

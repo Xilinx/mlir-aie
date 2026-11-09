@@ -232,6 +232,7 @@ module @compute_tiles_exhausted {
     %c3 = aie.logical_tile<CoreTile>(?, ?)
     %c4 = aie.logical_tile<CoreTile>(?, ?)
     // CHECK: error: no available compute tiles for placement
+    // CHECK-NOT: never moves a placed peer
     %c5 = aie.logical_tile<CoreTile>(?, ?)
 
     aie.core(%c1) { aie.end }
@@ -253,6 +254,7 @@ module @cascade_chain_unsatisfiable {
     %d = aie.logical_tile<CoreTile>(?, ?)
     // CHECK: error: no available compute tiles for placement (cascade adjacency unsatisfiable)
     // CHECK: note: cascade source peer placed at (0, 2)
+    // CHECK: note: the sequential placer places tiles one at a time and never moves a placed peer; if these constraints can be met together, --placer=sa_placer, which searches placements jointly, may place them
     %e = aie.logical_tile<CoreTile>(?, ?)
     aie.cascade_flow(%a, %b)
     aie.cascade_flow(%b, %c)

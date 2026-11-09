@@ -704,7 +704,9 @@ int SAPlacer::computeMemSpilloverPenalty() {
       split.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
                         whole ? 1 : plan->depth, home, busier},
                        at->second});
-      if (!whole && walked.contains(key))
+      bool charged = chargedPools.contains(plan->pool);
+      anyWalked |= charged;
+      if (!whole && (charged || walked.contains(key)))
         whole = plan->depth;
       walkedPools.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
                               whole ? 1 : plan->depth, home, busier},
@@ -1484,10 +1486,10 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   });
 
   // Collect core stack and data regions (reserved by assign-buffer-addresses)
-  device.walk([&](CoreOp coreOp) {
+  for (auto [ordinal, coreOp] : llvm::enumerate(device.getOps<CoreOp>())) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
-      return;
+      continue;
     // The data region a core sets aside for its own sections is as much its
     // memory as the stack.
     stackSizes[tileOp] =
@@ -1496,8 +1498,9 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
         alignedBufferBytes(
             *targetModel, AIETileType::CoreTile,
             coreOp.getDataSize().value_or(coreOp.getMeasuredDataSize().value_or(
-                config.coreSectionsBytes)));
-  });
+                config.coreDataBytes.lookup_or(ordinal,
+                                               config.coreSectionsBytes))));
+  }
 
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
@@ -1516,6 +1519,22 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     if (fifo.forcesSharedMemory() && fifo.getConsumerTiles().size() == 1)
       sharedMemAdjacency.addEdgeFromValues(fifo.getProducerTile(),
                                            fifo.getConsumerTiles()[0]);
+
+  // A pool is known by its objectFIFO as the split names it: a link's by the
+  // fifo that owns its pool.
+  chargedPools.clear();
+  for (auto &[tile, ends] : memTileEnds)
+    for (const MemTileEnd &end : ends) {
+      std::optional<StringRef> fifo;
+      if (auto create = dyn_cast_or_null<ObjectFifoCreateOp>(end.end.pool))
+        fifo = create.name().getValue();
+      else if (auto link = dyn_cast_or_null<ObjectFifoLinkOp>(end.end.pool))
+        fifo = link.getPoolOwner().name().getValue();
+      else if (auto pool = dyn_cast_or_null<ObjectFifoPoolOp>(end.end.pool))
+        fifo = pool.getFifoName();
+      if (fifo && llvm::is_contained(config.walkedFifos, *fifo))
+        chargedPools.insert(end.end.pool);
+    }
 
   return success();
 }

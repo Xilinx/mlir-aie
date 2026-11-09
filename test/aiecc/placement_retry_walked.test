@@ -1,0 +1,91 @@
+//===- placement_retry_walked.test -----------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: %aiecc -n --no-progress --tmpdir %t.retry --placer=sa_placer --get=input_with_symbols.mlir %S/Inputs/placement_retry_walked.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
+// RUN: not %aiecc -n --no-progress --tmpdir %t.pinned --placer=sa_placer --sa-walked-fifos=main:c --get=input_with_symbols.mlir %S/Inputs/placement_retry_walked.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
+// RUN: not %aiecc -n --no-progress --tmpdir %t.never --placer=sa_placer --get=input_with_symbols.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
+// RUN: %aiecc -n --no-progress --tmpdir %t.otherpin --placer=sa_placer --sa-core-data-sizes=main:0=0 --get=input_with_symbols.mlir %S/Inputs/placement_retry_walked.mlir 2>&1 | FileCheck %s --check-prefix=OTHERPIN
+// RUN: not %aiecc -n --no-progress --tmpdir %t.unwalked --placer=sa_placer --get=input_with_symbols.mlir %S/Inputs/placement_retry_unwalked.mlir 2>&1 | FileCheck %s --check-prefix=UNWALKED
+
+// The core takes a and b in turn from mem tile pools of 7 and 6 objects, so
+// allocation walks both pools whole, one buffer each. The SA placer counts
+// their objects apart, which fit the holes of the mem tile next to the core;
+// the walked buffers do not. aiecc places again with the pools allocation
+// says channel turns walked counted walked, and that placement allocates.
+// RETRY: error: 'aie.objectfifo.pool' op could not place buffers
+// RETRY: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
+// RETRY-NOT: error:
+// RETRY: aiecc: placement 2 (--sa-walked-fifos=main:b_in,main:a_in) stands
+
+// Core data sizes the command line chose leave this retry on.
+// OTHERPIN: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
+// OTHERPIN-NOT: error:
+
+// Allocation fails before channel turns walk any pool, so nothing the SA
+// placer counts differs from what allocation lays out: no placing again.
+// UNWALKED-NOT: placing again
+// UNWALKED: error: 'aie.objectfifo.pool' op could not place buffers
+// UNWALKED-NOT: channel turns walked
+// UNWALKED-NOT: no placement
+// UNWALKED: aiecc: edge 'input_with_symbols.mlir'
+
+// Walked pools the command line chose are kept.
+// PINNED: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @main::@a_in
+// PINNED-NOT: placing again
+
+// The one mem tile's four 1 KiB holes take the objects, so channel turns
+// walk the pools, but not the walked buffers, wherever the SA puts them;
+// both placements fail at the same edge, so the later one stands.
+// NEVER: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
+// NEVER-NOT: placing again
+// NEVER: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @main::@a_in
+// NEVER: aiecc: no placement with what allocation found counted fits either; placement 2's failure stands
+// NEVER: aiecc: edge 'input_with_symbols.mlir' (key '{{.*}}') failed
+
+module @turn_walk_never {
+  aie.device(npu2_1col) {
+    %s = aie.logical_tile<ShimNOCTile>(0, 0)
+    %u = aie.logical_tile<CoreTile>(0, 4)
+    %m = aie.logical_tile<MemTile>(?, ?)
+    %t = aie.logical_tile<CoreTile>(0, 2)
+    %h0 = aie.buffer(%m) {address = 1024 : i32, sym_name = "hold0"} : memref<256xi32>
+    %h1 = aie.buffer(%m) {address = 3072 : i32, sym_name = "hold1"} : memref<256xi32>
+    %h2 = aie.buffer(%m) {address = 5120 : i32, sym_name = "hold2"} : memref<256xi32>
+    %r0 = aie.buffer(%m) {address = 7168 : i32, sym_name = "rest0"} : memref<129280xi32>
+    aie.objectfifo @a_in(%s, {%m}, [2 : i32, 7 : i32]) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @a(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@a_in] -> [@a] ([] [])
+    aie.objectfifo @b_in(%s, {%m}, [2 : i32, 6 : i32]) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @b(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@b_in] -> [@b] ([] [])
+    aie.objectfifo @c(%u, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.core(%u) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c42 = arith.constant 42 : index
+      scf.for %i = %c0 to %c42 step %c1 {
+        %y = aie.objectfifo.acquire @c(Produce, 1) : memref<64xi32>
+        aie.objectfifo.release @c(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%t) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c42 = arith.constant 42 : index
+      scf.for %i = %c0 to %c42 step %c1 {
+        %x = aie.objectfifo.acquire @c(Consume, 1) : memref<64xi32>
+        %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<64xi32>
+        aie.objectfifo.release @a(Consume, 1)
+        %bb = aie.objectfifo.acquire @b(Consume, 1) : memref<64xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        aie.objectfifo.release @c(Consume, 1)
+      }
+      aie.end
+    }
+  }
+}

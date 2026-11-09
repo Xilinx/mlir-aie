@@ -1,0 +1,70 @@
+//===- placement_retry_unfixable.test --------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// REQUIRES: peano
+// RUN: not %aiecc --no-progress --tmpdir %t --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s
+
+// placement_retry_core_data's design, with a 33 KiB buffer on %p. The first
+// placement has no room for %c's buffers beside its sections; aiecc places
+// again, and the second placement puts %c beside %p, whose tile now has no
+// room for x's buffers. %p keeps no sections, so placing again cannot charge
+// anything for it: that failure is the second placement's own, and it stands.
+// CHECK: note: the core on this tile keeps its own sections in 28672 bytes (core 1 of @main)
+// CHECK: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=28672 (a core's buffers found no room beside its own sections); the messages above are from placement 1
+// CHECK: error: 'aie.buffer' op could not be placed: buffer "x__buf1"
+// CHECK-NOT: no placement
+// CHECK: aiecc: placement 2 (--sa-core-data-sizes=main:0=0,main:1=28672) stands
+// CHECK: aiecc: edge 'input_with_addresses.mlir' failed
+
+module @core_data_unfixable {
+  aie.device(npu2) {
+    func.func private @never_called(memref<16xi32>) attributes {link_with = "never_called.o"}
+    %shim = aie.logical_tile<ShimNOCTile>(7, 0)
+    %p = aie.logical_tile<CoreTile>(0, 2)
+    %c = aie.logical_tile<CoreTile>(?, ?)
+    %pbuf = aie.buffer(%p) {sym_name = "pbuf"} : memref<8448xi32>
+    memref.global "private" @scratch : memref<7168xi32> = uninitialized
+    aie.objectfifo @x(%p, {%c}, 2 : i32) : !aie.objectfifo<memref<4096xi32>>
+    aie.objectfifo @y(%c, {%shim}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @z(%c, {%shim}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.core(%p) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %cmax = arith.constant 9223372036854775807 : index
+      scf.for %i = %c0 to %cmax step %c1 {
+        %o = aie.objectfifo.acquire @x(Produce, 1) : memref<4096xi32>
+        %v = arith.index_cast %i : index to i32
+        memref.store %v, %o[%c0] : memref<4096xi32>
+        aie.objectfifo.release @x(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %cmax = arith.constant 9223372036854775807 : index
+      %n = arith.constant 7168 : index
+      %g = memref.get_global @scratch : memref<7168xi32>
+      scf.for %i = %c0 to %cmax step %c1 {
+        %ix = aie.objectfifo.acquire @x(Consume, 1) : memref<4096xi32>
+        %oy = aie.objectfifo.acquire @y(Produce, 1) : memref<1024xi32>
+        %oz = aie.objectfifo.acquire @z(Produce, 1) : memref<1024xi32>
+        %v = memref.load %ix[%c0] : memref<4096xi32>
+        %vi = arith.index_cast %v : i32 to index
+        %k = arith.remui %vi, %n : index
+        %old = memref.load %g[%k] : memref<7168xi32>
+        memref.store %v, %g[%k] : memref<7168xi32>
+        memref.store %old, %oy[%c0] : memref<1024xi32>
+        memref.store %v, %oz[%c0] : memref<1024xi32>
+        aie.objectfifo.release @x(Consume, 1)
+        aie.objectfifo.release @y(Produce, 1)
+        aie.objectfifo.release @z(Produce, 1)
+      }
+      aie.end
+    }
+  }
+}

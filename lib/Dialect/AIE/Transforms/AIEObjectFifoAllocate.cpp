@@ -97,6 +97,8 @@ struct AIEObjectFifoAllocatePass
   /// Mem tiles once short of BD ids, whose ends since take their channels
   /// from DMAChannelAnalysis::planBDChannels.
   llvm::SetVector<Operation *> bdPlanned;
+  /// Pools channel turns walked whole (some walks are undone later).
+  llvm::SetVector<Operation *> turnWalked;
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
@@ -1654,9 +1656,10 @@ struct AIEObjectFifoAllocatePass
                 << "  " << pool.getSymName() << " walked whole"
                 << (linedUp ? "" : ", but its other turns would not line up")
                 << "\n");
-            if (linedUp)
+            if (linedUp) {
               walked.push_back(pool);
-            else
+              turnWalked.insert(pool);
+            } else
               pool.setContiguous(false);
           }
         if (reason.empty() && (!contiguousWalkersFit(group, turns.turns()) ||
@@ -2272,6 +2275,7 @@ struct AIEObjectFifoAllocatePass
     dispatchHeaders.clear();
     channelSharers.clear();
     bdPlanned.clear();
+    turnWalked.clear();
     bufferPlacements.clear();
     channelAssignments.clear();
     endpointStarts.clear();
@@ -2348,9 +2352,27 @@ struct AIEObjectFifoAllocatePass
     if (failed(allocated)) {
       localPools.clear();
       if (failed(planBuffers(pools))) {
-        bufferFailure.emitOpError(
-            "could not place buffers in accessible memory with available "
-            "capacity");
+        InFlightDiagnostic error = bufferFailure.emitOpError(kNoBufferRoom);
+        if (std::optional<StringRef> fifo = bufferFailure.getFifoName())
+          error << " for objectFIFO "
+                << SymbolRefAttr::get(
+                       device.getSymNameAttr(),
+                       {FlatSymbolRefAttr::get(device.getContext(), *fifo)});
+        SmallVector<Attribute> walked;
+        for (Operation *op : turnWalked) {
+          auto pool = cast<ObjectFifoPoolOp>(op);
+          std::optional<StringRef> name = pool.getFifoName();
+          if (pool.getContiguous() && name &&
+              cast<TileLike>(pool.getTile().getDefiningOp()).isMemTile())
+            walked.push_back(SymbolRefAttr::get(
+                device.getSymNameAttr(),
+                {FlatSymbolRefAttr::get(device.getContext(), *name)}));
+        }
+        if (!walked.empty()) {
+          Diagnostic &note = error.attachNote();
+          note << kTurnWalkedNote;
+          llvm::interleaveComma(walked, note);
+        }
       } else if (failed(planLocks(pools))) {
         if (lockAccessFailure)
           lockAccessFailure->emitOpError("cannot access pool locks");
