@@ -723,7 +723,7 @@ struct SAConfig {
   // Walk choices one step tries per spill component, short of allocation's
   // DMAChannelAnalysis::kMaxWalkPlacements: a state left unsettled counts as
   // unplaced, never as fitting.
-  unsigned walkPlacementsPerStep = 16;
+  unsigned walkPlacementsPerStep = 1;
 
   // Cascade penalty (cost 3)
   int cascadeWeightPerDist = 30; // per Manhattan distance to valid position

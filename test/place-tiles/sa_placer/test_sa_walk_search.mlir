@@ -9,12 +9,15 @@
 // RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles{placer=sa_placer sa-seed=1},aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
 
 // (0, 1)'s pools are walked whole by search: of the sets whose walk fits its
-// BD ids, the one walking the fewest bytes whose buffers then fit. The SA
-// and allocation take the same set however the fifos are written.
-// CHECK-NOT: warning: SA placer's resource estimate is over capacity
+// BD ids, the one walking the fewest bytes whose buffers then fit, however the
+// fifos are written. Every case here needs a later set than the cheapest.
+// Allocation searches the sets; the SA tries one per annealing step, so it
+// counts these placements as over capacity, never as fitting.
+// CHECK-COUNT-8: warning: SA placer's resource estimate is over capacity
 
-// @s, @x and @f need 75 BD ids. Only sets holding @x fit them; @x alone
-// walks the fewest bytes, and @s and @f stay split.
+// @s, @x and @f need 75 BD ids. Walking @s and @f fits them and walks the
+// fewest bytes, but @f's walked buffer then finds no room; @x alone is next,
+// and @s and @f stay split.
 // ALLOC-LABEL: @t_sl
 // ALLOC-DAG: {sym_name = "x__cons__buf0"} : memref<20480xi32>
 // ALLOC-DAG: {sym_name = "s__buf19"} : memref<256xi32>

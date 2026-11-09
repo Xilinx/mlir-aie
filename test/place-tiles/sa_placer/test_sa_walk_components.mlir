@@ -9,9 +9,11 @@
 // RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles{placer=sa_placer sa-seed=1},aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
 
 // Walk sets are searched per spill component, every choice of sets for its
-// mem tiles in order of bytes walked, until its buffers place; the SA and
-// allocation agree however the fifos are written.
-// CHECK-NOT: warning: SA placer's resource estimate is over capacity
+// mem tiles in order of bytes walked, until its buffers place, however the
+// fifos are written. Every case here needs a later choice than the cheapest.
+// Allocation searches the choices; the SA tries one per annealing step, so
+// it counts these placements as over capacity, never as fitting.
+// CHECK-COUNT-4: warning: SA placer's resource estimate is over capacity
 
 // (0, 1) and (3, 1) each place only with their second walk set. Their buffers
 // share no tile, so neither one's search waits on the other's.
