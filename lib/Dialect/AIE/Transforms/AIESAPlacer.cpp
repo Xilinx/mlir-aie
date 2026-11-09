@@ -1135,15 +1135,11 @@ void SAPlacer::generateAllocates() {
     if (emittedFifoIndices.contains(fifoIdx))
       continue;
     const auto &fb = fifoBuffers[fifoIdx];
-    if (!fb.producer || fb.consumers.empty() || !fb.consumers[0])
+    std::optional<TileID> prodPos = positionOf(fb.producerTile);
+    std::optional<TileID> consPos = positionOf(fb.consumerTiles[0]);
+    if (!prodPos || !consPos || *prodPos == *consPos)
       continue;
-    auto prodIt = currentPlacement.find(fb.producer);
-    auto consIt = currentPlacement.find(fb.consumers[0]);
-    if (prodIt == currentPlacement.end() || consIt == currentPlacement.end())
-      continue;
-    if (prodIt->second == consIt->second)
-      continue;
-    if (destTile != prodIt->second)
+    if (destTile != *prodPos)
       allocates.push_back({fb.fifoOp, destTile});
   }
 }
