@@ -671,56 +671,74 @@ int SAPlacer::computeMemSpilloverPenalty() {
     if (auto at = currentPlacement.find(op); at != currentPlacement.end())
       llvm::append_range(tiles[index.lookup(at->second)].fixed, fixed);
 
-  // Per pool, in the allocator's size-first order: as split, and as walked.
-  SmallVector<std::pair<SpillPool, TileID>> split, walkedPools;
-  bool anyWalked = false;
-  DenseSet<TileID> positions;
-  for (auto &[tile, _] : memTileEnds) {
-    auto at = currentPlacement.find(tile);
-    if (at == currentPlacement.end() || !positions.insert(at->second).second)
-      continue;
-    SmallVector<Operation *> here = memTilesAt(at->second);
-    DenseSet<std::pair<Operation *, int>> walked;
-    (void)bdShortfall(at->second, here, &walked);
-    anyWalked |= !walked.empty();
+  // Each placed position's pools, with the sets of them it may walk whole.
+  struct Position {
+    TileID at;
     llvm::MapVector<std::pair<Operation *, int>,
                     std::pair<const PlannedDmaEnd *, std::pair<int, int>>>
         pools;
+    WalkSets sets;
+    SmallVector<int64_t> bytes;
+  };
+  SmallVector<Position> positions;
+  DenseSet<TileID> seen;
+  for (auto &[tile, _] : memTileEnds) {
+    auto at = currentPlacement.find(tile);
+    if (at == currentPlacement.end() || !seen.insert(at->second).second)
+      continue;
+    Position &position = positions.emplace_back();
+    position.at = at->second;
+    SmallVector<Operation *> here = memTilesAt(at->second);
+    (void)bdShortfall(at->second, here, &position.sets, &position.bytes);
     for (Operation *op : here)
-      for (const MemTileEnd &end : memTileEnds.lookup(op)) {
+      for (const MemTileEnd &end : memTileEnds.find(op)->second) {
         const PlannedDmaEnd &plan = end.end;
         auto split = dyn_cast_or_null<ObjectFifoPoolOp>(plan.pool);
         if (!plan.pool || (split && split.getBuffers()))
           continue;
-        auto &[first, demand] = pools[{plan.pool, plan.id}];
+        auto &[first, demand] = position.pools[{plan.pool, plan.id}];
         first = first ? first : &plan;
         ++(end.dir == DMAChannelDir::S2MM ? demand.first : demand.second);
       }
-    unsigned home = index.lookup(at->second);
-    for (auto &[key, entry] : pools) {
-      auto [plan, demand] = entry;
-      int busier = std::max(demand.first, demand.second);
-      int64_t whole = plan->contiguousObjects;
-      split.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
-                        whole ? 1 : plan->depth, home, busier},
-                       at->second});
-      bool charged = chargedPools.contains(plan->pool);
-      anyWalked |= charged;
-      if (!whole && (charged || walked.contains(key)))
-        whole = plan->depth;
-      walkedPools.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
-                              whole ? 1 : plan->depth, home, busier},
-                             at->second});
-    }
   }
-  for (auto *pools : {&split, &walkedPools}) {
-    llvm::stable_sort(*pools, [](const auto &a, const auto &b) {
+  llvm::sort(positions, [](const Position &a, const Position &b) {
+    return std::make_pair(a.at.col, a.at.row) <
+           std::make_pair(b.at.col, b.at.row);
+  });
+  bool anyWalked =
+      !chargedPools.empty() || llvm::any_of(positions, [](const Position &p) {
+        return !p.sets.empty();
+      });
+
+  // Per pool of the positions `members`, in the allocator's size-first order,
+  // with each position walking the set `walk` gives it (none when null).
+  using Walk = const SmallVector<std::pair<Operation *, int>> *;
+  auto shapes = [&](ArrayRef<unsigned> members, ArrayRef<Walk> walk) {
+    SmallVector<std::pair<SpillPool, TileID>> shaped;
+    for (unsigned member : members) {
+      const Position &position = positions[member];
+      unsigned home = index.lookup(position.at);
+      for (auto &[key, entry] : position.pools) {
+        auto [plan, demand] = entry;
+        int busier = std::max(demand.first, demand.second);
+        int64_t whole = plan->contiguousObjects;
+        if (!whole &&
+            (chargedPools.contains(plan->pool) ||
+             (walk[member] && llvm::is_contained(*walk[member], key))))
+          whole = plan->depth;
+        shaped.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
+                           whole ? 1 : plan->depth, home, busier},
+                          position.at});
+      }
+    }
+    llvm::stable_sort(shaped, [](const auto &a, const auto &b) {
       return std::make_pair(a.second.col, a.second.row) <
              std::make_pair(b.second.col, b.second.row);
     });
-    sortLargestBufferFirst(*pools,
+    sortLargestBufferFirst(shaped,
                            [](const auto &pool) { return pool.first.bytes; });
-  }
+    return shaped;
+  };
 
   auto attempt = [&](ArrayRef<std::pair<SpillPool, TileID>> pools,
                      ArrayRef<unsigned> order) {
@@ -741,8 +759,97 @@ int SAPlacer::computeMemSpilloverPenalty() {
   auto inOrder = [](size_t size) {
     return llvm::to_vector(llvm::seq<unsigned>(0, size));
   };
-  int64_t unplaced = attempt(walkedPools, inOrder(walkedPools.size()));
+  // Walk sets per spill component, as aie-objectfifo-allocate chooses them
+  // (DMAChannelAnalysis::searchWalkProduct). An outcome depends on the
+  // component's tiles' contents and its walk sets alone, so it is kept.
+  DenseMap<TileID, std::vector<Operation *>> opsAt;
+  for (auto &[op, _] : memTileEnds)
+    if (auto at = currentPlacement.find(op); at != currentPlacement.end())
+      opsAt[at->second].push_back(op);
+  for (auto &[op, _] : memTileFixed)
+    if (auto at = currentPlacement.find(op); at != currentPlacement.end())
+      opsAt[at->second].push_back(op);
+  for (auto &[_, ops] : opsAt) {
+    llvm::sort(ops);
+    ops.erase(llvm::unique(ops), ops.end());
+  }
+  SmallVector<TileID> homes =
+      llvm::map_to_vector(positions, [](const Position &p) { return p.at; });
+  SmallVector<unsigned> componentOf =
+      memTileSpillComponents(*targetModel, homes);
+  unsigned components =
+      componentOf.empty() ? 0 : *llvm::max_element(componentOf) + 1;
+  SmallVector<Walk> walk(positions.size(), nullptr);
+  int64_t unplaced = 0;
+  for (unsigned component = 0; component < components; ++component) {
+    SmallVector<unsigned> members;
+    for (auto [i, c] : llvm::enumerate(componentOf))
+      if (c == component)
+        members.push_back(i);
+    std::vector<uintptr_t> tilesKey;
+    std::set<std::pair<int, int>> reach;
+    for (unsigned member : members) {
+      reach.insert({positions[member].at.col, positions[member].at.row});
+      for (TileID n :
+           memTileSpillNeighbours(*targetModel, positions[member].at))
+        reach.insert({n.col, n.row});
+    }
+    for (auto [col, row] : reach) {
+      tilesKey.push_back(col);
+      tilesKey.push_back(row);
+      std::vector<Operation *> ops = opsAt.lookup({col, row});
+      tilesKey.push_back(ops.size());
+      for (Operation *op : ops)
+        tilesKey.push_back(reinterpret_cast<uintptr_t>(op));
+    }
+    SmallVector<SmallVector<int64_t>> bytes;
+    for (unsigned member : members)
+      bytes.push_back(positions[member].sets.empty() ? SmallVector<int64_t>{0}
+                                                     : positions[member].bytes);
+    int64_t last = 0;
+    auto places = [&](ArrayRef<unsigned> choice) {
+      std::vector<uintptr_t> key = tilesKey;
+      for (auto [member, set] : llvm::zip_equal(members, choice)) {
+        key.push_back(set);
+        walk[member] = positions[member].sets.empty()
+                           ? nullptr
+                           : &positions[member].sets[set];
+      }
+      if (const int64_t *known = unplacedOf.find(key))
+        return (last = *known) == 0;
+      auto shaped = shapes(members, walk);
+      last = attempt(shaped, inOrder(shaped.size()));
+      unplacedOf.insert(key, last);
+      return last == 0;
+    };
+    // Walking changes no buffer's bytes in total, so when the component's
+    // buffers outweigh its tiles' room, no choice of walk sets places them.
+    int64_t needed = 0, room = 0;
+    for (auto &[pool, _] : shapes(members, SmallVector<Walk>(walk.size())))
+      needed += pool.bytes * pool.count;
+    for (auto [col, row] : reach) {
+      room += targetModel->getMemTileSize();
+      for (const BufferAllocation &buffer :
+           tiles[index.lookup({col, row})].fixed)
+        room -= buffer.size;
+    }
+    DMAChannelAnalysis::WalkChoice choice;
+    choice.sets.assign(members.size(), 0);
+    if (needed <= room)
+      choice = DMAChannelAnalysis::searchWalkProduct(
+          bytes, places, config.walkPlacementsPerStep);
+    if (!choice.placed)
+      (void)places(choice.sets);
+    for (auto [member, set] : llvm::zip_equal(members, choice.sets))
+      walk[member] = positions[member].sets.empty()
+                         ? nullptr
+                         : &positions[member].sets[set];
+    unplaced += last;
+  }
   if (unplaced && !anyWalked) {
+    SmallVector<unsigned> all =
+        llvm::to_vector(llvm::seq<unsigned>(0, positions.size()));
+    auto split = shapes(all, SmallVector<Walk>(positions.size(), nullptr));
     SmallVector<SpillPool> records;
     for (auto &[pool, _] : split)
       records.push_back(pool);
@@ -889,7 +996,8 @@ SmallVector<Operation *> SAPlacer::memTilesAt(TileID position) const {
 }
 
 int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
-                              DenseSet<std::pair<Operation *, int>> *walked) {
+                              WalkSets *walkSets,
+                              SmallVector<int64_t> *walkBytes) {
   auto [layout, added] = bdLayoutOf.try_emplace(position, position);
   if (added) {
     auto access = [&](TileID at) {
@@ -911,15 +1019,14 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
       }
   }
   // Bounded, since tiles meet at positions in more ways than a design has.
-  if (bdShortfallOf.size() > (1u << 16))
-    bdShortfallOf.clear();
   std::pair<TileID, std::vector<Operation *>> key{
       layout->second, std::vector<Operation *>(tiles.begin(), tiles.end())};
-  if (auto cached = bdShortfallOf.find(key); cached != bdShortfallOf.end()) {
-    if (walked)
-      *walked = DenseSet<std::pair<Operation *, int>>(
-          cached->second.second.begin(), cached->second.second.end());
-    return cached->second.first;
+  if (const BDShortfall *cached = bdShortfallOf.find(key)) {
+    if (walkSets)
+      *walkSets = cached->sets;
+    if (walkBytes)
+      *walkBytes = cached->bytes;
+    return cached->ids;
   }
   SmallVector<const MemTileEnd *> ends;
   for (Operation *tile : tiles)
@@ -934,42 +1041,59 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
           col, row, WireBundle::DMA))};
   auto free = [](DMAChannelDir, int) { return true; };
   auto unspent = [](int) -> int64_t { return 0; };
-  DenseSet<std::pair<Operation *, int>> whole;
-  int64_t shortfall = 0;
-  while (true) {
-    SmallVector<DMAChannelAnalysis::BDPlanEnd> planned, unweighted;
-    int64_t total = 0;
-    for (const MemTileEnd *end : ends) {
-      int64_t bds =
-          whole.contains({end->end.pool, end->end.id}) ? 1 : end->end.bds;
-      int limit = channels[end->dir == DMAChannelDir::MM2S];
-      planned.push_back({end->dir, bds, limit});
-      unweighted.push_back({end->dir, 0, limit});
-      total += bds;
+  SmallVector<DMAChannelAnalysis::BDPlanEnd> planned;
+  SmallVector<unsigned> poolOf;
+  SmallVector<DMAChannelAnalysis::BDWalkPool> pools;
+  SmallVector<std::pair<Operation *, int>> poolKeys;
+  for (const MemTileEnd *end : ends) {
+    std::pair<Operation *, int> poolKey{end->end.pool, end->end.id};
+    auto *at = llvm::find(poolKeys, poolKey);
+    if (at == poolKeys.end()) {
+      poolKeys.push_back(poolKey);
+      pools.push_back({end->end.depth, end->end.objectBytes, false});
+      at = std::prev(poolKeys.end());
     }
-    if (DMAChannelAnalysis::planBDChannels(*targetModel, col, row, planned,
-                                           free, unspent))
-      break;
-    const MemTileEnd *deepest = nullptr;
-    for (const MemTileEnd *end : ends)
-      if (end->end.walkable && !whole.contains({end->end.pool, end->end.id}) &&
-          (!deepest || end->end.depth > deepest->end.depth))
-        deepest = end;
-    if (deepest) {
-      whole.insert({deepest->end.pool, deepest->end.id});
-      continue;
-    }
-    // Too few channels is the DMA term's to charge.
-    int64_t ids = targetModel->getNumBDs(col, row);
-    shortfall = DMAChannelAnalysis::planBDChannels(*targetModel, col, row,
-                                                   unweighted, free, unspent)
-                    ? std::max<int64_t>(1, total - ids)
-                    : std::max<int64_t>(0, total - ids);
-    break;
+    unsigned pool = at - poolKeys.begin();
+    pools[pool].walkable |= end->end.walkable;
+    poolOf.push_back(pool);
+    planned.push_back(
+        {end->dir, end->end.bds, channels[end->dir == DMAChannelDir::MM2S]});
   }
-  bdShortfallOf[key] = {shortfall, {whole.begin(), whole.end()}};
-  if (walked)
-    *walked = std::move(whole);
+  DMAChannelAnalysis::BDWalkSets found = DMAChannelAnalysis::walkSetsThatFit(
+      *targetModel, col, row, planned, poolOf, pools, free, unspent);
+  WalkSets sets;
+  for (ArrayRef<unsigned> set : found.sets)
+    sets.push_back(llvm::map_to_vector(
+        set, [&](unsigned pool) { return poolKeys[pool]; }));
+  SmallVector<int64_t> bytes = found.bytes;
+  int64_t shortfall = 0;
+  if (found.channelShort || !found.fits) {
+    // No set fits: every walkable pool is walked, and the ids still short
+    // are charged; too few channels is the DMA term's to charge.
+    if (!found.channelShort) {
+      sets.emplace_back();
+      bytes.push_back(0);
+      for (auto [pool, walkable] : llvm::enumerate(pools))
+        if (walkable.walkable) {
+          sets.back().push_back(poolKeys[pool]);
+          bytes.back() += walkable.depth * walkable.objectBytes;
+        }
+    }
+    DenseSet<std::pair<Operation *, int>> whole;
+    if (!sets.empty())
+      whole.insert(sets.front().begin(), sets.front().end());
+    int64_t total = 0;
+    for (auto [end, pool] : llvm::zip_equal(planned, poolOf))
+      total += whole.contains(poolKeys[pool]) ? 1 : end.bds;
+    int64_t ids = targetModel->getNumBDs(col, row);
+    shortfall = found.channelShort ? std::max<int64_t>(0, total - ids)
+                                   : std::max<int64_t>(1, total - ids);
+  }
+  bdShortfallOf.insert(key, {shortfall, sets, bytes});
+  if (walkSets)
+    *walkSets = std::move(sets);
+  if (walkBytes)
+    *walkBytes = std::move(bytes);
   return shortfall;
 }
 

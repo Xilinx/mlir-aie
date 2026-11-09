@@ -14,6 +14,8 @@
 
 #include <functional>
 #include <numeric>
+#include <set>
+#include <vector>
 
 using namespace mlir;
 using namespace xilinx;
@@ -368,4 +370,155 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
   if (!place(0))
     return std::nullopt;
   return channelOf;
+}
+
+std::optional<unsigned> DMAChannelAnalysis::nextPoolToWalk(
+    ArrayRef<BDPlanEnd> ends, ArrayRef<unsigned> poolOf,
+    ArrayRef<BDWalkPool> pools, ArrayRef<bool> whole) {
+  SmallVector<int64_t> bds(pools.size(), 0);
+  for (auto [end, pool] : llvm::zip_equal(ends, poolOf))
+    bds[pool] += end.bds;
+  auto key = [&](unsigned pool) {
+    return std::make_tuple(pools[pool].depth, -pools[pool].objectBytes,
+                           bds[pool]);
+  };
+  std::optional<unsigned> next;
+  for (unsigned pool = 0, e = pools.size(); pool < e; ++pool)
+    if (pools[pool].walkable && !whole[pool] &&
+        (!next || key(pool) > key(*next)))
+      next = pool;
+  return next;
+}
+
+DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
+    const AIETargetModel &target, int col, int row, ArrayRef<BDPlanEnd> ends,
+    ArrayRef<unsigned> poolOf, ArrayRef<BDWalkPool> pools,
+    function_ref<bool(DMAChannelDir, int)> free,
+    function_ref<int64_t(int)> spent) {
+  BDWalkSets result;
+  auto none = [](int) -> int64_t { return 0; };
+  auto fitsWalking = [&](ArrayRef<bool> whole, bool weighted) {
+    SmallVector<BDPlanEnd> planned;
+    for (auto [end, pool] : llvm::zip_equal(ends, poolOf))
+      planned.push_back({end.dir,
+                         !weighted     ? 0
+                         : whole[pool] ? 1
+                                       : end.bds,
+                         end.limit});
+    return planBDChannels(target, col, row, planned, free,
+                          weighted ? spent : function_ref<int64_t(int)>(none))
+        .has_value();
+  };
+  SmallVector<bool> whole(pools.size(), false);
+  if (!fitsWalking(whole, /*weighted=*/false)) {
+    result.channelShort = true;
+    return result;
+  }
+  if (fitsWalking(whole, /*weighted=*/true))
+    return result;
+
+  // The walkable pools in nextPoolToWalk's order, whose position ranks them.
+  SmallVector<unsigned> ranked;
+  while (std::optional<unsigned> next =
+             nextPoolToWalk(ends, poolOf, pools, whole)) {
+    ranked.push_back(*next);
+    whole[*next] = true;
+  }
+  if (!fitsWalking(whole, /*weighted=*/true)) {
+    result.fits = false;
+    return result;
+  }
+  // Walking a pool only lowers its ends' BD ids, so a set holding one that
+  // fits fits too, without asking planBDChannels.
+  unsigned n = ranked.size();
+  assert(n < 32 && "each walkable pool draws a channel the plan above fit");
+  SmallVector<uint32_t> masks;
+  llvm::BitVector fitsMask(uint32_t(1) << n);
+  for (uint32_t mask = 1; mask < (uint32_t(1) << n); ++mask) {
+    bool fits = llvm::any_of(llvm::seq<unsigned>(0, n), [&](unsigned bit) {
+      return (mask >> bit & 1) && fitsMask.test(mask & ~(uint32_t(1) << bit));
+    });
+    if (!fits) {
+      llvm::fill(whole, false);
+      for (unsigned bit = 0; bit < n; ++bit)
+        if (mask >> bit & 1)
+          whole[ranked[bit]] = true;
+      fits = fitsWalking(whole, /*weighted=*/true);
+    }
+    if (fits) {
+      fitsMask.set(mask);
+      masks.push_back(mask);
+    }
+  }
+  auto bytes = [&](uint32_t mask) {
+    int64_t total = 0;
+    for (unsigned bit = 0; bit < n; ++bit)
+      if (mask >> bit & 1)
+        total += pools[ranked[bit]].depth * pools[ranked[bit]].objectBytes;
+    return total;
+  };
+  llvm::stable_sort(masks, [&](uint32_t a, uint32_t b) {
+    int64_t aBytes = bytes(a), bBytes = bytes(b);
+    if (aBytes != bBytes)
+      return aBytes < bBytes;
+    if (llvm::popcount(a) != llvm::popcount(b))
+      return llvm::popcount(a) < llvm::popcount(b);
+    // Of two sets alike in size, the one holding the first-ranked pool that
+    // only one holds.
+    uint32_t differ = a ^ b;
+    return differ && (a & differ & -differ);
+  });
+  for (uint32_t mask : masks) {
+    SmallVector<unsigned> set;
+    for (unsigned bit = 0; bit < n; ++bit)
+      if (mask >> bit & 1)
+        set.push_back(ranked[bit]);
+    result.sets.push_back(std::move(set));
+    result.bytes.push_back(bytes(mask));
+  }
+  return result;
+}
+
+DMAChannelAnalysis::WalkChoice DMAChannelAnalysis::searchWalkProduct(
+    ArrayRef<SmallVector<int64_t>> bytes,
+    function_ref<bool(ArrayRef<unsigned>)> places, unsigned maxTries) {
+  using Choice = std::vector<unsigned>;
+  auto total = [&](const Choice &choice) {
+    int64_t sum = 0;
+    for (auto [tile, set] : llvm::enumerate(choice))
+      sum += bytes[tile][set];
+    return sum;
+  };
+  // Each tile's sets come cheapest first, so a choice's successors (one tile
+  // a set further) never cost less: popped in order, the first that places
+  // is the cheapest that does.
+  std::set<std::pair<int64_t, Choice>> frontier;
+  std::set<Choice> seen;
+  Choice first(bytes.size(), 0);
+  frontier.insert({total(first), first});
+  seen.insert(first);
+  WalkChoice result;
+  result.sets.assign(first.begin(), first.end());
+  for (unsigned tries = 0; !frontier.empty(); ++tries) {
+    if (tries == maxTries) {
+      result.stopped = true;
+      return result;
+    }
+    Choice choice = frontier.begin()->second;
+    frontier.erase(frontier.begin());
+    if (places(choice)) {
+      result.sets.assign(choice.begin(), choice.end());
+      result.placed = true;
+      return result;
+    }
+    for (unsigned tile = 0; tile < choice.size(); ++tile) {
+      if (choice[tile] + 1 >= bytes[tile].size())
+        continue;
+      Choice next = choice;
+      ++next[tile];
+      if (seen.insert(next).second)
+        frontier.insert({total(next), next});
+    }
+  }
+  return result;
 }

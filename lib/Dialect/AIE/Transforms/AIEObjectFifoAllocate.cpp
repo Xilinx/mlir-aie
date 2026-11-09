@@ -107,6 +107,9 @@ struct AIEObjectFifoAllocatePass
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
+  /// Whether a search for which pools to walk whole stopped at its bound,
+  /// DMAChannelAnalysis::kMaxWalkPlacements, before finding one that places.
+  bool walkSearchStopped = false;
 
   bool sameTile(Value a, Value b) {
     if (a == b)
@@ -397,18 +400,38 @@ struct AIEObjectFifoAllocatePass
     MemRefType type = pool.getElemType();
     ElementsAttr zeros;
     if (pool.getContiguous()) {
-      type =
-          MemRefType::get({pool.getObjectsPerBuffer() * type.getNumElements()},
-                          type.getElementType());
-      if (pool.getZeroObjects())
-        zeros = DenseElementsAttr::get(
-            RankedTensorType::get(type.getShape(), type.getElementType()),
-            builder.getZeroAttr(type.getElementType()));
+      int64_t objectElements = type.getNumElements();
+      type = MemRefType::get({pool.getObjectsPerBuffer() * objectElements},
+                             type.getElementType());
+      auto tensor =
+          RankedTensorType::get(type.getShape(), type.getElementType());
+      Attribute zero = builder.getZeroAttr(type.getElementType());
+      if (filled) {
+        // The one buffer starts as its objects do, in order, between its zero
+        // objects; objects with no initial contents start zero.
+        auto zeroObjects = pool.getZeroObjects();
+        SmallVector<Attribute> values(
+            (zeroObjects ? (*zeroObjects)[0] : 0) * objectElements, zero);
+        for (int i = 0; i < pool.getDepth(); i++) {
+          if (i < filled)
+            llvm::append_range(
+                values,
+                cast<DenseElementsAttr>(initValues[i]).getValues<Attribute>());
+          else
+            values.append(objectElements, zero);
+        }
+        values.append((zeroObjects ? (*zeroObjects)[1] : 0) * objectElements,
+                      zero);
+        zeros = DenseElementsAttr::get(tensor, values);
+      } else if (pool.getZeroObjects()) {
+        zeros = DenseElementsAttr::get(tensor, zero);
+      }
     }
     // Initial contents may fill only the first objects of a deeper pool.
     for (int i = 0; i < bufferCount(pool); i++) {
-      ElementsAttr init =
-          i < filled ? cast<ElementsAttr>(initValues[i]) : zeros;
+      ElementsAttr init = !pool.getContiguous() && i < filled
+                              ? cast<ElementsAttr>(initValues[i])
+                              : zeros;
       std::string name = (base + "__buf" + std::to_string(i)).str();
       Value placement = bufferPlacements[pool][i];
       setInsertionPointOn(placement);
@@ -615,7 +638,20 @@ struct AIEObjectFifoAllocatePass
   /// Both buffers and locks must be local to use the local-only channels.
   /// Distinct unresolved tiles may be neighbors after placement, so they
   /// cannot be assumed local when assigning a placed endpoint's channels.
+  /// An end whose channel others take turns on reaches what they reach too.
   bool reachesAdjacentTile(RouteEndpoint endpoint) {
+    if (ownReachesAdjacentTile(endpoint))
+      return true;
+    for (auto [sharer, owner] : channelSharers)
+      if (owner == endpoint.getOperation() &&
+          ownReachesAdjacentTile(cast<RouteEndpoint>(sharer)))
+        return true;
+    return false;
+  }
+
+  /// Whether `endpoint`'s own pool, locks or DMA program reach another tile,
+  /// whatever ends take turns on its channel.
+  bool ownReachesAdjacentTile(RouteEndpoint endpoint) {
     if (auto route = dyn_cast<RouteEndpointOp>(endpoint.getOperation()))
       return programReachesAdjacentTile(route);
     auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
@@ -944,6 +980,15 @@ struct AIEObjectFifoAllocatePass
     return failure(clash);
   }
 
+  /// Whether `endpoint` draws a DMA channel of its own: a core's stream port
+  /// is named by the design (checkStreamPorts has claimed it), and an end in
+  /// channelSharers takes another's channel, so neither is counted where
+  /// channels are planned.
+  bool drawsOwnChannel(RouteEndpoint endpoint) {
+    return endpoint.getRouteBundle() != WireBundle::Core &&
+           !channelSharers.contains(endpoint.getOperation());
+  }
+
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
                                bool diagnose = true) {
     channelAssignments.clear();
@@ -971,10 +1016,7 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
-      // A core's stream port is named by the design, not drawn from the tile's
-      // DMA channels; checkStreamPorts has claimed it.
-      if (endpoint.getRouteBundle() == WireBundle::Core ||
-          channelSharers.count(endpoint.getOperation()))
+      if (!drawsOwnChannel(endpoint))
         continue;
 
       if (channel) {
@@ -1228,21 +1270,178 @@ struct AIEObjectFifoAllocatePass
                         });
   }
 
-  /// Walks the deepest pool on `tile` that can be walked whole, so its ends
-  /// take one BD each; false when none is left.
-  bool walkDeepestWhole(TileLike tile) {
-    ObjectFifoPoolOp deepest;
-    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
-      ObjectFifoPoolOp pool = dma.getPoolOp();
-      if (sameTile(dma.getTile(), tile->getResult(0)) && canWalkWhole(pool) &&
-          (!deepest || pool.getDepth() > deepest.getDepth() ||
-           (pool.getDepth() == deepest.getDepth() &&
-            structuralRank.lookup(pool) < structuralRank.lookup(deepest))))
-        deepest = pool;
+  /// The DMA ends `dmas` of one mem tile that draw a channel of their own,
+  /// and their pools in structural order, as a plan of the tile's BD ids
+  /// weighs them with every buffer at home.
+  struct HomeBDPlan {
+    SmallVector<ObjectFifoPoolOp> pools;
+    SmallVector<DMAChannelAnalysis::BDWalkPool> walkable;
+    SmallVector<DMAChannelAnalysis::BDPlanEnd> ends;
+    SmallVector<unsigned> poolOf;
+  };
+  HomeBDPlan homeBDPlan(ArrayRef<ObjectFifoDmaEndpointOp> dmas) {
+    HomeBDPlan plan;
+    for (auto dma : dmas)
+      if (!llvm::is_contained(plan.pools, dma.getPoolOp()))
+        plan.pools.push_back(dma.getPoolOp());
+    llvm::stable_sort(plan.pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+      return structuralRank.lookup(a) < structuralRank.lookup(b);
+    });
+    for (ObjectFifoPoolOp pool : plan.pools)
+      plan.walkable.push_back(
+          {pool.getDepth(), pool.getObjectSizeInBytes(), canWalkWhole(pool)});
+    for (auto dma : dmas) {
+      auto endpoint = cast<RouteEndpoint>(dma.getOperation());
+      if (!drawsOwnChannel(endpoint))
+        continue;
+      DMAChannelDir dir = endpoint.getRouteDirection();
+      plan.ends.push_back({dir, dma.getNumBDs(),
+                           DMAChannelAnalysis::getDMAChannelLimit(
+                               tileOf(endpoint), dir, false)});
+      plan.poolOf.push_back(llvm::find(plan.pools, dma.getPoolOp()) -
+                            plan.pools.begin());
     }
-    if (deepest)
-      deepest.setContiguous(true);
-    return bool(deepest);
+    return plan;
+  }
+
+  /// Walks the pools a plan of the BD ids at home needs (walkHomeBDPools);
+  /// when that plan needs none, the pool on `tile`
+  /// DMAChannelAnalysis::nextPoolToWalk picks, for what only the tile's real
+  /// channels are short of. False when none is left.
+  bool walkForBDShortfall(TileLike tile,
+                          MutableArrayRef<ObjectFifoPoolOp> pools) {
+    if (walkHomeBDPools(pools))
+      return true;
+    SmallVector<ObjectFifoDmaEndpointOp> dmas;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
+      if (sameTile(dma.getTile(), tile->getResult(0)) && dma.getPoolOp())
+        dmas.push_back(dma);
+    HomeBDPlan plan = homeBDPlan(dmas);
+    std::optional<unsigned> next = DMAChannelAnalysis::nextPoolToWalk(
+        plan.ends, plan.poolOf, plan.walkable,
+        SmallVector<bool>(plan.pools.size(), false));
+    if (next)
+      plan.pools[*next].setContiguous(true);
+    return next.has_value();
+  }
+
+  /// Walks whole, on each placed mem tile, a set of
+  /// DMAChannelAnalysis::walkSetsThatFit's, chosen by placing `pools` as the
+  /// SA placer does; every walkable pool when none fits. Those tiles then take
+  /// their channels from that plan. False when nothing is left to walk.
+  bool walkHomeBDPools(MutableArrayRef<ObjectFifoPoolOp> pools) {
+    std::map<std::pair<int, int>, SmallVector<ObjectFifoDmaEndpointOp>> ends;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      TileLike tile = tileOf(cast<RouteEndpoint>(dma.getOperation()));
+      auto col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (tile.isMemTile() && col && row && dma.getPoolOp())
+        ends[{*col, *row}].push_back(dma);
+    }
+    // Walk sets per spill component, as the SA placer chooses them
+    // (DMAChannelAnalysis::searchWalkProduct).
+    struct Tile {
+      TileID at;
+      HomeBDPlan home;
+      DMAChannelAnalysis::BDWalkSets found;
+      SmallVector<ObjectFifoDmaEndpointOp> dmas;
+      unsigned applied = 0;
+    };
+    SmallVector<Tile, 0> tiles;
+    for (auto &[at, dmas] : ends) {
+      HomeBDPlan home = homeBDPlan(dmas);
+      DMAChannelAnalysis::BDWalkSets found =
+          DMAChannelAnalysis::walkSetsThatFit(
+              device.getTargetModel(), at.first, at.second, home.ends,
+              home.poolOf, home.walkable,
+              [](DMAChannelDir, int) { return true; },
+              [](int) -> int64_t { return 0; });
+      if (found.sets.empty() && !found.fits && !found.channelShort) {
+        found.sets.emplace_back();
+        found.bytes.push_back(0);
+        for (auto [pool, walkable] : llvm::enumerate(home.walkable))
+          if (walkable.walkable) {
+            found.sets.back().push_back(pool);
+            found.bytes.back() += walkable.depth * walkable.objectBytes;
+          }
+      }
+      if (!found.sets.empty())
+        tiles.push_back(
+            {{at.first, at.second}, std::move(home), std::move(found), dmas});
+    }
+    auto setWalked = [&](Tile &tile, bool walked) {
+      for (unsigned pool : tile.found.sets[tile.applied])
+        tile.home.pools[pool].setContiguous(walked);
+    };
+    auto homeOf = [](ObjectFifoPoolOp pool) -> std::optional<TileID> {
+      TileLike tile = pool.getTileLike();
+      auto col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (!tile.isMemTile() || !col || !row)
+        return std::nullopt;
+      return TileID{*col, *row};
+    };
+    std::set<std::pair<int, int>> homeSet;
+    for (ObjectFifoPoolOp pool : pools)
+      if (std::optional<TileID> at = homeOf(pool))
+        homeSet.insert({at->col, at->row});
+    for (Tile &tile : tiles)
+      homeSet.insert({tile.at.col, tile.at.row});
+    SmallVector<TileID> homes;
+    for (auto [col, row] : homeSet)
+      homes.push_back({col, row});
+    SmallVector<unsigned> componentIds =
+        memTileSpillComponents(device.getTargetModel(), homes);
+    std::map<std::pair<int, int>, unsigned> componentAt;
+    for (auto [home, id] : llvm::zip_equal(homes, componentIds))
+      componentAt[{home.col, home.row}] = id;
+
+    bool walkedAny = false;
+    std::set<unsigned> searched;
+    for (Tile &first : tiles) {
+      unsigned component = componentAt[{first.at.col, first.at.row}];
+      if (!searched.insert(component).second)
+        continue;
+      SmallVector<Tile *> members;
+      for (Tile &tile : tiles)
+        if (componentAt[{tile.at.col, tile.at.row}] == component)
+          members.push_back(&tile);
+      SmallVector<ObjectFifoPoolOp> componentPools;
+      for (ObjectFifoPoolOp pool : pools)
+        if (std::optional<TileID> at = homeOf(pool);
+            at && componentAt[{at->col, at->row}] == component)
+          componentPools.push_back(pool);
+      SmallVector<SmallVector<int64_t>> bytes;
+      for (Tile *tile : members)
+        bytes.push_back(tile->found.bytes);
+      auto apply = [&](ArrayRef<unsigned> choice) {
+        for (auto [tile, set] : llvm::zip_equal(members, choice)) {
+          setWalked(*tile, false);
+          tile->applied = set;
+          setWalked(*tile, true);
+        }
+      };
+      DMAChannelAnalysis::WalkChoice choice =
+          DMAChannelAnalysis::searchWalkProduct(
+              bytes,
+              [&](ArrayRef<unsigned> choice) {
+                apply(choice);
+                SmallVector<ObjectFifoPoolOp> trial(componentPools);
+                sizeOrder(trial);
+                localPools.clear();
+                return succeeded(planBuffers(trial));
+              },
+              DMAChannelAnalysis::kMaxWalkPlacements);
+      apply(choice.sets);
+      walkSearchStopped |= choice.stopped;
+      for (Tile *tile : members) {
+        if (tile->found.sets[tile->applied].empty())
+          continue;
+        walkedAny = true;
+        for (auto dma : tile->dmas)
+          bdPlanned.insert(
+              tileOf(cast<RouteEndpoint>(dma.getOperation())).getOperation());
+      }
+    }
+    return walkedAny;
   }
 
   /// The other end of the one route naming `endpoint`, when that route is a
@@ -1803,7 +2002,7 @@ struct AIEObjectFifoAllocatePass
           endpoint.getRouteDirection() != channelFailure.getRouteDirection() ||
           (channelFailure.getRouteChannel() && endpoint != channelFailure) ||
           (endpoint.getRouteChannel() && endpoint != channelFailure) ||
-          !reachesAdjacentTile(endpoint) ||
+          !ownReachesAdjacentTile(endpoint) ||
           llvm::is_contained(candidates, pool))
         continue;
       candidates.push_back(pool);
@@ -2288,6 +2487,7 @@ struct AIEObjectFifoAllocatePass
     bufferFailure = nullptr;
     lockFailure = nullptr;
     lockAccessFailure = nullptr;
+    walkSearchStopped = false;
 
     if (failed(collectFixedMemory()) || failed(checkStreamPorts()))
       return signalPassFailure();
@@ -2331,16 +2531,25 @@ struct AIEObjectFifoAllocatePass
     // a tile and direction at a time: on a shim tile, ends never in flight
     // together; elsewhere, ends whose objects one core needs in a fixed order.
     // Short of BD ids on a mem tile channel, its deepest pool walked whole
-    // takes one a side.
-    while (failed(allocated) && channelFailure &&
-           (bdShortfall
-                ? bdPlanned.insert(tileOf(channelFailure).getOperation()) ||
-                      walkDeepestWhole(tileOf(channelFailure))
-            : tileOf(channelFailure).isShimTile()
-                ? planShimSharing(tileOf(channelFailure),
-                                  channelFailure.getRouteDirection())
-                : planTurnSharing(tileOf(channelFailure),
-                                  channelFailure.getRouteDirection()))) {
+    // takes one a side. Buffers that fit nowhere as split are placed again
+    // with the pools walked whole that the tiles' BD ids need anyway.
+    auto repair = [&] {
+      if (channelFailure) {
+        TileLike tile = tileOf(channelFailure);
+        DMAChannelDir dir = channelFailure.getRouteDirection();
+        if (bdShortfall) {
+          if (bdPlanned.insert(tile.getOperation()) ||
+              walkForBDShortfall(tile, pools))
+            return true;
+        } else if (tile.isShimTile() ? planShimSharing(tile, dir)
+                                     : planTurnSharing(tile, dir)) {
+          return true;
+        }
+      }
+      localPools.clear();
+      return failed(planBuffers(pools)) && walkHomeBDPools(pools);
+    };
+    while (failed(allocated) && repair()) {
       localPools.clear();
       tried.clear();
       sizeOrder(pools);
@@ -2352,7 +2561,14 @@ struct AIEObjectFifoAllocatePass
     if (failed(allocated)) {
       localPools.clear();
       if (failed(planBuffers(pools))) {
-        InFlightDiagnostic error = bufferFailure.emitOpError(kNoBufferRoom);
+        InFlightDiagnostic error =
+            walkSearchStopped
+                ? bufferFailure.emitOpError(
+                      "could not place buffers: the search for which pools to "
+                      "walk whole stopped after ")
+                      << DMAChannelAnalysis::kMaxWalkPlacements
+                      << " placements tried in one spill component"
+                : bufferFailure.emitOpError(kNoBufferRoom);
         if (std::optional<StringRef> fifo = bufferFailure.getFifoName())
           error << " for objectFIFO "
                 << SymbolRefAttr::get(

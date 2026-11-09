@@ -11,10 +11,14 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <functional>
+#include <map>
+#include <numeric>
 #include <optional>
 #include <utility>
 
@@ -178,6 +182,31 @@ memTileSpillNeighbours(const AIETargetModel &target, TileID home) {
   return neighbours;
 }
 
+/// For each of `homes`, the index of its component: homes whose buffers may
+/// spill to a tile in common, directly or through other homes, share one.
+/// What one component's buffers do never touches another's tiles.
+inline llvm::SmallVector<unsigned>
+memTileSpillComponents(const AIETargetModel &target,
+                       llvm::ArrayRef<TileID> homes) {
+  std::map<std::pair<int, int>, std::pair<int, int>> root;
+  std::function<std::pair<int, int>(std::pair<int, int>)> find =
+      [&](std::pair<int, int> tile) {
+        auto [it, added] = root.try_emplace(tile, tile);
+        if (it->second == tile)
+          return tile;
+        return it->second = find(it->second);
+      };
+  for (TileID home : homes)
+    for (TileID neighbour : memTileSpillNeighbours(target, home))
+      root[find({neighbour.col, neighbour.row})] = find({home.col, home.row});
+  std::map<std::pair<int, int>, unsigned> ids;
+  llvm::SmallVector<unsigned> component;
+  for (TileID home : homes)
+    component.push_back(
+        ids.try_emplace(find({home.col, home.row}), ids.size()).first->second);
+  return component;
+}
+
 /// The mem tiles a mem tile pool's buffers go to: aie-objectfifo-allocate
 /// places them by this search, and the SA placer runs it on each placement it
 /// weighs. A tile's use is its layout by assignSequentialBufferAddresses. Each
@@ -247,12 +276,50 @@ public:
   /// buffer's tile is in `chosen`; otherwise `failed` is the buffer that fit
   /// nowhere with the fewest buffers left after it, and `unplacedBytes` the
   /// bytes of it and those.
+  /// Buffers whose tiles reach no tile in common place independently, so
+  /// each such component is searched on its own, with its own kRetries.
   bool place(llvm::ArrayRef<Buffer> buffers) {
-    chosen.clear();
-    failed = buffers.size();
-    unplacedBytes = 0;
-    int retries = kRetries;
-    return placeFrom(buffers, 0, retries);
+    llvm::SmallVector<unsigned> root(tiles.size());
+    std::iota(root.begin(), root.end(), 0);
+    auto find = [&](unsigned tile) {
+      while (root[tile] != tile)
+        tile = root[tile] = root[root[tile]];
+      return tile;
+    };
+    for (const Buffer &buffer : buffers)
+      for (unsigned neighbour : buffer.neighbours)
+        root[find(neighbour)] = find(buffer.home);
+    llvm::MapVector<unsigned, llvm::SmallVector<unsigned>> components;
+    for (auto [index, buffer] : llvm::enumerate(buffers))
+      components[find(buffer.home)].push_back(index);
+
+    llvm::SmallVector<unsigned> placedOn(buffers.size(), 0);
+    size_t firstFailed = buffers.size();
+    int64_t unplaced = 0;
+    for (auto &[_, members] : components) {
+      llvm::SmallVector<Buffer> component;
+      for (unsigned index : members)
+        component.push_back(buffers[index]);
+      chosen.clear();
+      failed = component.size();
+      unplacedBytes = 0;
+      int retries = kRetries;
+      if (placeFrom(component, 0, retries)) {
+        for (auto [index, tile] : llvm::zip_equal(members, chosen))
+          placedOn[index] = tile;
+        continue;
+      }
+      // Its buffers stay off the tiles for the components after it.
+      while (!chosen.empty())
+        removeLast(chosen.pop_back_val());
+      firstFailed = std::min<size_t>(
+          firstFailed, members[std::min<size_t>(failed, members.size() - 1)]);
+      unplaced += unplacedBytes;
+    }
+    chosen = std::move(placedOn);
+    failed = firstFailed;
+    unplacedBytes = unplaced;
+    return firstFailed == buffers.size();
   }
   llvm::SmallVector<unsigned> chosen;
   size_t failed = 0;

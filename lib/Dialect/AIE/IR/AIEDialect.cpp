@@ -672,6 +672,23 @@ ObjectFifoEndPortAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 // ObjectFifoCreateOp
 //===----------------------------------------------------------------------===//
 
+// Each initial value is one object's dense contents, in the object's shape
+// and element type: that is all a buffer can be loaded with.
+static LogicalResult verifyInitValues(Operation *op, ArrayAttr initValues,
+                                      MemRefType object) {
+  for (Attribute value : initValues) {
+    auto dense = dyn_cast<DenseElementsAttr>(value);
+    if (!dense)
+      return op->emitOpError("initial value ")
+             << value << " is not a dense elements attribute";
+    if (dense.getType().getShape() != object.getShape() ||
+        dense.getElementType() != object.getElementType())
+      return op->emitOpError("initial value of type ")
+             << dense.getType() << " does not match the object type " << object;
+  }
+  return success();
+}
+
 LogicalResult ObjectFifoCreateOp::verify() {
   for (Type fifoType : {Type(getElemType()), getConsumerElemTypeOrDefault()})
     if (MemRefType memref = cast<AIEObjectFifoType>(fifoType).getElementType();
@@ -801,6 +818,10 @@ LogicalResult ObjectFifoCreateOp::verify() {
   if (auto initValues = getInitValues()) {
     if ((int)initValues->size() != size())
       return emitError("`init_values` does not initialize all objects");
+    if (failed(verifyInitValues(
+            *this, *initValues,
+            cast<AIEObjectFifoType>(getElemType()).getElementType())))
+      return failure();
   }
 
   if (auto iterCountAttr = getIterCount()) {
@@ -916,6 +937,8 @@ LogicalResult ObjectFifoPoolOp::verify() {
     if (static_cast<int64_t>(initValues->size()) > getDepth()) {
       return emitOpError("has more 'init_values' than 'depth' objects");
     }
+    if (failed(verifyInitValues(*this, *initValues, getElemType())))
+      return failure();
   }
 
   std::vector<ObjectFifoSegmentOp> segments = getSegmentOps();
@@ -4200,6 +4223,15 @@ int64_t BufferOp::getAllocationSize() {
 LogicalResult BufferOp::verify() {
   if (UsesAreAccessible::verifyTrait(*this).failed()) {
     return failure();
+  }
+
+  if (auto init = getInitialValue()) {
+    auto initType = cast<ShapedType>(init->getType());
+    MemRefType type = getType();
+    if (initType.getShape() != type.getShape() ||
+        initType.getElementType() != type.getElementType())
+      return emitOpError("initial value of type ")
+             << initType << " does not cover the buffer's " << type;
   }
 
   // A logical tile stands for a placement the compiler has yet to choose, so
