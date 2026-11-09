@@ -638,12 +638,20 @@ struct AIEObjectFifoAllocatePass
   /// cannot be assumed local when assigning a placed endpoint's channels.
   /// An end whose channel others take turns on reaches what they reach too.
   bool reachesAdjacentTile(RouteEndpoint endpoint) {
-    if (auto route = dyn_cast<RouteEndpointOp>(endpoint.getOperation()))
-      return programReachesAdjacentTile(route);
+    if (ownReachesAdjacentTile(endpoint))
+      return true;
     for (auto [sharer, owner] : channelSharers)
       if (owner == endpoint.getOperation() &&
-          reachesAdjacentTile(cast<RouteEndpoint>(sharer)))
+          ownReachesAdjacentTile(cast<RouteEndpoint>(sharer)))
         return true;
+    return false;
+  }
+
+  /// Whether `endpoint`'s own pool, locks or DMA program reach another tile,
+  /// whatever ends take turns on its channel.
+  bool ownReachesAdjacentTile(RouteEndpoint endpoint) {
+    if (auto route = dyn_cast<RouteEndpointOp>(endpoint.getOperation()))
+      return programReachesAdjacentTile(route);
     auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
     if (!dma || !dma.getTileLike().isMemTile()) {
       return false;
@@ -1945,7 +1953,7 @@ struct AIEObjectFifoAllocatePass
           endpoint.getRouteDirection() != channelFailure.getRouteDirection() ||
           (channelFailure.getRouteChannel() && endpoint != channelFailure) ||
           (endpoint.getRouteChannel() && endpoint != channelFailure) ||
-          !reachesAdjacentTile(endpoint) ||
+          !ownReachesAdjacentTile(endpoint) ||
           llvm::is_contained(candidates, pool))
         continue;
       candidates.push_back(pool);
