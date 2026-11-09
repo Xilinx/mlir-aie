@@ -43,6 +43,7 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
   file(GLOB libheadersSub ${SRCPATH}/*/*.h)
 
   # copy header files into build area
+  set(_header_targets)
   foreach(file ${libheaders})
     cmake_path(GET file FILENAME basefile)
     # message("basefile: ${basefile}")
@@ -52,9 +53,9 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
       OUTPUT ${dest}
       COMMAND ${CMAKE_COMMAND} -E copy ${file} ${dest}
       DEPENDS ${file})
+    list(APPEND _header_targets ${TARGET}-${basefile})
   endforeach()
 
-  set(_subheader_targets)
   foreach(file ${libheadersSub})
     cmake_path(GET file FILENAME basefile)
     # message("basefile: ${basefile}")
@@ -64,9 +65,9 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
       OUTPUT ${dest}
       COMMAND ${CMAKE_COMMAND} -E copy ${file} ${dest}
       DEPENDS ${file})
-    list(APPEND _subheader_targets ${TARGET}-${basefile})
+    list(APPEND _header_targets ${TARGET}-${basefile})
   endforeach()
-  add_custom_target(${TARGET}-headers ALL DEPENDS ${_subheader_targets})
+  add_custom_target(${TARGET}-headers ALL DEPENDS ${_header_targets})
 
   # Install too
   install(FILES ${libheaders} DESTINATION ${INSTALLPATH})

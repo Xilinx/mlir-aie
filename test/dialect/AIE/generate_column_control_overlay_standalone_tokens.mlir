@@ -5,21 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-generate-column-control-overlay="emit-standalone-overlay=true" | FileCheck %s
-
-// The standalone overlay has no runtime sequence of its own, so it routes the
-// token of every tile that any participating device awaits, and each device
-// gets that same set so all of them share one overlay shape.
+// RUN: aie-opt %s -aie-generate-column-control-overlay | FileCheck %s
 
 // CHECK-LABEL: aie.device(npu2_1col) @first
-// CHECK-DAG: aie.packet_source<%{{.*}}tile_0_1{{.*}}, TileControl : 0>
-// CHECK-DAG: aie.packet_source<%{{.*}}tile_0_2{{.*}}, TileControl : 0>
+// CHECK-NOT: aie.packet_flow
+// CHECK: overlay = @ctrl_pkt_overlay
 // CHECK-LABEL: aie.device(npu2_1col) @second
-// CHECK-DAG: aie.packet_source<%{{.*}}tile_0_1{{.*}}, TileControl : 0>
-// CHECK-DAG: aie.packet_source<%{{.*}}tile_0_2{{.*}}, TileControl : 0>
+// CHECK-NOT: aie.packet_flow
+// CHECK: overlay = @ctrl_pkt_overlay
+// CHECK-LABEL: aie.device(npu1_1col) @different_target
+// CHECK: overlay = @ctrl_pkt_overlay_0
+// CHECK-LABEL: aie.device(npu1) @no_tokens
+// CHECK-NOT: overlay =
 // CHECK-LABEL: aie.device(npu2_1col) @ctrl_pkt_overlay
 // CHECK-DAG: aie.packet_source<%{{.*}}tile_0_1{{.*}}, TileControl : 0>
 // CHECK-DAG: aie.packet_source<%{{.*}}tile_0_2{{.*}}, TileControl : 0>
+
+// CHECK-LABEL: aie.device(npu1_1col) @ctrl_pkt_overlay_0
+// CHECK: aie.packet_source<%{{.*}}, TileControl : 0>
 
 module {
   aie.device(npu2_1col) @first {
@@ -50,4 +53,11 @@ module {
       aiex.dma_await_task(%t)
     }
   }
+  aie.device(npu1_1col) @different_target {
+    %shim = aie.tile(0, 0)
+  }
+  aie.device(npu1) @no_tokens {
+    %core = aie.tile(0, 2)
+  }
+
 }

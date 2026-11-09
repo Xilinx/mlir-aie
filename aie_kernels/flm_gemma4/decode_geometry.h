@@ -5,9 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The model geometry every decode_*.cc kernel builds for, from -D flags. The
-// flags are required, so a build that forgets one fails here rather than
-// running with another model's shape.
+// Decode model geometry, supplied through required -D flags.
 #ifndef AIE_KERNELS_FLM_GEMMA4_DECODE_GEOMETRY_H
 #define AIE_KERNELS_FLM_GEMMA4_DECODE_GEOMETRY_H
 

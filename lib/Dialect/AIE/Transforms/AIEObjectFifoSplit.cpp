@@ -100,7 +100,8 @@ struct AIEObjectFifoSplitPass
         disableSynchronization || from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
-        /*contiguous=*/false, /*zeroObjects=*/nullptr);
+        /*contiguous=*/false, /*zeroObjects=*/nullptr,
+        /*out_of_order_tags=*/DenseI32ArrayAttr());
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -108,9 +109,10 @@ struct AIEObjectFifoSplitPass
   ObjectFifoCoreEndpointOp createCoreEndpoint(Location loc, StringRef name,
                                               Value tile, PoolRef ref,
                                               ObjectFifoRole role) {
-    return ObjectFifoCoreEndpointOp::create(builder, loc, name, tile, role,
-                                            ref.pool.getSymName(),
-                                            selectedSegmentNames(ref));
+    return ObjectFifoCoreEndpointOp::create(
+        builder, loc, name, tile, role, ref.pool.getSymName(),
+        selectedSegmentNames(ref),
+        /*core_push=*/ObjectFifoCorePushAttr());
   }
 
   ObjectFifoDmaEndpointOp createDmaEndpoint(Location loc, StringRef name,
@@ -158,7 +160,11 @@ struct AIEObjectFifoSplitPass
         iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()), /*dispatch=*/ArrayAttr(),
-        /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr());
+        /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr(),
+        from.getOutOfOrder() ? builder.getUnitAttr() : UnitAttr(),
+        /*out_of_order_tags=*/DenseI32ArrayAttr(),
+        role == ObjectFifoRole::Drain ? from.getReleaseStrategyAttr()
+                                      : ObjectFifoReleaseAttr());
   }
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,
@@ -167,13 +173,20 @@ struct AIEObjectFifoSplitPass
                                       WireBundle bundle,
                                       std::optional<int> channelIndex,
                                       ObjectFifoCreateOp from) {
-    return RouteEndpointOp::create(
+    auto endpoint = RouteEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
         WireBundleAttr::get(builder.getContext(), bundle),
         channelIndex ? builder.getI32IntegerAttr(*channelIndex) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()),
         /*consumed_by=*/ArrayAttr());
+    if (bundle == WireBundle::DMA &&
+        cast<TileOp>(tile.getDefiningOp()).isShimTile()) {
+      AIEDialect::ShareableWithAttrHelper sharing(builder.getContext());
+      if (auto allowed = sharing.getAttr(from))
+        sharing.setAttr(endpoint, allowed);
+    }
+    return endpoint;
   }
 
   /// External buffers registered against a fifo's shim end form a pool in DDR.
@@ -204,7 +217,8 @@ struct AIEObjectFifoSplitPass
         fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr(), /*contiguous=*/false,
-        /*zeroObjects=*/nullptr);
+        /*zeroObjects=*/nullptr,
+        /*out_of_order_tags=*/DenseI32ArrayAttr());
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }
@@ -238,6 +252,27 @@ struct AIEObjectFifoSplitPass
 
   void runOnOperation() override;
 
+  /// Why `fifo` needs DMAs where its ends are placed, or nothing when both
+  /// ends reach the memory module `shared` names.
+  std::optional<StringRef> dmaReason(ObjectFifoCreateOp fifo,
+                                     AIETargetModel::SharedMemory &shared) {
+    std::optional<StringRef> reason = fifo.dmaReason();
+    if (reason)
+      return reason;
+    auto alloc = fifo.getAllocate();
+    bool linked = fifo.getLink().has_value();
+    shared = ObjectFifoCreateOp::sharedMemoryOf(
+        device.getTargetModel(), fifo.getProducerTileOp().getTileID(),
+        cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp()).getTileID(),
+        alloc ? std::optional(alloc->getDelegateTileOp().getTileID())
+              : std::nullopt,
+        linked);
+    if (shared == AIETargetModel::SharedMemory::None)
+      return linked ? "it is linked through a tile's DMAs"
+                    : "its ends share no memory module";
+    return std::nullopt;
+  }
+
   /// Every pool sits on a concrete tile, so the fifo's ends must be placed.
   LogicalResult verifyTilesArePlaced() {
     for (auto fifo : device.getOps<ObjectFifoCreateOp>()) {
@@ -254,6 +289,99 @@ struct AIEObjectFifoSplitPass
                                   "--aie-place-tiles before this pass");
         }
       }
+    }
+    return success();
+  }
+
+  /// Sharing a receiving channel requires the author's explicit opt-in to
+  /// the ordering constraints of out-of-order packet reception.
+  LogicalResult
+  verifyOutOfOrderForSharedChannels(ArrayRef<ObjectFifoCreateOp> fifos) {
+    DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
+        onChannel;
+    for (ObjectFifoCreateOp fifo : fifos) {
+      auto shared = AIETargetModel::SharedMemory::None;
+      if (!dmaReason(fifo, shared))
+        continue;
+      for (auto [index, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
+        ObjectFifoEndPortAttr port = fifo.getConsumerPort(index);
+        if (!port || port.isCore())
+          continue;
+        std::optional<int> pinnedChannel = port.channelIndex();
+        if (!pinnedChannel)
+          continue;
+        int channel = *pinnedChannel;
+        auto tile = consumer.getDefiningOp<TileOp>();
+        if (channel < 0 || !tile)
+          continue;
+        onChannel[{tile.getCol(), tile.getRow(), channel}].push_back(fifo);
+      }
+    }
+    for (auto &[channel, sharing] : onChannel) {
+      if (sharing.size() < 2)
+        continue;
+      for (ObjectFifoCreateOp fifo : sharing) {
+        if (!fifo.getOutOfOrder())
+          return fifo.emitOpError(
+              "shares a receiving channel; explicitly set out_of_order = true "
+              "on its packet transport");
+      }
+    }
+    return success();
+  }
+
+  /// Two fifos pinned to one sending channel can only share it when the core
+  /// pushes a task per object, since a channel cycling on one fifo's buffers
+  /// never reaches the other's, so pinning them together selects that.
+  void selectPushQueueForSharedChannels(ArrayRef<ObjectFifoCreateOp> fifos) {
+    DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
+        onChannel;
+    for (ObjectFifoCreateOp fifo : fifos) {
+      auto shared = AIETargetModel::SharedMemory::None;
+      if (!dmaReason(fifo, shared))
+        continue;
+      ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
+      std::optional<int> channel =
+          port && !port.isCore() ? port.channelIndex() : std::nullopt;
+      auto tile = fifo.getProducerTile().getDefiningOp<TileOp>();
+      // Shared shim transfers are submitted by the runtime.
+      if (!channel || !tile || tile.isShimTile())
+        continue;
+      onChannel[{tile.getCol(), tile.getRow(), *channel}].push_back(fifo);
+    }
+    for (auto &[channel, sharing] : onChannel)
+      if (sharing.size() > 1)
+        for (ObjectFifoCreateOp fifo : sharing)
+          fifo.setReleaseStrategy(ObjectFifoRelease::PushQueue);
+  }
+
+  LogicalResult verifyPushQueueProducers(ArrayRef<ObjectFifoCreateOp> fifos) {
+    for (ObjectFifoCreateOp fifo : fifos) {
+      if (fifo.getReleaseStrategy() != ObjectFifoRelease::PushQueue)
+        continue;
+      auto shared = AIETargetModel::SharedMemory::None;
+      if (!dmaReason(fifo, shared))
+        continue;
+      if (auto values = fifo.getInitValues(); values && !values->empty())
+        return fifo.emitOpError(
+            "push_queue does not support initialized objects");
+      auto tile = fifo.getProducerTileOp();
+      if (!tile.isCoreTile() || fifo.streamsFromProducer() ||
+          device.getTargetModel().getDmaTaskQueueDepth() == 0)
+        return fifo.emitOpError(
+            "push_queue requires a sending DMA on a core tile "
+            "with core-issued task support");
+      bool hasRelease = false;
+      for (CoreOp core : device.getOps<CoreOp>()) {
+        if (core.getTile() == fifo.getProducerTile())
+          core.walk([&](ObjectFifoReleaseOp release) {
+            hasRelease |= release.getObjectFifo() == fifo &&
+                          release.getPort() == ObjectFifoPort::Produce;
+          });
+      }
+      if (!hasRelease)
+        return fifo.emitOpError("push_queue requires producer releases in a "
+                                "local core to submit send tasks");
     }
     return success();
   }
@@ -548,7 +676,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
   SmallVector<ObjectFifoCreateOp> fifos(device.getOps<ObjectFifoCreateOp>());
 
   if (failed(verifyTilesArePlaced()) || failed(verifyStreamPortAccesses()) ||
-      failed(verifyLinkAccesses())) {
+      failed(verifyLinkAccesses()) ||
+      failed(verifyOutOfOrderForSharedChannels(fifos))) {
     return signalPassFailure();
   }
 
@@ -560,6 +689,10 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       plannedEnds[{fifo, consumer}] = fifo.plannedDmaEnd(consumer);
   }
 #endif
+
+  selectPushQueueForSharedChannels(fifos);
+  if (failed(verifyPushQueueProducers(fifos)))
+    return signalPassFailure();
 
   if (failed(createLinkPools()) || failed(verifyAllocateDelegates())) {
     return signalPassFailure();
@@ -576,20 +709,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
             .getElementType());
 
     auto sharedModule = AIETargetModel::SharedMemory::None;
-    std::optional<StringRef> needsDMAs = fifo.dmaReason();
-    if (!needsDMAs) {
-      auto alloc = fifo.getAllocate();
-      bool linked = fifo.getLink().has_value();
-      sharedModule = ObjectFifoCreateOp::sharedMemoryOf(
-          device.getTargetModel(), fifo.getProducerTileOp().getTileID(),
-          cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp()).getTileID(),
-          alloc ? std::optional(alloc->getDelegateTileOp().getTileID())
-                : std::nullopt,
-          linked);
-      if (sharedModule == AIETargetModel::SharedMemory::None)
-        needsDMAs = linked ? "it is linked through a tile's DMAs"
-                           : "its ends share no memory module";
-    }
+    std::optional<StringRef> needsDMAs = dmaReason(fifo, sharedModule);
     if (needsDMAs && fifo.forcesSharedMemory()) {
       fifo.emitOpError("asks for a shared_mem transport, but ") << *needsDMAs;
       return signalPassFailure();

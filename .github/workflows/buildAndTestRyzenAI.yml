@@ -44,7 +44,7 @@ env:
             -DXRT_ROOT=/opt/xilinx/xrt \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
-  LIT_OPTS: -sv --time-tests --timeout 600 --show-unsupported --show-excluded
+  LIT_OPTS: -sv --time-tests --show-unsupported --show-excluded
 
 jobs:
 
@@ -286,8 +286,9 @@ jobs:
     #     the normal single-dispatch path (vector_vector_add IRON +
     #     vector_reduce_max C++).
     runs-on: aie2p-8col
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
+      LIT_OPTS: -v --time-tests --timeout 600
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-hrx-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-hrx-${{ github.run_id }}
       # Token for the (private) HRX release repo. fetch-hrx-release.sh passes it

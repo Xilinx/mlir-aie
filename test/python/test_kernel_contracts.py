@@ -113,21 +113,10 @@ NOT_JUDGED = {
         )
     },
     **{
-        name: "blocks on core locks its design releases, so it is judged only "
-        "inside a design that sets them"
+        name: "one stage of FastFlowLM's fused decode layer: its design drives "
+        "the call sequence and initializes the scratch state"
         for name in kernels.factories()
         if name.startswith("flm_gemma4_decode_")
-    },
-    # Later keys win: these three have a device design of their own.
-    **{
-        name: "blocks on core locks its design releases; "
-        "npu/test_flm_gemma4_decode_locks.py builds a design around them and "
-        "judges it on the device"
-        for name in (
-            "flm_gemma4_decode_attn_kv",
-            "flm_gemma4_decode_gate_layer_embedding",
-            "flm_gemma4_decode_proj_main",
-        )
     },
 }
 
@@ -165,11 +154,11 @@ def test_factories_lists_every_exported_builder():
 
     The rule is the declared return type, so this pins the rule against the
     export list: everything exported that is neither a reference nor one of
-    the two matmul query helpers must be in it.
+    the host helpers must be in it.
     """
     exported = {n for n in kernels.__all__ if inspect.isfunction(getattr(kernels, n))}
     not_builders = {n for n in exported if n.endswith("_ref")}
-    not_builders |= {"mm_stream_dims", "mm_acc_dtype"}
+    not_builders |= {"mm_stream_dims", "mm_acc_dtype", "q4nx_unpack"}
     assert set(kernels.factories()) == exported - not_builders
     assert {"mm", "mv", "cascade_mm", "cascade_mm_put"} <= set(kernels.factories())
     assert kernels.factories() == [

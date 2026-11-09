@@ -30,7 +30,9 @@ This example compares five ways to run or reconfigure one NPU2 device image:
   undoes its own register writes once it is done, in place of the reset before
   the next one.
 - `control-packets`: use one full-ELF dispatch and expand each PDI into control
-  packets at compile time.
+  packets at compile time. As in `expand-load-pdis-teardown`, each
+  configuration undoes its own writes once it is done; the routes that carry
+  the control packets stay in place.
 
 Each benchmark iteration configures an empty design before it configures and
 runs the measured design. `separate-dispatch` requires the CPU to create and

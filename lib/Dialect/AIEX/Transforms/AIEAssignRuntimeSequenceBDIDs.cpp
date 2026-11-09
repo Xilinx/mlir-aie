@@ -78,18 +78,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
-  static std::optional<DmaQueueModel::ChannelKey>
-  otherTokenChannel(Operation *op) {
+  // The channel a raw push, an aiex.npu.push_queue or aiex.npu.dma_memcpy_nd,
+  // queues on, and whether it issues a token.
+  static std::optional<std::pair<DmaQueueModel::ChannelKey, bool>>
+  otherPush(Operation *op) {
     std::optional<DmaQueueModel::ChannelKey> key = rawPushChannel(op);
-    auto push = dyn_cast<NpuPushQueueOp>(op);
-    auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
-    bool issuesToken =
-        push
-            ? push.getIssueToken()
-            : copy && (copy.getIssueToken() ||
-                       (key && (*key)[2] ==
-                                   static_cast<int>(AIE::DMAChannelDir::S2MM)));
-    return issuesToken ? key : std::nullopt;
+    if (!key)
+      return std::nullopt;
+    if (auto push = dyn_cast<NpuPushQueueOp>(op))
+      return std::make_pair(*key, push.getIssueToken());
+    return std::make_pair(
+        *key, cast<NpuDmaMemcpyNdOp>(op).getIssueToken() ||
+                  (*key)[2] == static_cast<int>(AIE::DMAChannelDir::S2MM));
   }
 
   // The channel a raw push, an aiex.npu.push_queue or aiex.npu.dma_memcpy_nd,
@@ -372,9 +372,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         // reuse a token already consumed by one.
         avail[*key] = std::max(0, avail[*key] - 1);
         queue.awaitToken(*key);
-      } else if (auto key = otherTokenChannel(op)) {
-        avail[*key]++;
-        queue.push(*key, true);
+      } else if (auto push = otherPush(op)) {
+        avail[push->first] += push->second;
+        queue.push(push->first, push->second);
       }
       return WalkResult::advance();
     });
@@ -509,6 +509,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // than once may issue a token on only some of its pushes.
   struct StartedTask {
     DMAConfigureTaskOp task;
+    Operation *origin;
     bool issuesToken;
     // Program order of the push, for picking the oldest task to reclaim.
     uint64_t order;
@@ -530,9 +531,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   llvm::DenseMap<Operation *, uint64_t> lastPushOrder;
 
   void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
-                bool issuesToken, DMAStartTaskOp start = {}) {
+                bool issuesToken, Operation *origin,
+                DMAStartTaskOp start = {}) {
     uint64_t order = pushCount++;
-    startedOnChannel[key].tasks.push_back({task, issuesToken, order});
+    startedOnChannel[key].tasks.push_back({task, origin, issuesToken, order});
     if (task) {
       ++startCount[task];
       ++runningCount[task];
@@ -1675,6 +1677,33 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     lastReleaseOf.clear();
   }
 
+  void warnLeaks(AIE::RuntimeSequenceOp sequence) {
+    if (!warnUnreleasedTransfers)
+      return;
+    for (const auto &[key, channel] : startedOnChannel) {
+      SmallVector<Operation *> outstanding;
+      for (const StartedTask &push :
+           llvm::drop_begin(channel.tasks, channel.finished))
+        if (!push.task || (!releasedTasks.contains(push.task) &&
+                           !unloaded.contains(push.task)))
+          outstanding.push_back(push.origin);
+      if (outstanding.empty())
+        continue;
+      auto diag = mlir::emitWarning(sequence.getLoc())
+                  << "may exit with " << outstanding.size()
+                  << " DMA transfer(s) neither awaited nor freed on tile ("
+                  << key[0] << "," << key[1] << ") "
+                  << AIE::stringifyDMAChannelDir(
+                         static_cast<AIE::DMAChannelDir>(key[2]))
+                  << " channel " << key[3]
+                  << "; runtime sequences called by aiex.run must finish using "
+                     "their channels before returning. Await completion, or "
+                     "free tasks whose completion is guaranteed indirectly";
+      diag.attachNote(outstanding.front()->getLoc())
+          << "first outstanding transfer starts here";
+    }
+  }
+
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
     staticBdIds.clear();
@@ -1701,17 +1730,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       // straight-line allocator neither needs to touch nor can validate.
       bool dynamicPool = false;
       bool hasTasks = false;
+      bool hasControlFlow = false;
       seq.walk([&](Operation *op) {
         dynamicPool |= isa<DMABdPoolPopOp>(op);
+        hasControlFlow |= isa<scf::ForOp, scf::IfOp, scf::WhileOp>(op);
         hasTasks |=
             isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, DMAStartBdChainOp,
                 DMAStartTaskOp, DMAAwaitTaskOp, DMAFreeTaskOp>(op);
       });
-      // Already-lowered instruction-only control flow needs no BD allocation.
-      if (dynamicPool || !hasTasks)
+      if (dynamicPool || (!hasTasks && hasControlFlow))
         return WalkResult::advance();
 
-      if (failed(validate(seq)))
+      if (hasTasks && failed(validate(seq)))
         return WalkResult::interrupt();
       resetPerSequenceState();
       indexLockReleases(seq);
@@ -1752,7 +1782,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               return WalkResult::interrupt();
             knownComplete.erase(cfg);
             provenFinished.erase(cfg);
-            notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg), start);
+            notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg), start,
+                     start);
           }
         } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
           noteLoadPdi(load);
@@ -1775,13 +1806,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           if (failed(recycleTask(freeOp.getTask(), freeOp, /*isAwait=*/false)))
             return WalkResult::interrupt();
           frees.push_back(freeOp);
-        } else if (auto key = otherTokenChannel(op)) {
-          notePush(*key, DMAConfigureTaskOp{}, true);
+        } else if (auto push = otherPush(op)) {
+          notePush(push->first, DMAConfigureTaskOp{}, push->second, op);
         }
         return WalkResult::advance();
       });
       if (r.wasInterrupted())
         return WalkResult::interrupt();
+      warnLeaks(seq);
       for (DMAFreeTaskOp freeOp : frees)
         freeOp.erase();
       return WalkResult::advance();

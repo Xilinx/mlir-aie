@@ -259,8 +259,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       continue;
     auto [peerIn, peerOut] =
         totalComputePeers(lt.getOperation(), computePeerAdjacency);
-    int inBudget = lt.getNumSourceConnections(WireBundle::DMA);
-    int outBudget = lt.getNumDestConnections(WireBundle::DMA);
+    auto [inBudget, outBudget] =
+        getDMACapacity(*targetModel, lt.getCanonicalTileID());
     auto [nonPeerIn, nonPeerOut] =
         channelRequirements.lookup(lt.getOperation());
     needNeighborIn[lt.getOperation()] =
@@ -861,8 +861,8 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
 
   if (!hasAvailableChannels(tile, inChannels, outChannels) &&
       !fitsSharingShim(tile, logicalTile, {inChannels, outChannels})) {
-    int maxIn = logicalTile.getNumSourceConnections(WireBundle::DMA);
-    int maxOut = logicalTile.getNumDestConnections(WireBundle::DMA);
+    // The same capacity as hasAvailableChannels, so the message matches it.
+    auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
     int availIn = maxIn - availability.inputChannelsUsed[tile];
     int availOut = maxOut - availability.outputChannelsUsed[tile];
 
@@ -926,6 +926,94 @@ SequentialPlacer::buildChannelRequirements(
         linkTilesOfSource[sym.getValue()].push_back(linkTileOp);
   }
 
+  // Endpoints that pin the same channel share it, so the tile pays for that
+  // channel once. AIEObjectFifoAllocate's sharesChannel() states which
+  // channels may be shared, and why.
+  //
+  // Fully pinned logical tiles at the same coordinates share a physical
+  // channel. Otherwise only endpoints on the very same logical tile share:
+  // that identity constrains them to be placed together.
+  using ChannelKey = std::tuple<Operation *, int, int, int>;
+  auto channelKey = [](LogicalTileOp tile, int channel) -> ChannelKey {
+    auto col = tile.getCol();
+    auto row = tile.getRow();
+    if (col && row)
+      return {nullptr, static_cast<int>(*col), static_cast<int>(*row), channel};
+    return {tile.getOperation(), -1, -1, channel};
+  };
+  llvm::DenseMap<ChannelKey, ObjectFifoCreateOp> sharedOut;
+  auto sharesProducerChannel = [&](ObjectFifoCreateOp fifo,
+                                   LogicalTileOp logicalTile) -> bool {
+    ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
+    std::optional<int> pinned =
+        port && !port.isCore() ? port.channelIndex() : std::nullopt;
+    if (!pinned || !logicalTile)
+      return false;
+    AIETileType type = logicalTile.getTileType();
+    bool coreSender = type == AIETileType::CoreTile &&
+                      !fifo.streamsFromProducer() &&
+                      targetModel->getDmaTaskQueueDepth() > 0;
+    if (type != AIETileType::ShimNOCTile && type != AIETileType::ShimPLTile &&
+        !coreSender)
+      return false;
+    auto [it, fresh] =
+        sharedOut.try_emplace(channelKey(logicalTile, *pinned), fifo);
+    if (fresh)
+      return false;
+    ObjectFifoCreateOp other = it->second;
+    auto reject = [&](const Twine &why) {
+      fifo.emitError() << "shares MM2S channel " << *pinned << " with @"
+                       << other.getSymName() << ", but " << why;
+      return false;
+    };
+    if (!fifo.packetHeader() || !other.packetHeader())
+      return reject("a shared channel carries both at once, which only "
+                    "packet-switched routes tell apart");
+    std::optional<uint16_t> id =
+        fifo.packetHeader() ? fifo.packetHeader().getPktId() : std::nullopt;
+    std::optional<uint16_t> otherId =
+        other.packetHeader() ? other.packetHeader().getPktId() : std::nullopt;
+    if (id && otherId && *id == *otherId)
+      return reject(Twine("both pin packet id ") +
+                    Twine(static_cast<unsigned>(*id)));
+    return true;
+  };
+
+  // The receiving counterpart: out-of-order fifos pinned to one S2MM channel
+  // of a tile share it, and the packet ids keep their objects apart.
+  llvm::DenseMap<ChannelKey, ObjectFifoCreateOp> sharedIn;
+  auto sharesConsumerChannel = [&](ObjectFifoCreateOp fifo, Operation *tileOp,
+                                   unsigned consumer) -> bool {
+    auto logicalTile = dyn_cast_or_null<LogicalTileOp>(tileOp);
+    ObjectFifoEndPortAttr port = fifo.getConsumerPort(consumer);
+    if (!logicalTile || !port || port.isCore() || !port.channelIndex())
+      return false;
+    int channel = *port.channelIndex();
+    if (channel < 0)
+      return false;
+    auto [it, fresh] =
+        sharedIn.try_emplace(channelKey(logicalTile, channel), fifo);
+    if (fresh)
+      return false;
+    ObjectFifoCreateOp other = it->second;
+    auto reject = [&](const Twine &why) {
+      fifo.emitError() << "shares S2MM channel " << channel << " with @"
+                       << other.getSymName() << ", but " << why;
+      return false;
+    };
+    if (!fifo.getOutOfOrder() || !other.getOutOfOrder())
+      return reject("a channel its fifos receive in turn holds their order; "
+                    "out_of_order puts that order in each object's header");
+    std::optional<uint16_t> id =
+        fifo.packetHeader() ? fifo.packetHeader().getPktId() : std::nullopt;
+    std::optional<uint16_t> otherId =
+        other.packetHeader() ? other.packetHeader().getPktId() : std::nullopt;
+    if (id && otherId && *id == *otherId)
+      return reject(Twine("both pin packet id ") +
+                    Twine(static_cast<unsigned>(*id)));
+    return true;
+  };
+
   // Count channels for every ObjectFifo, omitting only the link-tile side of
   // linked fifos. The off-link-tile endpoint still needs DMA: a shim that
   // produces a linked source fifo consumes an MM2S channel; a core that
@@ -942,7 +1030,8 @@ SequentialPlacer::buildChannelRequirements(
     // Check if ANY consumer is a different tile type (needs DMA channel)
     bool producerNeedsDMA = false;
 
-    for (Value consumerTile : ofOp.getConsumerTiles()) {
+    for (auto [consumerIndex, consumerTile] :
+         llvm::enumerate(ofOp.getConsumerTiles())) {
       auto *consumerOp = consumerTile.getDefiningOp();
       auto consumerLogicalTile = dyn_cast_or_null<LogicalTileOp>(consumerOp);
 
@@ -955,17 +1044,19 @@ SequentialPlacer::buildChannelRequirements(
           !ofOp.dmaReason())
         continue;
 
-      // This consumer needs a DMA channel (unless it's a link's tile, which
-      // the link loop credits separately).
-      if (consumerOp && !llvm::is_contained(linkConsumers, consumerOp))
+      // Linked consumers and shared channels are counted separately.
+      if (consumerOp && !llvm::is_contained(linkConsumers, consumerOp) &&
+          !sharesConsumerChannel(ofOp, consumerOp, consumerIndex))
         channelRequirements[consumerOp].first++; // input++
 
       producerNeedsDMA = true;
     }
 
     // Producer needs ONE output channel if any consumer needs DMA (unless the
-    // producer IS the link tile of an outgoing linked dest fifo).
-    if (producerNeedsDMA && producerOp && !skipProducerSide)
+    // producer IS the link tile of an outgoing linked dest fifo, or it shares
+    // an already-counted shared channel).
+    if (producerNeedsDMA && producerOp && !skipProducerSide &&
+        !sharesProducerChannel(ofOp, producerLogicalTile))
       channelRequirements[producerOp].second++; // output++
   }
 
@@ -1000,8 +1091,9 @@ void SequentialPlacer::countTurns(
     auto &[in, out] = requirements[tile];
     for (bool coreDrains : {true, false}) {
       int &need = coreDrains ? in : out;
-      int budget = coreDrains ? tile.getNumSourceConnections(WireBundle::DMA)
-                              : tile.getNumDestConnections(WireBundle::DMA);
+      auto [inBudget, outBudget] =
+          getDMACapacity(*targetModel, tile.getCanonicalTileID());
+      int budget = coreDrains ? inBudget : outBudget;
       if (need <= budget)
         continue;
       llvm::MapVector<Operation *, SmallVector<ObjectFifoCreateOp>> byTile;
@@ -1410,6 +1502,13 @@ Placer::collectShareableShimEnds(DeviceOp device,
       if (Operation *lt = shareable(fifo, consumer, fifo.getConsumerPort(i)))
         ends[lt][0].push_back(fifo.getSymNameAttr());
   }
+  for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+    auto tile = dyn_cast<LogicalTileOp>(endpoint.getTile().getDefiningOp());
+    if (tile && tile.isShimTile() && endpoint.getBundle() == WireBundle::DMA &&
+        !endpoint.getChannelIndex())
+      ends[tile][endpoint.getRouteDirection() == DMAChannelDir::MM2S ? 1 : 0]
+          .push_back(endpoint.getSymNameAttr());
+  }
   return ends;
 }
 
@@ -1478,7 +1577,8 @@ Placer::provenShimGates(DeviceOp device) {
     ObjectFifoTransportAttr transport = fifo.getTransportAttr();
     fifo.setTransportAttr(ObjectFifoTransportAttr::get(
         &context, ObjectFifoTransportMode::DMA,
-        transport ? transport.getPacket() : PacketInfoAttr()));
+        transport ? transport.getPacket() : PacketInfoAttr(),
+        transport && transport.getOutOfOrder()));
   }
   for (auto allocate : llvm::to_vector(clone.getOps<ObjectFifoAllocateOp>()))
     allocate.erase();
@@ -1490,7 +1590,10 @@ Placer::provenShimGates(DeviceOp device) {
     return {};
   DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>> gates;
   MLIRContext *ctx = device.getContext();
-  for (auto &[fifo, proven] : ShimTransferSpans::provenGates(clone))
+  for (auto &[fifo, proven] :
+       ShimTransferSpans::provenGates(clone, [](RouteEndpointOp endpoint) {
+         return endpoint.getFifoNameAttr();
+       }))
     for (const ShimTransferSpans::Gate &gate : proven)
       gates[StringAttr::get(ctx, fifo.getValue())].push_back(
           {StringAttr::get(ctx, gate.input.getValue()), gate.inputBytes,
@@ -1500,6 +1603,10 @@ Placer::provenShimGates(DeviceOp device) {
 
 std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,
                                                         StringAttr symbol) {
+  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
+          SymbolTable::lookupNearestSymbolFrom(device, symbol)))
+    return ShimTransferSpans::End{symbol, endpoint.getRouteDirection() ==
+                                              DMAChannelDir::MM2S};
   auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(
       SymbolTable::lookupNearestSymbolFrom(device, symbol));
   if (!fifo)

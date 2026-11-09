@@ -619,12 +619,14 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 LogicalResult
 ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                                 ObjectFifoTransportMode mode,
-                                PacketInfoAttr packet) {
+                                PacketInfoAttr packet, bool out_of_order) {
   // A packet header rides a stream-switch connection the DMAs drive, so only
   // the paths that may use the DMAs can honour one.
   if (packet && mode == ObjectFifoTransportMode::SharedMem)
     return emitError() << "`packet` belongs to a dma or auto transport, not "
                        << stringifyObjectFifoTransportMode(mode);
+  if (out_of_order && !packet)
+    return emitError() << "`out_of_order` requires a packet transport";
   return success();
 }
 
@@ -701,6 +703,8 @@ LogicalResult ObjectFifoCreateOp::verify() {
   // quietly take the default path instead. Name them to fail that loudly.
   static constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
       replaced[] = {
+          {"out_of_order", "transport = #aie.transport<dma, packet = "
+                           "#aie.packet_info<>, out_of_order = true>"},
           {"via_DMA", "transport = #aie.transport<dma>"},
           {"packet", "transport = #aie.transport<dma, packet = "
                      "#aie.packet_info<>>"},
@@ -1031,7 +1035,9 @@ bool ObjectFifoPoolOp::canWalkWhole() {
                       [&](ObjectFifoDmaEndpointOp end) {
                         auto dims = end.getDimensions();
                         return end.getPoolOp() != *this ||
-                               (!end.getDispatch() &&
+                               (!end.getDispatch() && !end.getOutOfOrder() &&
+                                end.getReleaseStrategy() !=
+                                    ObjectFifoRelease::PushQueue &&
                                 (!end.drains() || !dims || dims->empty() ||
                                  (*dims)[0].getValue().empty()));
                       });
@@ -1127,6 +1133,17 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
   }
   if (failed(verifyEndpoint(*this, pool, getSegments()))) {
     return failure();
+  }
+
+  if (auto push = getCorePushAttr()) {
+    if (drains())
+      return emitOpError("core_push requires a filling core endpoint");
+    if (auto values = pool.getInitValues(); values && !values->empty())
+      return emitOpError("core_push does not support initialized objects");
+    if (push.getBdTags().size() != static_cast<size_t>(pool.getDepth()))
+      return emitOpError("core_push requires one BD tag per pool buffer");
+    if (llvm::any_of(push.getBdTags(), [](int32_t tag) { return tag < 0; }))
+      return emitOpError("core_push requires nonnegative BD tags");
   }
 
   // The core sees one memref, so the segments it selects have to be a single
@@ -1225,7 +1242,9 @@ int64_t ObjectFifoDmaEndpointOp::getRepeat() {
 }
 
 bool ObjectFifoDmaEndpointOp::repeatsInHardware() {
-  return getRepeat() > 1 && getNumDescriptors() == 1 && !getIterCount();
+  return getRepeat() > 1 &&
+         (getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
+          (getNumDescriptors() == 1 && !getIterCount()));
 }
 
 int64_t ObjectFifoDmaEndpointOp::getDispatchPasses() {
@@ -1299,6 +1318,22 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
   }
   if (failed(verifyAssignedPacket(*this, getPacketAttr()))) {
     return failure();
+  }
+
+  if (getReleaseStrategy() == ObjectFifoRelease::PushQueue) {
+    if (!drains() || !getTileLike().isCoreTile() ||
+        getTargetModel(*this).getDmaTaskQueueDepth() == 0)
+      return emitOpError("push_queue requires a sending DMA on a core tile "
+                         "with core-issued task support");
+    if (auto values = pool.getInitValues(); values && !values->empty())
+      return emitOpError("push_queue does not support initialized objects");
+    if (getRepeat() - 1 > getTargetModel(*this).getMaxRepeatCount())
+      return emitOpError(
+          "push_queue repeat_count exceeds the hardware task limit");
+    if (getOutOfOrder() && getRepeat() > 1)
+      return emitOpError(
+          "push_queue cannot repeat out-of-order packets: "
+          "each repetition may need a different destination BD ID");
   }
 
   if (std::optional<ArrayAttr> turns = getDispatch()) {
@@ -2074,20 +2109,29 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
     MemRefType type = cast<AIEObjectFifoType>(fifoType).getElementType();
     return type.getNumElements() * layout.getTypeSize(type.getElementType());
   };
+  auto ordered = [](ObjectFifoCreateOp fifo, bool drains) {
+    return !fifo.getOutOfOrder() &&
+           (!drains ||
+            fifo.getReleaseStrategy() != ObjectFifoRelease::PushQueue);
+  };
   if (!link) {
     int depth = dmaDepth(consumer);
     if (!drains)
-      return PlannedDmaEnd{
-          depth, *this,           static_cast<int>(*consumer),
-          depth, walkable(depth), objectBytes(getConsumerElemTypeOrDefault()),
-          0};
+      return PlannedDmaEnd{depth,
+                           *this,
+                           static_cast<int>(*consumer),
+                           depth,
+                           walkable(depth) && ordered(*this, false),
+                           objectBytes(getConsumerElemTypeOrDefault()),
+                           0};
     int64_t repeat = getRepeatCount().value_or(1);
     bool inHardware = repeat > 1 && depth == 1 && !getIterCount();
     return PlannedDmaEnd{depth * (inHardware ? 1 : repeat),
                          *this,
                          -1,
                          depth,
-                         walkable(depth) && !getRepeatCount() &&
+                         walkable(depth) && ordered(*this, true) &&
+                             !getRepeatCount() &&
                              getDimensionsToStream().empty(),
                          objectBytes(getElemType()),
                          0};
@@ -2131,13 +2175,21 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
       llvm::any_of(link.getOutputObjectFifos(), [](ObjectFifoCreateOp out) {
         return !out.getDimensionsToStream().empty();
       });
+  // A merge's one fill end is made for its first output.
+  bool linkOrdered =
+      llvm::all_of(
+          link.getOutputObjectFifos(),
+          [&](ObjectFifoCreateOp out) { return ordered(out, true); }) &&
+      (link.isMerge() ||
+       llvm::all_of(link.getInputObjectFifos(),
+                    [&](ObjectFifoCreateOp in) { return ordered(in, false); }));
   return PlannedDmaEnd{descriptors * (inHardware ? 1 : repeat) * passes,
                        link,
                        -1,
                        depth,
                        walkable(depth) && segments == 1 &&
                            !link.getRepeatCount() && !link.walksStream() &&
-                           !link.isDispatch() && !drainLaysOut,
+                           !link.isDispatch() && !drainLaysOut && linkOrdered,
                        objectBytes(link.getPoolOwner().getElemType()),
                        contiguousObjects};
 }
@@ -3442,6 +3494,23 @@ LogicalResult DeviceOp::verify() {
   return success();
 }
 
+LogicalResult DeviceOp::verifyRegions() {
+  // Region verification follows all child invariants, including the joined
+  // verification of isolated children. Named uses may safely inspect forward
+  // definitions here. The collection belongs only to this verification sweep.
+  NamedOpTableCollection names;
+  WalkResult result = getOperation()->walk<WalkOrder::PreOrder>(
+      [&](Operation *op) -> WalkResult {
+        if (op != getOperation() && isa<DeviceOp>(op))
+          return WalkResult::skip();
+        if (auto user = dyn_cast<NamedOpUserOpInterface>(op))
+          if (failed(user.verifyNamedOpUses(names)))
+            return WalkResult::interrupt();
+        return WalkResult::advance();
+      });
+  return failure(result.wasInterrupted());
+}
+
 const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
 }
@@ -4069,6 +4138,55 @@ LogicalResult PacketFlowOp::verify() {
 //===----------------------------------------------------------------------===//
 // CoreOp
 //===----------------------------------------------------------------------===//
+
+/// The channels a core's own tile has in `direction`.
+static uint32_t channelsOfOwnTile(TileOp tile, DMAChannelDir direction,
+                                  const AIETargetModel &targetModel) {
+  int col = tile.getCol(), row = tile.getRow();
+  if (direction == DMAChannelDir::MM2S)
+    return targetModel.getNumSourceSwitchboxConnections(col, row,
+                                                        WireBundle::DMA);
+  return targetModel.getNumDestSwitchboxConnections(col, row, WireBundle::DMA);
+}
+
+LogicalResult DmaPushQueueOp::verify() {
+  if (getOutOfOrder() && getDirection() != DMAChannelDir::S2MM)
+    return emitOpError("out_of_order is only supported on S2MM channels");
+  if (getBdId().has_value() == getBdTag().has_value())
+    return emitOpError("names the descriptor it pushes either by bd_id or, "
+                       "before aie-assign-bd-ids runs, by bd_tag");
+  auto core = (*this)->getParentOfType<CoreOp>();
+  const AIETargetModel &targetModel = getTargetModel(*this);
+  if (auto tile = core.getTile().getDefiningOp<TileOp>()) {
+    uint32_t channels = channelsOfOwnTile(tile, getDirection(), targetModel);
+    if (getChannel() >= static_cast<int32_t>(channels))
+      return emitOpError("pushes onto ")
+             << stringifyDMAChannelDir(getDirection()) << " channel "
+             << getChannel() << ", but tile (" << tile.getCol() << ", "
+             << tile.getRow() << ") has " << channels;
+  }
+  uint32_t maxRepeat = targetModel.getMaxRepeatCount();
+  if (getRepeatCount() < 0 ||
+      static_cast<uint32_t>(getRepeatCount()) > maxRepeat)
+    return emitOpError("repeat_count must be in [0, ") << maxRepeat << "]";
+  return success();
+}
+
+LogicalResult DmaPollForQueueSpaceOp::verify() {
+  auto core = (*this)->getParentOfType<CoreOp>();
+  const AIETargetModel &targetModel = getTargetModel(*this);
+  if (auto tile = core.getTile().getDefiningOp<TileOp>()) {
+    uint32_t channels = channelsOfOwnTile(tile, getDirection(), targetModel);
+    if (getChannel() >= static_cast<int32_t>(channels))
+      return emitOpError("waits on ")
+             << stringifyDMAChannelDir(getDirection()) << " channel "
+             << getChannel() << ", but tile (" << tile.getCol() << ", "
+             << tile.getRow() << ") has " << channels;
+  }
+  if (targetModel.getDmaTaskQueueDepth() == 0)
+    return emitOpError("waits on a task queue, which this device has none of");
+  return success();
+}
 
 LogicalResult CoreOp::verify() {
   if (getBody().empty())
@@ -4799,6 +4917,8 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*out_of_order_id=*/nullptr,
+        /*bd_tag=*/nullptr,
+        /*out_of_order_tag=*/nullptr,
         /*burst_length=*/nullptr,
         /*axcache=*/nullptr,
         /*iteration=*/nullptr,

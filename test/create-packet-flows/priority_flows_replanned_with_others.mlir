@@ -11,18 +11,17 @@
 // Routed alone, prioritized flows 7 and 19 share arbiter 5 at (3,2). Flow 30
 // follows flow 7 onto its arbiter there, and flow 19 can hold that arbiter
 // while draining its receiver waits on the circuit into (3,3), which waits on
-// flow 30. No plan keeps the overlay's own arbiters, so without a
-// control-packet reload, which would keep them, the router plans the overlay
-// jointly with the other flows.
+// flow 30. The router must plan the prioritized flows' arbiters jointly
+// with the other flows.
 // Reduced from router_properties.py npu2 seed 198.
 
 // CHECK-LABEL: aie.switchbox(%tile_3_2)
 // CHECK-DAG:     %[[A4:.*]] = aie.amsel<4> (3)
 // CHECK-DAG:     %[[A5:.*]] = aie.amsel<5> (3)
 // CHECK:         aie.packet_rules(Core : 0) {
-// CHECK-NEXT:      aie.rule(31, 19, %[[A5]]) {aie.priority_route}
+// CHECK-NEXT:      aie.rule(31, 19, %[[A5]])
 // CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(31, 7, %[[A4]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:      aie.rule(31, 7, %[[A4]]) {aie.priority_route}
 // CHECK-NEXT:      aie.rule(31, 30, %[[A4]])
 
 // WARN-NOT: {{warning|error}}

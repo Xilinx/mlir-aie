@@ -38,6 +38,8 @@
 #include "Graph.h"
 #include "IRTransforms.h"
 #include "Items.h"
+#include "OverlayCoverage.h"
+#include "Provenance.h"
 #include "SidecarFiles.h"
 #include "Tools.h"
 #include "Utils.h"
@@ -1026,6 +1028,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto matchesDeviceFilter = [keptDevices =
                                   std::move(keptDevices)](DeviceOp d) {
+    if (xilinx::AIE::AIEDialect::IsCtrlPktOverlayAttrHelper(d.getContext())
+            .isAttrPresent(d))
+      return d.getSymName() == deviceName.getValue() ||
+             (loadPdiToCtrlPkt && wantFullElf);
     // Empty reset devices synthesized by --expand-load-pdis must always be
     // included, regardless of --device-name.
     return keptDevices.empty() || d.getSymName().starts_with("empty_") ||
@@ -1106,20 +1112,36 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Everything a core needs before it can be compiled: objectFifo lowering
   // (which creates buffers), lock and BD ids, and the core-body lowerings.
   // Buffer addresses are not among them; see the placement edge below.
-  auto &withSymbols = traced.map<ModRef>(
-      kWithSymbolsEdge.str(),
-      PassPipeline{
-          &context,
-          [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
-           ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
-           ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
-           skipVerify = skipObjectFifoVerify.getValue(),
-           opt = optLevel.getValue()](mlir::MLIRContext *ctx,
-                                      mlir::ModuleOp mod) {
-            return getInputWithAddressesPipeline(ctx, mod, dyn, pkt, ctrl, bf16,
-                                                 opt, ldpdi, skipVerify,
-                                                 /*assignAddresses=*/false);
-          }});
+  const bool ctrlOverlay =
+      ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue();
+  auto withSymbolsPipeline =
+      [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
+       ctrl = ctrlOverlay, ldpdi = loadPdiToCtrlPkt.getValue(),
+       bf16 = bf16Emulation.getValue(),
+       skipVerify = skipObjectFifoVerify.getValue(), opt = optLevel.getValue(),
+       queueSpace = checkQueueSpace.getValue(),
+       adaptiveOverlay = ctrlpktAdaptiveOverlay.getValue()](
+          mlir::MLIRContext *ctx, mlir::ModuleOp mod,
+          llvm::ArrayRef<int> coverColumns) {
+        return getInputWithAddressesPipeline(
+            ctx, mod, dyn, pkt, ctrl, bf16, opt, ldpdi, skipVerify,
+            /*assignAddresses=*/false, coverColumns, adaptiveOverlay,
+            queueSpace);
+      };
+  auto routedCache = std::make_shared<RoutedCache>();
+  using ModEdge = EdgeWithTypedOutput<ModRef>;
+  auto &withSymbols =
+      ctrlOverlay
+          ? static_cast<ModEdge &>(traced.map<ModRef>(
+                kWithSymbolsEdge.str(),
+                OverlayCoverage{&context, withSymbolsPipeline, routedCache}))
+          : static_cast<ModEdge &>(traced.map<ModRef>(
+                kWithSymbolsEdge.str(),
+                PassPipeline{&context,
+                             [withSymbolsPipeline](mlir::MLIRContext *ctx,
+                                                   mlir::ModuleOp mod) {
+                               return withSymbolsPipeline(ctx, mod, {});
+                             }}));
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withSymbols.map<std::string>(
@@ -1130,8 +1152,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return txt;
       });
 
-  auto &routed = withSymbols.map<ModRef>(
-      kRoutedEdge.str(), PassPipeline{getRoutingPipeline(&context)});
+  auto &routed =
+      ctrlOverlay
+          ? static_cast<ModEdge &>(withSymbols.map<ModRef>(
+                kRoutedEdge.str(), CachedRouting{&context, routedCache}))
+          : static_cast<ModEdge &>(withSymbols.map<ModRef>(
+                kRoutedEdge.str(), PassPipeline{getRoutingPipeline(&context)}));
 
   // The device cache's key and every compile or link of a core read the files
   // the cores link; all of them are downstream of this view.
@@ -2089,7 +2115,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 #ifdef AIECC_HAS_AIEBU_LIBRARY
   auto &ctrlpktElf =
       bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
-          .map<File>(ctrlpktElfOutName,
+          .map<File>(llvm::sys::path::filename(ctrlpktElfOutName).str() +
+                         ".unstamped",
                      [](const Item<std::vector<char>> &dmaSeqItem,
                         const Item<std::vector<char>> &ctrlItem,
                         const Item<llvm::json::Value> &patchItem,
@@ -2100,18 +2127,21 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                           llvm::StringRef(patch), out, verbose);
                      });
 #else
-  auto &ctrlpktElf = bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
-                         .map<File>(ctrlpktElfOutName, ShellCommand{"aiebu-asm"}
-                                                           .arg("-t")
-                                                           .arg("aie2txn")
-                                                           .arg("-c")
-                                                           .input()
-                                                           .arg("-p")
-                                                           .input()
-                                                           .arg("-j")
-                                                           .input()
-                                                           .arg("-o")
-                                                           .output());
+  auto &ctrlpktElf =
+      bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
+          .map<File>(llvm::sys::path::filename(ctrlpktElfOutName).str() +
+                         ".unstamped",
+                     ShellCommand{"aiebu-asm"}
+                         .arg("-t")
+                         .arg("aie2txn")
+                         .arg("-c")
+                         .input()
+                         .arg("-p")
+                         .input()
+                         .arg("-j")
+                         .input()
+                         .arg("-o")
+                         .output());
 #endif // AIECC_HAS_AIEBU_LIBRARY
 
   // Per-device xclbin (memory topology + kernel metadata + PDI partition).
@@ -2351,22 +2381,23 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // loaded alongside an xclbin. It reuses the per-sequence instruction binary
   // already produced by `npuInsts` rather than re-translating the module.
 #ifdef AIECC_HAS_AIEBU_LIBRARY
-  auto &instElf =
-      npuInsts.map<File>(elfName.getValue(),
-                         [](const Item<std::vector<char>> &item,
-                            Item<File> &out) -> mlir::LogicalResult {
-                           return assembleElf(item.get(), /*buffer2=*/{},
-                                              /*patchJson=*/{}, out, verbose);
-                         });
+  auto &instElf = npuInsts.map<File>(
+      llvm::sys::path::filename(elfName.getValue()).str() + ".unstamped",
+      [](const Item<std::vector<char>> &item,
+         Item<File> &out) -> mlir::LogicalResult {
+        return assembleElf(item.get(), /*buffer2=*/{},
+                           /*patchJson=*/{}, out, verbose);
+      });
 #else
-  auto &instElf =
-      npuInsts.map<File>(elfName.getValue(), ShellCommand{"aiebu-asm"}
-                                                 .arg("-t")
-                                                 .arg("aie2txn")
-                                                 .arg("-c")
-                                                 .input()
-                                                 .arg("-o")
-                                                 .output());
+  auto &instElf = npuInsts.map<File>(
+      llvm::sys::path::filename(elfName.getValue()).str() + ".unstamped",
+      ShellCommand{"aiebu-asm"}
+          .arg("-t")
+          .arg("aie2txn")
+          .arg("-c")
+          .input()
+          .arg("-o")
+          .output());
 #endif // AIECC_HAS_AIEBU_LIBRARY
 
   //--------------------------------------------------------------------------//
@@ -2570,7 +2601,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       bundle(fullElfConfig.out, npuInstsFullElf.out, fullElfCtrlpkt.out,
              fullElfPatchInfo.out)
           .join<File>(
-              fullElfName.getValue(),
+              llvm::sys::path::filename(fullElfName.getValue()).str() +
+                  ".unstamped",
               [fullElfInputPath](const Node<llvm::json::Value> &config,
                                  const Node<std::vector<char>> &instsBins,
                                  const Node<std::vector<char>> &ctrlPkts,
@@ -2605,14 +2637,15 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                        out, verbose);
               });
 #else
-  auto &fullElf =
-      fullElfConfig.map<File>(fullElfName.getValue(), ShellCommand{"aiebu-asm"}
-                                                          .arg("-t")
-                                                          .arg("aie2_config")
-                                                          .arg("-j")
-                                                          .input()
-                                                          .arg("-o")
-                                                          .output());
+  auto &fullElf = fullElfConfig.map<File>(
+      llvm::sys::path::filename(fullElfName.getValue()).str() + ".unstamped",
+      ShellCommand{"aiebu-asm"}
+          .arg("-t")
+          .arg("aie2_config")
+          .arg("-j")
+          .input()
+          .arg("-o")
+          .output());
 #endif // AIECC_HAS_AIEBU_CONFIG_ELF
 
   //--------------------------------------------------------------------------//
@@ -2636,6 +2669,47 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // AIE simulator Work folder
   //--------------------------------------------------------------------------//
   auto &aiesim = buildAiesimSubgraph(context, staticPerDevice, aieInc);
+
+  auto &provenance = withDefaultStackSize.map<std::string>(
+      "provenance.json", [](const ModRef &mod) {
+        llvm::json::Object info{{"revision", AIECC_GIT_SHA}};
+        if (auto iron = mod.get()->getAttrOfType<mlir::DictionaryAttr>(
+                "iron.provenance")) {
+          llvm::json::Object fields;
+          for (auto field : iron)
+            if (auto value = llvm::dyn_cast<mlir::StringAttr>(field.getValue()))
+              fields[field.getName().getValue()] = value.getValue();
+          info["iron"] = std::move(fields);
+        }
+        return llvm::formatv("{0}", llvm::json::Value(std::move(info))).str();
+      });
+  auto stampElf =
+      [&](EdgeWithTypedOutput<File> &elf,
+          const std::string &name) -> EdgeWithTypedOutput<std::vector<char>> & {
+    auto &metadata = elf.rekeyFrom(
+        llvm::sys::path::filename(name).str() + ".provenance.json",
+        provenance.out, [](const File &) { return "input.mlir"; });
+    return bundle(elf.out, metadata.out)
+        .map<std::vector<char>>(name, [](const Item<File> &in,
+                                         const Item<std::string> &info,
+                                         Item<std::vector<char>> &out) {
+          if (dryRun) {
+            out.value.emplace();
+            return mlir::success();
+          }
+          auto stamped = stampElfProvenance(in.asFile(), info.get());
+          if (!stamped) {
+            llvm::errs() << "aiecc: " << llvm::toString(stamped.takeError())
+                         << "\n";
+            return mlir::failure();
+          }
+          out.value = std::move(*stamped);
+          return mlir::success();
+        });
+  };
+  auto &stampedInstElf = stampElf(instElf, elfName.getValue());
+  auto &stampedCtrlpktElf = stampElf(ctrlpktElf, ctrlpktElfOutName);
+  auto &stampedFullElf = stampElf(fullElf, fullElfName.getValue());
 
   //--------------------------------------------------------------------------//
   // Output selection
@@ -2685,7 +2759,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // generated: in that case the combined control-packet ELF (produced below)
   // is the artifact written to --elf-name.
   if (generateElf && !generateCtrlpkt) {
-    outputs.push_back(&instElf);
+    outputs.push_back(&stampedInstElf);
   }
   if (generateCdo) {
     outputs.push_back(&cdo);
@@ -2702,13 +2776,13 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   if (generateCtrlpkt && !(loadPdiToCtrlPkt && generateFullElf)) {
     outputs.push_back(&ctrlpkt);
     outputs.push_back(&ctrlpktDmaSeq);
-    outputs.push_back(&ctrlpktElf);
+    outputs.push_back(&stampedCtrlpktElf);
   }
   if (generateXclbin) {
     outputs.push_back(&xclbin);
   }
   if (generateFullElf) {
-    outputs.push_back(&fullElf);
+    outputs.push_back(&stampedFullElf);
   }
   // AIE simulator Work folder: only when explicitly requested. The aggregator
   // edge pulls in and materializes every sim/ artifact.
@@ -2904,6 +2978,14 @@ int main(int argc, char **argv) {
   if (!cli::resolveOptions(resume.active)) {
     return 1;
   }
+  // --reconfig-teardown's default under --load-pdi-to-ctrl-pkt depends on the
+  // outputs, which a resume may select differently, so a checkpoint records
+  // the resolved value.
+  if (!resume.active && cli::loadPdiToCtrlPkt &&
+      !cli::reconfigTeardown.getNumOccurrences())
+    graphArgv.insert(llvm::find(graphArgv, "--"),
+                     cli::reconfigTeardown ? "--reconfig-teardown=true"
+                                           : "--reconfig-teardown=false");
   verifyEachPass = verifyEach;
 
   if (checkLutBanks && (xchesscc || xbridge)) {

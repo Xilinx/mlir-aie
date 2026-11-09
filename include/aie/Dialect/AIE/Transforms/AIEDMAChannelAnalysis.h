@@ -34,6 +34,11 @@ class DMAChannelAnalysis {
   /// a pinned request may still claim one.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
       streamedChannels;
+  /// Channels whose claimants all share them. Several packet-switched sources
+  /// coexist on one; a circuit claim is exclusive.
+  mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> sharedChannels;
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
+      shareableChannels;
   /// The first claimant of a core stream port, and whether only packets use
   /// it; circuit occupancy is exclusive.
   struct StreamClaim {
@@ -65,11 +70,12 @@ public:
   /// Claim `channel` for (`tile`, `dir`) so first-free assignment cannot take
   /// it. Returns the channel, or -1 when it is out of range or already
   /// claimed; the caller reports, since it knows which endpoint asked.
+  /// `shareable` claimants join a channel other shareable ones hold.
   int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel,
-                           mlir::Operation *owner = nullptr);
+                           mlir::Operation *owner = nullptr,
+                           bool shareable = false);
 
-  /// Operation reserving this channel, or else the flow routing it; null if
-  /// neither.
+  /// Operation reserving or routing this channel; null if none.
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 

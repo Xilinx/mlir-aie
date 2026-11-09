@@ -52,16 +52,12 @@ private:
 /// Placement algorithm type for pass option
 enum class PlacerType { SequentialPlacer, SAPlacer };
 
-/// Get DMA channel capacity (maxIn, maxOut) for a tile position.
+/// Get DMA channel capacity (maxIn, maxOut) for a tile position: its S2MM and
+/// MM2S channel counts.
 inline std::pair<int, int> getDMACapacity(const AIETargetModel &tm,
                                           TileID tile) {
-  if (tile.row == 0)
-    return {
-        tm.getNumDestShimMuxConnections(tile.col, tile.row, WireBundle::DMA),
-        tm.getNumSourceShimMuxConnections(tile.col, tile.row, WireBundle::DMA)};
-  return {
-      tm.getNumDestSwitchboxConnections(tile.col, tile.row, WireBundle::DMA),
-      tm.getNumSourceSwitchboxConnections(tile.col, tile.row, WireBundle::DMA)};
+  return {tm.getNumDMAChannels(tile.col, tile.row, DMAChannelDir::S2MM),
+          tm.getNumDMAChannels(tile.col, tile.row, DMAChannelDir::MM2S)};
 }
 
 // Streams through the North and South ports of a tile's stream switch.

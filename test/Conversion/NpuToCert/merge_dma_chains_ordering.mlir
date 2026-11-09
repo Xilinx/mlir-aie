@@ -23,7 +23,7 @@
 // CHECK-NEXT: }
 // CHECK:      aiex.cert.job(1) {
 // CHECK-NEXT:   aiex.cert.uc_dma_write_des_sync(@c1_barrier)
-// CHECK-NEXT:   aiex.cert.local_barrier(0, 2)
+// CHECK-NEXT:   aiex.cert.local_barrier(lb0, 2)
 // CHECK-NEXT:   aiex.cert.uc_dma_write_des_sync(@c2_barrier)
 // CHECK-NEXT: }
 aie.device(npu2) {
@@ -34,7 +34,7 @@ aie.device(npu2) {
   aiex.cert.page {
     aiex.cert.job(1) {
       aiex.cert.uc_dma_write_des_sync(@c1_barrier)
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
       aiex.cert.uc_dma_write_des_sync(@c2_barrier)
     }
   }
@@ -52,7 +52,7 @@ aie.device(npu2) {
 // CHECK-NEXT: }
 // CHECK:      aiex.cert.job(1) {
 // CHECK-NEXT:   aiex.cert.uc_dma_write_des_sync(@c1_remote)
-// CHECK-NEXT:   aiex.cert.remote_barrier(1, 3)
+// CHECK-NEXT:   aiex.cert.remote_barrier(rb1, 3)
 // CHECK-NEXT:   aiex.cert.uc_dma_write_des_sync(@c2_remote)
 // CHECK-NEXT: }
 aie.device(npu2) {
@@ -63,7 +63,7 @@ aie.device(npu2) {
   aiex.cert.page {
     aiex.cert.job(1) {
       aiex.cert.uc_dma_write_des_sync(@c1_remote)
-      aiex.cert.remote_barrier(1, 3)
+      aiex.cert.remote_barrier(rb1, 3)
       aiex.cert.uc_dma_write_des_sync(@c2_remote)
     }
   }

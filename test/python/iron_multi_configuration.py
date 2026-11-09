@@ -31,7 +31,7 @@ seq_a_with_scalar = Runtime(
 seq_b = Runtime(child_sequence, [Out4], name="seq_b")
 
 
-# CHECK: module attributes {iron.configuration_count = 3 : i32, iron.entry = "main:sequence"}
+# CHECK: module attributes {iron.configuration_count = 3 : i32, iron.entry = "main:sequence", iron.provenance =
 # CHECK: aie.device(npu2_1col) {
 # CHECK: aie.runtime_sequence(%[[OUT:.*]]: memref<8xi32>, %[[VALUE:.*]]: i32)
 def coordinator(out, value):
@@ -82,7 +82,11 @@ Program.compose([explicit_config, generated_config], entry=explicit_runtime)
 assert generated_config.name == "device_1"
 assert generated_runtime.name == "sequence_1"
 
-for option in ("expand_load_pdis", "reconfig_teardown", "reconfig_init_entry"):
+for option in (
+    "expand_load_pdis",
+    "reconfig_teardown",
+    "reconfig_init_entry",
+):
     for value in (None, False, True):
         option_runtime = Runtime(lambda: None, [])
         option_module = Program(

@@ -463,38 +463,63 @@ When a shim tile runs out of channels, shim ends that are never in flight
 together take turns on one channel instead. Ends that different runtime
 sequences use never are: one dispatch runs one sequence and is taken to finish
 its transfers before the next starts, the same contract that lets one design
-be dispatched twice in a row. Within one sequence, a receiving (S2MM) end's
-transfers must be awaited or freed (`aiex.dma_free_task`) before the other's
-first is issued, and an end used inside a loop counts as in flight for the
-whole loop. A sending (MM2S) end stays in flight to the end of its sequence:
-a shim MM2S task reports itself complete once the shim has read its data, up
-to about 1580 words before they have entered the stream (measured on npu2),
-so awaiting it proves nothing about a later transfer queued behind it.
+be dispatched twice in a row. An `aiex.run` call is assumed to finish its
+transfers before returning, so disjoint calls can share, and configuration
+completes before the configure body starts, so control and application MM2S
+transfers in separate phases can share as well. A sending (MM2S) end stays in
+flight to the end of its sequence: a shim MM2S task reports itself complete
+once the shim has read its data, up to about 1580 words before they have
+entered the stream (measured on npu2), so awaiting it proves nothing about a
+later transfer queued behind it.
 
 A receiving end's turns also depend on the array, not just on the host: a shim
 S2MM channel writes whatever arrives into the task it is running, so if the
 array sent a receiving end's words during another end's turn, they would land
-in the other end's buffer. Ends whose senders run freely therefore never
-share, in one sequence or across sequences, since cores keep running between
-dispatches. A receiving end shares only where its senders wait on a gate: a
-shim input that `--aie-objectfifo-verify` proves they consume before sending,
-recording a `#aie.consumed_by` on the input's endpoint. In each sequence that
-issues the gate, the host must also drain the end, awaiting every byte the gate
-lets its senders send, so nothing spills into the next turn; the transfer
-sizes must be static for that count. Within one sequence, the gate must be
-issued only after the end before it is awaited: freeing a task does not wait
-for it, and an await under a branch, or in a loop that may not run, may never
-happen. Without `--aie-objectfifo-verify` there are no proofs, so no
-receiving end shares. The placers run before split, so they find the proofs
-by running split and verify on a copy of the design with every fifo between
-two tiles on DMA (placement can move to shared memory only a fifo whose proof
-holds the same there), and share a receiving end only under them. An end no runtime
-sequence names is never shared. Only as many ends share as the tile
-needs. The routes of ends sharing a channel become packet-switched, with ids
-that differ from one another; other shared channels reuse the same ids, as the
-router keeps flows with one id apart wherever their destinations differ. Each
-end keeps its own `aie.shim_dma_allocation`, so every transfer stamps its own
-header. A design that fits without sharing is lowered exactly as before.
+in the other end's buffer. Awaiting or freeing receive tasks alone does not
+order the independent cores or DMAs that send them. A receiving end therefore
+shares only by explicit permission (`aie.shareable_with`, below) or where its
+senders wait on a gate: a shim input that `--aie-objectfifo-verify` proves
+they consume before sending, recording a `#aie.consumed_by` on the input's
+endpoint. In each sequence that issues the gate, the host must also drain the
+end, awaiting every byte the gate lets its senders send, so nothing spills into
+the next turn; the transfer sizes must be static for that count. Within one
+sequence, the gate must be issued only after the end before it is awaited:
+freeing a task does not wait for it, and an await under a branch, or in a loop
+that may not run, may never happen. Without `--aie-objectfifo-verify` there
+are no proofs, so no receiving end shares without permission. The placers run
+before split, so they find the proofs by running split and verify on a copy of
+the design with every fifo between two tiles on DMA (placement can move to
+shared memory only a fifo whose proof holds the same there), and share a
+receiving end only under them. An end no runtime sequence names is never
+shared.
+
+With explicit permission the author guarantees instead that packets reach the
+shared channel in the order and quantities the receives expect, including
+across repeated executions. On an unsplit objectFIFO, the attribute names
+other objectFIFOs; on a route endpoint, it names other route endpoints. Both
+ends must permit the pairing:
+
+```mlir
+aie.objectfifo @a(%core_a, {%shim}, 2 : i32) {aie.shareable_with = [@b]} : !aie.objectfifo<memref<16xi32>>
+aie.objectfifo @b(%core_b, {%shim}, 2 : i32) {aie.shareable_with = [@a]} : !aie.objectfifo<memref<16xi32>>
+```
+
+Splitting copies these permissions to the shim route endpoints and rewrites the
+references. Explicit lists override the analysis above; `[]` disallows sharing.
+A shim DMA allocation's list instead permits named route endpoints to use its
+fixed channel. Hardware and routing constraints apply in all cases.
+
+Only as many ends share as the tile needs. The routes of ends sharing a
+channel become packet-switched, with ids that differ from one another; other
+shared channels reuse the same ids, as the router keeps flows with one id
+apart wherever their destinations differ. Each end keeps its own
+`aie.shim_dma_allocation`. MM2S transfers stamp their endpoint's packet
+header; S2MM descriptors do not select packets by ID. A design that fits
+without sharing is lowered exactly as before.
+
+The runtime BD allocator warns about transfers left neither awaited nor freed
+at sequence exit (`warn-unreleased-transfers`, enabled by default in the pass
+and `aiecc`).
 
 When a compute or mem tile runs out of channels, DMA endpoints whose objects
 one core needs in a fixed order take turns on one channel instead, in that
@@ -582,6 +607,21 @@ trip count is not a multiple of the depth, keeps them in memory instead, where
 LLVM's SROA turns them into loop-carried buffer pointers. A pool with a single
 object hands that object out directly. AIE1 binary locks travel with their
 objects, so they are still selected by a rotating index.
+
+A release that generates DMA queue pushes can carry `assume_queue_space`:
+
+```mlir
+aie.objectfifo.release {assume_queue_space} @of1 (Produce, 1)
+```
+
+In IRON, write `handle.release(1, assume_queue_space=True)`. This is a
+programmer assertion that every push generated by this release has room on its
+queue on every execution, including releases of multiple objects. It omits
+queue-space polling for this release alone; the pushes and buffer locks remain.
+It applies both to `push_queue` senders and to releases that replenish an
+out-of-order receiving channel. If the assertion is wrong, the hardware can
+discard a task pushed onto a full queue and the program can stall. Without the
+attribute, the usual compiler analysis and queue checks apply.
 
 ### 7. `--aie-objectfifo-erase-pools`
 
