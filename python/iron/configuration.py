@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import collections
 import itertools
+import logging
 from collections.abc import Sequence
 from contextlib import contextmanager
 
@@ -32,10 +34,13 @@ from .dataflow.objectfifo import ObjectFifoLink
 from .dataflow.objectfifopool import ObjectFifoPoolHandle
 from .device import Device, NamedDevice
 from .kernel import Kernel
+from .lock import Lock
 from .resolvable import DeviceResources, PerDeviceConfiguration, Resolvable
 from .runtime import Runtime
 from .runtime._context import active_configuration, active_configuration_scope
 from .scratchpad_parameter import ScratchpadParameter
+
+logger = logging.getLogger(__name__)
 
 
 def _pool_symbols(pool):
@@ -216,13 +221,15 @@ class DeviceConfiguration(DeviceResources):
         self._claim(resource, self._owners)
         self._claim(resource.tile, self._owners)
 
-    def _claim_fifo_graph(self, handle, owners, visited=None) -> None:
+    def _claim_fifo_graph(self, handle, owners, visited=None, reached=None) -> None:
         if visited is None:
             visited = set()
         fifo = handle._object_fifo
         if id(fifo) in visited:
             return
         visited.add(id(fifo))
+        if reached is not None:
+            reached.append(fifo)
         self._claim(fifo, owners)
         runtime_handles = {
             runtime_handle
@@ -243,7 +250,7 @@ class DeviceConfiguration(DeviceResources):
                 pass
             elif not isinstance(endpoint, ObjectFifoLink):
                 raise ValueError(
-                    f"ObjectFifo {fifo.name!r} has an endpoint outside device "
+                    f"ObjectFifo {fifo.display_name!r} has an endpoint outside device "
                     f"configuration {self.name!r}."
                 )
             if isinstance(endpoint, PerDeviceConfiguration):
@@ -252,7 +259,7 @@ class DeviceConfiguration(DeviceResources):
                 self._claim(endpoint, owners)
                 for linked in [*endpoint._srcs, *endpoint._dsts]:
                     if linked._object_fifo is not fifo:
-                        self._claim_fifo_graph(linked, owners, visited)
+                        self._claim_fifo_graph(linked, owners, visited, reached)
 
     @property
     def name(self) -> str | None:
@@ -364,6 +371,37 @@ class DeviceConfiguration(DeviceResources):
         taken.update(flow.name for flow in self._flows if flow.name is not None)
         for pool in pools:
             taken.update(name for name in _pool_symbols(pool) if name is not None)
+        taken.update(worker.name for worker in self._workers if worker.name)
+        # Symbols the device holds besides the objects named here: kernels,
+        # runtime sequences and scratchpad parameters. A variable that shares
+        # one's name is numbered past it.
+        taken.update(
+            arg.name
+            for worker in self._workers
+            for arg in worker.flat_fn_args
+            if isinstance(arg, Kernel)
+        )
+        taken.update(runtime.name for runtime in self._runtimes if runtime.name)
+        taken.update(
+            parameter.name
+            for runtime in self._runtimes
+            for parameter in runtime.scratchpad_parameters
+        )
+        # Buffers and locks a Worker, a TileDma or the configuration holds.
+        # Unnamed ones stay unnamed (the compiler names them) unless their
+        # statement names them.
+        buffers, locks = [], list(self._locks)
+        for worker in self._workers:
+            buffers += worker.buffers
+            locks += [arg for arg in worker.flat_fn_args if isinstance(arg, Lock)]
+        for tile_dma in self._tile_dmas:
+            dma_buffers, dma_locks = tile_dma.all_buffers_and_locks()
+            buffers += dma_buffers
+            locks += dma_locks
+        buffers = [b for b in dict.fromkeys(buffers) if b not in rtps]
+        locks = list(dict.fromkeys(locks))
+        taken.update(b._name for b in buffers if b._name is not None)
+        taken.update(lock._name for lock in locks if lock._name is not None)
 
         def fresh(prefix):
             name = next(
@@ -380,32 +418,81 @@ class DeviceConfiguration(DeviceResources):
             taken.add(preferred)
             return preferred
 
+        # How many unnamed objects each source name would go to, so that a
+        # name several share is numbered from 0 on every one of them.
+        unnamed = [fifo for fifo in fifos if fifo.name is None]
+        unnamed += [b for b in rtps + buffers if b._name is None]
+        unnamed += [lock for lock in locks if lock._name is None]
+        unnamed += [flow for flow in self._flows if flow.name is None]
+        unnamed += [worker for worker in self._workers if worker.name is None]
+        unnamed += [pool for pool in pools if pool.name is None]
+        # Each reads the declaring source, so it is read once per object.
+        bases = {obj: obj._site.assigned_name() for obj in unnamed}
+        shared = collections.Counter(bases.values())
+
+        def from_source(obj, prefix):
+            # Named after the variable the user's statement assigns it to,
+            # numbered from 0 when several share one, else after its kind (or
+            # left unnamed, with no kind).
+            base = bases[obj]
+            if base is None:
+                name = fresh(prefix) if prefix else None
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "%s is not assigned to a variable where it is built; %s",
+                        obj._site.describe(type(obj).__name__),
+                        f"named {name}" if name else "the compiler names it",
+                    )
+                return name
+            if shared[base] == 1 and base not in taken:
+                taken.add(base)
+                return base
+            return fresh(base + "_")
+
         for fifo in fifos:
             if fifo.name is None:
-                fifo.name = fresh("of")
+                fifo.name = from_source(fifo, "of")
         for buffer in rtps:
             if buffer._name is None:
-                buffer._name = fresh("rtp")
+                buffer._name = from_source(buffer, "rtp")
+        for buffer in buffers:
+            if buffer._name is None:
+                buffer._name = from_source(buffer, None)
+        for lock in locks:
+            if lock._name is None:
+                lock._name = from_source(lock, None)
         for pool in pools:
             if pool.name is None:
-                pool.name = fresh("pool")
+                pool.name = from_source(pool, "pool")
         for pool in pools:
             pool.name_symbols(claim)
         for flow in self._flows:
             if flow.name is None:
-                flow._name = fresh(
-                    "packetflow" if isinstance(flow, PacketFlow) else "flow"
+                flow._name = from_source(
+                    flow, "packetflow" if isinstance(flow, PacketFlow) else "flow"
                 )
+        # A Worker's name is not a symbol; it names the core's location.
+        for worker in self._workers:
+            if worker.name is None:
+                worker.name = from_source(worker, "worker")
 
     def resolve(
         self,
         *,
         device_name: str,
         loc: ir.Location,
-        entry: Runtime,
+        entries: "list[Runtime]",
         owners: dict[int, "DeviceConfiguration"],
     ) -> None:
-        """Emit this configuration as one ``aie.device`` operation."""
+        """Emit this configuration as one ``aie.device`` operation.
+
+        Args:
+            device_name: The symbol of the emitted ``aie.device``.
+            loc: The location of the emitted operations.
+            entries: The Program's host entries; on a full ELF each of this
+                configuration's entries loads its PDI first.
+            owners: The configuration owning each resource, by ``id``.
+        """
         # The remaining emission order matches the dependencies between device ops.
         self._owners = owners
         if self._prebuilt is not None:
@@ -415,14 +502,17 @@ class DeviceConfiguration(DeviceResources):
             old = ir.StringAttr(clone.attributes["sym_name"]).value
             clone.attributes["sym_name"] = ir.StringAttr.get(device_name)
             ir.SymbolTable.replace_all_symbol_uses(old, device_name, clone.operation)
-            if entry in self._runtimes and get_compile_arg("_iron_full_elf"):
-                (sequence,) = [
-                    o
-                    for o in clone.body_region.blocks[0].operations
-                    if isinstance(o, RuntimeSequenceOp)
-                    and ir.StringAttr(o.attributes["sym_name"]).value == entry.name
-                ]
-                entry.load_pdi_first(sequence.body.blocks[0], device_name)
+            if get_compile_arg("_iron_full_elf"):
+                for entry in entries:
+                    if entry not in self._runtimes:
+                        continue
+                    (sequence,) = [
+                        o
+                        for o in clone.body_region.blocks[0].operations
+                        if isinstance(o, RuntimeSequenceOp)
+                        and ir.StringAttr(o.attributes["sym_name"]).value == entry.name
+                    ]
+                    entry.load_pdi_first(sequence.body.blocks[0], device_name)
             return
         self._name_unnamed()
         device_type = type(self._device)
@@ -436,20 +526,21 @@ class DeviceConfiguration(DeviceResources):
 
         @device(current_device.resolve(), sym_name=device_name, loc=loc)
         def device_body():
-            all_fifos = set()
-            all_pools = set()
-            for runtime in self._runtimes:
-                all_fifos.update(runtime.fifos)
+            # First-use order, not name order: the order these are emitted in
+            # steers placement, and a name is only what its Python variable
+            # happened to be called.
+            all_fifos = dict.fromkeys(
+                handle for runtime in self._runtimes for handle in runtime.fifos
+            )
+            all_pools = {}
             for worker in self._workers:
                 for handle in worker.fifos:
                     # A pool handle states one end only, so it has no fifo graph
                     # to walk and no delegate tile to follow.
                     if isinstance(handle, ObjectFifoPoolHandle):
-                        all_pools.add(handle)
+                        all_pools[handle] = None
                     else:
-                        all_fifos.add(handle)
-            all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
-            all_pools = sorted(all_pools, key=lambda obj: obj.name or "")
+                        all_fifos[handle] = None
 
             all_tiles = []
             for worker in self._workers:
@@ -460,12 +551,19 @@ class DeviceConfiguration(DeviceResources):
                     if isinstance(arg, Resolvable):
                         self._claim(arg, owners)
                         all_tiles.extend(arg.tiles())
+            reached = []
             for handle in all_fifos:
-                self._claim_fifo_graph(handle, owners)
+                self._claim_fifo_graph(handle, owners, reached=reached)
                 all_tiles.extend(
                     [endpoint.tile for endpoint in handle.all_of_endpoints()]
                 )
-                delegate = handle._object_fifo._delegate_tile
+            # A fifo reached only through links, as the middle of a chain of
+            # forwards is, has endpoints no worker or runtime names.
+            for fifo in reached:
+                for candidate in [fifo._prod, *fifo._cons]:
+                    if candidate and candidate.endpoint is not None:
+                        all_tiles.append(candidate.endpoint.tile)
+                delegate = fifo._delegate_tile
                 if delegate is not None:
                     all_tiles.append(delegate)
             for handle in all_pools:
@@ -555,7 +653,7 @@ class DeviceConfiguration(DeviceResources):
             for runtime in self._runtimes:
                 implicit_configure_device_ref = (
                     device_name
-                    if runtime is entry and get_compile_arg("_iron_full_elf")
+                    if runtime in entries and get_compile_arg("_iron_full_elf")
                     else None
                 )
                 runtime.resolve(

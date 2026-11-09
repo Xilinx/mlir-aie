@@ -636,6 +636,7 @@ verifyRunOpsInConfigureOp(ConfigureOp configureOp, AIE::DeviceOp referencedDev,
 struct AIEMaterializeRuntimeSequencesPass
     : xilinx::AIEX::impl::AIEMaterializeRuntimeSequencesBase<
           AIEMaterializeRuntimeSequencesPass> {
+  using Base::Base;
 
   // After inlining, a runtime sequence may contain multiple
   // npu.create_scratchpad ops (one from the sequence itself and one from each

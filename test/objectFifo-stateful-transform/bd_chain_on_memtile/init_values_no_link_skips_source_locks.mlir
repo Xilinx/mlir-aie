@@ -21,8 +21,8 @@
 // CHECK-DAG:     %[[MEM_TILE:.*]] = aie.tile(0, 1)
 // CHECK-DAG:     %[[CT:.*]] = aie.tile(0, 2)
 // CHECK-NOT: aie.lock(%[[MEM_TILE]]
-// CHECK-NOT: sym_name = "of_prod_lock_
-// CHECK-NOT: sym_name = "of_cons_lock_
+// CHECK-NOT: sym_name = "of__prodlock
+// CHECK-NOT: sym_name = "of__conslock
 // CHECK:     %{{.*}} = aie.memtile_dma(%[[MEM_TILE]]) {
 // CHECK:       %{{.*}} = aie.dma_start(MM2S, 0, ^bb1, ^bb{{[0-9]+}}, repeat_count = 3)
 // CHECK-NEXT:  ^bb1:

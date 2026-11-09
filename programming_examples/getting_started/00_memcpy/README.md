@@ -36,11 +36,11 @@ python3 memcpy.py
 
 1. **Configure Your Run Using Parameters:**
 
-   Use the memcpy.py variables to control:
-
-   * `length`: Size of the full transfer in `int32_t` (must be divisible by `columns * channels` and a multiple of 1024)
-   * `num_columns`: Number of NPU columns (≤ 4 for `npu`, ≤ 8 for `npu2`)
-   * `num_channels`: 1 or 2 DMA channels per column
+   In memcpy.py, `length` in `main()` sets the size of the full transfer in
+   `int32_t`. It must be a multiple of 1024 × the device's column count ×
+   `num_channels`, the workers per column set by the `num_channels=2`
+   argument of the `transform_parallel(...)` call. The design uses every
+   column of the device (4 on `npu`, 8 on `npu2`).
 
 2. **Report Your Findings:**
 

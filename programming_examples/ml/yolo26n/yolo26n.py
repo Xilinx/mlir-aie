@@ -12,10 +12,11 @@
 With real images, the device's detections are also scored against the
 images' YOLO labels (``--labels``) as mAP@0.5.
 
-The network runs as a sequence of segments, each a device configuration of
-its own in one full ELF, handing tensors on through a DDR scratch buffer.
-Every image's detections are compared with the oracle bit for bit; with
-the quantized ONNX at hand, also with ONNX Runtime's.
+The whole network is one device configuration: every operator's rows stream
+from worker to worker on chip. One build serves every batch in ``BATCHES``,
+each an entry of the design that ``--batch`` picks. Every image's detections are compared with
+the oracle bit for bit; with the quantized ONNX at hand, also with ONNX
+Runtime's.
 """
 
 from __future__ import annotations
@@ -24,171 +25,85 @@ import argparse
 import hashlib
 import sys
 from pathlib import Path
+from typing import Any
 
 import aie.iron as iron
 import numpy as np
-from aie.iron import CompileTime, DeviceConfiguration, In, InOut, Out, Program, Runtime
+from aie.iron import CompileTime, In, InOut, Out, Program, Runtime
 from aie.iron.device import NPU2
 from aie.utils.benchmark import print_benchmark, run_iters
 from coco_map import Labels, MeanAP50
 from yolo26n_design import SegmentDesign
 from yolo26n_numpy import Oracle
 from yolo_params import DATA_DIR, WEIGHTS_DIR, Params, synthetic_params
-from yolo_spec import (
-    IMAGE_SIZE,
-    MAX_DETECTIONS,
-    Add,
-    Attention,
-    Concat,
-    Conv,
-    DetectPost,
-    InputQuant,
-    MaxPool,
-    Network,
-    Op,
-    Slice,
-    Tensor,
-    Upsample,
-)
+from yolo_spec import IMAGE_SIZE, MAX_DETECTIONS, Network
 
-# Each run fits one array: a block, or a few, as they were brought up. Each
-# is named by its first and last op, and together they cover the network.
-SEGMENTS = (
-    ("images", "/model.9/Add"),
-    ("/model.10/cv1/conv/Conv", "/model.13/cv2/conv/Conv"),
-    ("/model.14/Resize", "/model.22/cv2/conv/Conv"),
-    ("/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv", "/model.23"),
-)
-IMAGE = Tensor("images", 3, IMAGE_SIZE, IMAGE_SIZE)
 IMAGE_WORDS = IMAGE_SIZE * IMAGE_SIZE * 3 // 4
 DETECTION_WORDS = 6 * MAX_DETECTIONS
+# The batches one build serves, each an entry of the design's Program.
+BATCHES = (1, 2, 4, 8, 16, 32, 64)
 
 
 class Plan:
-    """Which tensors each segment reads and hands on, and where each waits in the scratch buffer.
-
-    Attributes:
-        spans: Each segment's `(start, stop)` range of `network.ops`.
-
-    Raises:
-        KeyError: If a segment names an op the network lacks.
-        ValueError: If the segments do not cover the network, each starting
-            where the one before it stops.
-    """
+    """The design, and where its DDR traffic waits: the weights it streams and the rows it stages."""
 
     def __init__(self, network: Network, params: Params) -> None:
-        self.network = network
-        self.spans = [network.span(first, last) for first, last in SEGMENTS]
-        starts = [0] + [stop for _, stop in self.spans]
-        if [a for a, _ in self.spans] != starts[:-1] or starts[-1] != len(network.ops):
-            raise ValueError(f"SEGMENTS {self.spans} do not cover the network's ops")
-        self.producer = {op.dst.name: op for op in network.ops}
-        self.inputs = [self.reads(network.ops[a:b]) for a, b in self.spans]
-        detections = network.ops[-1].dst
-        self.outputs = []
-        for k, (a, b) in enumerate(self.spans):
-            made = {op.dst.name for op in network.ops[a:b]}
-            later = {t.name: t for inputs in self.inputs[k + 1 :] for t in inputs}
-            outputs = [later[n] for n in later if n in made]
-            if detections.name in made:
-                outputs.append(detections)
-            self.outputs.append(outputs)
+        self.design = SegmentDesign.planned(
+            network, params, network.ops, [network.ops[-1].dst]
+        )
         self.offset: dict[str, int] = {}
         self.words = 0
-        for outputs in self.outputs:
-            for t in outputs:
-                if t is not detections:
-                    self.offset[t.name] = self.words
-                    self.words += t.row_bytes * t.height // 4
+        for _, tensor in self.design.staged:
+            self.offset[tensor.name] = self.words
+            self.words += tensor.row_bytes * tensor.height // 4
         self.weight_offset: dict[str, int] = {}
-        weights: list[np.ndarray] = []
-        for k, (a, b) in enumerate(self.spans):
-            design = SegmentDesign(network, params, network.ops[a:b], self.outputs[k])
-            for tensor in design.in_ddr:
-                self.offset[tensor.name] = self.words
-                self.words += tensor.row_bytes * tensor.height // 4
-            for tensor, packed in design.loads:
-                self.weight_offset[tensor.name] = sum(w.size for w in weights) // 4
-                weights.append(packed)
-        # Every segment's streamed weights, in the host buffer they are read from.
-        self.weights = np.concatenate(weights) if weights else np.zeros(4, np.int8)
-
-    def reads(self, ops: list[Op]) -> list[Tensor]:
-        """The tensors a run of operators reads from outside it, as streams."""
-        local = {op.dst.name for op in ops} | {
-            op.values.name for op in ops if isinstance(op, Attention)
-        }
-        found: dict[str, Tensor] = {}
-
-        def visit(tensor: Tensor) -> None:
-            if tensor.name in local:
-                return
-            op = self.producer.get(tensor.name)
-            if isinstance(op, (Slice, Upsample)):
-                visit(op.src)
-            elif isinstance(op, Concat):
-                for src in op.srcs:
-                    visit(src)
-            else:
-                found.setdefault(tensor.name, tensor)
-
-        for op in ops:
-            match op:
-                case InputQuant():
-                    found.setdefault(IMAGE.name, IMAGE)
-                case Conv() | MaxPool() | Slice() | Upsample():
-                    visit(op.src)
-                case Add():
-                    visit(op.a)
-                    visit(op.b)
-                case Concat():
-                    for src in op.srcs:
-                        visit(src)
-                case Attention():
-                    visit(op.qkv)
-                case DetectPost():
-                    for t in (*op.scores, *op.boxes):
-                        visit(t)
-        return list(found.values())
+        at = 0
+        for tensor, packed in self.design.loads:
+            self.weight_offset[tensor.name] = at
+            at += packed.size // 4
+        self.weights = (
+            np.concatenate([packed for _, packed in self.design.loads])
+            if self.design.loads
+            else np.zeros(4, np.int8)
+        )
 
 
-@iron.jit
+@iron.jit(aiecc_flags=["--placer=sa_placer", "--sa-seed=1", "--sa-effort=3"])
 def yolo26n(
     image: In,
     scratch: InOut,
     detections: Out,
     weights: In,
     *,
-    batch: CompileTime[int],
+    batches: CompileTime[tuple[int, ...]] = BATCHES,
     params_path: CompileTime[str],
     params_digest: CompileTime[str],
+    ahead: CompileTime[int] = 3,
 ):
-    """Every segment as a device configuration, and an entry sequence running them in turn.
+    """The network's workers, and one entry `b<B>` for each batch `B` in `batches`.
 
-    Each configuration runs all `batch` images before the next is configured.
+    Entry `b<B>` runs the first `B` images in turn, `ahead` images' fills
+    ahead. Every entry declares host buffers for `max(batches)` images, so one
+    build serves them all, and touches only its first `B` images' regions of
+    them; a call picks one with `entry=f"b{B}"`.
     """
     del params_digest  # keys the compile cache on the parameter file's contents
     network = Network.yolo26n()
-    params = Params.load(Path(params_path))
-    plan = Plan(network, params)
-    image_ty = np.ndarray[(batch * IMAGE_WORDS,), np.dtype[np.int32]]
-    scratch_ty = np.ndarray[(batch * plan.words,), np.dtype[np.int32]]
-    det_ty = np.ndarray[(batch * DETECTION_WORDS,), np.dtype[np.int32]]
+    plan = Plan(network, Params.load(Path(params_path)))
+    design = plan.design
+    capacity = max(batches)
+    image_ty = np.ndarray[(capacity * IMAGE_WORDS,), np.dtype[np.int32]]
+    scratch_ty = np.ndarray[(capacity * plan.words,), np.dtype[np.int32]]
+    det_ty = np.ndarray[(capacity * DETECTION_WORDS,), np.dtype[np.int32]]
     weights_ty = np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]]
-    configurations, runtimes = [], []
-    for k, (a, b) in enumerate(plan.spans):
-        design = SegmentDesign(network, params, network.ops[a:b], plan.outputs[k])
-        if {t.name for t in design.inputs} != {t.name for t in plan.inputs[k]}:
-            raise ValueError(
-                f"segment {k}: the design reads {design.inputs}, the plan {plan.inputs[k]}"
-            )
+    handles = design.handles()
 
-        def sequence(img, scr, det, wts, *handles, design=design):
-            for i in range(batch):
-
-                def locate(tensor, i=i):
-                    if tensor.name == IMAGE.name:
-                        return img, batch * IMAGE_WORDS, i * IMAGE_WORDS
+    def sequence_of(batch):
+        def sequence(img, scr, det, wts, *bound):
+            def locate_for(i):
+                def locate(tensor):
+                    if tensor.name == "images":
+                        return img, capacity * IMAGE_WORDS, i * IMAGE_WORDS
                     if tensor.name in plan.weight_offset:
                         return (
                             wts,
@@ -198,35 +113,28 @@ def yolo26n(
                     if tensor.name in plan.offset:
                         return (
                             scr,
-                            batch * plan.words,
+                            capacity * plan.words,
                             i * plan.words + plan.offset[tensor.name],
                         )
                     if tensor.name == network.ops[-1].dst.name:
-                        return det, batch * DETECTION_WORDS, i * DETECTION_WORDS
+                        return det, capacity * DETECTION_WORDS, i * DETECTION_WORDS
                     raise ValueError(f"no host buffer holds {tensor.name}")
 
-                design.transfer(handles, locate)
+                return locate
 
-        runtime = Runtime(
-            sequence,
-            [image_ty, scratch_ty, det_ty, weights_ty, *design.handles()],
-            name=f"segment{k}",
+            design.transfer(bound, [locate_for(i) for i in range(batch)], ahead)
+
+        return sequence
+
+    entries = [
+        Runtime(
+            sequence_of(batch),
+            [image_ty, scratch_ty, det_ty, weights_ty, *handles],
+            name=f"b{batch}",
         )
-        configurations.append(
-            DeviceConfiguration(
-                f"segment{k}", NPU2(), workers=design.workers, runtimes=[runtime]
-            )
-        )
-        runtimes.append(runtime)
-
-    def run_all(img, scr, det, wts):
-        for configuration, runtime in zip(configurations, runtimes):
-            with configuration.configure():
-                runtime.call(img, scr, det, wts)
-
-    entry = Runtime(run_all, [image_ty, scratch_ty, det_ty, weights_ty])
-    main = DeviceConfiguration("main", NPU2(), runtimes=[entry])
-    return Program.compose([main, *configurations], entry=entry).resolve_program()
+        for batch in batches
+    ]
+    return Program(NPU2(), entries, workers=design.workers).resolve_program()
 
 
 def onnx_detections(session, image: np.ndarray) -> np.ndarray:
@@ -249,7 +157,11 @@ def main() -> None:
     )
     parser.add_argument("--n", type=int, default=4, help="images to run")
     parser.add_argument(
-        "--batch", type=int, default=1, help="images per dispatch (divides --n)"
+        "--batch",
+        type=int,
+        default=1,
+        choices=BATCHES,
+        help="images per dispatch (divides --n), an entry of the one build",
     )
     parser.add_argument(
         "--params",
@@ -270,16 +182,27 @@ def main() -> None:
     # The NPU takes about ten calls after a load to reach its steady latency.
     parser.add_argument("--n-warmup", type=int, default=10, help="untimed calls first")
     parser.add_argument(
-        "--compile-only", action="store_true", help="build the ELF and stop"
+        "--ahead", type=int, default=3, help="images' fills issued ahead of a wait"
+    )
+    parser.add_argument(
+        "--compile-only",
+        action="store_true",
+        help="compile the xclbin and instruction streams, then stop",
     )
     args = parser.parse_args()
-    if args.batch < 1 or not args.compile_only and args.n % args.batch:
+    if not args.compile_only and args.n % args.batch:
         parser.error(f"--batch {args.batch} does not divide --n {args.n}")
+    if args.ahead < 0:
+        parser.error(f"--ahead {args.ahead} is negative")
     if args.n_iters < 1 or args.n_warmup < 0:
         parser.error("--n-iters must be at least 1 and --n-warmup at least 0")
     paths = sorted(args.images.glob("*.jpg"))[: args.n]
     if args.synthetic is None and not args.compile_only and len(paths) < args.n:
         parser.error(f"{args.images} holds {len(paths)} .jpg images, not --n {args.n}")
+    # The design targets NPU2 alone. Its host-side plan lays weights out as
+    # the bound device's kernels load them, so bind it before planning; a
+    # compile-only run then needs no device either.
+    iron.set_current_device(NPU2())
 
     network = Network.yolo26n()
     if args.synthetic is not None:
@@ -291,16 +214,18 @@ def main() -> None:
         params_path = args.params or DATA_DIR / "yolo26n_params.npz"
     params = Params.load(params_path)
     plan = Plan(network, params)
-    kwargs = dict(
-        batch=args.batch,
+    capacity = max(BATCHES)
+    kwargs: dict[str, Any] = dict(
+        batches=BATCHES,
         params_path=str(params_path),
         params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
+        ahead=args.ahead,
     )
     if args.compile_only:
         yolo26n.specialize(
-            image=np.ndarray[(args.batch * IMAGE_WORDS,), np.dtype[np.int32]],
-            scratch=np.ndarray[(args.batch * plan.words,), np.dtype[np.int32]],
-            detections=np.ndarray[(args.batch * DETECTION_WORDS,), np.dtype[np.int32]],
+            image=np.ndarray[(capacity * IMAGE_WORDS,), np.dtype[np.int32]],
+            scratch=np.ndarray[(capacity * plan.words,), np.dtype[np.int32]],
+            detections=np.ndarray[(capacity * DETECTION_WORDS,), np.dtype[np.int32]],
             weights=np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]],
             **kwargs,
         ).compile()
@@ -338,8 +263,15 @@ def main() -> None:
             )
             images.append((path.name, image, truth))
     oracle = Oracle(params, network)
-    scratch = iron.zeros(args.batch * plan.words, dtype=np.int32)
-    detections = iron.zeros(args.batch * DETECTION_WORDS, dtype=np.int32)
+    # Allocated for the largest batch and never filled whole: a call moves
+    # only its own batch's images, scratch and detections.
+    image_tensor = iron.tensor((capacity * IMAGE_WORDS,), dtype=np.int32)
+    scratch = iron.tensor((capacity * plan.words,), dtype=np.int32)
+    detections = iron.tensor((capacity * DETECTION_WORDS,), dtype=np.int32)
+    batch_image = image_tensor.subview(0, (args.batch * IMAGE_WORDS,))
+    scratch.subview(0, (args.batch * plan.words,)).fill_(0)
+    batch_detections = detections.subview(0, (args.batch * DETECTION_WORDS,))
+    batch_detections.fill_(0)
     weights = iron.tensor(plan.weights.view(np.int32))
     session = None
     if args.synthetic is None and args.onnx.exists():
@@ -353,11 +285,19 @@ def main() -> None:
     scored = MeanAP50()
     for start in range(0, len(images), args.batch):
         group = images[start : start + args.batch]
-        pixels = np.concatenate([image.reshape(-1) for _, image, _ in group])
+        with batch_image.overwrite() as words:
+            words[:] = np.concatenate(
+                [image.reshape(-1) for _, image, _ in group]
+            ).view(np.int32)
         yolo26n(
-            iron.tensor(pixels.view(np.int32)), scratch, detections, weights, **kwargs
+            image_tensor,
+            scratch,
+            detections,
+            weights,
+            entry=f"b{args.batch}",
+            **kwargs,
         )
-        found = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
+        found = batch_detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
         for (name, image, truth), mine in zip(group, found):
             want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
             if start == 0:
@@ -384,18 +324,19 @@ def main() -> None:
     failed = passed != len(images)
 
     if args.time:
-        pixels = np.concatenate(
-            [image.reshape(-1) for _, image, _ in images[: args.batch]]
-        )
-        tensor = iron.tensor(pixels.view(np.int32))
+        with batch_image.overwrite() as words:
+            words[:] = np.concatenate(
+                [image.reshape(-1) for _, image, _ in images[: args.batch]]
+            ).view(np.int32)
         bench = run_iters(
             yolo26n,
-            tensor,
+            image_tensor,
             scratch,
             detections,
             weights,
             warmup=args.n_warmup,
             iters=args.n_iters,
+            entry=f"b{args.batch}",
             **kwargs,
         )
         print_benchmark(bench)
@@ -407,7 +348,7 @@ def main() -> None:
             f"median {e2e.median_us / args.batch:.1f} us, "
             f"MAD {e2e.mad_us / args.batch:.1f} us"
         )
-        timed = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
+        timed = batch_detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
         same = all(np.array_equal(t, w) for t, w in zip(timed, first))
         print(f"timed dispatch: {'PASS' if same else 'FAIL'}")
         failed |= not same

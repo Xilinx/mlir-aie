@@ -42,10 +42,14 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/_log_setup.py
     utils/accuracy.py
     utils/aie_fp32.py
+    utils/aie2p_emulation.py
     utils/benchmark.py
     utils/bfp.py
+    utils/coded.py
     utils/config.py
     utils/probe.py
+    utils/readable_ir/__init__.py
+    utils/readable_ir/__main__.py
     utils/txn_trace.py
     utils/tensor_factory.py
     utils/test.py
@@ -271,29 +275,50 @@ add_custom_command(
   COMMENT "Staging MLIR core type stubs for pyright"
 )
 
+# Ship the staged stubs in the install tree, and so the wheel.
+install(
+  FILES
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/__init__.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/ir.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/passmanager.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/rewrite.pyi"
+  DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs/_mlir"
+  COMPONENT aie-python
+)
+
 ################################################################################
 # ParameterScratchpad pybind11 module (uses a raw buffer)
 ################################################################################
 # XRT-free (TEST_UTILS_USE_XRT=0), and the host runtime imports it on every
 # platform, so it is built whether or not the XRT Python bindings are.
-find_package(pybind11 CONFIG QUIET)
-if(NOT pybind11_FOUND)
-  execute_process(
-    COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
-    RESULT_VARIABLE _pybind11_cmakedir_result
-    OUTPUT_VARIABLE _pybind11_cmakedir
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
-  )
-  if(NOT _pybind11_cmakedir_result EQUAL 0)
-    message(FATAL_ERROR
-      "The _parameter_scratchpad module requires pybind11 in ${Python3_EXECUTABLE}."
-    )
-  endif()
+#
+# Ask the target interpreter for its pybind11 first: a plain
+# find_package(pybind11 CONFIG) searches the whole CMake package path and
+# happily accepts any pybind11 config it finds first, including one installed
+# system-wide for a different Python than Python3_EXECUTABLE. That mismatch
+# compiles cleanly but breaks at the ABI (e.g. a PyFrameObject layout the
+# headers don't expect), so only fall back to the unqualified search when
+# Python3_EXECUTABLE has no pybind11 of its own to report.
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
+  RESULT_VARIABLE _pybind11_cmakedir_result
+  OUTPUT_VARIABLE _pybind11_cmakedir
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+if(_pybind11_cmakedir_result EQUAL 0)
+  set(pybind11_DIR "${_pybind11_cmakedir}" CACHE PATH "pybind11 CMake package directory" FORCE)
   find_package(pybind11 CONFIG REQUIRED
     PATHS "${_pybind11_cmakedir}"
     NO_DEFAULT_PATH
   )
+else()
+  find_package(pybind11 CONFIG QUIET)
+  if(NOT pybind11_FOUND)
+    message(FATAL_ERROR
+      "The _parameter_scratchpad module requires pybind11 in ${Python3_EXECUTABLE}."
+    )
+  endif()
 endif()
 
 pybind11_add_module(_parameter_scratchpad

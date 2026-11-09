@@ -11,7 +11,7 @@ from aie.iron import Program, Runtime, Worker, WorkerRuntimeBarrier
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
 
-# REGISTERED: module {
+# REGISTERED: module{{( attributes .*)?}} {
 # REGISTERED: %[[TILE_A:[^ ]+]] = aie.logical_tile<CoreTile>(?, ?)
 # REGISTERED: %[[TILE_B:[^ ]+]] = aie.logical_tile<CoreTile>(?, ?)
 

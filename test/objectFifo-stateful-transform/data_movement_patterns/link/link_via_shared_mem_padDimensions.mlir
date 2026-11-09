@@ -16,16 +16,16 @@
 // CHECK-DAG: %{{.*}}tile_0_2 = aie.tile(0, 2)
 
 // Compute tile buffers use the output (padded) size
-// CHECK-DAG: %[[OUT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_0"} : memref<512xi32>
-// CHECK-DAG: %[[OUT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_1"} : memref<512xi32>
-// CHECK-DAG: %[[OUT_PROD:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 2 : i32, sym_name = "of_out_cons_prod_lock_0"}
-// CHECK-DAG: %[[OUT_CONS:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
+// CHECK-DAG: %[[OUT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out__cons__buf0"} : memref<512xi32>
+// CHECK-DAG: %[[OUT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out__cons__buf1"} : memref<512xi32>
+// CHECK-DAG: %[[OUT_PROD:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 2 : i32, sym_name = "of_out__cons__prodlock0"}
+// CHECK-DAG: %[[OUT_CONS:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_out__cons__conslock0"}
 
 // MemTile buffers use the input (smaller) size — NOT the output size
-// CHECK-DAG: %[[MT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_0"} : memref<256xi32>
-// CHECK-DAG: %[[MT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_1"} : memref<256xi32>
-// CHECK-DAG: %[[MT_PROD:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
-// CHECK-DAG: %[[MT_CONS:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
+// CHECK-DAG: %[[MT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in__cons__buf0"} : memref<256xi32>
+// CHECK-DAG: %[[MT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in__cons__buf1"} : memref<256xi32>
+// CHECK-DAG: %[[MT_PROD:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 2 : i32, sym_name = "of_in__cons__prodlock0"}
+// CHECK-DAG: %[[MT_CONS:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 0 : i32, sym_name = "of_in__cons__conslock0"}
 
 // CHECK-DAG: aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_1, DMA : 0)
 // CHECK-DAG: aie.flow(%{{.*}}tile_0_1, DMA : 0, %{{.*}}tile_0_2, DMA : 0)

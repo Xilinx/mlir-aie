@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %python %s | FileCheck %s
+# RUN: %PYTHON %s | FileCheck %s
 
 """The deadlock rules router_properties.py checks the router with, against
 what happened on hardware.

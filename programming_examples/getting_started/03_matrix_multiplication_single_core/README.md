@@ -152,7 +152,8 @@ Note that all of these tiles are arranged in row-major order.
 
 The exact `r`, `s`, `t` values depend on the kernel chosen for the
 `(input_dtype, output_dtype)` pair. The example uses `kernels.mm()` with
-`(int16, int16)`, which selects a `4x4x4` MMUL (see
+`(int16, int16)`, which selects a `4x4x4` MMUL on AIE2 (npu1) and a `4x4x8`
+MMUL on AIE2P (npu2) (see
 `aie_kernels/linalg/mm_aie2.h` and `mm_aie2p.h` for the per-dtype sizes).
 
 ## Ryzen™ AI Usage

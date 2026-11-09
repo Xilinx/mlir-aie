@@ -7,12 +7,14 @@
 
 import hashlib
 import logging
+import os
 import re
 import tempfile
+import warnings
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, get_origin
+from typing import Any, NamedTuple, get_origin
 
 import numpy as np
 
@@ -21,10 +23,11 @@ from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIss
 from ..dialects.aie import external_func
 from ..helpers.dialects.func import call
 from ..helpers.npdtypes import is_block_float, np_ndarray_type_of
-from ..helpers.sourceloc import SourceSite
+from ..helpers.sourceloc import Declared, SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..utils import config
 from ..utils.compile import NPU_CACHE_HOME, compile_external_kernel
+from ..utils.compile.jit._manifest import _parse_depfile
 from ..utils.compile.jit._object_cache import KernelObjectCache
 from ..utils.compile.jit.compilabledesign import COMPILE_LOCK_TIMEOUT_SECONDS
 from ..utils.compile.jit.context import compile_context, get_compile_arg
@@ -153,6 +156,64 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
 _PATH_FLAG = re.compile(r'((?:-I|-isystem|-iquote)\s*|-D[^=]+=)?("?)(.*?)("?)')
 
 
+class _Measured(NamedTuple):
+    """What measure() read, and each header it read it through as it stood."""
+
+    linked: Linked | None
+    # (path, size, mtime_ns) of the headers the compile opened outside Peano
+    # and aie_api, which change only with an install.
+    headers: tuple[tuple[str, int, int], ...]
+
+    @classmethod
+    def read(cls, obj: Path, entry: str) -> "_Measured":
+        """Read ``obj`` from ``entry``, and the headers its depfile names.
+
+        Args:
+            obj: The compiled object, its ``.d`` beside it.
+            entry: The symbol to read from.
+
+        Returns:
+            The object's ``Linked`` and its headers' sizes and mtimes; the
+            staged source beside ``obj`` is left out, as it goes with it.
+        """
+        depfile = obj.with_name(obj.name + ".d")
+        deps = _parse_depfile(depfile) if depfile.is_file() else []
+        installed = (
+            Path(config.peano_install_dir()).resolve(),
+            Path(config.cxx_header_path(), "aie_api").resolve(),
+        )
+        headers = []
+        for dep in deps:
+            if (
+                not dep.is_absolute()
+                or dep.parent == obj.parent
+                or any(dep.resolve().is_relative_to(root) for root in installed)
+            ):
+                continue
+            st = dep.stat()
+            headers.append((str(dep), st.st_size, st.st_mtime_ns))
+        return cls(linked(obj, entry), tuple(headers))
+
+    def current(self) -> bool:
+        """Return whether every header is as it was when this was read."""
+        for path, size, mtime_ns in self.headers:
+            try:
+                st = os.stat(path)
+            except OSError:
+                return False
+            if (st.st_size, st.st_mtime_ns) != (size, mtime_ns):
+                return False
+        return True
+
+
+# What measure() read, by kernel content (its include directories too, which a
+# recipe key leaves out), symbol prefix, entry and build: a process asks again
+# for every design resolved, and compiling (an object cache key hashes every
+# header) and reading the object each time is seconds a kernel. A header
+# edited since is read again.
+_MEASURED: dict[tuple, _Measured] = {}
+
+
 def _install_relative_flag(flag: str, roots: dict[str, Path]) -> str:
     """Return ``flag`` with a path under one of ``roots`` named relative to that root.
 
@@ -256,10 +317,10 @@ class ObjectFile(KernelObject):
         super().__init__(object_file_name, link_with_mode, _symbol_prefix=symbol_prefix)
 
 
-class Kernel(Resolvable):
+class Kernel(Declared, Resolvable):
     """An AIE core function backed by a pre-compiled object file.
 
-    Use [`ExternalFunction`][iron.ExternalFunction] instead when you want to
+    Use [`ExternalFunction`][aie.iron.ExternalFunction] instead when you want to
     compile from C/C++ source at JIT time.
 
     `resolve()` emits a `func.func private` declaration with a
@@ -306,7 +367,7 @@ class Kernel(Resolvable):
                 an indirect call, or for a ``link_with_mode="merge"`` kernel,
                 which aiecc's stack analysis reads as part of the core rather
                 than as a separate object. See
-                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
+                [`Kernel.stack_size_override`][aie.iron.kernel.Kernel.stack_size_override].
         """
         self._init_identity(name, arg_types)
         if isinstance(object_file_name, KernelObject):
@@ -520,7 +581,7 @@ class Kernel(Resolvable):
         """Return the first dimension of the array argument at `arg_index`.
 
         Convenience wrapper over
-        [`arg_shape`][iron.kernel.Kernel.arg_shape] for the common case of
+        [`arg_shape`][aie.iron.kernel.Kernel.arg_shape] for the common case of
         a 1-D buffer argument. `tile_size(i)` is equivalent to
         `arg_shape(i)[0]`.
 
@@ -598,7 +659,7 @@ class ExternalFunction(Kernel):
     set, so registrations from a previous (possibly failed) run stay out of it;
     outside one, instances go to the process-wide `_instances`.
 
-    Use the base [`Kernel`][iron.Kernel] class instead when you have a
+    Use the base [`Kernel`][aie.iron.Kernel] class instead when you have a
     pre-built object file.
     """
 
@@ -800,7 +861,7 @@ class ExternalFunction(Kernel):
         """Return reference output(s), cast to each output argument's dtype.
 
         ``arch`` names the architecture the output to judge came from; see
-        [`contract_for`][iron.kernel.ExternalFunction.contract_for].
+        [`contract_for`][aie.iron.kernel.ExternalFunction.contract_for].
         """
         c = self.contract_for(arch)
         if c.reference is None:
@@ -866,7 +927,7 @@ class ExternalFunction(Kernel):
         A tolerance that is a function of the inputs needs the ``inputs`` and
         ``scalars`` the reference was given. Without ``tolerance``, the
         contract's is that of the build ``arch`` names; see
-        [`contract_for`][iron.kernel.ExternalFunction.contract_for].
+        [`contract_for`][aie.iron.kernel.ExternalFunction.contract_for].
         """
         from aie.utils.compile.jit.markers import In
         from aie.utils.verify import Tolerance, Verdict, compare
@@ -991,7 +1052,7 @@ class ExternalFunction(Kernel):
                 Chess/xchesscc toolchain cannot llvm-link).
             stack_size_override: Declared upper bound, in bytes, on the stack
                 that this kernel's call subtree uses. See
-                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
+                [`Kernel.stack_size_override`][aie.iron.kernel.Kernel.stack_size_override].
                 With ``inline=True``, the merged kernel has no separate object,
                 so this bound is the one input aiecc's stack analysis reads for
                 this kernel.
@@ -1175,6 +1236,7 @@ class ExternalFunction(Kernel):
         target_arch: str,
         object_cache: KernelObjectCache | None = None,
         entry: str | None = None,
+        reached_only: bool = False,
     ) -> int:
         """Return the core data memory this kernel takes beyond its arguments.
 
@@ -1183,6 +1245,9 @@ class ExternalFunction(Kernel):
             object_cache: The store it compiles through, so the design's build
                 reuses the object; the one under ``NPU_CACHE_HOME`` when None.
             entry: A bound ``Kernel``'s symbol in this object to take the stack below.
+            reached_only: Count only the static data the entry reaches, as
+                the core's link keeps it when the core binds no other entry
+                of the object that reaches data.
 
         Returns:
             Its object's static data plus its stack, or plus a declared
@@ -1197,7 +1262,7 @@ class ExternalFunction(Kernel):
             ),
             entry=entry,
         )
-        data = found.data if found else 0
+        data = 0 if not found else found.reached_data if reached_only else found.data
         if self.stack_size_override is not None and entry is None:
             return data + self.stack_size_override
         return data + ((found.stack if found else None) or 0)
@@ -1222,7 +1287,7 @@ class ExternalFunction(Kernel):
         Returns:
             Its ``Linked``; None for a kernel aiecc cannot measure either: a
             Chess or merge-mode kernel, or any kernel when no Peano is
-            installed.
+            installed, which also warns (a RuntimeWarning).
 
         Raises:
             ValueError: Its factory built it for another architecture (see
@@ -1232,18 +1297,37 @@ class ExternalFunction(Kernel):
         try:
             config.peano_cxx_path()
         except RuntimeError:
+            # Not an error: a device-free resolve must still work. Python's
+            # warning filter shows it once.
+            warnings.warn(
+                "Peano is not installed: kernel frames read as 0 bytes, so "
+                "designs are sized as if their kernels took no core memory",
+                RuntimeWarning,
+            )
             return None
         if self.use_chess or self.link_with_mode is not None:
             return None
-        with tempfile.TemporaryDirectory() as tmp:
-            compile_external_kernel(
-                self,
-                tmp,
-                target_arch,
-                embed_bitcode=embed_bitcode,
-                object_cache=object_cache,
-            )
-            return linked(Path(tmp) / self.object_file_name, entry or self.name)
+        key = (
+            self._content_digest(),
+            self.object_file.symbol_prefix,
+            target_arch,
+            embed_bitcode,
+            entry or self.name,
+        )
+        measured = _MEASURED.get(key)
+        if measured is None or not measured.current():
+            with tempfile.TemporaryDirectory() as tmp:
+                compile_external_kernel(
+                    self,
+                    tmp,
+                    target_arch,
+                    embed_bitcode=embed_bitcode,
+                    object_cache=object_cache,
+                )
+                measured = _MEASURED[key] = _Measured.read(
+                    Path(tmp) / self.object_file_name, entry or self.name
+                )
+        return measured.linked
 
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.

@@ -7,6 +7,7 @@
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects.aiex import dma_start_task, shim_dma_single_bd_task
+from ...helpers.sourceloc import iron_name, relocate
 from ...helpers.taplib import TensorAccessPattern
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence
@@ -29,14 +30,15 @@ class DMATask(RuntimeTask):
         length_parameter: str | None = None,
         length_unit: int | None = None,
         repeat_parameter: str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Construct a RuntimeTask that will resolve to a DMA Operation.
 
         Args:
             alloc (str): Name of the shim DMA allocation this transfer drives,
                 i.e. the symbol naming the shim channel. An
-                [`ObjectFifo`][iron.ObjectFifo] with a shim endpoint generates an
-                allocation of its own name; a [`Flow`][iron.Flow] generates one
+                [`ObjectFifo`][aie.iron.ObjectFifo] with a shim endpoint generates an
+                allocation of its own name; a [`Flow`][aie.iron.Flow] generates one
                 for its ``shim_symbol``.
             rt_data (RuntimeData): The Runtime buffer associated with the operation.
             tap (TensorAccessPattern): The walk over ``rt_data``; its values may be staged.
@@ -55,10 +57,15 @@ class DMATask(RuntimeTask):
                 as many as ``tap``'s outer dimensions give (it stops an
                 iteration over them early). Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
-                BD with a packet header `(pkt_type, pkt_id)`. Pairs with
-                downstream packet-switched routing (e.g. an
-                [`ObjectFifo`][iron.ObjectFifo] built with ``packet=True`` or
-                an explicit [`PacketFlow`][iron.PacketFlow]). Defaults to None.
+                BD with a packet header `(pkt_type, pkt_id)`. A packet-switched
+                [`ObjectFifo`][aie.iron.ObjectFifo] needs none, since the transfer
+                takes the header its shim allocation was assigned; this is for
+                an explicit [`PacketFlow`][aie.iron.PacketFlow] or to override that
+                header. Defaults to None.
+            out_of_order_id (int | None, optional): Buffer descriptor id the
+                receiving out-of-order channel takes this transfer with. The
+                header carries it, which is how that channel tells apart the
+                fifos sharing it. Defaults to None.
         """
         self._alloc = alloc
         self._rt_data = rt_data
@@ -67,6 +74,7 @@ class DMATask(RuntimeTask):
         self._offset_parameter = offset_parameter
         self._length_parameter = length_parameter
         self._length_unit = length_unit
+        self._out_of_order_id = out_of_order_id
         self._repeat_parameter = repeat_parameter
         self._packet = packet
         self._task = None
@@ -107,8 +115,18 @@ class DMATask(RuntimeTask):
             length_parameter=self._length_parameter,
             length_unit=self._length_unit,
             packet=self._packet,  # pyright: ignore[reportArgumentType]
+            out_of_order_id=self._out_of_order_id,
         )
         dma_start_task(self._task, repeat_parameter=self._repeat_parameter)
+        # Named after the buffer and the channel it moves through
+        # ("iron:A@of_in"), so the sequence's tasks and BDs read like the source.
+        if self._rt_data.name is not None:
+            name = iron_name(f"{self._rt_data.name}@{self._alloc}")
+            # The task, its BDs, and the start pushing it (its only use yet).
+            ops = [self._task.operation]
+            ops += [use.owner for use in self._task.result.uses]
+            for op in ops:
+                relocate(op, lambda loc: ir.Location.name(name, childLoc=loc))
 
 
 def emit_shim_transfer(
@@ -123,6 +141,7 @@ def emit_shim_transfer(
     length_parameter: ScratchpadParameter | str | None = None,
     length_unit: int | None = None,
     repeat_parameter: ScratchpadParameter | str | None = None,
+    out_of_order_id: int | None = None,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
 
@@ -178,6 +197,7 @@ def emit_shim_transfer(
         length_parameter=rt.register_parameter(length_parameter),
         length_unit=length_unit,
         repeat_parameter=rt.register_parameter(repeat_parameter),
+        out_of_order_id=out_of_order_id,
     )
     if managed:
         active.emit_transfer(task, group)

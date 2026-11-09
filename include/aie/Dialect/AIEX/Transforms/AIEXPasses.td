@@ -84,8 +84,8 @@ def AIESCFToControlFlow : Pass<"aie-scf-to-control-flow", "mlir::ModuleOp"> {
     control flow is preserved for its own lowering.
   }];
 
-  let constructor = "xilinx::AIEX::createAIESCFToControlFlowPass()";
-  let dependentDialects = ["mlir::cf::ControlFlowDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -243,6 +243,24 @@ def AIECertPages : Pass<"cert-legalize-pages", "AIE::DeviceOp"> {
   ];
 }
 
+def AIECertVerify : Pass<"aie-cert-verify", "AIE::DeviceOp"> {
+  let summary = "Verify CERT ordering/placement legality invariants";
+  let description = [{
+    This pass checks the firmware-imposed legality invariants on cert
+    operations. It performs no IR
+    mutation; it only emits diagnostics for illegal cert programs.
+
+    The uC (microcontroller / CERT group) of a cert op is the `group_id` of
+    its nearest enclosing `cert.attach_to_group`, or 0 if the op is at device
+    level (not inside any `cert.attach_to_group`).
+  }];
+
+  let constructor = "xilinx::AIEX::createAIECertVerifyPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEMaterializeBDChains
     : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
   let summary = "Concretize aie.bd_chain ops at aiex.start_task use sites";
@@ -338,15 +356,16 @@ def AIEAssignRuntimeSequenceBDIDs
            "that report no pollable occupancy register fall back to warning.">,
        Option<
            "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
-           /*default=*/"false",
+           /*default=*/"true",
            "Warn when a BD id released by aiex.dma_free_task without any "
-           "completion guarantee is later reused on the same tile. Off by "
-           "default: the common fill/drain idiom frees tasks on one channel "
-           "having awaited another, and that cross-channel reasoning runs "
-           "through the compute core, which the runtime sequence cannot see, "
-           "so this reports designs that are correct by an argument the "
-           "compiler does not have. Useful when chasing a suspected BD "
-           "aliasing hang.">,
+           "completion guarantee is later reused on the same tile. On by "
+           "default; disable when completion is guaranteed through the compute "
+           "core or another tile, which the runtime sequence cannot see.">,
+       Option<"warnUnreleasedTransfers", "warn-unreleased-transfers", "bool",
+              /*default=*/"true",
+              "Warn when a straight-line runtime sequence leaves DMA transfers "
+              "neither awaited nor freed. Completion established indirectly "
+              "through computation or other channels may not be visible.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "
@@ -449,14 +468,26 @@ def AIELowerDynamicBDPool : Pass<"aie-lower-dynamic-bd-pool", "AIE::DeviceOp"> {
     runtime loop are diagnosed.
   }];
 
-  let options = [Option<
-      "enforceQueueDepth", "enforce-queue-depth", "bool",
-      /*default=*/"true",
-      "Insert an aiex.npu.maskpoll before any dma_start_task in a "
-      "runtime-bound loop that could push onto a full DMA task queue. "
-      "The same option as on aie-dma-to-npu and "
-      "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
-      "of those reaches: a loop this pass deliberately keeps rolled.">];
+  let options =
+      [Option<
+           "enforceQueueDepth", "enforce-queue-depth", "bool",
+           /*default=*/"true",
+           "Insert an aiex.npu.maskpoll before any dma_start_task in a "
+           "runtime-bound loop that could push onto a full DMA task queue. "
+           "The same option as on aie-dma-to-npu and "
+           "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
+           "of those reaches: a loop this pass deliberately keeps rolled.">,
+       Option<
+           "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
+           /*default=*/"true",
+           "Warn when a dma_free_task releases a buffer descriptor id with no "
+           "completion guarantee, so the runtime pool could hand it straight "
+           "back out before hardware has finished the freed transfer. The "
+           "same default-on option as on "
+           "aie-assign-runtime-sequence-bd-ids: the pass can only reason "
+           "within the runtime sequence, so a design that proves completion "
+           "through the compute core or another tile looks unsafe without "
+           "being so.">];
 
   let constructor = "xilinx::AIEX::createAIELowerDynamicBDPoolPass()";
   let dependentDialects = ["mlir::arith::ArithDialect", "mlir::scf::SCFDialect",
@@ -668,11 +699,14 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     (i.e., after `aiex.configure` ops have been turned into
     `aiex.npu.load_pdi`).
 
-    With `teardown = true`, an `aiex.npu.write_teardown @device` before the
-    next `load_pdi`, or at the sequence's end, undoes what each configuration
-    enabled, so only a sequence's first configuration keeps its reset. With
-    `init-entry = true` as well, that reset moves into an argument-free
-    `reconfig_init` runtime sequence, which the host runs once before the
+    With `teardown = true`, each configuration undoes what it enabled before
+    the next `load_pdi`, or at the sequence's end: with an
+    `aiex.npu.write_teardown @device`, or with control packets for a control
+    packet configuration. Only a sequence's first configuration, or one after a
+    configuration of the other kind, keeps its reset or overlay load. With
+    `init-entry = true` as well, a device whose sequences all end on
+    configurations of one kind gets an argument-free `reconfig_init` runtime
+    sequence holding that kind's preload, which the host runs before the
     others.
 
     A sequence whose first and last reset (or overlay load) name the same PDI

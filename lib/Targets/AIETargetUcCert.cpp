@@ -16,16 +16,26 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Path.h"
 
+#include <map>
+#include <set>
 #include <vector>
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
+
+// Emission ordering invariant: CERT jobs, pages, and the ops within a job are
+// emitted in IR/textual order. `job_id` is a per-page-unique label and a
+// firmware job-table key, NOT an execution/emission order (see CertJobOp docs).
+// Within a page the firmware starts jobs in textual order; between pages on a
+// uC execution is strictly sequential. Do not sort jobs/pages by job_id here.
+// (attach_to_group groups are sorted by group_id, which is the uC index.)
 
 namespace {
 
@@ -69,6 +79,62 @@ void emitUcDmaWriteDesSync(CertUcDmaWriteDesSyncOp op, std::string &text) {
   text += "@" + op.getSymbol().str() + "\n";
 }
 
+// READ_32                $r1, 0x00001000
+void emitRead32(CertRead32Op op, std::string &text) {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  ss << "  READ_32                $r" << op.getValue() << ", ";
+  ss << llvm::format("0x%08x\n", op.getAddress());
+  text += ss.str();
+}
+
+// READ_32_D              $r0, $r1
+void emitRead32D(CertRead32DOp op, std::string &text) {
+  text += "  READ_32_D              $r" + std::to_string(op.getAddress()) +
+          ", $r" + std::to_string(op.getValue()) + "\n";
+}
+
+// WRITE_32_D             1, 0x00000003, 0x00000005
+// The flags byte has bit 0 set when the address is a register index and bit 1
+// when the value is.
+void emitWrite32D(CertWrite32DOp op, std::string &text) {
+  unsigned flags =
+      (op.getAddressIsReg() ? 1 : 0) | (op.getValueIsReg() ? 2 : 0);
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  ss << "  WRITE_32_D             " << flags << ", ";
+  ss << llvm::format("0x%08x, ", op.getAddress());
+  ss << llvm::format("0x%08x\n", op.getValue());
+  text += ss.str();
+}
+
+// SAVE_TIMESTAMPS        7
+void emitSaveTimestamps(CertSaveTimestampsOp op, std::string &text) {
+  text += "  SAVE_TIMESTAMPS        " + std::to_string(op.getUnqId()) + "\n";
+}
+
+// SAVE_REGISTER          0x00001000, 9
+void emitSaveRegister(CertSaveRegisterOp op, std::string &text) {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  ss << "  SAVE_REGISTER          ";
+  ss << llvm::format("0x%08x, ", op.getAddress());
+  ss << op.getUnqId() << "\n";
+  text += ss.str();
+}
+
+// UC_DMA_WRITE_DES       $r2, @chain0
+void emitUcDmaWriteDes(CertUcDmaWriteDesOp op, std::string &text) {
+  text += "  UC_DMA_WRITE_DES       $r" + std::to_string(op.getWaitHandle()) +
+          ", @" + op.getSymbol().str() + "\n";
+}
+
+// WAIT_UC_DMA            $r2
+void emitWaitUcDma(CertWaitUcDmaOp op, std::string &text) {
+  text +=
+      "  WAIT_UC_DMA            $r" + std::to_string(op.getWaitHandle()) + "\n";
+}
+
 // WAIT_TCTS              TILE_0_1, MEM_MM2S_0, 1
 void emitWaitTCTS(CertWaitTCTSOp op, std::string &text) {
   uint32_t tileId = op.getTileId();
@@ -95,15 +161,27 @@ void emitApplyOffset57(CertApplyOffset57Op op, std::string &text) {
 // LOCAL_BARRIER       $lb0, 2
 void emitLocalBarrier(CertLocalBarrierOp op, std::string &text) {
   text += "  LOCAL_BARRIER          ";
-  text += "$lb" + std::to_string(op.getLocalBarrierId()) + ", ";
+  text +=
+      "$" + stringifyCertLocalBarrierId(op.getLocalBarrierId()).str() + ", ";
   text += std::to_string(op.getNumParticipants()) + "\n";
 }
 
 // REMOTE_BARRIER      $rb3, 3
 void emitRemoteBarrier(CertRemoteBarrierOp op, std::string &text) {
   text += "  REMOTE_BARRIER         ";
-  text += "$rb" + std::to_string(op.getRemoteBarrierId()) + ", ";
+  text +=
+      "$" + stringifyCertRemoteBarrierId(op.getRemoteBarrierId()).str() + ", ";
   text += std::to_string(op.getPartyMask()) + "\n";
+}
+
+// REL_ACQ_SYNC        0x0205720c, 0x02057004
+void emitRelAcqSync(CertRelAcqSyncOp op, std::string &text) {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  ss << "  REL_ACQ_SYNC           ";
+  ss << llvm::format("0x%08x, ", op.getRelAddress());
+  ss << llvm::format("0x%08x\n", op.getAcqAddress());
+  text += ss.str();
 }
 
 // LOAD_PDI            1, @device_config
@@ -142,11 +220,21 @@ LogicalResult emitJob(CertJobOp jobOp, std::string &text, std::string &data) {
         .Case<CertPreemptOp>([&](auto op) { emitPreempt(op, text); })
         .Case<CertRemoteBarrierOp>(
             [&](auto op) { emitRemoteBarrier(op, text); })
+        .Case<CertRelAcqSyncOp>([&](auto op) { emitRelAcqSync(op, text); })
         .Case<CertMaskWrite32Op>([&](auto op) { emitMaskWrite32(op, text); })
         .Case<CertMaskPoll32Op>([&](auto op) { emitMaskPoll32(op, text); })
         .Case<CertNopOp>([&](auto op) { emitNop(op, text); })
         .Case<CertUcDmaWriteDesSyncOp>(
             [&](auto op) { emitUcDmaWriteDesSync(op, text); })
+        .Case<CertUcDmaWriteDesOp>(
+            [&](auto op) { emitUcDmaWriteDes(op, text); })
+        .Case<CertWaitUcDmaOp>([&](auto op) { emitWaitUcDma(op, text); })
+        .Case<CertRead32Op>([&](auto op) { emitRead32(op, text); })
+        .Case<CertRead32DOp>([&](auto op) { emitRead32D(op, text); })
+        .Case<CertWrite32DOp>([&](auto op) { emitWrite32D(op, text); })
+        .Case<CertSaveTimestampsOp>(
+            [&](auto op) { emitSaveTimestamps(op, text); })
+        .Case<CertSaveRegisterOp>([&](auto op) { emitSaveRegister(op, text); })
         .Case<CertWaitTCTSOp>([&](auto op) { emitWaitTCTS(op, text); })
         .Case<CertWrite32Op>([&](auto op) { emitWrite32(op, text); })
         .Case<AIE::EndOp>([](auto) { /* implicit region terminator, skip */ })
@@ -164,10 +252,9 @@ LogicalResult emitJobs(llvm::SmallVector<CertJobOp> &jobs, std::string &text,
                        std::string &data) {
   LogicalResult result = success();
 
-  llvm::sort(jobs, [](CertJobOp a, CertJobOp b) {
-    return a.getJobId() < b.getJobId();
-  });
-
+  // Emit jobs in IR/textual order. job_id is a per-page-unique label, not an
+  // execution/emission order (the firmware treats it as a job-table key and
+  // schedules jobs on a page cooperatively, starting them in textual order).
   for (auto job : jobs) {
     if (failed(emitJob(job, text, data)))
       result = failure();
@@ -184,14 +271,10 @@ LogicalResult emitPage(CertPageOp pageOp, std::string &text,
   LogicalResult result = success();
   text += ".align 16\n";
 
-  // Process jobs within the page
-  auto jobs =
-      llvm::to_vector_of<CertJobOp>(pageOp.getBody().getOps<CertJobOp>());
-  llvm::sort(jobs, [](CertJobOp a, CertJobOp b) {
-    return a.getJobId() < b.getJobId();
-  });
-
-  for (auto job : jobs) {
+  // Process jobs within the page in IR/textual order. Textual order is the
+  // execution order the firmware relies on within a page (jobs are started in
+  // textual order); do not reorder by job_id.
+  for (auto job : pageOp.getBody().getOps<CertJobOp>()) {
     if (failed(emitJob(job, text, data)))
       result = failure();
   }
@@ -205,6 +288,21 @@ LogicalResult emitPage(CertPageOp pageOp, std::string &text,
 // .endl label
 //
 // The section content is emitted to a separate file
+LogicalResult emitUcDmaChain(CertUcDmaChainOp op, std::string &chains,
+                             std::string &data,
+                             llvm::StringSet<> &emittedGlobals);
+LogicalResult emitGlobalData(Operation *op, StringRef dataSymbol,
+                             std::string &data,
+                             llvm::StringSet<> &emittedGlobals);
+
+StringRef referencedChain(Operation *op) {
+  if (auto write = dyn_cast<CertUcDmaWriteDesSyncOp>(op))
+    return write.getSymbol();
+  if (auto write = dyn_cast<CertUcDmaWriteDesOp>(op))
+    return write.getSymbol();
+  return {};
+}
+
 LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
                           llvm::StringRef outputPath) {
   LogicalResult result = success();
@@ -214,6 +312,35 @@ LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
   // Build the section content in separate strings
   std::string sectionText;
   std::string sectionData;
+  std::string sectionChains;
+  llvm::StringSet<> emittedChains;
+  llvm::StringSet<> emittedGlobals;
+  auto device = sectionOp->getParentOfType<DeviceOp>();
+  // AIEBU resolves labels within the including file's scope. Each section
+  // needs its own chain and payload copies, even when another section shares
+  // them.
+  sectionOp.walk([&](Operation *op) {
+    if (auto patch = dyn_cast<CertApplyOffset57Op>(op)) {
+      if (failed(emitGlobalData(op, patch.getSymbol(), sectionData,
+                                emittedGlobals)))
+        result = failure();
+      return;
+    }
+    StringRef name = referencedChain(op);
+    if (name.empty() || !emittedChains.insert(name).second)
+      return;
+    auto chain =
+        dyn_cast_if_present<CertUcDmaChainOp>(device.lookupSymbol(name));
+    if (!chain) {
+      op->emitError("uC DMA chain symbol not found: ") << name;
+      result = failure();
+    } else if (failed(emitUcDmaChain(chain, sectionChains, sectionData,
+                                     emittedGlobals))) {
+      result = failure();
+    }
+  });
+  if (failed(result))
+    return result;
 
   // Process pages within the section
   for (auto page : sectionOp.getBody().getOps<CertPageOp>()) {
@@ -257,6 +384,7 @@ LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
 
   // Emit EOF before data section
   sectionFile << "EOF\n\n";
+  sectionFile << sectionChains;
 
   // Emit data section
   if (!sectionData.empty()) {
@@ -308,30 +436,27 @@ LogicalResult emitAttachToGroupOp(CertAttachToGroupOp groupOp,
   return result;
 }
 
-void emitUcDmaBdData(CertUcDmaBdOp op, std::string &data,
-                     llvm::StringSet<> &emittedGlobals) {
-  // lookup data from operation
-  auto dataSymbol = op.getRemoteAddress();
+LogicalResult emitGlobalData(Operation *op, StringRef dataSymbol,
+                             std::string &data,
+                             llvm::StringSet<> &emittedGlobals) {
   if (emittedGlobals.contains(dataSymbol))
-    return;
+    return success();
 
   auto global = dyn_cast_if_present<memref::GlobalOp>(
       op->getParentOfType<AIE::DeviceOp>().lookupSymbol(dataSymbol));
   if (!global) {
-    op.emitError("Global symbol not found");
-    return;
+    return op->emitError("Global symbol not found");
   }
 
   auto initVal = global.getInitialValue();
   if (!initVal) {
-    op.emitError("Global symbol has no initial value");
-    return;
+    return op->emitError("Global symbol has no initial value");
   }
 
   auto initData = dyn_cast<DenseIntElementsAttr>(*initVal);
   if (!initData) {
-    op.emitError("Global symbol initial value is not a dense int array");
-    return;
+    return op->emitError(
+        "Global symbol initial value is not a dense int array");
   }
 
   // data0:
@@ -344,11 +469,13 @@ void emitUcDmaBdData(CertUcDmaBdOp op, std::string &data,
     ss << llvm::format("  .long           0x%08x\n", d.getZExtValue());
   data += ss.str();
   emittedGlobals.insert(dataSymbol);
+  return success();
 }
 
 // UC_DMA_BD       0, 0x001A05C0, @data, 8, 0, 1
-void emitUcDmaBd(CertUcDmaBdOp op, std::string &chains, std::string &data,
-                 llvm::StringSet<> &emittedGlobals) {
+LogicalResult emitUcDmaBd(CertUcDmaBdOp op, std::string &chains,
+                          std::string &data,
+                          llvm::StringSet<> &emittedGlobals) {
   std::string s;
   llvm::raw_string_ostream ss(s);
   ss << "  UC_DMA_BD       0, ";
@@ -358,20 +485,23 @@ void emitUcDmaBd(CertUcDmaBdOp op, std::string &chains, std::string &data,
   ss << "0, ";
   ss << (op.getNextBd() ? "1\n" : "0\n");
   chains += ss.str();
-  emitUcDmaBdData(op, data, emittedGlobals);
+  return emitGlobalData(op, op.getRemoteAddress(), data, emittedGlobals);
 }
 
 // .align           16
 // name_of_chain:
 //   UC_DMA_BD       0, 0x001A05C0, @data0, 8, 0, 1
-void emitUcDmaChain(CertUcDmaChainOp op, std::string &chains, std::string &data,
-                    llvm::StringSet<> &emittedGlobals) {
+LogicalResult emitUcDmaChain(CertUcDmaChainOp op, std::string &chains,
+                             std::string &data,
+                             llvm::StringSet<> &emittedGlobals) {
   chains += "  .align 16\n";
   chains += op.getName().str() + ":\n";
   for (auto &o : op.getBody().front()) {
-    llvm::TypeSwitch<Operation *>(&o).Case<CertUcDmaBdOp>(
-        [&](auto op) { emitUcDmaBd(op, chains, data, emittedGlobals); });
+    if (auto bd = dyn_cast<CertUcDmaBdOp>(&o))
+      if (failed(emitUcDmaBd(bd, chains, data, emittedGlobals)))
+        return failure();
   }
+  return success();
 }
 
 } // namespace
@@ -385,7 +515,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   std::vector<std::string> text;
   std::vector<std::string> data;
   std::vector<std::string> chains;
-  llvm::StringSet<> emittedGlobals;
+  std::map<uint32_t, llvm::StringSet<>> emittedGlobals;
 
   text.emplace_back("\n;\n; Code\n;\n\n");
   data.emplace_back("\n;\n; Data\n;\n\n");
@@ -399,71 +529,131 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
 
   LogicalResult result = success();
 
-  // Process sections after attach_to_group so they're in the column
+  // Emit each microcontroller's (uC / group) content as its own ordered stream,
+  // keyed by the *actual* group id. Group 0 (device-level content plus any
+  // attach_to_group(0)) shares block 0; every other uC id gets its own
+  // code/data/EOF block (ops sharing a non-zero id share a block).
+  std::map<uint32_t, size_t> groupIdToBlock;
+  groupIdToBlock[0] = 0; // device-level content lives in block 0
+  auto blockFor = [&](uint32_t gid) -> size_t {
+    auto it = groupIdToBlock.find(gid);
+    if (it != groupIdToBlock.end())
+      return it->second;
+    text.emplace_back("\n;\n; Code\n;\n\n");
+    data.emplace_back("\n;\n; Data\n;\n\n");
+    chains.emplace_back("\n;\n; Data (chains)\n;\n\n");
+    size_t block = text.size() - 1;
+    groupIdToBlock[gid] = block;
+    return block;
+  };
+
+  // AIEBU resolves labels within each controller's block. Record every group
+  // that needs a device-level chain; sections emit their own copies.
+  llvm::StringSet<> sectionReferences;
+  std::map<std::string, std::set<uint32_t>> chainUsers;
+  deviceOp.walk([&](Operation *op) {
+    StringRef name = referencedChain(op);
+    auto patch = dyn_cast<CertApplyOffset57Op>(op);
+    if (name.empty() && !patch)
+      return;
+    if (op->getParentOfType<CertSectionOp>()) {
+      if (!name.empty())
+        sectionReferences.insert(name);
+      return;
+    }
+    auto group = op->getParentOfType<CertAttachToGroupOp>();
+    uint32_t groupId = group ? group.getGroupId() : 0;
+    if (patch) {
+      size_t block = blockFor(groupId);
+      if (failed(emitGlobalData(op, patch.getSymbol(), data[block],
+                                emittedGlobals[groupId])))
+        result = failure();
+      return;
+    }
+    if (!deviceOp.lookupSymbol<CertUcDmaChainOp>(name)) {
+      op->emitError("uC DMA chain symbol not found: ") << name;
+      result = failure();
+      return;
+    }
+    chainUsers[name.str()].insert(groupId);
+  });
+
+  // Sections are hoisted ahead of the executable stream: they are labeled
+  // `.include` blocks, not pages, and the code below them may reference them
+  // (e.g. `LOAD_PDI 1, @config_device`), so their labels must already be
+  // defined. `emitAttachToGroupOp` hoists a group's sections the same way.
   for (auto section : deviceOp.getBody()->getOps<CertSectionOp>()) {
     if (failed(emitSection(section, text[0], outputPath)))
       result = failure();
   }
 
-  // Process pages at device level (if any)
-  for (auto page : deviceOp.getBody()->getOps<CertPageOp>()) {
-    if (failed(emitPage(page, text[0], data[0])))
-      result = failure();
-  }
-
-  // Process standalone jobs at device level (for backwards compatibility)
-  auto jobs =
-      llvm::to_vector_of<CertJobOp>(deviceOp.getBody()->getOps<CertJobOp>());
-  if (failed(emitJobs(jobs, text[0], data[0])))
-    result = failure();
-
-  auto groups = llvm::to_vector_of<CertAttachToGroupOp>(
-      deviceOp.getBody()->getOps<CertAttachToGroupOp>());
-  llvm::sort(groups, [](CertAttachToGroupOp a, CertAttachToGroupOp b) {
-    return a.getGroupId() < b.getGroupId();
-  });
-
-  for (auto o : deviceOp.getBody()->getOps<CertUcDmaChainOp>())
-    emitUcDmaChain(o, chains[0], data[0], emittedGlobals);
-
-  int group_id = 0;
-  for (auto &groupOp : groups) {
-    if (group_id) {
-      text.emplace_back("\n;\n; Code\n;\n\n");
-      data.emplace_back("\n;\n; Data\n;\n\n");
-      chains.emplace_back("\n;\n; Data (chains)\n;\n\n");
+  // Preserve encounter order: emitting all bare pages first could put a release
+  // after its WAIT_TCTS consumer on controller 0.
+  for (Operation &op : *deviceOp.getBody()) {
+    if (auto page = dyn_cast<CertPageOp>(&op)) {
+      if (failed(emitPage(page, text[0], data[0])))
+        result = failure();
+    } else if (auto job = dyn_cast<CertJobOp>(&op)) {
+      if (failed(emitJob(job, text[0], data[0])))
+        result = failure();
+    } else if (auto grp = dyn_cast<CertAttachToGroupOp>(&op)) {
+      size_t block = blockFor(grp.getGroupId());
+      if (failed(
+              emitAttachToGroupOp(grp, text[block], data[block], outputPath)))
+        result = failure();
+    } else if (auto chain = dyn_cast<CertUcDmaChainOp>(&op)) {
+      std::set<uint32_t> users = {0};
+      auto it = chainUsers.find(chain.getName().str());
+      if (it != chainUsers.end())
+        users = it->second;
+      else if (sectionReferences.contains(chain.getName()))
+        continue;
+      for (uint32_t groupId : users) {
+        size_t block = blockFor(groupId);
+        if (failed(emitUcDmaChain(chain, chains[block], data[block],
+                                  emittedGlobals[groupId])))
+          result = failure();
+      }
     }
-    if (failed(emitAttachToGroupOp(groupOp, text[group_id], data[group_id],
-                                   outputPath)))
-      result = failure();
-    group_id++;
   }
 
   if (failed(result))
     return result;
 
-  for (auto const &[t, c, d] : llvm::zip(text, chains, data)) {
-    if (!t.empty()) {
-      assembly += t;
+  // Emit blocks in group-id order (block 0 = uC 0 first). Each block is a
+  // self-contained stream: code + EOF, then its chains and data.
+  for (auto const &entry : groupIdToBlock) {
+    size_t block = entry.second;
+    if (!text[block].empty()) {
+      assembly += text[block];
       // Add final EOF after all code (sections emit their own EOF before .endl)
       assembly += "EOF\n";
     }
-    if (!c.empty()) {
-      assembly += c;
-    }
-    if (!d.empty())
-      assembly += "\n" + d;
+    if (!chains[block].empty())
+      assembly += chains[block];
+    if (!data[block].empty())
+      assembly += "\n" + data[block];
   }
   return success();
 }
+
+// The registered translation receives a stream, so its output filename is
+// unavailable. An explicit directory lets callers keep section files beside it.
+static llvm::cl::opt<std::string>
+    certSectionDir("cert-section-dir",
+                   llvm::cl::desc("Directory for aiex.cert.section .asm files "
+                                  "(default: current directory)"),
+                   llvm::cl::init(""));
 
 LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
                                                raw_ostream &output) {
   std::string assembly;
 
-  // Section files will be created in the current directory
-  // since we can't reliably extract the output path from raw_ostream
-  llvm::StringRef outputPath = "";
+  llvm::SmallString<128> outputPath;
+  if (!certSectionDir.empty()) {
+    outputPath = StringRef(certSectionDir);
+    llvm::sys::path::append(outputPath, "main.asm");
+  }
 
   auto r = AIETranslateToUcDma(module, assembly, outputPath);
   if (failed(r))

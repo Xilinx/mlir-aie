@@ -181,6 +181,44 @@ A `WorkerRuntimeBarrier` may take any value between 0 and the device's `max_lock
 
 > **NOTE:**  Similar to the `Buffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.
 
+#### **Scratchpad Parameters — an Alternative to RTP Buffers**
+
+[`ScratchpadParameter`](../../../python/iron/scratchpad_parameter.py) is a newer, simpler way
+to pass a named scalar from host to core, without a dedicated RTP `Buffer`/lock pair:
+
+```python
+from aie.iron import ScratchpadParameter
+
+seq_len = ScratchpadParameter("seq_len", np.int32)
+
+def core_fn(p, of_in, of_out, k):
+    v = p.read()                          # inside the Worker core
+    ...
+
+w = Worker(core_fn, [seq_len, of_in.cons(), of_out.prod(), k])
+
+def sequence(a_in, c_out, in_h, out_h):
+    sync_parameters()                     # emits the host→scratchpad sync; call before workers read it
+    in_h.fill(a_in)
+    out_h.drain(c_out, wait=True)
+```
+
+From the host, an `@iron.jit(full_elf=True)` design takes the values per call, by name:
+`design(a, c, parameters={"seq_len": np.int32(128)})`. A design that declares no
+`ScratchpadParameter` refuses `parameters=`, and a generator may not name one of its own
+parameters `parameters`. A lower-level pyxrt flow writes the same values through
+`aie.utils.hostruntime.xrtruntime.parameter_scratchpad.ParameterScratchpad` before `run.start()`.
+`test/python/npu-xrt/scratchpad_params/test.py` runs both forms against
+[`aie_design.py`](../../../test/python/npu-xrt/scratchpad_params/aie_design.py) in the same
+directory.
+
+Reach for `Buffer(..., use_write_rtp=True)` + `WorkerRuntimeBarrier` for the common case above
+(matches most existing examples); use `ScratchpadParameter` when you specifically want to avoid
+a dedicated RTP buffer/lock.
+
+Note that `ScratchpadParameter`s depend on the full-ELF flow (`aiecc --get-full-elf`) and are
+not available on the Phoenix/Hawk Point architectures.
+
 #### **Runtime Task Groups**
 
 It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited. The compiler already reuses the BDs of tasks it can prove finished, so a task group is not needed just to stay within the BD pool; use one to say when the sequence should wait.

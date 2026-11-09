@@ -17,6 +17,7 @@ bounds) elaborates to a flat binary sequence.
 
 from __future__ import annotations
 
+import inspect
 import itertools
 import logging
 from typing import TYPE_CHECKING, Callable, Sequence, get_origin
@@ -27,6 +28,7 @@ from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAcces
 from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     RuntimeSequenceOp,
 )
+from ...dialects.aie import Port
 from ...dialects.aiex import (
     dma_await_task,
     dma_free_task,
@@ -36,7 +38,7 @@ from ...dialects.aiex import (
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from ...helpers.npdtypes import np_ndarray_type_of
-from ...helpers.sourceloc import SourceSite, traced_body
+from ...helpers.sourceloc import Declared, SourceSite, traced_body
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
@@ -44,7 +46,8 @@ from ...helpers.util import (
 )
 from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
-from ..dataflow.objectfifo import ObjectFifoHandle
+from ..dataflow.objectfifo import ObjectFifoHandle, ObjectFifoLink
+from ..dataflow.objectfifopool import ObjectFifoPoolHandle
 from ..resolvable import DeviceResources, Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_configuration, active_sequence, active_sequence_scope
@@ -88,15 +91,29 @@ class ActiveSequence:
         self._open_task_groups: list[TaskGroup] = []
         self._used_default = False
         self._used_explicit = False
+        # sync_parameters() calls so far; only the first emits a sync.
+        self.sync_requests = 0
+        # The merged step whose body is running, if any (Runtime.merge).
+        self.step: Runtime | None = None
 
     @property
     def runtime(self) -> "Runtime":
         """The Runtime whose sequence body is running."""
         return self._runtime
 
+    @property
+    def body(self) -> ir.Block:
+        """The sequence's entry block, which holds the body's top-level ops."""
+        return self._seq_op.body.blocks[0]
+
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
-        """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
+        """Record that ``handle`` is driven from the runtime (its shim endpoint).
+
+        A merged step running records it as its own as well.
+        """
         self._runtime._fifos[handle] = None
+        if self.step is not None:
+            self.step._fifos[handle] = None
 
     def resolve_in_device(self, resolvable) -> None:
         """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
@@ -191,11 +208,11 @@ class ActiveSequence:
         self._used_default = self._used_explicit = False
 
 
-class Runtime(DeviceResources, Resolvable):
+class Runtime(Declared, DeviceResources, Resolvable):
     """The host-side sequence of data-movement operations that execute an IRON design.
 
     A Runtime describes what the host does at runtime: filling input
-    [`ObjectFifo`][iron.ObjectFifo]s with data and draining results back to host
+    [`ObjectFifo`][aie.iron.ObjectFifo]s with data and draining results back to host
     buffers. The sequence is the ``seq_fn`` callback passed to the
     constructor; its body reads the runtime buffers as parameters and moves
     data with ``fifo.fill(...)`` / ``fifo.drain(...)``.
@@ -212,7 +229,7 @@ class Runtime(DeviceResources, Resolvable):
     ) -> None:
         """Create a runtime from its sequence body and fn_args.
 
-        Mirrors [`Worker`][iron.Worker]``(core_fn, fn_args)``: ``seq_fn`` runs
+        Mirrors [`Worker`][aie.iron.Worker]``(core_fn, fn_args)``: ``seq_fn`` runs
         inside ``@runtime_sequence`` at resolve time, called as
         ``seq_fn(*fn_args)``, and can use native ``range_``/``if_`` and
         ``fifo.fill``/``fifo.drain``. Objects in ``fn_args`` (ObjectFifoHandles,
@@ -334,7 +351,12 @@ class Runtime(DeviceResources, Resolvable):
         self._task_group_index = itertools.count()
 
     @classmethod
-    def merge(cls, runtimes: Sequence[Runtime], name: str | None = None) -> Runtime:
+    def merge(
+        cls,
+        runtimes: Sequence[Runtime],
+        name: str | None = None,
+        run: Callable[[Sequence[tuple[Runtime, tuple]]], None] | None = None,
+    ) -> Runtime:
         """Return one Runtime whose sequence runs the bodies of ``runtimes`` in order.
 
         For steps that run back to back on one configuration: they issue one
@@ -343,15 +365,25 @@ class Runtime(DeviceResources, Resolvable):
         with a DispatchTime parameter several steps forward kept once, and it
         registers their flows, locks, tile DMAs and scratchpad parameters.
 
+        Each step's task groups close before the next step issues, which frees
+        its transfers it did not await. That suits steps that each await what
+        they need; steps joined on-chip, where a step's input completes only
+        once a later step drains, give ``run`` to issue them together.
+
         Args:
             runtimes: The steps, in the order their bodies run.
             name: The merged Runtime's name, or None to have one given.
+            run: Called inside the merged sequence with each step and the
+                arguments it takes, in order, in place of running the bodies
+                one after another; None runs them so.
 
         Returns:
             The merged Runtime.
 
         Raises:
-            ValueError: One of ``runtimes`` already belongs to a configuration.
+            ValueError: One of ``runtimes`` already belongs to a configuration;
+                or, once the sequence is emitted, two steps that sync parameters
+                drive one Worker that waits for them each pass.
             TypeError: The steps forward DispatchTime parameters of different
                 designs.
         """
@@ -377,11 +409,28 @@ class Runtime(DeviceResources, Resolvable):
                     fn_args.append(arg)
 
         def body(*args):
-            for runtime, slot in zip(runtimes, slots):
-                runtime._seq_fn(*(args[i] for i in slot))
-                # Closing the step's task groups awaits its wait=True
-                # transfers before the next step issues; the rest are freed.
-                active_sequence().finalize(runtime._strict_task_groups)
+            calls = [
+                (runtime, tuple(args[i] for i in slot))
+                for runtime, slot in zip(runtimes, slots)
+            ]
+            seq = active_sequence()
+            if run is not None:
+                run(calls)
+                # run issues the steps together, so once the sequence asks for
+                # a second sync any step may be one that asked.
+                synced = [seq.sync_requests > 1] * len(calls)
+            else:
+                synced = []
+                for runtime, step_args in calls:
+                    requests = seq.sync_requests
+                    seq.step = runtime
+                    runtime._seq_fn(*step_args)
+                    seq.step = None
+                    synced.append(seq.sync_requests > requests)
+                    # Closing the step's task groups awaits its wait=True
+                    # transfers before the next step issues; the rest are freed.
+                    seq.finalize(runtime._strict_task_groups)
+            _refuse_a_worker_synced_twice(runtimes, synced, seq)
 
         merged = cls(
             body,
@@ -459,26 +508,59 @@ class Runtime(DeviceResources, Resolvable):
         A fn_args entry may be a nested list/tuple of handles (e.g. one per
         column); the flattened leaves are registered while the body still
         receives the structured argument.
+
+        Consumer handles of one ObjectFifo bound to the same shim end, as when
+        several Runtimes drain it through their own ``cons()``, share the
+        first one's consumer, so the fifo does not broadcast to a shim
+        channel per handle.
+
+        Raises:
+            ValueError: Two such handles differ in depth, ``from_stream`` or
+                pinned DMA channel.
         """
         for arg in flatten_fn_args(self._fn_args):
             if isinstance(arg, ObjectFifoHandle):
                 if arg.endpoint is None:
                     arg.endpoint = RuntimeEndpoint(arg._shim_tile)
+                fifo_obj = arg._object_fifo
+                if not arg._is_prod:
+                    for first in fifo_obj._cons:
+                        shared = first.endpoint
+                        if (
+                            first is arg
+                            or not isinstance(shared, RuntimeEndpoint)
+                            or shared != arg.endpoint
+                        ):
+                            continue
+                        if (
+                            first.depth,
+                            first.from_stream,
+                            first.port or Port.dma(),
+                        ) != (arg.depth, arg.from_stream, arg.port or Port.dma()):
+                            raise ValueError(
+                                f"ObjectFifo {fifo_obj.name!r} is drained to one "
+                                "shim end through consumer handles with different "
+                                "depths, from_stream patterns or pinned DMA channels"
+                            )
+                        if arg in fifo_obj._cons:
+                            fifo_obj._cons.remove(arg)
+                        arg.endpoint = shared
+                        break
                 self._fifos[arg] = None
 
     def add_flow(self, flow) -> None:
         """Register a flow for resolution alongside the ObjectFifos.
 
-        Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow].
+        Accepts a [`Flow`][aie.iron.Flow] or [`PacketFlow`][aie.iron.PacketFlow].
         """
         super().add_flow(flow)
         if self._configuration is not None:
             self._configuration.add_flow(flow)
 
     def add_lock(self, lock) -> None:
-        """Register an explicit [`Lock`][iron.Lock] no TileDma, task or Worker reaches.
+        """Register an explicit [`Lock`][aie.iron.Lock] no TileDma, task or Worker reaches.
 
-        Locks a [`TileDma`][iron.TileDma]'s or a task's Bds use are found
+        Locks a [`TileDma`][aie.iron.TileDma]'s or a task's Bds use are found
         from them, and a Worker's from its ``fn_args``.
         """
         super().add_lock(lock)
@@ -547,17 +629,17 @@ class Runtime(DeviceResources, Resolvable):
             loc: Optional MLIR source location for the generated ops.
             ip: Optional MLIR insertion point for the generated ops.
             trace_size: Forwarded from
-                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                [`Program.enable_trace`][aie.iron.program.Program.enable_trace]; see
                 there. ``None``/``0`` disables tracing.
             reuse_output_buffer: Forwarded from
-                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                [`Program.enable_trace`][aie.iron.program.Program.enable_trace]; see
                 there.
             egress_shim_col: Forwarded from
-                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                [`Program.enable_trace`][aie.iron.program.Program.enable_trace]; see
                 there.
             implicit_configure_device_ref: The enclosing device symbol for an
                 implicit full-ELF ``aiex.npu.load_pdi``. ``None`` on the xclbin path.
-            device: The [`Device`][iron.Device] that places tiles the body
+            device: The [`Device`][aie.iron.Device] that places tiles the body
                 reaches first, such as a buffer only a runtime task names.
         """
         # A runtime_sequence block arg per runtime (type) input; folded-constant
@@ -635,6 +717,12 @@ class Runtime(DeviceResources, Resolvable):
                 else:
                     body_args.append(arg)
 
+            # Each buffer is named after the sequence parameter it arrives as,
+            # which names the transfers that move it.
+            for name, rt_data in zip(_parameter_names(self._seq_fn), self._rt_data):
+                if rt_data is not None:
+                    rt_data.name = name
+
             with active_sequence_scope(active):
                 with traced_body(self._seq_fn):
                     self._seq_fn(*body_args)
@@ -708,6 +796,23 @@ class Runtime(DeviceResources, Resolvable):
                 fifo_obj._cons.remove(r)
 
 
+def _parameter_names(fn) -> list[str]:
+    """Return `fn`'s positional parameter names, or none if it has no fixed ones."""
+    try:
+        parameters = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return []
+    names = []
+    for parameter in parameters:
+        if parameter.kind not in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            break
+        names.append(parameter.name)
+    return names
+
+
 class _SyncParametersTask(Resolvable):
     """Emits `aiex.sync_scratchpad_parameters_from_host` during runtime sequence resolution."""
 
@@ -723,7 +828,95 @@ def sync_parameters() -> None:
     """Emit ``aiex.sync_scratchpad_parameters_from_host`` in the sequence body.
 
     Call after all scratchpad parameters have been written on the host side and
-    before starting workers that read them.
+    before starting workers that read them, at the top level of the sequence
+    body: the sync op must sit directly in its ``aie.runtime_sequence``, so it
+    cannot go under ``range_`` or ``if_``. A sequence syncs once: the sync
+    stages every parameter of the device and releases every core waiting on
+    one, so a later call in the same sequence (a merged step's) emits nothing,
+    the earlier sync having already run ahead of it. A Worker that waits for
+    parameters each pass therefore makes one pass per sequence, and
+    ``Runtime.merge`` refuses two syncing steps that both drive one.
+
+    Raises:
+        ValueError: The call is inside a ``range_`` or ``if_`` of the body.
     """
-    active_sequence()  # ensure we're inside a sequence body
-    _SyncParametersTask().resolve()
+    seq = active_sequence()
+    if ir.InsertionPoint.current.block != seq.body:
+        raise ValueError(
+            "sync_parameters() must be called at the top level of a runtime "
+            "sequence body, not under range_ or if_: "
+            "aiex.sync_scratchpad_parameters_from_host sits directly in its "
+            "aie.runtime_sequence"
+        )
+    seq.sync_requests += 1
+    if seq.sync_requests == 1:
+        _SyncParametersTask().resolve()
+
+
+def _refuse_a_worker_synced_twice(
+    steps: list[Runtime], synced: list[bool], seq: ActiveSequence
+) -> None:
+    """Refuse two syncing merged steps that drive one Worker waiting each pass.
+
+    The merged sequence syncs once, and a ``while_true`` Worker with
+    ``wait_for_parameters`` makes one pass per sync, so the second step's
+    pass would never start. A step drives the Workers its fifos reach,
+    through any chain of links; a fifo the sequence moves that no step
+    declares may be any step's. A pool handle states one end only, so a
+    Worker holding one counts as driven by every syncing step.
+
+    Args:
+        steps: The merged steps, in order.
+        synced: Whether each step asked for a sync.
+        seq: The merged sequence.
+
+    Raises:
+        ValueError: Two syncing steps drive one such Worker.
+    """
+    configuration = seq.runtime.configuration
+    waiting = [
+        worker
+        for worker in (configuration.workers if configuration is not None else [])
+        if worker.while_true and worker.wait_for_parameters
+    ]
+    if sum(synced) < 2 or not waiting:
+        return
+    declared = {handle for step in steps for handle in step.fifos}
+    stray = [handle for handle in seq.runtime.fifos if handle not in declared]
+    reached: list[list] = []
+    for step in steps:
+        endpoints = []
+        seen = set()
+        fifos = [handle._object_fifo for handle in [*step.fifos, *stray]]
+        while fifos:
+            fifo = fifos.pop()
+            if id(fifo) in seen:
+                continue
+            seen.add(id(fifo))
+            for handle in [fifo._prod, *fifo._cons]:
+                endpoint = handle.endpoint if handle is not None else None
+                endpoints.append(endpoint)
+                if isinstance(endpoint, ObjectFifoLink):
+                    fifos.extend(
+                        linked._object_fifo
+                        for linked in [*endpoint._srcs, *endpoint._dsts]
+                    )
+        reached.append(endpoints)
+    for worker in waiting:
+        untraced = any(isinstance(h, ObjectFifoPoolHandle) for h in worker.fifos)
+        driving = [
+            i
+            for i, endpoints in enumerate(reached)
+            if synced[i]
+            and (untraced or any(endpoint is worker for endpoint in endpoints))
+        ]
+        if len(driving) > 1:
+            first, second = (steps[i] for i in driving[:2])
+            raise ValueError(
+                f"Runtime.merge: steps {driving[0]} ({first.name}) and "
+                f"{driving[1]} ({second.name}) both sync parameters and drive "
+                f"the Worker running {worker.core_fn!r} on {worker.tile}, which "
+                "waits for parameters each pass of its loop. A sequence syncs "
+                "once, so that Worker would make one pass where the steps need "
+                "two; run them as separate dispatches."
+            )

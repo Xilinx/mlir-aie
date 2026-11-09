@@ -74,11 +74,12 @@ std::optional<uint32_t> AIETargetModel::lookupEvent(llvm::StringRef name,
   return db->lookupEvent(name, getModuleForTileEvents(*this, tile, isMem));
 }
 
-uint32_t AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
-                                          uint32_t value) const {
+std::optional<uint32_t>
+AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
+                                 uint32_t value) const {
   const auto *db = getRegisterDatabase();
   if (!db)
-    return 0;
+    return std::nullopt;
   return db->encodeFieldValue(field, value);
 }
 
@@ -1737,6 +1738,16 @@ AIETargetModel::getMemLocalBaseAddress(int localCol, int localRow, int memCol,
   }
 
   return std::nullopt;
+}
+
+uint32_t AIETargetModel::getNumDMAChannels(int col, int row,
+                                           AIE::DMAChannelDir dir) const {
+  bool mm2s = dir == AIE::DMAChannelDir::MM2S;
+  if (isShimNOCorPLTile(col, row))
+    return mm2s ? getNumSourceShimMuxConnections(col, row, WireBundle::DMA)
+                : getNumDestShimMuxConnections(col, row, WireBundle::DMA);
+  return mm2s ? getNumSourceSwitchboxConnections(col, row, WireBundle::DMA)
+              : getNumDestSwitchboxConnections(col, row, WireBundle::DMA);
 }
 
 bool AIETargetModel::isSupportedBlockFormat(std::string const &format) const {

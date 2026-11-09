@@ -7,10 +7,11 @@
 
 Submodules:
 - `eltwise` — passthrough, scale, add, add_sized, mul, mul_sized, mul_add, relu, clamp, magnitude_f32
-- `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
+- `datamovement` — affine_cast, axpy, convert_copy, decode_coded, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d
-- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize
+- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize,
+  levels, grid_decode, resize_linear, nms
 - `activation` — softmax, gelu, gelu_erf, silu, swiglu, bf16_exp, exp2f_vec, log_f32, log10_clamp_f32, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm, layer_norm_eps
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
@@ -39,7 +40,7 @@ Submodules:
 - `tables` — exp_lut, silu_lut and the C headers that compile them into a kernel
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, dwconv1d, dwconv1d_channels_first, dwconv1d_channels_last, bn_*
 
-Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
+Every factory attaches a [`KernelContract`][aie.iron.kernels.KernelContract] as
 ``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
 cannot say. A kernel whose arithmetic differs by ``Build`` declares the
@@ -149,6 +150,8 @@ from .datamovement import (
     axpy_ref,
     convert_copy,
     convert_copy_ref,
+    decode_coded,
+    decode_coded_ref,
     expand,
     expand_ref,
     limbs_f32,
@@ -183,8 +186,12 @@ from .eltwise import (
     scale_ref,
 )
 from .flm_gemma4 import (
+    BF16_PROJ_K,
+    BF16_PROJ_M,
+    DECODE_KEYS_PER_ROUND,
     FLM_GEMMA4_E2B_DECODE,
     FLM_GEMMA4_E4B_DECODE,
+    RMS_EPS,
     FlmGemma4DecodeGeometry,
     flm_gemma4_attn_kv_core,
     flm_gemma4_attn_kv_core_ref,
@@ -202,10 +209,18 @@ from .flm_gemma4 import (
     flm_gemma4_decode_attn_kv_kvh2,
     flm_gemma4_decode_attn_qk,
     flm_gemma4_decode_attn_qk_kvh2,
+    flm_gemma4_decode_bf16_proj_zero,
+    flm_gemma4_decode_emit,
     flm_gemma4_decode_gate_layer_embedding,
+    flm_gemma4_decode_gate_layer_embedding_mvm,
+    flm_gemma4_decode_gate_layer_embedding_store,
     flm_gemma4_decode_glu,
     flm_gemma4_decode_per_layer_up,
+    flm_gemma4_decode_per_layer_up_mvm,
+    flm_gemma4_decode_per_layer_up_store,
     flm_gemma4_decode_proj_layer_embedding,
+    flm_gemma4_decode_proj_layer_embedding_mvm,
+    flm_gemma4_decode_proj_layer_embedding_store,
     flm_gemma4_decode_proj_main,
     flm_gemma4_decode_rms_residual,
     flm_gemma4_decode_rope,
@@ -295,7 +310,15 @@ from .norm import (
     rms_norm_eps,
     rms_norm_ref,
 )
-from .quant import q4nx_dequant, q4nx_dequant_ref
+from .quant import (
+    Q4NX_BLOCK_BYTES,
+    Q4NX_GROUP,
+    Q4NX_K_TILE,
+    Q4NX_M_TILE,
+    q4nx_dequant,
+    q4nx_dequant_ref,
+    q4nx_unpack,
+)
 from .reduce import (
     argmax,
     argmax_combine,
@@ -339,11 +362,19 @@ from .vision import (
     filter2d_ref,
     gray2rgba,
     gray2rgba_ref,
+    grid_decode,
+    grid_decode_ref,
+    levels,
+    levels_ref,
+    nms,
+    nms_ref,
     resample_peak,
     resample_peak_ref,
     resample_quantize,
     resample_quantize_ref,
     resize,
+    resize_linear,
+    resize_linear_ref,
     resize_ref,
     rgba2gray,
     rgba2gray_ref,
@@ -369,6 +400,15 @@ DTYPES: dict[str, tuple[dict, ...]] = {
 }
 
 __all__ = [
+    "BF16_PROJ_K",
+    "BF16_PROJ_M",
+    "DECODE_KEYS_PER_ROUND",
+    "RMS_EPS",
+    "Q4NX_BLOCK_BYTES",
+    "Q4NX_GROUP",
+    "Q4NX_K_TILE",
+    "Q4NX_M_TILE",
+    "q4nx_unpack",
     "DTYPES",
     "BUILDS",
     "Build",
@@ -477,10 +517,18 @@ __all__ = [
     "flm_gemma4_rms_norm_core_ref",
     "flm_gemma4_decode_proj_main",
     "flm_gemma4_decode_per_layer_up",
+    "flm_gemma4_decode_per_layer_up_mvm",
+    "flm_gemma4_decode_per_layer_up_store",
     "flm_gemma4_bf16_proj_core",
     "flm_gemma4_bf16_proj_core_ref",
+    "flm_gemma4_decode_bf16_proj_zero",
+    "flm_gemma4_decode_emit",
     "flm_gemma4_decode_proj_layer_embedding",
+    "flm_gemma4_decode_proj_layer_embedding_mvm",
+    "flm_gemma4_decode_proj_layer_embedding_store",
     "flm_gemma4_decode_gate_layer_embedding",
+    "flm_gemma4_decode_gate_layer_embedding_mvm",
+    "flm_gemma4_decode_gate_layer_embedding_store",
     "flm_gemma4_pli_gelu_core",
     "flm_gemma4_pli_gelu_core_ref",
     "reduce_add",
@@ -521,6 +569,14 @@ __all__ = [
     "resample_quantize_ref",
     "resize",
     "resize_ref",
+    "levels",
+    "levels_ref",
+    "grid_decode",
+    "grid_decode_ref",
+    "resize_linear",
+    "resize_linear_ref",
+    "nms",
+    "nms_ref",
     "softmax",
     "gelu",
     "gelu_erf",
@@ -537,6 +593,7 @@ __all__ = [
     "affine_cast",
     "axpy",
     "convert_copy",
+    "decode_coded",
     "expand",
     "limbs_f32",
     "merge_rows",
@@ -552,6 +609,7 @@ __all__ = [
     "affine_cast_ref",
     "axpy_ref",
     "convert_copy_ref",
+    "decode_coded_ref",
     "expand_ref",
     "limbs_f32_ref",
     "merge_rows_ref",

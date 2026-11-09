@@ -51,6 +51,12 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
         repeatCount; // already the N-1 biased value on the resident dma_start
   };
 
+  SmallVector<DMAStartOp> corePushStarts;
+  device.walk([&](DMAStartOp start) {
+    if (start.getCorePushes())
+      corePushStarts.push_back(start);
+  });
+
   SmallVector<DmaChannelResetForOp> toErase;
   WalkResult res = device.walk([&](DmaChannelResetForOp op) -> WalkResult {
     auto binding =
@@ -96,6 +102,16 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
       }
       DMAChannelDir dir =
           dirs[i] == 0 ? DMAChannelDir::S2MM : DMAChannelDir::MM2S;
+      for (DMAStartOp start : corePushStarts) {
+        if (start->getParentOfType<TileElement>().getTile() == tiles[i] &&
+            start.getChannelDir() == dir &&
+            start.getChannelIndex() == chans[i]) {
+          op.emitOpError(
+              "does not support core-pushed DMA channels; reset requires "
+              "coordination with the issuing core and all shared senders");
+          return WalkResult::interrupt();
+        }
+      }
       ResolvedEndpoint ep;
       ep.tile = tiles[i];
       ep.dir = dir;
@@ -225,6 +241,11 @@ struct DmaChannelResetToMaskWrite32Pattern
     if (!resetMask)
       return op.emitOpError()
              << ctrlRegName << " Reset field does not fit in a 32-bit register";
+    std::optional<uint32_t> resetValue = tm.encodeFieldValue(*resetField, 1);
+    if (!resetValue)
+      return op.emitOpError()
+             << ctrlRegName
+             << " Reset field value does not fit in its bit width";
 
     Location loc = op.getLoc();
     IntegerAttr colAttr = rewriter.getI32IntegerAttr(col);
@@ -238,8 +259,7 @@ struct DmaChannelResetToMaskWrite32Pattern
     // in named locals so the emitted IR order does not depend on unspecified
     // C++ argument-evaluation order.
     Value assertAddr = createConstantI32(rewriter, loc, ctrlAddrLocal);
-    Value assertVal =
-        createConstantI32(rewriter, loc, tm.encodeFieldValue(*resetField, 1));
+    Value assertVal = createConstantI32(rewriter, loc, *resetValue);
     Value assertMask = createConstantI32(rewriter, loc, *resetMask);
     NpuMaskWrite32Op::create(rewriter, loc, assertAddr, assertVal, assertMask,
                              nullptr, colAttr, rowAttr);

@@ -28,7 +28,9 @@
     "programming_examples/ml/softmax",
     "programming_examples/ml/swiglu",
     "programming_examples/ml/yolo26n",
-    "utils/kernel_checks"
+    "utils/kernel_checks",
+    "test/python/test_declaration.py",
+    "test/python/test_declare_params.py"
   ],
   "exclude": [
     "**/__pycache__",

@@ -60,11 +60,12 @@ def test_zero_bfp_storage_and_reference(npu2_device):
 
 def test_zero_harness_builds_without_input_fifos(npu2_device):
     fn = kernels.zero(64, np.int32)
-    assert kd.sample_inputs(fn, calls=3) == []
-    args = kd.host_args(fn, calls=3)
+    design = kd.KernelDesign(fn, calls=3)
+    assert design.sample_inputs() == []
+    args = design.host_args()
     assert len(args) == 1 and args[0].direction is Out
     assert args[0].n_elements == 192
-    mlir = str(kd.design(kernels.zero, tile_size=64, calls=3).as_mlir())
+    mlir = str(design.as_mlir())
     assert fn.name in mlir
     assert "func.call" in mlir
 
@@ -108,4 +109,4 @@ def test_zero_device_cases_cover_smoke_and_static_sweeps(monkeypatch, npu2_devic
         assert inputs_for(case, "random", np.random.default_rng(0)) == []
         fn = case.fn()
         assert kd.elems(fn.arg_types()[0]) * bfp.itemsize(fn.arg_dtype(0)) % 4 == 0
-        assert kd.design(kernels.zero, **case.kwargs, **case.harness_opts())
+        assert case.kernel_design().design()

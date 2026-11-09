@@ -31,9 +31,11 @@ add_mlir_dialect_library(
   AIEVectorTransferLowering.cpp
   AIEHoistVectorTransferPointers.cpp
   AIEDMAChannelAnalysis.cpp
+  AIEAssignPacketIds.cpp
   AIEObjectFifoAllocate.cpp
   AIECheckAgainstImage.cpp
   AIEObjectFifoLowerDMAs.cpp
+  AIEObjectFifoInsertCoreQueuePushes.cpp
   AIEObjectFifoLowerCores.cpp
   AIEObjectFifoErasePools.cpp
   AIEObjectFifoPipeline.cpp
@@ -42,8 +44,13 @@ add_mlir_dialect_library(
   AIEObjectFifoUnroll.cpp
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp
+  AIEImportOverlay.cpp
   AIETraceToConfig.cpp
   AIEInsertTraceFlows.cpp
+  AIEPacketIdSpace.cpp
+  AIEShimSharing.cpp
+  AIEChannelTurns.cpp
+  AIEPoolLocks.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
@@ -58,6 +65,7 @@ add_mlir_dialect_library(
   MLIRAIEPassIncGen
 
   LINK_LIBS PUBLIC
+  AIEX
   MLIRAnalysis
   MLIRArithTransforms
   MLIRIR

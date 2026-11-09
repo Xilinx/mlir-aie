@@ -31,7 +31,7 @@ Kernels use one of three coding styles, in decreasing order of portability:
 - **AIE API** — a C++ header-only library (`#include <aie_api/aie.hpp>`) of
   vector types and operations that lower to efficient per-generation
   intrinsics. This is the recommended style; see the
-  [AIE API User Guide](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).
+  [AIE API User Guide](https://xilinx.github.io/aie_api/topics.html).
 - **Low-level intrinsics** — architecture-specific intrinsics used directly
   when the AIE API does not expose a needed operation.
 - **Plain C** — scalar code with no vectorization, portable across

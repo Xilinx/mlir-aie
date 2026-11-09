@@ -9,11 +9,11 @@
 
 A 4xN_cols AIE array computes `C = A @ B` using AIE hardware **cascade streams** to accumulate partial products vertically within each column.  Each column's bottom row puts onto its column's cascade stream; mid rows read+put; the top row reads, accumulates into a local C tile, and writes it out.
 
-Default config: `int16` inputs / `int32` outputs, `M`=`K`=`N` = `512`, kernel tile `m`=`k`=`n` = `64`, scalar cascade kernel.
+Default config: `int16` inputs / `int32` outputs, `M`=`K`=`N` = `512`, kernel tile `m`=`k`=`n` = `32`, scalar cascade kernel.
 
 > The cascade design distributes the K accumulation across the four cores in a column (each row does `K // n_aie_rows` iterations), reducing per-core work but adding cascade-stream coordination.
 
-The cascade kernel is currently scalar-only and the design is single-buffered (`fifo_depth=1` to avoid CDO program-memory blowup), giving a structurally lower performance ceiling than vectorized whole-array designs.
+The cascade kernel is currently scalar-only (its ObjectFifos are double-buffered, `fifo_depth = 2`), giving a structurally lower performance ceiling than vectorized whole-array designs.
 
 ## Building and Running the Design
 

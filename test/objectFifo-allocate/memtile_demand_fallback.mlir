@@ -48,11 +48,11 @@ module @packing_failure {
 // CHECK-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
 // CHECK-DAG: %[[OTHER:.*]] = aie.tile(2, 1)
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high_buff_0"}
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high_buff_1"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low_buff_1"}
-// CHECK-DAG: aie.buffer(%[[OTHER]]) {sym_name = "unrelated_buff_0"}
+// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high__buf0"}
+// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high__buf1"}
+// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low__buf0"}
+// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low__buf1"}
+// CHECK-DAG: aie.buffer(%[[OTHER]]) {sym_name = "unrelated__buf0"}
 // CHECK: @low_dma(%[[HOME]]) {{fills|drains}} @low {channelIndex = 0 : i32}
 // CHECK: @high0(%[[HOME]]) {{fills|drains}} @high {channelIndex = 1 : i32}
 // CHECK: @high1(%[[HOME]]) {{fills|drains}} @high {channelIndex = 2 : i32}
@@ -80,7 +80,7 @@ module @preserve_size_first {
 // CHECK-LABEL: module @preserve_size_first
 // CHECK-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "low_buff_0"}
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low_buff_1"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "high_buff_1"}
+// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "low__buf0"}
+// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high__buf0"}
+// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low__buf1"}
+// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "high__buf1"}

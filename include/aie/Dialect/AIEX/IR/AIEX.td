@@ -551,7 +551,12 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
 
   let summary = "Execute a runtime sequence";
   let description = [{
-    Executes an `aiex.runtime_sequence` with the given name and arguments by inlining its instructions at the call site.
+    Executes the named `aie.runtime_sequence` with the given arguments.
+    The callee is assumed to be self-contained: when it returns, its transfers
+    must have completed and it may no longer use its DMA channels.
+
+    Lowering inlines the callee's instructions without adding synchronization;
+    the callee must fulfill this contract.
   }];
 }
 
@@ -642,6 +647,7 @@ def AIE_NpuDmaMemcpyNdOp
     The optional `packet` attribute defines the packet header and packet type that gets issued per DMA BD.
     If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
     The packet header is used to guide arbitration throughout a packet-routed data flow, where each switch box arbitrates the data packet to stream to a successor based on the packet header.
+    Without the attribute, a transfer on a packet-switched `aie.shim_dma_allocation` stamps the header allocation assigned to it.
 
     #### Runtime Length
 

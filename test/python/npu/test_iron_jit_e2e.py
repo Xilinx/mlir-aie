@@ -441,7 +441,8 @@ def test_call_binds_runtime_device_before_in_process_cache(input_array, N):
     output.to("cpu")
     np.testing.assert_array_equal(output.numpy(), input_array.numpy() + 4)
     assert seen == [runtime_device]
-    key = next(iter(add_four._kernel_cache))
+    key, entry = next(iter(add_four._kernel_cache))
+    assert entry is None
     assert key[-1][0] == "device"
     assert "__iron_device__" not in key[1]
 

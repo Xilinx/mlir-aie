@@ -17,7 +17,7 @@ from ..helpers.npdtypes import (
     np_ndarray_type_get_shape,
     np_ndarray_type_of,
 )
-from ..helpers.sourceloc import SourceSite
+from ..helpers.sourceloc import Declared, SourceSite
 from .device import Tile
 from .resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .worker import Worker
 
 
-class Buffer(PerDeviceConfigurationResolvable):
+class Buffer(Declared, PerDeviceConfigurationResolvable):
     """A buffer that is available both to Workers and to the Runtime for operations.
 
     This is often used for Runtime Parameters.
@@ -137,11 +137,11 @@ class Buffer(PerDeviceConfigurationResolvable):
     def tiles(self) -> list:
         """Tile dependency for DeviceConfiguration tile discovery.
 
-        Pinned Buffers (e.g. a compute [`Worker`][iron.Worker] reading a
+        Pinned Buffers (e.g. a compute [`Worker`][aie.iron.Worker] reading a
         neighbor tile's L1 directly) need their tile registered with the
         Device before `resolve` runs. Worker-attached Buffers without an
         explicit placement get pinned to the Worker's tile in
-        [`Worker`][iron.Worker]'s constructor, which is already discoverable
+        [`Worker`][aie.iron.Worker]'s constructor, which is already discoverable
         via `Worker.tile`; this method exposes any extra cross-tile
         placements.
         """

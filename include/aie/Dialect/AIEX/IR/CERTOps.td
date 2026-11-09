@@ -8,6 +8,11 @@
 #ifndef CERT_OPS
 #define CERT_OPS
 
+// A CERT microcontroller register index: r0..r7 are local to a job and
+// r8..r23 are shared by all jobs.
+def AIEX_CertRegisterAttr
+    : ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<23>]>;
+
 def AIE_CertUcDmaChainOp
     : AIEX_Op<"cert.uc_dma_chain", [AIESymbol, SingleBlockImplicitTerminator<
                                                    "AIE::EndOp">]> {
@@ -68,10 +73,18 @@ def AIE_CertPageOp
   let summary = "A control code page";
   let description = [{
     This operation represents a page of control code. Pages are the basic unit
-    of control code organization, with a maximum size of 8192 bytes. Each page
-    typically contains one job along with its associated data.
+    of control code organization, with a maximum size of 8192 bytes. A page may
+    contain one or more jobs along with their associated data; jobs within a
+    page are cooperatively scheduled (see `cert.job`), while pages of a given
+    microcontroller execute strictly in order.
 
     Corresponds to the `.eop` (end of page) directive in assembly.
+
+    The optional `placement` attribute selects the microcontroller (CERT group /
+    uC id) that runs this page. It is a resolved group id — use the target
+    model's `getUcGroupId(col, half)` to compute it rather than deriving it by
+    hand. When absent, the page defaults to group 0 (col0/uC0). A later pass lowers
+    `placement` to an enclosing `cert.attach_to_group`.
 
     Example:
     ```
@@ -80,10 +93,24 @@ def AIE_CertPageOp
           cert.write32(0x1000, 42)
         }
       }
+
+      // placed on microcontroller (group) 2:
+      cert.page {
+        cert.job(1) {
+          cert.write32(0x2000, 43)
+        }
+      } {placement = 2 : i32}
     ```
   }];
+  let arguments = (ins OptionalAttr<I32Attr>:$placement);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ $body attr-dict }];
+  let builders = [
+      // Convenience builder for an unplaced page (defaults to group 0), keeping
+      // the previous no-argument call sites valid.
+      OpBuilder<(ins), [{
+      build($_builder, $_state, /*placement=*/nullptr);
+    }]>];
 }
 
 def AIE_CertJobOp
@@ -92,8 +119,16 @@ def AIE_CertJobOp
                            SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Start a job with a given job ID";
   let description = [{
-    This operation starts a job identified by the given job ID. The job ID is an
-    integer that uniquely identifies the job to be started.
+    This operation starts a job identified by the given job ID.
+
+    The job ID is a *label*, not an execution or emission order: it must be
+    unique among jobs on the same page, and the CERT firmware uses it as a
+    job-table key (and as the handle referenced by deferred/launch jobs). It is
+    NOT a priority. Emission order and execution order are both determined by
+    textual (IR) order: within a page the firmware starts jobs in textual order
+    (running each until it blocks or ends), and between pages on one uC
+    execution is strictly sequential. Emitters must therefore preserve IR order
+    and must not sort jobs by job_id.
 
     Example:
     ```
@@ -121,6 +156,63 @@ def AIE_CertWrite32Op : AIEX_Op<"cert.write32", [HasParent<"CertJobOp">]> {
     ```
   }];
   let arguments = (ins UI32Attr:$address, UI32Attr:$value);
+  let assemblyFormat = [{
+    `(` $address `,` $value `)` attr-dict
+  }];
+}
+
+def AIE_CertWrite32DOp : AIEX_Op<"cert.write32_d", [HasParent<"CertJobOp">]> {
+  let summary = "Write a 32-bit value, taking the address or value from a "
+                "register";
+  let description = [{
+    Like `cert.write32`, but `address` and `value` may each name a register
+    instead of an immediate. With `address_is_reg`, `address` is a register
+    index r0..r23 holding the address; with `value_is_reg`, `value` is a
+    register index holding the value.
+
+    Example:
+    ```
+      cert.write32_d(3, 5) {address_is_reg}
+    ```
+  }];
+  let arguments = (ins UI32Attr:$address, UI32Attr:$value,
+      UnitAttr:$address_is_reg, UnitAttr:$value_is_reg);
+  let assemblyFormat = [{
+    `(` $address `,` $value `)` attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_CertRead32Op : AIEX_Op<"cert.read32", [HasParent<"CertJobOp">]> {
+  let summary = "Read a 32-bit value from an address into a register";
+  let description = [{
+    Reads the 32-bit value at `address` into register `value`.
+
+    Example:
+    ```
+      cert.read32(1, 0x1000)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$value, UI32Attr:$address);
+  let assemblyFormat = [{
+    `(` $value `,` $address `)` attr-dict
+  }];
+}
+
+def AIE_CertRead32DOp : AIEX_Op<"cert.read32_d", [HasParent<"CertJobOp">]> {
+  let summary = "Read a 32-bit value from a register-held address into a "
+                "register";
+  let description = [{
+    Reads the 32-bit value at the address held in register `address` into
+    register `value`.
+
+    Example:
+    ```
+      cert.read32_d(0, 1)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$address,
+      AIEX_CertRegisterAttr:$value);
   let assemblyFormat = [{
     `(` $address `,` $value `)` attr-dict
   }];
@@ -224,18 +316,62 @@ def AIE_CertUcDmaWriteDesSyncOp
   }];
 }
 
+def AIE_CertUcDmaWriteDesOp
+    : AIEX_Op<"cert.uc_dma_write_des", [HasParent<"CertJobOp">]> {
+  let summary = "uC DMA Write Descriptor operation";
+  let description = [{
+    Enqueues a uC DMA transfer without waiting for it, and stores a wait
+    handle in register `wait_handle` for a later `cert.wait_uc_dma`. The
+    symbol operand refers to a `cert.uc_dma_chain`.
+
+    Example:
+    ```
+      cert.uc_dma_write_des(2, @dma_chain)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$wait_handle,
+      FlatSymbolRefAttr:$symbol);
+  let assemblyFormat = [{
+    `(` $wait_handle `,` $symbol `)` attr-dict
+  }];
+}
+
+def AIE_CertWaitUcDmaOp
+    : AIEX_Op<"cert.wait_uc_dma", [HasParent<"CertJobOp">]> {
+  let summary = "Wait for a uC DMA transfer to finish";
+  let description = [{
+    Waits for the transfer whose handle is in register `wait_handle`.
+
+    The handle must be a job-local register r0..r7 whose reaching definition
+    in the same job is a `cert.uc_dma_write_des`; `aie-cert-verify` checks
+    this. The instruction also accepts a shared register r8..r23 carrying a
+    handle across jobs, but this dialect does not.
+
+    Example:
+    ```
+      cert.wait_uc_dma(2)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$wait_handle);
+  let assemblyFormat = [{
+    `(` $wait_handle `)` attr-dict
+  }];
+}
+
 def AIE_CertLocalBarrierOp
     : AIEX_Op<"cert.local_barrier", [HasParent<"CertJobOp">]> {
   let summary = "Local barrier operation";
   let description = [{
     This operation represents a local barrier that synchronizes execution based on a barrier ID and the number of participants.
+    The barrier is named as the assembler names it, `lb0`..`lb15`.
 
     Example:
     ```
-      cert.local_barrier(1, 2)
+      cert.local_barrier(lb1, 2)
     ```
   }];
-  let arguments = (ins I32Attr:$local_barrier_id, I32Attr:$num_participants);
+  let arguments = (ins CertLocalBarrierId:$local_barrier_id,
+      I32Attr:$num_participants);
   let assemblyFormat = [{
     `(` $local_barrier_id `,` $num_participants `)` attr-dict
   }];
@@ -247,16 +383,47 @@ def AIE_CertRemoteBarrierOp
   let description = [{
     This operation represents a remote barrier that synchronizes execution
     based on a barrier ID `remote_barrier_id` and `party_mask`, a bit map of
-    participant uC IDs.
+    participant uC IDs. The barrier is named as the assembler names it,
+    `rb0`..`rb6`, which AIEBU encodes as firmware ids 1..7.
 
     Example:
     ```
-      cert.remote_barrier(1, 0x3)
+      cert.remote_barrier(rb1, 0x3)
     ```
   }];
-  let arguments = (ins I32Attr:$remote_barrier_id, I32Attr:$party_mask);
+  let arguments = (ins CertRemoteBarrierId:$remote_barrier_id,
+      I32Attr:$party_mask);
   let assemblyFormat = [{
     `(` $remote_barrier_id `,` $party_mask `)` attr-dict
+  }];
+}
+
+def AIE_CertRelAcqSyncOp
+    : AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]> {
+  let summary = "Release-acquire global barrier on an AIE lock";
+  let description = [{
+    Releases the lock at rel_address, then busy-waits acquiring the lock at
+    acq_address. Both addresses must refer to the same AIE lock; the
+    release/acquire operation and its operand are encoded in the address bits.
+
+    The acquire is a non-yielding busy-wait and never times out. No other job
+    on the same microcontroller can progress while this operation waits, so the
+    caller must avoid dependencies on work that microcontroller still owes.
+
+    A symmetric N-participant barrier uses rel(+1) followed by acq_eq(N).
+    Alternating that with rel(-1) followed by acq_eq(0) lets one lock serve
+    repeated barriers without an explicit reset.
+
+    Operand order is release then acquire, matching the aiebu assembler.
+
+    Example (illustrative lock-request addresses):
+    ```
+      cert.rel_acq_sync(0x1000, 0x1004)
+    ```
+  }];
+  let arguments = (ins UI32Attr:$rel_address, UI32Attr:$acq_address);
+  let assemblyFormat = [{
+    `(` $rel_address `,` $acq_address `)` attr-dict
   }];
 }
 
@@ -282,6 +449,43 @@ def AIE_CertPreemptOp : AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
       FlatSymbolRefAttr:$restore_section);
   let assemblyFormat = [{
     `(` $id `,` $save_section `,` $restore_section `)` attr-dict
+  }];
+}
+
+def AIE_CertSaveTimestampsOp
+    : AIEX_Op<"cert.save_timestamps", [HasParent<"CertJobOp">]> {
+  let summary = "Record a timestamp tagged with an identifier";
+  let description = [{
+    Appends a record of the current timestamp, tagged with `unq_id`, to the
+    microcontroller's debug record buffer, which the host can read back.
+
+    Example:
+    ```
+      cert.save_timestamps(7)
+    ```
+  }];
+  let arguments = (ins UI32Attr:$unq_id);
+  let assemblyFormat = [{
+    `(` $unq_id `)` attr-dict
+  }];
+}
+
+def AIE_CertSaveRegisterOp
+    : AIEX_Op<"cert.save_register", [HasParent<"CertJobOp">]> {
+  let summary = "Record the value at an address tagged with an identifier";
+  let description = [{
+    Reads the 32-bit value at `address` and appends it, tagged with `unq_id`,
+    to the microcontroller's debug record buffer, which the host can read
+    back.
+
+    Example:
+    ```
+      cert.save_register(0x1000, 9)
+    ```
+  }];
+  let arguments = (ins UI32Attr:$address, UI32Attr:$unq_id);
+  let assemblyFormat = [{
+    `(` $address `,` $unq_id `)` attr-dict
   }];
 }
 

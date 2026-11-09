@@ -101,25 +101,32 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
   // Shim allocations reserve channels outside the DMA bodies above.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    usedChannels.try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
-                                             allocOp.getChannelDir(),
-                                             (int)allocOp.getChannelIndex()),
-                             allocOp.getOperation());
+    (AIEDialect::ShareableWithAttrHelper(allocOp->getContext())
+             .isAttrPresent(allocOp)
+         ? shareableChannels
+         : usedChannels)
+        .try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
+                                     allocOp.getChannelDir(),
+                                     (int)allocOp.getChannelIndex()),
+                     allocOp.getOperation());
   }
 }
 
 int DMAChannelAnalysis::getDMAChannelLimit(
     TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
-  int maxChannelNum = (dir == DMAChannelDir::MM2S)
-                          ? tile.getNumSourceConnections(WireBundle::DMA)
-                          : tile.getNumDestConnections(WireBundle::DMA);
+  std::optional<int> col = tile.tryGetCol();
+  std::optional<int> row = tile.tryGetRow();
+  const auto &targetModel = getTargetModel(tile);
+  // A tile that is not fully placed stands for any tile of its type.
+  TileID id =
+      col && row
+          ? TileID{*col, *row}
+          : cast<LogicalTileOp>(tile.getOperation()).getCanonicalTileID();
+  int maxChannelNum = targetModel.getNumDMAChannels(id.col, id.row, dir);
 
   if (!requiresAdjacentTileAccessChannels)
     return maxChannelNum;
 
-  std::optional<int> col = tile.tryGetCol();
-  std::optional<int> row = tile.tryGetRow();
-  const auto &targetModel = getTargetModel(tile);
   if (col && row)
     return std::min<int>(
         maxChannelNum,
@@ -160,22 +167,42 @@ int DMAChannelAnalysis::getDMAChannelIndex(
 bool DMAChannelAnalysis::isChannelFree(TileLike tile, DMAChannelDir dir,
                                        int channel) {
   auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
-  return !usedChannels.contains(key) && !streamedChannels.contains(key);
+  return !usedChannels.contains(key) && !streamedChannels.contains(key) &&
+         !shareableChannels.contains(key);
 }
 
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
-                                             int channel, Operation *owner) {
+                                             int channel, Operation *owner,
+                                             bool shareable) {
   int maxChannelNum = getDMAChannelLimit(tile, dir, false);
   if (channel < 0 || channel >= maxChannelNum) {
     return -1;
   }
-  return usedChannels
-                 .try_emplace(std::make_tuple(getTileKey(tile->getResult(0)),
-                                              dir, channel),
-                              owner)
-                 .second
-             ? channel
-             : -1;
+  auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
+  if (auto *reservation = shareableChannels.lookup(key)) {
+    if (!shareable)
+      return -1;
+    auto allowed =
+        AIEDialect::ShareableWithAttrHelper(reservation->getContext())
+            .getAttr(reservation);
+    auto name =
+        owner ? owner->getAttrOfType<StringAttr>("sym_name") : StringAttr();
+    if (!allowed || !name || llvm::none_of(allowed, [&](Attribute attr) {
+          auto symbol = dyn_cast<FlatSymbolRefAttr>(attr);
+          return symbol && symbol.getAttr() == name;
+        }))
+      return -1;
+  }
+  if (usedChannels.try_emplace(key, owner).second) {
+    if (shareable)
+      sharedChannels.insert(key);
+    return channel;
+  }
+  // Packet-switched sources share a channel: the runtime writes its
+  // descriptors one transfer at a time, each under its own header.
+  if (shareable && sharedChannels.contains(key))
+    return channel;
+  return -1;
 }
 
 Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
@@ -184,7 +211,9 @@ Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
   auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
   if (Operation *owner = usedChannels.lookup(key))
     return owner;
-  return streamedChannels.lookup(key);
+  if (Operation *owner = streamedChannels.lookup(key))
+    return owner;
+  return shareableChannels.lookup(key);
 }
 
 LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,

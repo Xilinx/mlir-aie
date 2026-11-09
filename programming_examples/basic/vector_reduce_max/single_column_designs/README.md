@@ -52,7 +52,7 @@ env VARIANT=memtile make
 To compile the C++ testbench:
 
 ```shell
-make vector_reduce_max.exe
+make vector_reduce_max_shared.exe   # the default VARIANT=shared
 ```
 
 ### C++ Testbench

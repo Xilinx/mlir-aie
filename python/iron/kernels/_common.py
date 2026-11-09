@@ -183,8 +183,10 @@ class KernelContract:
         layouts: A ``TensorLayout`` per argument; ``None`` is identity.
         parameter_bindings: ``(index, value)`` pairs fixing ``Param``
             operands, counts included; the rest come from the caller.
-        initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
-            ``factory(fn)`` returns the kernel that initializes the buffer.
+        initializers: ``(index, factory)`` pairs for ``InOut`` arguments and
+            tensor ``Param`` ones the kernel writes, such as a running state;
+            ``factory(fn)`` returns the kernel that initializes the buffer
+            before each call.
         out_offset: ``(index, step)`` for a kernel that writes ``step``
             elements of its one ``Out`` per call, at the offset it reads
             from bound scalar ``Param`` ``index``. The builder then hands
@@ -195,6 +197,14 @@ class KernelContract:
             call's index, 0 first, for a kernel whose state carries from one
             call to the next and restarts at 0. The reference sees every
             call at once, in order. ``None``: the bound value holds.
+        out_last: Whether only the last of the calls writes the one ``Out``,
+            the earlier ones building up state the core keeps (with
+            ``call_index``), as a reduction split across calls does. The
+            builder hands every call the same output tile and drains it
+            once, and the reference returns that one tile.
+        required_calls: The exact positive number of calls needed to produce
+            the output of an ``out_last`` kernel; required when ``out_last``
+            is set, otherwise ``None``.
         even_calls: Whether every call does the same work. Timing then
             reports the cheapest call, the rest being the core waiting;
             calls of unequal work (each its own chunk of a resample) report
@@ -231,6 +241,8 @@ class KernelContract:
     initializers: tuple[tuple[int, Callable], ...] = ()
     out_offset: tuple[int, int] | None = None
     call_index: int | None = None
+    out_last: bool = False
+    required_calls: int | None = None
     even_calls: bool = True
     trace: Trace | None = None
     uses_lut: bool = False
@@ -262,10 +274,10 @@ class KernelContract:
             raise ValueError("parameter_bindings must name distinct Param arguments")
         initialized = dict(self.initializers)
         if len(initialized) != len(self.initializers) or any(
-            i < 0 or i >= len(self.roles) or self.roles[i] is not InOut
+            i < 0 or i >= len(self.roles) or self.roles[i] not in (InOut, Param)
             for i in initialized
         ):
-            raise ValueError("initializers must name distinct InOut arguments")
+            raise ValueError("initializers must name distinct InOut or Param arguments")
         if self.out_offset is not None:
             index, step = self.out_offset
             if index not in bound or self.roles.count(Out) != 1 or InOut in self.roles:
@@ -282,6 +294,24 @@ class KernelContract:
             raise ValueError(
                 "call_index needs a bound Param that out_offset does not set"
             )
+        if self.out_last and (
+            self.call_index is None
+            or self.out_offset is not None
+            or self.roles.count(Out) != 1
+            or InOut in self.roles
+        ):
+            raise ValueError(
+                "out_last needs call_index, exactly one Out and no out_offset"
+            )
+        if self.out_last:
+            if (
+                not isinstance(self.required_calls, (int, np.integer))
+                or isinstance(self.required_calls, (bool, np.bool_))
+                or self.required_calls < 1
+            ):
+                raise ValueError("out_last needs a positive integer required_calls")
+        elif self.required_calls is not None:
+            raise ValueError("required_calls needs out_last")
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.unsupported is not None and not self.unsupported:

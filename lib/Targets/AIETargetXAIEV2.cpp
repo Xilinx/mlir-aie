@@ -98,8 +98,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   llvm::SetVector<Block *> blockVector =
       getOrderedChainOfBlocks(&memOp.getBody());
 
-  llvm::SmallPtrSet<Block *, 8> oooBlocks =
-      collectOutOfOrderBlocks(blockVector);
+  llvm::SmallPtrSet<Block *, 8> unchainedBlocks =
+      collectUnchainedBlocks(blockVector);
 
   for (auto *block : blockVector) {
     bool foundBdPacket = false;
@@ -130,7 +130,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       if (auto packetInfo = op.getPacket()) {
         foundBdPacket = true;
         packetType = packetInfo->getPktType();
-        packetID = packetInfo->getPktId();
+        packetID = packetInfo->assignedId();
       }
       if (!targetModel.isShimNOCTile(col, row)) {
         std::optional<int32_t> bufferAddr = op.getBufferOp().getAddress();
@@ -298,7 +298,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         int enableNextBd = 1;
         if (!nextBlock->getOps<EndOp>().empty())
           enableNextBd = 0;
-        if (oooBlocks.contains(block))
+        if (unchainedBlocks.contains(block))
           enableNextBd = 0;
 
         int nextBdNum = blockMap[nextBlock];
@@ -349,6 +349,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         std::string oooSuffix = std::to_string(col) + "_" +
                                 std::to_string(row) + "_" +
                                 std::to_string(chNum);
+        output << "{\n";
         output << "XAie_DmaChannelDesc ooo_desc_" << oooSuffix << ";\n";
         output << "__mlir_aie_try(XAie_DmaChannelDescInit(" << deviceInstRef
                << ", &ooo_desc_" << oooSuffix << ", " << tileLocStr(col, row)
@@ -367,6 +368,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << deviceInstRef << ", " << tileLocStr(col, row)
                << ", /* ChNum */" << chNum << ", /* dmaDir */ DMA_" << dmaDir
                << ", &ooo_queue_" << oooSuffix << "));\n";
+        output << "}\n";
       } else {
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.
@@ -407,6 +409,24 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   if (!targetOp)
     return module.emitOpError("expected AIE.device operation at toplevel");
   if (failed(verifyDMAChannelsResolved(targetOp)))
+    return failure();
+  for (CoreOp core : targetOp.getOps<CoreOp>()) {
+    bool configuresDMA = core.getProcessorBus();
+    core.walk([&](Operation *op) {
+      configuresDMA |= isa<DmaPushQueueOp, DmaPollForQueueSpaceOp>(op);
+    });
+    if (configuresDMA)
+      return core.emitOpError("core-issued configuration is not supported by "
+                              "the XAIEV2 backend");
+  }
+  WalkResult corePushes = targetOp.walk([&](DMAStartOp start) {
+    if (!start.getCorePushes())
+      return WalkResult::advance();
+    start.emitOpError("core-issued configuration is not supported by "
+                      "the XAIEV2 backend");
+    return WalkResult::interrupt();
+  });
+  if (corePushes.wasInterrupted())
     return failure();
   const auto &targetModel = targetOp.getTargetModel();
 

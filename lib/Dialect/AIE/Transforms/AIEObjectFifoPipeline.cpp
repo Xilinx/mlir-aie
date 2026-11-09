@@ -22,25 +22,49 @@ struct ObjectFifoLoweringOptions
       llvm::cl::desc(
           "Flag to enable aie.packetflow lowering from objectfifos."),
       llvm::cl::init(false)};
+  Option<bool> reserveControllerPacketIds{
+      *this, "reserve-controller-packet-ids",
+      llvm::cl::desc("Reserve the tile controllers' packet IDs."),
+      llvm::cl::init(false)};
   Option<bool> skipVerify{
       *this, "skip-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR."),
       llvm::cl::init(false)};
+  Option<bool> checkQueueSpace{
+      *this, "check-queue-space",
+      llvm::cl::desc("Wait for room on the task queue before each push a core "
+                     "makes onto an out-of-order channel."),
+      llvm::cl::init(true)};
 };
 } // namespace
+
+void xilinx::AIE::addObjectFifoLoweringPasses(OpPassManager &pm,
+                                              bool packetSwitched,
+                                              bool skipVerify,
+                                              bool reserveControllerPacketIds,
+                                              bool checkQueueSpace) {
+  pm.addPass(createAIEObjectFifoSplitPass());
+  if (!skipVerify) {
+    pm.addPass(createAIEObjectFifoVerifyPass());
+  }
+  pm.addPass(
+      createAIEAssignPacketIdsPass(packetSwitched, reserveControllerPacketIds));
+  pm.addPass(createAIEObjectFifoAllocatePass());
+  AIEObjectFifoInsertCoreQueuePushesOptions pushOptions;
+  pushOptions.checkQueueSpace = checkQueueSpace;
+  pm.addPass(createAIEObjectFifoInsertCoreQueuePushesPass(pushOptions));
+  pm.addPass(createAIEObjectFifoLowerDMAsPass());
+  pm.addPass(createAIEObjectFifoLowerCoresPass());
+  pm.addPass(createAIEObjectFifoErasePoolsPass());
+}
 
 void xilinx::AIE::registerAIEObjectFifoPipeline() {
   PassPipelineRegistration<ObjectFifoLoweringOptions>(
       "aie-objectFifo-stateful-transform",
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
-        pm.addPass(createAIEObjectFifoSplitPass());
-        if (!options.skipVerify) {
-          pm.addPass(createAIEObjectFifoVerifyPass());
-        }
-        pm.addPass(createAIEObjectFifoAllocatePass(options.packetSwitched));
-        pm.addPass(createAIEObjectFifoLowerDMAsPass());
-        pm.addPass(createAIEObjectFifoLowerCoresPass());
-        pm.addPass(createAIEObjectFifoErasePoolsPass());
+        addObjectFifoLoweringPasses(
+            pm, options.packetSwitched, options.skipVerify,
+            options.reserveControllerPacketIds, options.checkQueueSpace);
       });
 }

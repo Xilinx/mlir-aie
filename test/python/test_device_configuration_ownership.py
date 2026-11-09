@@ -23,6 +23,7 @@ from aie.iron import (
     ObjectFifo,
     PacketFlow,
     PerDeviceConfigurationResolvable,
+    Port,
     Program,
     Resolvable,
     Runtime,
@@ -33,7 +34,8 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     sync_parameters,
 )
-from aie.iron.device import NPU2Col1, Tile
+from aie.iron.controlflow import if_
+from aie.iron.device import NPU2, NPU2Col1, Tile
 from aie.passmanager import PassManager
 from aie.utils.compile.jit.context import compile_context
 
@@ -453,14 +455,16 @@ def test_one_configuration_refuses_a_symbol_named_twice(first, second, kinds):
 
 
 def test_unnamed_symbols_in_one_configuration_take_fresh_names():
-    module = pack(member(), member(fifo_name="of0", rtp_name="rtp0"))
+    # Unnamed ones are named after their variable, numbered past a name
+    # another member claims explicitly, from 0.
+    module = pack(member(), member(fifo_name="of", rtp_name="rtp"))
     module.operation.verify()
     text = str(module)
     for symbol in (
-        "aie.objectfifo @of0(",
-        "aie.objectfifo @of1(",
-        'sym_name = "rtp0"',
-        'sym_name = "rtp1"',
+        "aie.objectfifo @of(",
+        "aie.objectfifo @of_0(",
+        'sym_name = "rtp"',
+        'sym_name = "rtp_0"',
     ):
         assert text.count(symbol) == 1, symbol
 
@@ -915,6 +919,228 @@ def test_a_merged_step_waits_for_the_last_steps_transfers():
     sequence = text[text.index("aie.runtime_sequence") :]
     steps = re.findall(r"aiex\.dma_(start|await|free)_task", sequence)
     assert steps == ["start", "await", "free", "start", "free"]
+
+
+def chained_steps():
+    """A step that only fills and one that drains what the core makes of it."""
+    of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
+    worker = Worker(lambda a, b: None, [of_in.cons(), of_out.prod()])
+    fill = Runtime(lambda c, h: h.fill(c), [Line, of_in.prod()])
+    drain = Runtime(lambda c, h: h.drain(c, wait=True), [Line, of_out.cons()])
+    return worker, fill, drain
+
+
+def merged_transfers(worker, merged):
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
+    )
+    text = str(Program.compose([config], entry=merged).resolve_program())
+    sequence = text[text.index("aie.runtime_sequence") :]
+    return re.findall(r"aiex\.dma_(start|await|free)_task", sequence)
+
+
+def test_merged_steps_close_their_groups_in_turn():
+    # The fill is freed before the drain that completes it is issued.
+    worker, fill, drain = chained_steps()
+    merged = Runtime.merge([fill, drain])
+    assert merged_transfers(worker, merged) == [
+        "start",
+        "free",
+        "start",
+        "await",
+        "free",
+    ]
+
+
+def test_merge_run_issues_chained_steps_in_one_group():
+    worker, fill, drain = chained_steps()
+
+    def together(calls):
+        (_, (a, into)), (_, (b, out_of)) = calls
+        tg = TaskGroup()
+        into.fill(a, group=tg)
+        out_of.drain(b, wait=True, group=tg)
+        tg.finish()
+
+    merged = Runtime.merge([fill, drain], run=together)
+    assert merged.arg_types == [Line, Line]
+    assert merged_transfers(worker, merged) == [
+        "start",
+        "start",
+        "await",
+        "free",
+        "free",
+    ]
+
+
+def syncing_step(name):
+    """A core reading its own parameter, and a step that syncs and drains it."""
+    count = ScratchpadParameter(f"count_{name}", np.int32)
+    of_out = ObjectFifo(Line, name=f"out_{name}")
+
+    def core(out, count):
+        elem = out.acquire(1)
+        elem[0] = count.read()
+        out.release(1)
+
+    def sequence(c, out):
+        sync_parameters()
+        out.drain(c, wait=True)
+
+    worker = Worker(core, [of_out.prod(), count], while_true=False)
+    return worker, Runtime(sequence, [Line, of_out.cons()])
+
+
+def test_merged_steps_sync_their_parameters_once():
+    (worker_a, step_a), (worker_b, step_b) = syncing_step("a"), syncing_step("b")
+    merged = Runtime.merge([step_a, step_b])
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker_a, worker_b], runtimes=[merged]
+    )
+    module = Program.compose([config], entry=merged).resolve_program()
+    PassManager.parse(
+        "builtin.module(aie-resource-stages,aie-lower-scratchpad-parameters)",
+        module.context,
+    ).run(module.operation)
+    text = str(module)
+    sequence = text[text.index("aie.runtime_sequence") :]
+    assert sequence.count("aiex.npu.create_scratchpad") == 1
+    # One release of each core's sync lock.
+    assert sequence.count("aiex.set_lock") == 2
+
+
+def test_sync_under_a_branch_is_refused():
+    count = ScratchpadParameter("count_branch", np.int32)
+    of_out = ObjectFifo(Line, name="out_branch")
+
+    def core(out, count):
+        elem = out.acquire(1)
+        elem[0] = count.read()
+        out.release(1)
+
+    def sequence(c, out):
+        # A sync the branch may skip must not stand in for the one after it.
+        with if_(True):
+            sync_parameters()
+        sync_parameters()
+        out.drain(c, wait=True)
+
+    worker = Worker(core, [of_out.prod(), count], while_true=False)
+    rt = Runtime(sequence, [Line, of_out.cons()])
+    config = DeviceConfiguration("dev", NPU2Col1(), workers=[worker], runtimes=[rt])
+    with pytest.raises(ValueError, match="top level of a runtime sequence body"):
+        Program.compose([config], entry=rt).resolve_program()
+
+
+def waiting_worker(name, hops=0):
+    """Build a Worker that waits for its parameter each pass, and the fifo the host drains.
+
+    Args:
+        name: Suffix for the parameter and fifo names.
+        hops: Memtile forwards between the core and the host's fifo.
+
+    Returns:
+        The Worker and the ObjectFifo the host drains.
+    """
+    count = ScratchpadParameter(f"count_{name}", np.int32)
+    of_out = ObjectFifo(Line, name=f"out_{name}")
+
+    def core(out, count):
+        elem = out.acquire(1)
+        elem[0] = count.read()
+        out.release(1)
+
+    worker = Worker(core, [of_out.prod(), count], wait_for_parameters=True)
+    for hop in range(hops):
+        of_out = of_out.cons().forward(name=f"out_{name}_{hop}")
+    return worker, of_out
+
+
+def syncing_drain(of_out):
+    def sequence(c, out):
+        sync_parameters()
+        out.drain(c, wait=True)
+
+    return Runtime(sequence, [Line, of_out.cons()])
+
+
+@pytest.mark.parametrize("hops", [0, 2])
+def test_merge_refuses_two_syncing_steps_on_one_waiting_worker(hops):
+    worker, of_out = waiting_worker("w", hops)
+    merged = Runtime.merge([syncing_drain(of_out), syncing_drain(of_out)])
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
+    )
+    with pytest.raises(
+        ValueError, match=r"steps 0 \(.*\) and 1 \(.*\) both sync parameters"
+    ):
+        Program.compose([config], entry=merged).resolve_program()
+
+
+def test_merge_keeps_syncing_steps_on_different_waiting_workers():
+    (worker_a, of_a), (worker_b, of_b) = waiting_worker("a"), waiting_worker("b")
+    merged = Runtime.merge([syncing_drain(of_a), syncing_drain(of_b)])
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker_a, worker_b], runtimes=[merged]
+    )
+    text = str(Program.compose([config], entry=merged).resolve_program())
+    assert text.count("aiex.sync_scratchpad_parameters_from_host") == 1
+
+
+def step_runtimes(n, out_of_cons):
+    """``n`` Runtimes, each filling ``into`` and draining ``out_of``."""
+    of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
+    worker = Worker(lambda a, b: None, [of_in.cons(), of_out.prod()])
+
+    def step(a, b, into, out_of):
+        into.fill(a)
+        out_of.drain(b, wait=True)
+
+    steps = [
+        Runtime(step, [Line, Line, of_in.prod(), out_of_cons(of_out, k)], name=f"s{k}")
+        for k in range(n)
+    ]
+    return worker, steps
+
+
+def out_of_consumers(worker, steps, device):
+    config = DeviceConfiguration("pack", device, workers=[worker], runtimes=steps)
+    text = str(Program.compose([config], entry=steps[0]).resolve_program())
+    (consumers,) = re.findall(r"aie\.objectfifo @out_of\(%\w+, \{([^}]*)\}", text)
+    return consumers.split(", ")
+
+
+def test_runtimes_draining_one_fifo_share_its_shim_end():
+    steps = step_runtimes(3, lambda of, k: of.cons())
+    assert len(out_of_consumers(*steps, NPU2Col1())) == 1
+
+
+def test_runtimes_draining_one_fifo_on_the_same_channel_share_its_shim_end():
+    steps = step_runtimes(3, lambda of, k: of.cons(port=Port.dma(0)))
+    assert len(out_of_consumers(*steps, NPU2Col1())) == 1
+
+
+def test_runtimes_draining_one_fifo_on_unpinned_dma_ports_share_its_shim_end():
+    # cons() and cons(port=Port.dma()) both leave the channel to allocation.
+    steps = step_runtimes(2, lambda of, k: of.cons(port=Port.dma()) if k else of.cons())
+    assert len(out_of_consumers(*steps, NPU2Col1())) == 1
+
+
+def test_runtimes_draining_one_fifo_to_distinct_shim_tiles_keep_both():
+    steps = step_runtimes(
+        2, lambda of, k: of.cons(tile=Tile(k, 0, tile_type=AIETileType.ShimNOCTile))
+    )
+    assert len(out_of_consumers(*steps, NPU2())) == 2
+
+
+def test_runtimes_draining_one_shim_end_at_different_depths_are_refused():
+    with pytest.raises(ValueError, match="'out_of' is drained to one shim end"):
+        step_runtimes(2, lambda of, k: of.cons(depth=k + 1))
+
+
+def test_runtimes_draining_one_shim_end_at_different_channels_are_refused():
+    with pytest.raises(ValueError, match="'out_of' is drained to one shim end"):
+        step_runtimes(2, lambda of, k: of.cons(port=Port.dma(k)))
 
 
 def test_merged_steps_may_each_use_only_explicit_groups():

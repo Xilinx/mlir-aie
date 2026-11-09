@@ -6,7 +6,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
@@ -30,6 +29,16 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
+static ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col) {
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
+  for (auto alloc : device.getOps<AIE::ShimDMAAllocationOp>())
+    if (overlay.isAttrPresent(alloc) &&
+        alloc.getChannelDir() == AIE::DMAChannelDir::MM2S &&
+        alloc.getTileOp().colIndex() == col)
+      return alloc;
+  return {};
+}
+
 struct AIECtrlPacketInferTilesPass
     : xilinx::AIEX::impl::AIECtrlPacketInferTilesBase<
           AIECtrlPacketInferTilesPass> {
@@ -46,7 +55,7 @@ struct AIECtrlPacketInferTilesPass
                                        (int)ctrlPktOp.getColumnFromAddr(),
                                        (int)ctrlPktOp.getRowFromAddr());
         // Assign controller id
-        auto tileIDMap = getTileToControllerIdMap(true, targetModel);
+        auto tileIDMap = targetModel.getTileToControllerIdMap(true);
         if (tOp->hasAttr("controller_id"))
           continue;
         auto pktInfoAttr = AIE::PacketInfoAttr::get(
@@ -130,37 +139,33 @@ struct AIECtrlPacketToDmaPass
         int col = ctrlPktOp.getColumnFromAddr();
         int row = ctrlPktOp.getRowFromAddr();
 
-        // Calculate control packet size
-        int64_t ctrlPktSize = 0;
-        auto data = ctrlPktOp.getData();
-        auto length = ctrlPktOp.getLength();
-        if (data)
-          ctrlPktSize = data->size();
-        else if (length)
-          ctrlPktSize = *length;
-        ctrlPktSize++; // Ctrl info word
-        ctrlPktSize++; // Packet header
+        // A read's length describes its response, not an outgoing payload.
+        int64_t ctrlPktSize = 2; // ctrl info word + packet header
+        if (auto data = ctrlPktOp.getData())
+          ctrlPktSize += data->size();
 
-        // Check if we can batch with the previous packet
-        if (targetModel.getTargetArch() == AIEArch::AIE2p && !new_batch &&
-            batches.back().tileId == TileID{col, row}) {
+        // Read requests must end their DMA transfer.
+        bool batchable = ctrlPktOp.getOpcode() == 0;
+        if (targetModel.getTargetArch() == AIEArch::AIE2p && batchable &&
+            !new_batch && batches.back().tileId == TileID{col, row}) {
           // Add to existing batch
           batches.back().totalSize += ctrlPktSize;
         } else {
           // Start new batch
-          auto rowToShimChanMap =
-              getRowToShimChanMap(targetModel, WireBundle::DMA);
-          int shimChan = rowToShimChanMap[row];
-
-          std::string shimDmaAllocName = "ctrlpkt";
-          shimDmaAllocName += "_col" + std::to_string(col);
-          shimDmaAllocName += "_mm2s";
-          shimDmaAllocName += "_chan" + std::to_string(shimChan);
-
+          ShimDMAAllocationOp alloc = getCtrlPktShimAlloc(device, col);
+          if (!alloc) {
+            ctrlPktOp.emitOpError("column ")
+                << col
+                << " has no control packet shim DMA allocation; run "
+                   "-aie-generate-column-control-overlay with "
+                   "configuration=true, then -aie-import-overlay first";
+            return signalPassFailure();
+          }
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
-                             shimDmaAllocName, shimChan, &o});
-          new_batch = false;
+                             alloc.getSymName().str(),
+                             static_cast<int>(alloc.getChannelIndex()), &o});
         }
+        new_batch = !batchable;
         ddrOffset += ctrlPktSize;
       }
 

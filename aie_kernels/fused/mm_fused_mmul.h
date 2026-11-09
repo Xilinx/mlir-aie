@@ -58,10 +58,12 @@ constexpr bool mm_fused_unroll_ij =
 // accumulators, as in mm.cc's (4, 8, 8) tile, where four mmul<8, 8, 8> would
 // hold eight. r = 4 pairs row blocks as the other forms do. The macs and
 // their k order are those of mmul<r, 8, 8> either way. B's s x t
-// blocks are row-major (block (i, j) at i * colB + j) when by_row, else
-// column-major; with b_t each holds B^T and is transposed once as loaded.
+// blocks are row-major (block (i, j) at i * b_pitch + j) when by_row, else
+// column-major (block (i, j) at j * b_pitch + i); with b_t each holds B^T and
+// is transposed once as loaded.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
-          unsigned t, bool b_t, bool by_row, typename C>
+          unsigned t, bool b_t, bool by_row,
+          unsigned b_pitch = by_row ? colB : colA, typename C>
 __aie_inline void mm_bf16_2x2_aie2p(const bfloat16 *__restrict pA,
                                     const bfloat16 *__restrict pB,
                                     C *__restrict pC) {
@@ -88,9 +90,9 @@ __aie_inline void mm_bf16_2x2_aie2p(const bfloat16 *__restrict pA,
     for (unsigned j = 0; j < colB; j += 2) {
       const bfloat16 *__restrict pA1 = pA_cur;
       const bfloat16 *__restrict pA2 = pA_cur + a2;
-      const bfloat16 *__restrict pB1 = pB + (by_row ? j : j * colA) * sizeB;
+      const bfloat16 *__restrict pB1 = pB + (by_row ? j : j * b_pitch) * sizeB;
       const bfloat16 *__restrict pB2 =
-          pB + (by_row ? j + 1 : (j + 1) * colA) * sizeB;
+          pB + (by_row ? j + 1 : (j + 1) * b_pitch) * sizeB;
       C *__restrict pC2 = pC1 + c2;
 
       MMUL C00(aie::load_v<MMUL::size_C>(pC1));
@@ -111,8 +113,8 @@ __aie_inline void mm_bf16_2x2_aie2p(const bfloat16 *__restrict pA,
           B0 = aie::transpose(B0, t, s);
           B1 = aie::transpose(B1, t, s);
         }
-        pB1 += by_row ? colB * sizeB : sizeB;
-        pB2 += by_row ? colB * sizeB : sizeB;
+        pB1 += by_row ? b_pitch * sizeB : sizeB;
+        pB2 += by_row ? b_pitch * sizeB : sizeB;
 
         C00.mac(A0, B0);
         C01.mac(A0, B1);

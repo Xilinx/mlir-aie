@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-expand-load-pdi="ctrl-pkt=true" %s | FileCheck %s
+// RUN: aie-opt --aie-import-overlay --aie-expand-load-pdi="ctrl-pkt=true" %s | FileCheck %s
 
 // South:1 of tile (0,2) carries the overlay's rule in slot 0 and the design's
 // in slot 1. A control-packet reload writes slot 1 alone: rewriting slot 0 or
@@ -20,6 +20,10 @@
 
 module {
   aie.device(npu2_1col) @ctrl_pkt_overlay {
+    %shim = aie.tile(0, 0)
+    aie.shim_mux(%shim) {
+      aie.connect<DMA : 0, North : 3> {aie.is_ctrl_pkt_overlay}
+    }
     %t = aie.tile(0, 2)
     aie.switchbox(%t) {
       %a = aie.amsel<5> (3)
@@ -41,7 +45,7 @@ module {
         aie.rule(31, 2, %b)
       }
     }
-  }
+  } {overlay = @ctrl_pkt_overlay}
   aie.device(npu2_1col) @main {
     aie.runtime_sequence(%arg0: memref<1xi32>) {
       aiex.npu.load_pdi {device_ref = @design}

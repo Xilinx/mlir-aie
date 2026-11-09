@@ -41,7 +41,7 @@ jobs:
   build-repo:
     name: Build and Test with Ryzen AI Software
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       matrix:
         ubuntu_version: [ "ubuntu22", "ubuntu24" ]
@@ -54,7 +54,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # The package list includes powershell, unavailable on Ubuntu 26.04.
           swap-storage: false
 
       - name: Docker prune

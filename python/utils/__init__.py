@@ -5,7 +5,7 @@
 #
 """Tensor factories, device helpers, and re-exports for the IRON runtime."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from . import (
     _log_setup,  # noqa: F401  # side effect: configure "aie" logging first
@@ -29,6 +29,10 @@ from .tensor_factory import tensor as tensor
 from .tensor_factory import zeros as zeros
 from .tensor_factory import zeros_like as zeros_like
 from .trace import TraceConfig as TraceConfig
+
+if TYPE_CHECKING:
+    # A genuine cycle: aie.iron.device imports aie.utils.
+    from aie.iron.device import Device
 
 _DefaultNPURuntime = None
 
@@ -91,7 +95,7 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def get_current_device(*, probe_runtime: bool = True):
+def get_current_device(*, probe_runtime: bool = True) -> "Device | None":
     """Get the current NPU device.
 
     Args:
@@ -121,7 +125,7 @@ def get_current_device(*, probe_runtime: bool = True):
         return None
 
 
-def ensure_current_device(*, probe_runtime: bool = True):
+def ensure_current_device(*, probe_runtime: bool = True) -> "Device | None":
     """Bind and return the device observed by IRON.
 
     ``get_current_device()`` can infer a device from the runtime without making

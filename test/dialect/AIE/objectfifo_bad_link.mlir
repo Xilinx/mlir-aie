@@ -271,3 +271,28 @@ aie.device(npu2) {
    aie.objectfifo @of_out (%tile01, {%tile00}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
    aie.objectfifo.link [ @of_in1, @of_in2 ] -> [ @of_out ] ([0, 16] [])
 }
+
+// -----
+
+// Two distributes on one mem tile read the fifo's two ends there in order;
+// the second link reads the second end, whose dims run past its transfer.
+
+// CHECK: specified input stride(s) and size(s) result in out of bounds access in distribute output, for index 31 in transfer of length 16.
+
+module @two_distributes_one_tile {
+  aie.device(npu2) {
+    %s = aie.tile(0, 0)
+    %m0 = aie.tile(0, 1)
+    %t0 = aie.tile(0, 2)
+    %t1 = aie.tile(0, 3)
+    %t2 = aie.tile(1, 2)
+    %t3 = aie.tile(1, 3)
+    aie.objectfifo @in(%s, {%m0 dimensionsFromStream [], %m0 dimensionsFromStream [<size = 1, stride = 0>, <size = 32, stride = 1>]}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @a0(%m0, {%t0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a1(%m0, {%t1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@in] -> [@a0, @a1] ([] [0, 16])
+    aie.objectfifo @b0(%m0, {%t2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b1(%m0, {%t3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@in] -> [@b0, @b1] ([] [0, 16])
+  }
+}

@@ -34,7 +34,7 @@ jobs:
 
     name: Python and C/C++ Lint
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     permissions:
       contents: write
@@ -330,7 +330,7 @@ jobs:
 
     name: Check code format
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     permissions:
       contents: write
@@ -394,13 +394,13 @@ jobs:
           cat clang-format.diff
 
       - name: Upload clang-format
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           path: clang-format.diff
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7  # v1.26.1
+        uses: reviewdog/action-suggester@ac5ce6d94e35c00530447dc63c271e38e4fd36c6  # v1.26.3
         with:
           tool_name: clang-format
           level: error
@@ -416,14 +416,14 @@ jobs:
           cat black-format.diff
 
       - name: Upload black-format
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           path: black-format.diff
           name: black_format_diffs
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7  # v1.26.1
+        uses: reviewdog/action-suggester@ac5ce6d94e35c00530447dc63c271e38e4fd36c6  # v1.26.3
         with:
           tool_name: black
           level: error
@@ -433,7 +433,7 @@ jobs:
 
     name: Check for AI comment slop
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     # Scoped to actual PR commits only. merge_group's HEAD carries commits from
     # every PR ahead of this one in the queue, so the diff would compare comments
@@ -477,7 +477,7 @@ jobs:
 
   license-compliance:
     name: License Compliance Check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout Repository
@@ -490,7 +490,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install "reuse[charset-normalizer]==6.2.0"
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Check Licenses
         shell: bash
@@ -503,7 +503,7 @@ jobs:
 
   docs-build:
     name: Docs site build (mkdocs --strict)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Get the project repository
@@ -522,10 +522,10 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-          cache-dependency-path: docs/requirements-mkdocs.txt
+          cache-dependency-path: docs/requirements-mkdocs.lock
 
       - name: Install MkDocs packages
-        run: pip install -r docs/requirements-mkdocs.txt
+        run: python -m pip install --require-hashes -r docs/requirements-mkdocs.lock
 
       # This is the same strict build generateDocs.yml runs at deploy time
       # (mike wraps `mkdocs build --strict`), minus the Doxygen/dialect-docs

@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// k holds the two KV heads' k objects back to back; m travels as in
-// decode_attn_qk_core.cc.
+// k holds two KV heads back to back. qm holds queries then running maxima;
+// s holds scores then updated maxima.
 #include "decode_attn_qk_kvh2.cc"
 
 extern "C" void attn_qk_kvh2_round_core(bf16 *qm, bf16 *k, bf16 *s, float *c,

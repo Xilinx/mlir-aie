@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//-->
 ## Multi-Column Reduction Designs
 
-Partial reductions are performed within each row using shared memory between neighboring tiles, followed by a final reduction step across the column. The number of columns (`num_columns`) can be configured from 1 to 8 and number of shim DMAs (`num_channels`) can be configured from 1 to 2.
+Partial reductions are performed within each row using shared memory between neighboring tiles, followed by a final reduction step across the column. In `col_wise_vector_reduce_max.py`, `--num_cores` (default 8, two cores per column) sets how many cores share the reduction; `row_wise_vector_reduce_max.py` fixes its core count at `N_CORES`, with one shim channel per core.
 
 Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_max.cc`.
 
@@ -44,7 +44,7 @@ env VARIANT=row_wise make
 To compile the C++ testbench:
 
 ```shell
-make vector_reduce_max.exe
+make col_wise_vector_reduce_max.exe   # VARIANT=row_wise builds row_wise_vector_reduce_max.exe
 ```
 
 ### C++ Testbench

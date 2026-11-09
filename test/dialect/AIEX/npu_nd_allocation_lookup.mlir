@@ -116,11 +116,10 @@ module {
 
 // -----
 
-// The static AIE1 path deliberately skips AIE2-specific tile/dimension checks.
-// Moving those checks to a symbol-user hook must retain that early return.
+// A static AIE1 transfer with a resolved ShimNOC allocation remains valid.
 module {
   aie.device(xcvc1902) {
-    %tile = aie.tile(0, 0)
+    %tile = aie.tile(2, 0)
     aie.shim_dma_allocation @dma(%tile, MM2S, 0)
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma} : memref<64xi32>
@@ -130,7 +129,21 @@ module {
 
 // -----
 
-// The AIE1 exemption does not apply to the dynamic path on a shim PL tile.
+// Static AIE1 transfers reject ShimPL tiles, which have no ShimDMA.
+module {
+  aie.device(xcvc1902) {
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error @+1 {{Unsupported tile type at (0, 0) Must be ShimNOC, Mem or Core.}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma} : memref<64xi32>
+    }
+  }
+}
+
+// -----
+
+// Runtime AIE1 transfers also require a ShimNOC allocation.
 module {
   aie.device(xcvc1902) {
     %tile = aie.tile(0, 0)

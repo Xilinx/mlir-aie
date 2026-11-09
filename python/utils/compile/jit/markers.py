@@ -65,8 +65,8 @@ from ml_dtypes import bfloat16
 
 from ....helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from ....helpers.taplib import PerCall
-from ... import bfp
-from .params import Member, OperatorParam, _text, resolve
+from ... import bfp, coded
+from .params import Member, OperatorParam, Select, _text, resolve
 
 T = TypeVar("T")
 
@@ -111,8 +111,10 @@ class _Operand(Member):
         per: Any = None,
         depth: int = 2,
         replicate: bool = False,
-        when: OperatorParam | None = None,
+        when: Any = None,
         like: _Operand | None = None,
+        coded: OperatorParam | bool = False,
+        capacity: OperatorParam | int = 15,
     ):
         if replicate and per is None:
             raise TypeError(
@@ -140,17 +142,66 @@ class _Operand(Member):
         self.depth = depth
         self.replicate = replicate
         self.when = when
+        self.declared_coded = coded
+        self.declared_capacity = capacity
 
     @property
-    def shape(self) -> tuple[int, ...]:
+    def coded(self) -> bool:
+        """Whether the tensor moves as coded rows (``aie.utils.coded``)."""
+        flag = self.declared_coded
+        return bool(
+            getattr(self.op, flag.name) if isinstance(flag, OperatorParam) else flag
+        )
+
+    @property
+    def capacity(self) -> int:
+        """The exceptions a coded row holds."""
+        capacity = self.declared_capacity
+        return int(
+            getattr(self.op, capacity.name)
+            if isinstance(capacity, OperatorParam)
+            else capacity
+        )
+
+    @property
+    def logical_shape(self) -> tuple[int, ...]:
+        """The shape the declaration names.
+
+        It is what a caller passes, and what inference, drawing and a
+        reference see.
+        """
         return resolve(self.dims, self.op)
 
     @property
-    def dtype(self):
+    def logical_dtype(self):
         dtype = self.declared_dtype
         return (
             getattr(self.op, dtype.name) if isinstance(dtype, OperatorParam) else dtype
         )
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """The shape that moves.
+
+        It is the logical shape, with a coded tensor's rows as their bytes.
+        """
+        shape = self.logical_shape
+        if not self.coded:
+            return shape
+        return (*shape[:-1], coded.row_bytes(shape[-1], self.capacity))
+
+    @property
+    def dtype(self):
+        """The element type that moves: the logical one, a coded tensor's bytes."""
+        dtype = self.logical_dtype
+        if not self.coded:
+            return dtype
+        if bfp.is_bfp(dtype) or np.dtype(dtype) != np.dtype(bfloat16):
+            raise TypeError(
+                f"{self.name}: coded rows hold bfloat16 weights, not "
+                f"{bfp.dtype_name(dtype)}"
+            )
+        return np.uint8
 
     @property
     def elements(self) -> int:
@@ -181,19 +232,43 @@ class _Operand(Member):
 
     @property
     def streamed(self) -> bool:
-        return self.obj_dims is not None
+        """Return whether the tensor streams.
+
+        On a class, whether it may; on an operator, also whether an
+        obj_shape ``Select`` picks a stream there.
+        """
+        if self.obj_dims is None:
+            return False
+        return self.op is None or not any(
+            isinstance(d, Select)
+            and None in (d.when_true, d.when_false)
+            and d.branch(self.op) is None
+            for d in self.obj_dims
+        )
 
     @property
     def obj_shape(self) -> tuple[int, ...]:
-        if self.obj_dims is None:
-            raise TypeError(f"{self.name} is declared without an obj_shape=: no stream")
-        return resolve(self.obj_dims, self.op)
+        """What one ObjectFifo element holds; coded, whole rows as their bytes."""
+        if not self.streamed:
+            raise TypeError(f"{self.name} has no obj_shape here: no stream")
+        assert self.obj_dims is not None
+        obj = resolve(self.obj_dims, self.op)
+        if not self.coded:
+            return obj
+        # The row alone: a core's build may read no other extent.
+        row = resolve(self.dims[-1:], self.op)[-1]
+        if not obj or obj[-1] != row:
+            raise ValueError(
+                f"{self.name}: a coded stream moves whole rows of {row}, but its "
+                f"obj_shape is {obj}"
+            )
+        return (*obj[:-1], coded.row_bytes(row, self.capacity))
 
     @property
     def lanes(self) -> int:
         """The stream's ObjectFifos."""
-        if self.obj_dims is None:
-            raise TypeError(f"{self.name} is declared without an obj_shape=: no stream")
+        if not self.streamed:
+            raise TypeError(f"{self.name} has no obj_shape here: no stream")
         return 1 if self.per is None else math.prod(resolve(self.per, self.op))
 
     def __repr__(self) -> str:
@@ -202,7 +277,8 @@ class _Operand(Member):
             if self.like is not None:
                 return f"{role}(like={self.like.name})"
             return f"{role}({', '.join(map(_text, self.dims))})"
-        return f"<{role} {self.name} {self.shape} {bfp.dtype_name(self.dtype)}>"
+        coded_rows = " coded" if self.coded else ""
+        return f"<{role} {self.name} {self.shape} {bfp.dtype_name(self.dtype)}{coded_rows}>"
 
 
 class In(_Operand):
@@ -226,6 +302,16 @@ class In(_Operand):
         like: An input whose dims these are; a caller gives this tensor the
             shape that input has on the call, so ``Out(like=x)`` of a flat
             ``x`` is ``(rows, cols)`` where ``x`` is.
+        coded: A bool, or a ``param()``/``tunable()`` holding one: the
+            bfloat16 tensor moves as ``aie.utils.coded`` rows. Its dims stay
+            the logical ``(..., M, K)`` (``logical_shape``, ``logical_dtype``),
+            which inference, drawing and a reference see; ``shape``,
+            ``dtype`` and ``obj_shape`` are what moves, ``(..., M, R)`` uint8,
+            an ``obj_shape`` of whole rows mapped to their records. Only an
+            ``Operator`` declares it, and its caller uploads the rows
+            ``aie.utils.coded.encode_rows`` writes; a generator's tensor
+            parameters take their types from the call's tensors and cannot.
+        capacity: The exceptions a coded row holds, or a ``param()``.
 
     Raises:
         TypeError: ``replicate`` without ``per``, or both ``dims`` and

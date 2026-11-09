@@ -22,7 +22,7 @@ intermediate levels useful.
 | Operation | What it holds |
 | --- | --- |
 | `aie.objectfifo` | A data movement pipe between producer and consumer tiles, with the capacity to buffer `depth` objects of the given element type. |
-| `aie.objectfifo.link` | A connection between two or more fifos meeting on one tile; multiple input or output fifos describe a join or distribute, respectively. |
+| `aie.objectfifo.link` | A connection between two or more fifos meeting on one tile; multiple input or output fifos describe a join or distribute, respectively, each taking a slice of every object. With `mode = #aie.link_mode<time>` they take turns with whole objects instead: a merge (one fan-in route into one channel) or a dispatch (one channel taking turns between the outputs). |
 | `aie.objectfifo.acquire` / `.release` | A core taking objects out of a fifo and giving them back. |
 | `aie.objectfifo.allocate` | An (optional) manual allocation indicating on which tile the objects of the fifo should be held. |
 | `aie.objectfifo.register_external_buffers` | DDR buffers backing a shim end. |
@@ -50,7 +50,7 @@ A pool is a set of buffers and the contract for accessing them.
 ```mlir
 aie.objectfifo.pool @P(%tile) {
   depth   = 2 : i32,
-  buffers = [@P_buff_0, @P_buff_1]
+  buffers = [@P__buf0, @P__buf1]
 } : memref<36xi32> {
   aie.objectfifo.segment @s0 {offset = 0 : i32,  size = 16 : i32, produceLock = @p0, consumeLock = @c0}
   aie.objectfifo.segment @s1 {offset = 16 : i32, size = 20 : i32, produceLock = @p1, consumeLock = @c1}
@@ -164,26 +164,70 @@ aie.route_endpoint @s(%tile)  Core {channelIndex = 0 : i32}
 
 ### Routes
 
-Routes name two endpoints and lower to a circuit- or packet-switched connection
+Routes name endpoints and lower to a circuit- or packet-switched connection
 between them.
 
 ```mlir
 aie.route from @d1 to [@d2, @d3]
+aie.route from [@d1, @d4] to [@d2] {packet = #aie.packet_info<>}
 ```
 
 Several destinations are a broadcast: one source channel feeding a multicast
-route.
+route. Several sources are a fan-in: their packets share the destination
+channel, which fills its next object with whichever arrives, so the
+destination's pool is a queue with several producers and no memory of which.
+A fan-in is packet-switched, since a circuit joins one port to its masters,
+and every end moves one object of the same size, since a packet is one pass of
+its sender's chain and a shorter one would leave two senders in one object.
+The one header is stamped by every source and the destination's chain is the
+ordinary ring. A consumer that must know the source is a different design:
+one route per source into its own pool. An endpoint is named by one route,
+except a dispatching one.
 
-A flow marked `packet` becomes an `aie.packet_flow` and shares the stream;
-circuit flows reserve theirs. Both kinds coexist in one device. `packet_id`
-pins the id; otherwise allocation picks the lowest id no other flow uses.
+A draining DMA endpoint with `dispatch` takes turns between destinations over
+one channel: its k-th object goes to `dispatch[k mod n]`. It is the source of
+one packet-switched route per listed destination, each carrying its own header,
+and allocation records the headers in `dispatchPackets`. The chain runs
+lcm(depth, n) objects, so every object meets every turn before it repeats.
 
 ```mlir
-aie.route from @d1 to [@d2] {packet, packet_id = 7 : i8}
+aie.objectfifo.dma_endpoint @hub(%mem) drains @y {dispatch = [@a_in, @b_in]}
+aie.route from @hub to [@a_in] {packet = #aie.packet_info<>}
+aie.route from @hub to [@b_in] {packet = #aie.packet_info<>}
 ```
 
-At the frontend this is chosen per fifo, with the same two attributes on
-`aie.objectfifo`, or `ObjectFifo(..., packet=True, packet_id=7)` in IRON.
+DMA endpoints with `turns` share one channel the other way around: its k-th
+object belongs to the endpoint `turns[k mod n]`, each endpoint keeping its own
+pool and locks. Every endpoint named lists the same `turns`, on one tile, one
+way. The order tells their objects apart, so one circuit route carries them
+all, and the endpoints at its other end take the same turns. Allocation
+writes `turns` itself when a tile runs out of channels (below).
+
+```mlir
+aie.objectfifo.dma_endpoint @b_out(%mem) drains @mb {turns = [@b_out, @c_out]}
+aie.objectfifo.dma_endpoint @c_out(%mem) drains @mc {turns = [@b_out, @c_out]}
+aie.objectfifo.dma_endpoint @b_in(%core) fills @b {turns = [@b_in, @c_in]}
+aie.objectfifo.dma_endpoint @c_in(%core) fills @c {turns = [@b_in, @c_in]}
+aie.route from @b_out to [@b_in]
+aie.route from @c_out to [@c_in]
+```
+
+A flow carrying a `packet` header becomes an `aie.packet_flow` and shares the
+stream; circuit flows reserve theirs. Both kinds coexist in one device. The
+header is the same `#aie.packet_info` the endpoints and buffer descriptors
+carry after allocation, only with its id still open: `pkt_id` pins the id,
+otherwise `--aie-assign-packet-ids` picks the lowest id nothing on the device
+holds, another packet flow, a pinned route or a trace packet, and fills it in.
+
+```mlir
+aie.route from @d1 to [@d2] {packet = #aie.packet_info<>}
+aie.route from @d1 to [@d2] {packet = #aie.packet_info<pkt_id = 7>}
+```
+
+At the frontend this is chosen per fifo through its transport,
+`transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 7>>` on
+`aie.objectfifo` or `ObjectFifo(..., transport=Transport.dma(packet=Packet(id=7)))`
+in IRON. The same header rides on the route unchanged.
 
 ## Examples
 
@@ -251,16 +295,64 @@ one DMA drains the whole object, through one BD per segment with that segment's
 locks. Distribute is the same picture reversed: one endpoint fills the whole
 object and N endpoints each drain one segment.
 
+### Windows: a link walking the whole stream
+
+A 1:1 link at a MemTile may cut overlapping windows out of its input stream.
+The output fifo's `dimensionsToStream` then walks the whole stream of input
+objects instead of one object (IRON: `forward(to_stream=...)`, see
+[Section 2c](../programming_guide/section-2/section-2c/README.md#overlapping-windows-over-a-forwarded-stream)):
+
+- the outer dimension enumerates the outputs and steps whole input objects;
+  its stride over the input object's size is how far each window advances;
+- the inner dimensions are one output's transfer, as many elements as the
+  output object, and at most one of them steps by exactly one input object
+  (the window's rows);
+- `padDimensions` may pad only the outer dimension, where `(before, after)`
+  counts zero objects ahead of and behind the stream; walk coordinates start
+  at the first zero object.
+
+Nothing else is stated: the link infers the number of outputs, the advance,
+the span (input objects each output reads) and how many objects the stream
+holds, `(outputs - 1) * advance + span - before - after`. A walk that stays
+inside one object is the ordinary rate-converting link above.
+
+```mlir
+// Three-row windows over four rows of 8, a zero row above and below.
+aie.objectfifo @rows(%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
+aie.objectfifo @windows(%mem dimensionsToStream [<size = 4, stride = 8>,
+    <size = 3, stride = 8>, <size = 8, stride = 1>], {%core}, 2 : i32)
+    {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 1, const_pad_after = 1>,
+        <const_pad_before = 0, const_pad_after = 0>, <const_pad_before = 0, const_pad_after = 0>]>}
+    : !aie.objectfifo<memref<24xi32>>
+aie.objectfifo.link [@rows] -> [@windows] ([] [])
+```
+
+Split gives the link one pool holding the whole stream in a single buffer,
+its zero objects included (initialized to zero, so they cost configuration
+bytes), with one lock pair counting objects; the fifos' depths do not apply.
+Lower-dmas fills it with one descriptor iterating over the stream's objects,
+and drains it with one descriptor per output at offset `advance * j`, each
+acquiring the input objects that output is the first to read and releasing
+those no later output reads (`link_stream_walk.mlir` shows the chain). The
+zero rows are stored rather than produced by BD padding because a four-dim
+MemTile walk cannot pad its d2 or d3 dimension.
+
+Limits of this lowering: a stream holds at most as many objects as a lock
+counts (63), it yields at most one MemTile channel's descriptors (24) per pass,
+the link point is a MemTile, and the output neither repeats objects nor has an
+iteration count.
+
 ## The pipeline
 
 `--aie-objectFifo-stateful-transform` runs these in order. Its options:
-`skip-verify=true` drops step 2, and `packet-sw-objFifos=true` makes every flow
-packet-switched.
+`skip-verify=true` drops step 2, and `packet-sw-objFifos=true` makes step 3
+give every flow a packet header, whether or not it asked for one.
 
 | Pass | Emits | Consumes |
 | --- | --- | --- |
 | `--aie-objectfifo-split` | pools, endpoints, flows | `aie.objectfifo`, `aie.objectfifo.link` |
 | `--aie-objectfifo-verify` | diagnostics only | — |
+| `--aie-assign-packet-ids` | `pkt_id` on every packet header | `aie.route` headers with no id |
 | `--aie-objectfifo-allocate` | `pool`s with buffer/lock attributes, `aie.buffer`, `aie.lock`, channel indices, `aie.flow` / `aie.packet_flow`, `aie.shim_dma_allocation` | `aie.route`, `pool`s without buffer/lock attributes |
 | `--aie-objectfifo-lower-dmas` | BD chains | `dma_endpoint`, `route_endpoint` |
 | `--aie-objectfifo-lower-cores` | `use_lock` and buffer selection | `core_endpoint`, `acquire`, `release` |
@@ -281,21 +373,21 @@ aie.objectfifo @of1 (%tile02, {%tile25}, 2 : i32) : !aie.objectfifo<memref<16xi3
 %e = aie.objectfifo.acquire @of1 (Produce, 1) : memref<16xi32>
 
 // after
-aie.objectfifo.pool @of1_pool(%tile_0_2) {depth = 2 : i32, fifoName = "of1",
+aie.objectfifo.pool @of1__pool(%tile_0_2) {depth = 2 : i32, fifoName = "of1",
     } : memref<16xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
     }
-aie.objectfifo.core_endpoint @of1_prod(%tile_0_2) fills @of1_pool
-aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {fifoName = "of1"}
-aie.objectfifo.pool @of1_cons_pool(%tile_2_5) {depth = 2 : i32, fifoName = "of1",
+aie.objectfifo.core_endpoint @of1__prod(%tile_0_2) fills @of1__pool
+aie.objectfifo.dma_endpoint @of1__prod__dma(%tile_0_2) drains @of1__pool {fifoName = "of1"}
+aie.objectfifo.pool @of1__cons__pool(%tile_2_5) {depth = 2 : i32, fifoName = "of1",
     } : memref<16xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
     }
-aie.objectfifo.core_endpoint @of1_cons(%tile_2_5) drains @of1_cons_pool
-aie.objectfifo.dma_endpoint @of1_cons_dma(%tile_2_5) fills @of1_cons_pool {fifoName = "of1"}
-aie.route from @of1_prod_dma to [@of1_cons_dma]
+aie.objectfifo.core_endpoint @of1__cons(%tile_2_5) drains @of1__cons__pool
+aie.objectfifo.dma_endpoint @of1__cons__dma(%tile_2_5) fills @of1__cons__pool {fifoName = "of1"}
+aie.route from @of1__prod__dma to [@of1__cons__dma]
 
-%e = aie.objectfifo.acquire @of1_prod (1) : memref<16xi32>
+%e = aie.objectfifo.acquire @of1__prod (1) : memref<16xi32>
 ```
 
 A core's `acquire` and `release` name the endpoint they work through; the
@@ -305,31 +397,61 @@ Pool depth covers the largest acquire a core on that tile makes, plus one so the
 core can hold an object while the next arrives. A tile no core touches gets the
 fifo's declared size.
 
+The fifo's `transport` names the path. Absent (`auto`), split uses shared
+memory when both ends reach one memory module and nothing forces DMAs.
+`#aie.transport<dma>` forces the DMAs, and `#aie.transport<shared_mem>` fails
+split with the reason when shared memory cannot be had (the ends share no
+memory module, an end reshapes the data, `repeat_count`, a link, and so on).
+
+Each end names what drives it, `prod_port` and one `cons_ports` entry per
+consumer. `#aie.end_port<DMA : 1>` pins that end's DMA endpoint to channel 1.
+`#aie.end_port<Core : 0>` wires the end to the core's stream port 0: it becomes
+an `aie.route_endpoint` with a `Core` bundle and holds no objects, so a core
+cannot acquire or release on it.
+
 ### 2. `--aie-objectfifo-verify`
 
 Checks the completeness rules listed below. Designs that supply an endpoint by
 hand at BD level lower with `skip-verify=true`.
 
-### 3. `--aie-objectfifo-allocate`
+### 3. `--aie-assign-packet-ids`
 
-Gives pools their buffers and locks, and endpoints their channels, flows and
-shim allocations.
+Fills in the `pkt_id` of every route whose packet header left it open, taking
+the lowest id nothing on the device holds: another `aie.packet_flow`, a route or
+objectfifo that pinned one, or a trace packet. Routes are taken in structural
+order, so the assignment is a function of the design alone, whatever order or
+names it was declared with. A DMA program sourcing a route whose id is still
+open is an error: it states its BDs' headers itself. This is the one place ids
+are handed out; `--aie-insert-trace-flows` reads the same held set when it
+numbers traces, so the two never alias.
 
 ```mlir
-%of1_buff_0 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_0"} : memref<16xi32>
-%of1_buff_1 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_1"} : memref<16xi32>
-%of1_prod_lock_0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
-%of1_cons_lock_0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// before
+aie.route from @d1 to [@d2] {packet = #aie.packet_info<>}
+// after
+aie.route from @d1 to [@d2] {packet = #aie.packet_info<pkt_id = 3>}
+```
 
-aie.objectfifo.pool @of1_pool(%tile_0_2) {
+### 4. `--aie-objectfifo-allocate`
+
+Gives pools their buffers and locks, and endpoints their channels, flows and
+shim allocations. A packet header reaching it has to carry its id.
+
+```mlir
+%of1__buf0 = aie.buffer(%tile_0_2) {sym_name = "of1__buf0"} : memref<16xi32>
+%of1__buf1 = aie.buffer(%tile_0_2) {sym_name = "of1__buf1"} : memref<16xi32>
+%of1__prodlock0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of1__prodlock0"}
+%of1__conslock0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of1__conslock0"}
+
+aie.objectfifo.pool @of1__pool(%tile_0_2) {
     depth = 2 : i32, fifoName = "of1",
-    buffers = [@of1_buff_0, @of1_buff_1]
+    buffers = [@of1__buf0, @of1__buf1]
 } : memref<16xi32> {
     aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32,
-        produceLock = @of1_prod_lock_0, consumeLock = @of1_cons_lock_0}
+        produceLock = @of1__prodlock0, consumeLock = @of1__conslock0}
 }
 // Note the set buffer and lock attributes.
-aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {channelIndex = 0 : i32, fifoName = "of1"}
+aie.objectfifo.dma_endpoint @of1__prod__dma(%tile_0_2) drains @of1__pool {channelIndex = 0 : i32, fifoName = "of1"}
 aie.flow(%tile_0_2, DMA : 0, %tile_2_5, DMA : 0)
 ```
 
@@ -337,7 +459,65 @@ Attributes already present are kept, so writing `aie.buffer` ops and naming them
 in the pool, attaching locks to a segment, or setting `channelIndex` on an
 endpoint overrides that choice; this pass fills in the rest.
 
-### 4. `--aie-objectfifo-lower-dmas`
+When a shim tile runs out of channels, MM2S endpoints whose transfers never
+overlap may share one channel. Ordinary MM2S transfers conservatively remain
+live until their runtime sequence returns. An `aiex.run` call is assumed to
+finish its transfers before returning, so disjoint calls can share. Configuration
+completes before the configure body starts, allowing control and application
+MM2S transfers in separate phases to share as well.
+
+S2MM sharing requires explicit `aie.shareable_with` permissions. Ordered receives
+do not constrain when independent cores or DMAs send their data. The author must
+guarantee that packets reach the shared channel in the order and quantities the
+receives expect, including across repeated executions. Awaiting or freeing receive
+tasks alone does not establish this guarantee.
+
+On an unsplit objectFIFO, the attribute names other objectFIFOs; on a route
+endpoint, it names other route endpoints. Both ends must permit the pairing:
+
+```mlir
+aie.objectfifo @a(%core_a, {%shim}, 2 : i32) {aie.shareable_with = [@b]} : !aie.objectfifo<memref<16xi32>>
+aie.objectfifo @b(%core_b, {%shim}, 2 : i32) {aie.shareable_with = [@a]} : !aie.objectfifo<memref<16xi32>>
+```
+
+Splitting copies these permissions to the shim route endpoints and rewrites the
+references. Explicit lists override lifetime analysis; `[]` disallows sharing.
+A shim DMA allocation's list instead permits named route endpoints to use its
+fixed channel. Hardware and routing constraints apply in all cases.
+
+Only as many endpoints share as the tile needs. Their routes become
+packet-switched with distinct packet IDs, and each endpoint has its own
+`aie.shim_dma_allocation`. MM2S transfers stamp their endpoint's packet header;
+S2MM descriptors do not select packets by ID.
+
+The runtime BD allocator warns about transfers left neither awaited nor freed
+at sequence exit (`warn-unreleased-transfers`, enabled by default in the pass
+and `aiecc`).
+
+When a compute or mem tile runs out of channels, DMA endpoints whose objects
+one core needs in a fixed order take turns on one channel instead, in that
+order. The core's period is the innermost loop around every acquire and
+release on their pools, with the loops of static trip count inside it
+unrolled; each acquire needs the objects it does not already hold, and the
+order of a draining core's needs (or of a filling core's releases) once its
+holdings settle is `turns`. An end used under a branch, or in a loop of
+unknown trip count inside the period, has no fixed order and never shares.
+Each end must be one circuit route from another DMA endpoint, and those
+endpoints, on one tile, take the same turns. The turns are taken only if a
+chain moving objects in their order forever, through the pools' depths, never
+leaves the channel and the core both waiting: a window over one pool beside
+a one-deep pool would, as the chain's next object of the second waits for a
+slot the core frees only after it has the window's last. Only as many ends
+share as the tile needs, and a design that fits without sharing is lowered
+exactly as before.
+
+`--aie-place-tiles` counts shim channels by the same rule (`ShimTransferSpans`):
+logical shim tiles are placed one channel per end as before, and only when no
+shim tile has room does it count the ends that can take turns once, so a pack
+whose members together need more shim channels than the device has can still
+be placed.
+
+### 5. `--aie-objectfifo-lower-dmas`
 
 Turns each `dma_endpoint` into the BD chain that walks its pool's buffers,
 buffer-major and segment-minor:
@@ -350,19 +530,23 @@ for each buffer b in pool.buffers:
     release( drains ? s.produceLock : s.consumeLock )
 ```
 
+Endpoints taking turns lower to one chain: the k-th BD moves the next object
+of the endpoint `turns` names k-th, through its own pool's locks, unrolled
+until every endpoint is back at its first object.
+
 ```mlir
 %mem_0_2 = aie.mem(%tile_0_2) {
   %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 ^bb1:
-  aie.use_lock(%of1_cons_lock_0, AcquireGreaterEqual, %c1_i32)
-  aie.dma_bd(%of1_buff_0 : memref<16xi32> offset = 0 len = 16)
-  aie.use_lock(%of1_prod_lock_0, Release, %c1_i32_0)
+  aie.use_lock(%of1__conslock0, AcquireGreaterEqual, %c1_i32)
+  aie.dma_bd(%of1__buf0 : memref<16xi32> offset = 0 len = 16)
+  aie.use_lock(%of1__prodlock0, Release, %c1_i32_0)
   aie.next_bd ^bb2
-^bb2:   // the same, with %of1_buff_1
+^bb2:   // the same, with %of1__buf1
   ...
 ```
 
-### 5. `--aie-objectfifo-lower-cores`
+### 6. `--aie-objectfifo-lower-cores`
 
 Turns `acquire` and `release` operations in AIE core code into `use_lock`
 and a rotation of the pool's objects. The core keeps its objects in rotation
@@ -372,10 +556,10 @@ the released objects to the back.
 ```mlir
 %0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
 %1 = arith.maxsi %0, %c0_i32_0 : i32     // delta = max(N - held, 0)
-aie.use_lock(%of1_prod_lock_0, AcquireGreaterEqual, %1)
+aie.use_lock(%of1__prodlock0, AcquireGreaterEqual, %1)
 %obj = memref.load %front[] : memref<memref<16xi32>>
 ...
-aie.use_lock(%of1_cons_lock_0, Release, %c1_i32)
+aie.use_lock(%of1__conslock0, Release, %c1_i32)
 %a = memref.load %front[] : memref<memref<16xi32>>   // release(1) rotates
 %b = memref.load %back[] : memref<memref<16xi32>>    // the objects by one
 memref.store %b, %front[] : memref<memref<16xi32>>
@@ -391,10 +575,46 @@ LLVM's SROA turns them into loop-carried buffer pointers. A pool with a single
 object hands that object out directly. AIE1 binary locks travel with their
 objects, so they are still selected by a rotating index.
 
-### 6. `--aie-objectfifo-erase-pools`
+A release that generates DMA queue pushes can carry `assume_queue_space`:
+
+```mlir
+aie.objectfifo.release {assume_queue_space} @of1 (Produce, 1)
+```
+
+In IRON, write `handle.release(1, assume_queue_space=True)`. This is a
+programmer assertion that every push generated by this release has room on its
+queue on every execution, including releases of multiple objects. It omits
+queue-space polling for this release alone; the pushes and buffer locks remain.
+It applies both to `push_queue` senders and to releases that replenish an
+out-of-order receiving channel. If the assertion is wrong, the hardware can
+discard a task pushed onto a full queue and the program can stall. Without the
+attribute, the usual compiler analysis and queue checks apply.
+
+### 7. `--aie-objectfifo-erase-pools`
 
 Drops pool metadata once nothing refers to it. A pool still named by something
 else, such as a re-arm binding in a runtime sequence, stays.
+
+## Generated names
+
+The ops the pipeline creates are named after the fifo they come from, with
+`__` between the fifo's name and each part the pipeline adds, so a name reads
+as `<fifo>__<end>__<kind><index>` and stays a plain identifier:
+
+| Name                      | What it is                                         |
+|---------------------------|----------------------------------------------------|
+| `act_in__pool`            | the producer's (or the shared) pool                |
+| `act_in__cons__pool`      | the consumer's pool; `act_in__cons1__pool` for the second of several consumers |
+| `act_in__prod`, `act_in__cons` | core endpoints                                |
+| `act_in__prod__dma`, `act_in__cons__dma` | DMA and route endpoints             |
+| `act_in__cons__buf0`      | object 0 of a pool: `<pool base>__buf<i>`          |
+| `act_in__cons__prodlock0`, `act_in__cons__conslock0` | segment 0's lock pair (AIE2): free objects, full objects |
+| `act_in__lock0`           | object 0's lock (AIE1)                              |
+| `act_in__shim_alloc`, `act_in__shim_alloc1` | shim DMA allocations the runtime sequence uses |
+| `act_in__rearm`, `act_in__rearm1` | rearm bindings                             |
+| `in__merge__dma`, `in__dispatch__dma` | the shared endpoint of a merge or dispatch link |
+
+A pool's base is its name without `__pool`.
 
 ## What is checked
 
@@ -417,21 +637,56 @@ Endpoints:
 - a core endpoint's segments are contiguous
 - `dimensions` and `padDimensions` have one entry per selected segment, with matching ranks, within segment bounds
 - `padDimensions` appears on a draining endpoint, and a nonzero `padValue` requires one
+- a MemTile walk of four dimensions pads neither d2 nor d3, which the hardware ignores
 - a route endpoint with a DMA or PLIO bundle is on a shim tile, and its bundle is DMA, PLIO or Core
 
 Flows and core accesses:
 
 - a flow has at least one destination, and its source and destinations are endpoints
-- `packet_id` requires a packet flow
 - `acquire` and `release` sit inside a core, and `acquire` takes at least one object of the pool's element type
+
+Links walking the whole stream (windows):
+
+- the outer stride is a whole number of input objects, and the inner
+  dimensions move exactly one output object
+- at most one inner dimension steps by exactly one input object
+- padding is on the outer dimension only, and every output reads some data
+- the link point is a MemTile, and the output has no repeat or iteration count
+- the stream's objects fit one lock's count (63), and its outputs one MemTile
+  channel's descriptors (24)
+
+Endpoints taking turns:
+
+- `turns` names the endpoint itself, and every name is a DMA endpoint on the
+  same tile and channel, one way, listing the same `turns`
+- an endpoint taking turns does not also dispatch, carry a header, stop after
+  an `iterCount` or repeat its objects
 
 ### By `--aie-objectfifo-verify`
 
 - each segment has one filling and one draining endpoint. A filler may be absent
   when lock initializers mark the objects as starting full, and a pool over
   external buffers has a host-side actor with no op
-- every DMA and route endpoint appears in exactly one route
+- every DMA and route endpoint appears in exactly one route, except that a
+  dispatching endpoint is the source of one packet-switched route per
+  destination it lists, and of nothing else
 - no loop body releases more than it acquires
+- no core must release more objects through an endpoint than the pool's DMA
+  endpoint, bounded by an `iterCount`, will move (`iterCount` times depth).
+  Only releases forced by static loop bounds count, and a loop meant to run
+  forever (a trip count from the 24-bit BD-loop saturation value up) is left
+  out, since its core stalling once the data stops is how such a design ends
+- every end of a fan-in route moves one object of the same size, counting a
+  DMA endpoint's selected segments through its `dimensions`
+
+### By `--aie-assign-packet-ids`
+
+- a pinned `pkt_id` fits the target's header field, and the field has an id
+  left for every open header
+
+### By `--aie-objectfifo-allocate`
+
+- every packet header on a route carries its id
 
 ### By `--aie-objectfifo-lower-dmas`
 

@@ -268,6 +268,19 @@ mlir::LogicalResult AIEX::verifyStridesWraps(
 // UseTokenOp
 //===----------------------------------------------------------------------===//
 
+// A field flagged as a register must name one of r0..r23. The bound cannot be
+// an attribute constraint, because the same field holds a full 32-bit
+// immediate when unflagged.
+LogicalResult AIEX::CertWrite32DOp::verify() {
+  if (getAddressIsReg() && getAddress() > 23)
+    return emitOpError("has address_is_reg, so address ")
+           << getAddress() << " must be a register index in [0, 23]";
+  if (getValueIsReg() && getValue() > 23)
+    return emitOpError("has value_is_reg, so value ")
+           << getValue() << " must be a register index in [0, 23]";
+  return success();
+}
+
 LogicalResult AIEX::UseTokenOp::verify() {
   auto *parentOp = (*this)->getParentOp();
   if (isa<func::FuncOp>(parentOp) || isa<AIE::CoreOp>(parentOp) ||
@@ -532,8 +545,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
         "runtime sizes/strides require a shim_dma_allocation to resolve the "
         "tile; none found.");
   AIE::TileOp tile = allocOp.getTileOp();
+  // Coordinate-dependent checks must wait until logical tiles are placed.
   if (!tile)
-    return emitOpError("shim DMA allocation must reference a valid TileOp");
+    return success();
   if (!targetModel.isShimNOCTile(tile.getCol(), tile.getRow()))
     return emitOpError(
         "runtime sizes/strides are only supported for shim NOC tile DMAs.");
@@ -686,8 +700,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       return failure();
   }
 
-  // The experimental HSA target uses this op on AIE1, skip all the AIE2
-  // specific checks
+  // AIE1 does not use the NPU alignment and packet-header checks.
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return success();
 
@@ -697,9 +710,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   // packet header
   if (auto packetInfo = getPacket()) {
+    if (failed(AIE::verifyAssignedPacket(*this, *packetInfo)))
+      return failure();
     if (packetInfo->getPktType() > 7)
       return emitOpError("Packet type field can only hold 3 bits.");
-    if (packetInfo->getPktId() > 31)
+    if (packetInfo->assignedId() > 31)
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
@@ -726,13 +741,10 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 
   bool hasLengthParameter =
       getLengthParameterAttr() || getLengthStateTableIdxAttr();
-  // Static AIE1 transfers without a length parameter skip allocation checks,
-  // including on the compatibility target used outside a device.
-  if (!isDynamic && !hasLengthParameter &&
-      targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
-
+  bool isAIE1 = targetModel.getTargetArch() == AIE::AIEArch::AIE1;
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (!dev && isAIE1 && !isDynamic && !hasLengthParameter)
+    return success();
   auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
   if (isDynamic)
@@ -742,16 +754,19 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // until metadata names a shim DMA allocation.
   if (!allocOp)
     return success();
-  AIE::TileOp tile = allocOp.getTileOp();
-  if (!tile)
-    return emitOpError("shim DMA allocation must reference a valid TileOp");
+  auto tile = allocOp.getTileOp();
+  // Defer coordinate-dependent checks until logical tiles are placed.
+  if (!tile) {
+    if (isAIE1 && hasLengthParameter)
+      return emitOpError("length_parameter is only supported on AIE2 and "
+                         "AIE2P devices");
+    return success();
+  }
   int col = tile.getCol();
   int row = tile.getRow();
   if (hasLengthParameter &&
       failed(AIE::verifyLengthParameterTile(*this, targetModel, col, row)))
     return failure();
-  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -789,9 +804,12 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       });
   // aie-decompose-large-dma-bd leaves a transfer with a runtime length
   // alone, so it must be legal as written.
-  if (!hasLengthParameter && AIEX::isDecomposableNdDmaPattern(
-                                 getOperation(), buffer, targetModel, col, row,
-                                 inputOffsets, inputSizes, inputStrides)) {
+  // AIE1 patterns must fit directly, even when the decomposition pass is
+  // scheduled: verification must not rely on it to legalize AIE1 transfers.
+  if (!isAIE1 && !hasLengthParameter &&
+      AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel, col,
+                                       row, inputOffsets, inputSizes,
+                                       inputStrides)) {
     // ok: will be decomposed before lowering
   } else if (failed(verifyStridesWraps(
                  *this, [&] { return emitOpError(); }, buffer, col, row,
@@ -1380,6 +1398,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
   // dialect. The normal DMABDOp verify operation will skip over any BD inside
   // a DMAConfigureTaskOp
+  if (failed(AIE::verifyAssignedPacket(*this, getPacketAttr())))
+    return failure();
   LogicalResult result = success();
   bool taskHasPacket = getPacket().has_value();
   llvm::SmallVector<AIE::DMABDOp> bds;
@@ -1404,8 +1424,11 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                        "are connected to the memory-mapped NOC.");
         result = failure();
       }
-      // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
+      // DMABDOp::verify skips task BDs, so validate their packet header and
+      // out_of_order_id here too.
+      if (failed(AIE::verifyAssignedPacket(
+              bd, bd.getPacket().value_or(AIE::PacketInfoAttr()))) ||
+          failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
           failed(bd.verifyTransferInBounds()))
         result = failure();
       bds.push_back(bd);
@@ -1574,7 +1597,7 @@ struct BdChain {
 static LogicalResult
 verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {
-  if (fifo.getPadDimensions() || fifo.getAieStream())
+  if (fifo.getPadDimensions() || fifo.usesStream())
     return success();
   std::optional<int64_t> moved = staticBytesStreamed(task);
   if (!moved || *moved == 0)
@@ -1593,9 +1616,10 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   // steps through every segment in order, each small end through its own, and
   // a plain link's single segment is the whole pool object. The link's
   // repeat_count sends each of its output's segment BDs that many times in a
-  // row.
-  Value linkTile;
-  std::optional<BdChain> linkChain;
+  // row. Every link the fifo meets has an end the transfer must complete,
+  // one per tile when links on several tiles read a broadcast.
+  SmallVector<Value> linkTiles;
+  SmallVector<BdChain> chains;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
       std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
@@ -1605,7 +1629,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       std::optional<Value> sharedTile = link.getOptionalSharedTile();
       if (ins.empty() || outs.empty() || !sharedTile)
         return success();
-      linkTile = *sharedTile;
+      linkTiles.push_back(*sharedTile);
       AIE::ObjectFifoCreateOp owner = link.getPoolOwner();
       MemRefType pool =
           cast<AIE::AIEObjectFifoType>(owner.getElemType()).getElementType();
@@ -1627,21 +1651,22 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       int64_t copies = llvm::is_contained(outs, fifo)
                            ? link.getRepeatCount().value_or(1)
                            : 1;
+      std::optional<BdChain> chain;
       if (segmentBytes.size() == segments.size())
-        linkChain = BdChain::get(segmentBytes, copies);
-      break;
+        chain = BdChain::get(segmentBytes, copies);
+      if (chain && !llvm::is_contained(chains, *chain))
+        chains.push_back(*chain);
     }
   // Every far-end BD chain this transfer must leave at a BD boundary: the
   // producer's, for a drain, and each consumer's other than the shim's own. A
   // broadcast stalls on its slowest consumer, so a drain bounds what the
-  // others receive too. An end off the link tile is one BD over its own
+  // others receive too. An end off every link tile is one BD over its own
   // object.
-  SmallVector<BdChain> chains;
   auto addChain = [&](Value tile, Type fifoType) {
+    if (llvm::is_contained(linkTiles, tile))
+      return;
     std::optional<BdChain> chain;
-    if (linkTile && tile == linkTile)
-      chain = linkChain;
-    else if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
+    if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
       chain = BdChain::get({*bytes}, 1);
     if (chain && !llvm::is_contained(chains, *chain))
       chains.push_back(*chain);

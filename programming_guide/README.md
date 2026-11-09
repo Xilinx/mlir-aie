@@ -80,7 +80,7 @@ my_design(a, b)              # compile + run + sync back
 | What happens between `@iron.jit` and the NPU running | [Compilation stages](./compilation_stages.md) |
 | A routing error, or how flows become switch settings | [Routing](./routing.md) |
 | Ready-made compute kernels (matmul, conv, eltwise, vision) | [Kernel library](./kernels_library.md) |
-| Every control op you can put in a runtime sequence | [AIEX dialect reference](../AIEXDialect.md) |
+| Every control op you can put in a runtime sequence | [AIEX dialect reference](../docs/AIEXDialect.md) |
 
 ## Sections
 
@@ -134,17 +134,17 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 
 | Term | Definition |
 |------|------------|
-| [**Worker**](../docs/api/iron.md#iron.worker.Worker) | The IRON object describing the code that runs on one compute tile. Prefer "Worker" over "process" or "task". |
-| [**ObjectFifo**](../docs/api/iron.md#iron.dataflow.objectfifo.ObjectFifo) | The synchronized streaming-data primitive between two endpoints (host↔tile or tile↔tile). Producers and consumers `acquire` / `release` its elements. Reserve "channel" for AXI stream channels. |
-| [**ObjectFifoHandle**](../docs/api/iron.md#iron.dataflow.objectfifo.ObjectFifoHandle) | A producer or consumer handle to an ObjectFifo, obtained via `of.prod()` / `of.cons()`. Worker core functions call `acquire` / `release` on it. |
-| [**Runtime**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The host-side description of `fill` / `drain` operations, defined by the body passed to `Runtime(seq, fn_args)`. Workers are passed to `Program(workers=...)`. Distinct from "host code" (the C++/Python testbench that calls the design). |
-| [**Program**](../docs/api/iron.md#iron.program.Program) | The top-level container that binds a device and a Runtime and resolves the design to MLIR. |
-| [**Buffer**](../docs/api/iron.md#iron.buffer.Buffer) | A named memory region on a tile, used for Worker-local scratch storage or runtime parameters. Prefer it over a self-connected ObjectFifo when sequential kernel calls in one Worker share an intermediate result; use ObjectFifos when producer/consumer synchronization is needed. |
-| [**Kernel**](../docs/api/iron.md#iron.kernel.Kernel) / [**ExternalFunction**](../docs/api/iron.md#iron.kernel.ExternalFunction) | Wrappers for AIE core functions: `Kernel` for a pre-compiled object file, `ExternalFunction` for C/C++ source compiled at JIT time. |
+| [**Worker**](../docs/api/iron.md#aie.iron.worker.Worker) | The IRON object describing the code that runs on one compute tile. Prefer "Worker" over "process" or "task". |
+| [**ObjectFifo**](../docs/api/iron.md#aie.iron.dataflow.objectfifo.ObjectFifo) | The synchronized streaming-data primitive between two endpoints (host↔tile or tile↔tile). Producers and consumers `acquire` / `release` its elements. Reserve "channel" for AXI stream channels. |
+| [**ObjectFifoHandle**](../docs/api/iron.md#aie.iron.dataflow.objectfifo.ObjectFifoHandle) | A producer or consumer handle to an ObjectFifo, obtained via `of.prod()` / `of.cons()`. Worker core functions call `acquire` / `release` on it. |
+| [**Runtime**](../docs/api/iron.md#aie.iron.runtime.runtime.Runtime) | The host-side description of `fill` / `drain` operations, defined by the body passed to `Runtime(seq, fn_args)`. Workers are passed to `Program(workers=...)`. Distinct from "host code" (the C++/Python testbench that calls the design). |
+| [**Program**](../docs/api/iron.md#aie.iron.program.Program) | The top-level container that binds a device and a Runtime and resolves the design to MLIR. |
+| [**Buffer**](../docs/api/iron.md#aie.iron.buffer.Buffer) | A named memory region on a tile, used for Worker-local scratch storage or runtime parameters. Prefer it over a self-connected ObjectFifo when sequential kernel calls in one Worker share an intermediate result; use ObjectFifos when producer/consumer synchronization is needed. |
+| [**Kernel**](../docs/api/iron.md#aie.iron.kernel.Kernel) / [**ExternalFunction**](../docs/api/iron.md#aie.iron.kernel.ExternalFunction) | Wrappers for AIE core functions: `Kernel` for a pre-compiled object file, `ExternalFunction` for C/C++ source compiled at JIT time. |
 | [**TensorAccessPattern (TAP)**](../docs/api/taplib.md) | A description of how a tensor is sliced and streamed to/from the NPU across multiple DMA transfers. Passed as `tap=` to `fifo.fill()` / `fifo.drain()`. |
-| [**Flow**](../docs/api/iron.md#iron.dataflow.flow.Flow) / [**PacketFlow**](../docs/api/iron.md#iron.dataflow.flow.PacketFlow) | Lower-level explicit-routing primitives: `Flow` for circuit-switched routes, `PacketFlow` for packet-switched routes with caller-controlled packet IDs. |
-| [**TileDma**](../docs/api/iron.md#iron.dataflow.tile_dma.TileDma) | A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much. |
-| [**Runtime sequence**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The sequence body passed to `Runtime(seq, fn_args)` in which `fill` / `drain` operations are declared. |
+| [**Flow**](../docs/api/iron.md#aie.iron.dataflow.flow.Flow) / [**PacketFlow**](../docs/api/iron.md#aie.iron.dataflow.flow.PacketFlow) | Lower-level explicit-routing primitives: `Flow` for circuit-switched routes, `PacketFlow` for packet-switched routes with caller-controlled packet IDs. |
+| [**TileDma**](../docs/api/iron.md#aie.iron.dataflow.tile_dma.TileDma) | A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much. |
+| [**Runtime sequence**](../docs/api/iron.md#aie.iron.runtime.runtime.Runtime) | The sequence body passed to `Runtime(seq, fn_args)` in which `fill` / `drain` operations are declared. |
 
 ### Compilation
 
@@ -176,10 +176,10 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 ## Further reading
 
 * E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025. — the IRON paper.
-* [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049) — IEEE Hot Chips paper.
+* [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049) — IEEE Micro paper (Special Issue on Contemporary Industry Products, vol. 44, no. 6, 2024).
 * AIE architecture manuals: [AIE1 — AM009](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview), [AIE2 — AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview).
 * AIE register references: [AIE1 — AM015](https://docs.amd.com/r/en-US/am015-versal-aie-register-reference/Overview), [AIE2 — AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview).
-* [AIE API User Guide](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html) — the C++ header-only vector library for kernel code.
+* [AIE API User Guide](https://xilinx.github.io/aie_api/topics.html) — the C++ header-only vector library for kernel code.
 * [Summary documentation links (UG1076)](https://docs.amd.com/r/en-US/ug1076-ai-engine-environment/Documentation).
 
 -----

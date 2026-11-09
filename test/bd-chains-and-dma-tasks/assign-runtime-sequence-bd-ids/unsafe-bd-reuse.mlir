@@ -3,8 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=true' \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=true warn-unreleased-transfers=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unreleased-transfers=false' \
+// RUN:         --verify-diagnostics --split-input-file %s
+// RUN: sed '/expected-/d' %s | aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=false warn-unreleased-transfers=false' \
+// RUN:         --verify-diagnostics --split-input-file
 
 // aiex.dma_free_task returns BD ids to the allocator with no completion
 // guarantee, and nextBdId scans upward from 0, so a just-freed low id is the
