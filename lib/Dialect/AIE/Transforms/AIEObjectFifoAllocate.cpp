@@ -106,6 +106,7 @@ struct AIEObjectFifoAllocatePass
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
+  bool lockSearchStopped = false;
 
   bool sameTile(Value a, Value b) {
     if (a == b)
@@ -423,6 +424,7 @@ struct AIEObjectFifoAllocatePass
   LogicalResult planLocks(ArrayRef<ObjectFifoPoolOp> pools) {
     lockFailure = {};
     lockAccessFailure = nullptr;
+    lockSearchStopped = false;
     lockPlacements.clear();
     LockPlan plan(device.getTargetModel());
     SmallVector<Value> tileValues;
@@ -491,6 +493,7 @@ struct AIEObjectFifoAllocatePass
     if (assignment.failed) {
       Operation *group = groupOps[*assignment.failed];
       const LockPlan::Placed &missed = assignment.failure;
+      lockSearchStopped = assignment.stopped;
       lockFailure = missed.full ? tileValues[*missed.full] : Value();
       if (!missed.reachable && !lockUsers[group].empty())
         lockAccessFailure = lockUsers[group].front();
@@ -2306,7 +2309,11 @@ struct AIEObjectFifoAllocatePass
             "could not place buffers in accessible memory with available "
             "capacity");
       } else if (failed(planLocks(pools))) {
-        if (lockAccessFailure)
+        if (lockSearchStopped)
+          device.emitOpError("could not decide whether the locks fit: the "
+                             "lock packing search stopped after ")
+              << LockPlan::kPackBudget << " steps";
+        else if (lockAccessFailure)
           lockAccessFailure->emitOpError("cannot access pool locks");
         else
           lockFailure.getDefiningOp()->emitOpError(

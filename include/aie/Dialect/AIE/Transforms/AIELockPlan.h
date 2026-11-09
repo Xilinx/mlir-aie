@@ -17,6 +17,7 @@
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <set>
@@ -134,6 +135,8 @@ public:
     Placed failure;
     /// How many groups no assignment finds room for.
     size_t unassigned = 0;
+    /// The exact packing ran out of kPackBudget steps before it decided.
+    bool stopped = false;
   };
 
   /// Places `groups` in order. When one finds no room and all take the same
@@ -143,8 +146,8 @@ public:
   /// depend on their order. The matching augments the in-order placement, so
   /// a group that found room there keeps its tile unless another needs it.
   /// Groups of different counts (AIE1 pools of different depths) are packed
-  /// by an exact search instead, largest first, within kPackBudget steps; when
-  /// it finds no packing the in-order placement stands.
+  /// by an exact search instead; when no packing exists, or the search
+  /// stops after kPackBudget steps, the in-order placement stands.
   Assignment assign(llvm::ArrayRef<Group> groups) {
     Assignment result;
     llvm::DenseMap<TileID, int> before = used;
@@ -171,9 +174,10 @@ public:
     int count = groups.front().count;
     if (llvm::any_of(groups,
                      [&](const Group &g) { return g.count != count; })) {
-      if (std::optional<llvm::SmallVector<std::optional<unsigned>>> packed =
-              pack(groups, eligible, before)) {
-        result.tiles = std::move(*packed);
+      llvm::SmallVector<std::optional<unsigned>> packed;
+      Packing packing = pack(groups, eligible, before, packed);
+      if (packing == Packing::Found) {
+        result.tiles = std::move(packed);
         result.failed.reset();
         used = before;
         for (auto [group, tile] : llvm::zip(groups, result.tiles))
@@ -181,6 +185,7 @@ public:
             used[*tiles[*tile].at] += group.count;
         return result;
       }
+      result.stopped = packing == Packing::Stopped;
       result.unassigned = llvm::count(result.tiles, std::nullopt);
       return result;
     }
@@ -258,61 +263,266 @@ public:
   static constexpr int64_t kPackBudget = 100000;
 
 private:
-  /// Each group on a tile in `eligible` with room for it, from the room left
-  /// `before` any group, or nothing when no such packing exists within
-  /// kPackBudget steps. Largest groups go first; a state (next group, room
-  /// on each position) that failed once is not tried again.
-  std::optional<llvm::SmallVector<std::optional<unsigned>>>
-  pack(llvm::ArrayRef<Group> groups,
-       llvm::ArrayRef<llvm::SmallVector<unsigned>> eligible,
-       const llvm::DenseMap<TileID, int> &before) const {
-    auto order = llvm::to_vector(
-        llvm::seq<unsigned>(0, static_cast<unsigned>(groups.size())));
-    llvm::stable_sort(order, [&](unsigned a, unsigned b) {
-      return groups[a].count > groups[b].count;
-    });
+  enum class Packing { Found, None, Stopped };
+
+  /// Puts each group in `chosen` on a tile in `eligible` with room for it,
+  /// from the room left `before` any group. A group that may use a tile not
+  /// yet placed takes it. The others are solved one connected component of
+  /// positions at a time by bin completion: the open position with the
+  /// fewest groups to choose from is filled with every subset of them that
+  /// wastes no more room than the component can spare, then closed. A state
+  /// whose groups do not fit even when split is cut off. Groups of one count
+  /// and one set of positions are interchangeable, so a subset takes how many
+  /// of each. Stopped when kPackBudget steps did not decide.
+  Packing pack(llvm::ArrayRef<Group> groups,
+               llvm::ArrayRef<llvm::SmallVector<unsigned>> eligible,
+               const llvm::DenseMap<TileID, int> &before,
+               llvm::SmallVectorImpl<std::optional<unsigned>> &chosen) const {
+    chosen.assign(groups.size(), std::nullopt);
     llvm::SmallVector<TileID> positions;
-    for (const auto &tilesOf : eligible)
-      for (unsigned tile : tilesOf)
-        if (tiles[tile].at && !llvm::is_contained(positions, *tiles[tile].at))
-          positions.push_back(*tiles[tile].at);
-    std::vector<int> room;
-    for (TileID at : positions)
-      room.push_back(static_cast<int>(target.getNumLocks(at.col, at.row)) -
-                     before.lookup(at));
-    llvm::SmallVector<std::optional<unsigned>> chosen(groups.size());
-    std::set<std::pair<size_t, std::vector<int>>> failed;
-    int64_t steps = kPackBudget;
-    std::function<bool(size_t)> place = [&](size_t next) {
-      if (next == order.size())
-        return true;
-      if (steps-- <= 0 || failed.count({next, room}))
-        return false;
-      unsigned group = order[next];
-      for (unsigned tile : eligible[group]) {
-        std::optional<TileID> at = tiles[tile].at;
-        int *left = nullptr;
-        if (at) {
-          left = &room[llvm::find(positions, *at) - positions.begin()];
-          if (*left < groups[group].count)
-            continue;
-          *left -= groups[group].count;
+    llvm::SmallVector<llvm::SmallVector<unsigned>> reach(groups.size());
+    for (auto [group, tilesOf] : llvm::enumerate(eligible)) {
+      if (tilesOf.empty())
+        return Packing::None;
+      for (unsigned tile : tilesOf) {
+        if (!tiles[tile].at) {
+          chosen[group] = tile;
+          break;
         }
-        chosen[group] = tile;
-        if (place(next + 1))
-          return true;
-        if (left)
-          *left += groups[group].count;
-        if (steps <= 0)
-          return false;
+        unsigned position =
+            llvm::find(positions, *tiles[tile].at) - positions.begin();
+        if (position == positions.size())
+          positions.push_back(*tiles[tile].at);
+        if (!llvm::is_contained(reach[group], position))
+          reach[group].push_back(position);
       }
-      chosen[group].reset();
-      failed.insert({next, room});
-      return false;
+      llvm::sort(reach[group]);
+    }
+
+    llvm::SmallVector<unsigned> component(positions.size());
+    for (unsigned position : llvm::seq<unsigned>(0, positions.size()))
+      component[position] = position;
+    std::function<unsigned(unsigned)> root = [&](unsigned position) {
+      return component[position] == position
+                 ? position
+                 : component[position] = root(component[position]);
     };
-    if (!place(0))
-      return std::nullopt;
-    return chosen;
+    for (auto [group, own] : llvm::enumerate(reach))
+      if (!chosen[group])
+        for (unsigned position : own)
+          component[root(position)] = root(own.front());
+
+    int64_t steps = kPackBudget;
+    bool stopped = false;
+    for (unsigned top : llvm::seq<unsigned>(0, positions.size())) {
+      if (root(top) != top)
+        continue;
+      llvm::SmallVector<unsigned> local;
+      for (unsigned position : llvm::seq<unsigned>(0, positions.size()))
+        if (root(position) == top)
+          local.push_back(position);
+      std::vector<int> room;
+      for (unsigned position : local) {
+        TileID at = positions[position];
+        room.push_back(
+            std::max(0, static_cast<int>(target.getNumLocks(at.col, at.row)) -
+                            before.lookup(at)));
+      }
+      // Interchangeable groups, largest count first: count, the local
+      // positions they reach, and their members.
+      struct Kind {
+        int count;
+        llvm::SmallVector<unsigned> reach;
+        llvm::SmallVector<unsigned> members;
+      };
+      llvm::SmallVector<Kind> kinds;
+      for (auto [group, own] : llvm::enumerate(reach)) {
+        if (chosen[group] || own.empty() || root(own.front()) != top)
+          continue;
+        llvm::SmallVector<unsigned> at;
+        for (unsigned position : own)
+          at.push_back(llvm::find(local, position) - local.begin());
+        auto kind = llvm::find_if(kinds, [&](const Kind &k) {
+          return k.count == groups[group].count && k.reach == at;
+        });
+        if (kind == kinds.end()) {
+          kinds.push_back({groups[group].count, at, {}});
+          kind = std::prev(kinds.end());
+        }
+        kind->members.push_back(group);
+      }
+      llvm::stable_sort(kinds, [](const Kind &a, const Kind &b) {
+        return a.count > b.count;
+      });
+
+      // The state is which positions are open and how many of each kind
+      // are taken; taken members are always a kind's first ones.
+      std::vector<int> open(local.size(), 1), taken(kinds.size(), 0);
+      llvm::SmallVector<llvm::SmallVector<unsigned>> where(kinds.size());
+      std::set<std::pair<std::vector<int>, std::vector<int>>> failed;
+      // Whether the open positions' room holds what is left when groups
+      // may be split: a maximum flow from kinds to the positions they reach.
+      std::vector<std::vector<int>> flow;
+      std::vector<int> spare;
+      llvm::SmallVector<bool> visited;
+      std::function<int(unsigned, int)> augment = [&](unsigned kind,
+                                                      int amount) {
+        for (unsigned position : kinds[kind].reach) {
+          if (!open[position] || visited[position])
+            continue;
+          visited[position] = true;
+          if (int direct = std::min(amount, spare[position])) {
+            spare[position] -= direct;
+            flow[kind][position] += direct;
+            return direct;
+          }
+          for (unsigned other : llvm::seq<unsigned>(0, kinds.size())) {
+            if (other == kind || !flow[other][position])
+              continue;
+            if (int moved =
+                    augment(other, std::min(amount, flow[other][position]))) {
+              flow[other][position] -= moved;
+              flow[kind][position] += moved;
+              return moved;
+            }
+          }
+        }
+        return 0;
+      };
+      auto covers = [&]() {
+        flow.assign(kinds.size(), std::vector<int>(local.size(), 0));
+        spare = room;
+        for (auto [kind, k] : llvm::enumerate(kinds)) {
+          int supply = (k.members.size() - taken[kind]) * k.count;
+          while (supply) {
+            visited.assign(local.size(), false);
+            int moved = augment(kind, supply);
+            if (!moved)
+              return false;
+            supply -= moved;
+          }
+        }
+        return true;
+      };
+      std::function<bool()> complete = [&]() {
+        if (steps-- <= 0) {
+          stopped = true;
+          return false;
+        }
+        int demand = 0;
+        llvm::SmallVector<bool> useful(local.size(), false);
+        for (auto [kind, k] : llvm::enumerate(kinds)) {
+          int left = k.members.size() - taken[kind];
+          if (!left)
+            continue;
+          demand += left * k.count;
+          bool fits = false;
+          for (unsigned position : k.reach)
+            if (open[position]) {
+              useful[position] = true;
+              fits |= room[position] >= k.count;
+            }
+          if (!fits)
+            return false;
+        }
+        if (!demand)
+          return true;
+        if (failed.count({open, taken}))
+          return false;
+        int capacity = 0;
+        for (unsigned position : llvm::seq<unsigned>(0, local.size()))
+          if (useful[position])
+            capacity += room[position];
+        int slack = capacity - demand;
+        if (slack < 0 || !covers()) {
+          failed.insert({open, taken});
+          return false;
+        }
+
+        // A kind whose only open position is this one must all go there.
+        auto onlyAt = [&](const Kind &k, unsigned position) {
+          return llvm::all_of(k.reach, [&](unsigned other) {
+            return other == position || !open[other];
+          });
+        };
+        std::optional<unsigned> best;
+        int bestChoices = 0;
+        for (unsigned position : llvm::seq<unsigned>(0, local.size())) {
+          if (!useful[position])
+            continue;
+          int choices = 0;
+          for (auto [kind, k] : llvm::enumerate(kinds))
+            if (taken[kind] < static_cast<int>(k.members.size()) &&
+                llvm::is_contained(k.reach, position) && !onlyAt(k, position))
+              choices += k.members.size() - taken[kind];
+          if (!best || choices < bestChoices) {
+            best = position;
+            bestChoices = choices;
+          }
+        }
+        unsigned position = *best;
+        int fill = room[position];
+        llvm::SmallVector<unsigned> free;
+        std::vector<int> held = taken;
+        for (auto [kind, k] : llvm::enumerate(kinds)) {
+          int left = k.members.size() - taken[kind];
+          if (!left || !llvm::is_contained(k.reach, position))
+            continue;
+          if (onlyAt(k, position)) {
+            fill -= left * k.count;
+            taken[kind] += left;
+          } else {
+            free.push_back(kind);
+          }
+        }
+        int maxWaste = std::min(slack, room[position]);
+        open[position] = 0;
+        std::function<bool(size_t, int)> choose = [&](size_t next, int left) {
+          if (steps-- <= 0) {
+            stopped = true;
+            return false;
+          }
+          if (left < 0)
+            return false;
+          if (next == free.size())
+            return left <= maxWaste && complete();
+          unsigned kind = free[next];
+          const Kind &k = kinds[kind];
+          int most =
+              std::min<int>(k.members.size() - taken[kind], left / k.count);
+          for (int n = most; n >= 0; --n) {
+            taken[kind] += n;
+            bool done = choose(next + 1, left - n * k.count);
+            taken[kind] -= n;
+            if (done) {
+              where[kind].append(n, local[position]);
+              return true;
+            }
+            if (stopped)
+              return false;
+          }
+          return false;
+        };
+        bool done = choose(0, fill);
+        open[position] = 1;
+        if (done) {
+          for (auto [kind, k] : llvm::enumerate(kinds))
+            where[kind].append(taken[kind] - held[kind], local[position]);
+        }
+        taken = std::move(held);
+        if (!done && !stopped)
+          failed.insert({open, taken});
+        return done;
+      };
+      if (!complete())
+        return stopped ? Packing::Stopped : Packing::None;
+      for (auto [kind, k] : llvm::enumerate(kinds))
+        for (auto [group, position] : llvm::zip(k.members, where[kind]))
+          chosen[group] = *llvm::find_if(eligible[group], [&](unsigned tile) {
+            return tiles[tile].at == positions[position];
+          });
+    }
+    return Packing::Found;
   }
 
   const AIETargetModel &target;
