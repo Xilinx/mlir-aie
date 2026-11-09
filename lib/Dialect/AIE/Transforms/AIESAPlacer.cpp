@@ -658,27 +658,41 @@ int SAPlacer::computeMemoryPressure() const {
   return pressure;
 }
 
-// Both ends of a fifo with an aie.objectfifo.allocate must reach the delegate
-// tile's memory module, or the objectfifo split pass rejects the allocate.
+// The objectfifo split keeps an allocated fifo's objects where
+// ObjectFifoCreateOp::allocatedHome says, which both ends must reach.
+// Otherwise it moves a link's participant that does not own the link's pool by
+// DMA, and rejects any other allocate. A fifo that shares a link's pool must
+// fit it, or ObjectFifoAllocateOp's verifier rejects the placement.
 int SAPlacer::computeDelegatePenalty() const {
   int penalty = 0;
   for (const auto &fb : fifoBuffers) {
     std::optional<TileID> delegatePos = positionOf(fb.delegate);
     if (!delegatePos)
       continue;
-    SmallVector<Operation *, 2> ends = {fb.producer};
-    llvm::append_range(ends, fb.consumers);
-    for (Operation *end : ends) {
-      std::optional<TileID> endPos = positionOf(end);
-      if (!endPos)
+    std::optional<TileID> prodPos = positionOf(fb.producerTile);
+    std::optional<TileID> consPos = positionOf(fb.consumerTiles.front());
+    if (!prodPos || !consPos)
+      continue;
+    std::optional<TileID> linkPos = positionOf(fb.linkTile);
+    bool home = ObjectFifoCreateOp::allocatedHome(
+                    *targetModel, *prodPos, *consPos, *delegatePos, linkPos)
+                    .has_value();
+    if (home ? fb.fitsLinkPool : fb.allocateFallsBackToDMA)
+      continue;
+    if (home) {
+      penalty += config.delegateWeightPerDist;
+      continue;
+    }
+    for (std::optional<TileID> held : {delegatePos, linkPos}) {
+      if (!held)
         continue;
-      auto shared = targetModel->getSharedMemory(*delegatePos, *endPos);
-      if (shared == AIETargetModel::SharedMemory::First ||
-          shared == AIETargetModel::SharedMemory::Either)
-        continue;
-      int dist = std::abs(delegatePos->col - endPos->col) +
-                 std::abs(delegatePos->row - endPos->row);
-      penalty += config.delegateWeightPerDist * std::max(dist - 1, 1);
+      for (TileID end : {*prodPos, *consPos}) {
+        if (ObjectFifoCreateOp::delegateReaches(*targetModel, *held, end, end))
+          continue;
+        int dist =
+            std::abs(held->col - end.col) + std::abs(held->row - end.row);
+        penalty += config.delegateWeightPerDist * std::max(dist - 1, 1);
+      }
     }
   }
   return penalty;
@@ -1792,6 +1806,10 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     fb.forcesDMA = ofOp.dmaReason().has_value();
     if (link)
       fb.linkTile = link->getOptionalSharedTile()->getDefiningOp();
+    if (fb.delegate) {
+      fb.allocateFallsBackToDMA = ofOp.allocateFallsBackToDMA();
+      fb.fitsLinkPool = ofOp.fitsLinkPool();
+    }
     // A link output's producer objects are the link input's consumer pool.
     fb.linkSharedProd =
         link && llvm::is_contained(link->getOutputObjectFifos(), ofOp);

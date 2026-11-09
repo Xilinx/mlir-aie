@@ -2625,8 +2625,9 @@ def AIE_ObjectFifoCreateOp
     /// aie.objectfifo.allocate names a delegate on `delegate`, with its
     /// producer on `producer` and consumer on `consumer`: the delegate's
     /// memory, or for a fifo whose link sits on `linkTile`, the link's pool
-    /// there. Nothing when the allocate is not honoured: the split then moves
-    /// the fifo by DMA if allocateFallsBackToDMA(), and rejects it otherwise.
+    /// there. Both ends must reach the delegate and that home. Nothing when
+    /// the allocate is not honoured: the split then moves the fifo by DMA if
+    /// allocateFallsBackToDMA(), and rejects it otherwise.
     static std::optional<TileID>
     allocatedHome(const AIETargetModel &target, TileID producer,
                   TileID consumer, TileID delegate,

@@ -259,8 +259,9 @@ struct AIEObjectFifoSplitPass
   }
 
   /// A delegate tile can only hold a fifo's objects if both ends reach its
-  /// memory module. A link's participant that does not own the link's pool
-  /// moves by DMA instead.
+  /// memory module, and a linked fifo's objects are the link's pool, so both
+  /// ends must reach the link's tile too. A link's participant that does not
+  /// own the link's pool moves by DMA instead.
   LogicalResult verifyAllocateDelegates() {
     for (auto fifo : device.getOps<ObjectFifoCreateOp>()) {
       auto alloc = fifo.getAllocate();
@@ -271,14 +272,22 @@ struct AIEObjectFifoSplitPass
       if (std::optional<ObjectFifoLinkOp> link = fifo.getLink())
         linkTile = cast<TileOp>(link->getOptionalSharedTile()->getDefiningOp())
                        .getTileID();
-      if (!ObjectFifoCreateOp::allocatedHome(
-              device.getTargetModel(), fifo.getProducerTileOp().getTileID(),
-              cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp())
-                  .getTileID(),
-              alloc->getDelegateTileOp().getTileID(), linkTile)) {
+      TileID producer = fifo.getProducerTileOp().getTileID();
+      TileID consumer =
+          cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp()).getTileID();
+      TileID delegate = alloc->getDelegateTileOp().getTileID();
+      if (ObjectFifoCreateOp::allocatedHome(device.getTargetModel(), producer,
+                                            consumer, delegate, linkTile)) {
+        continue;
+      }
+      if (!ObjectFifoCreateOp::delegateReaches(device.getTargetModel(),
+                                               delegate, producer, consumer)) {
         return alloc->emitOpError("objectfifo has no shared memory access to "
                                   "delegate tile's memory module");
       }
+      return alloc->emitOpError("objectfifo has no shared memory access to "
+                                "the memory module of its link's tile, which "
+                                "holds the link's pool");
     }
     return success();
   }

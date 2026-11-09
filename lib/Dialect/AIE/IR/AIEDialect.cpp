@@ -1951,9 +1951,11 @@ std::optional<TileID>
 ObjectFifoCreateOp::allocatedHome(const AIETargetModel &target, TileID producer,
                                   TileID consumer, TileID delegate,
                                   std::optional<TileID> linkTile) {
-  if (!delegateReaches(target, delegate, producer, consumer))
+  TileID home = linkTile.value_or(delegate);
+  if (!delegateReaches(target, delegate, producer, consumer) ||
+      !delegateReaches(target, home, producer, consumer))
     return std::nullopt;
-  return linkTile.value_or(delegate);
+  return home;
 }
 
 bool ObjectFifoCreateOp::allocateFallsBackToDMA() {

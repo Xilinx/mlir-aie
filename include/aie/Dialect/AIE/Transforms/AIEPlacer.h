@@ -865,6 +865,10 @@ private:
     bool forcesDMA = false;
     // The tile of the link naming the fifo, if any.
     mlir::Operation *linkTile = nullptr;
+    // With an aie.objectfifo.allocate, ObjectFifoCreateOp's
+    // allocateFallsBackToDMA() and fitsLinkPool().
+    bool allocateFallsBackToDMA = false;
+    bool fitsLinkPool = true;
     bool linkSharedProd = false;
   };
   llvm::SmallVector<NetInfo> nets;

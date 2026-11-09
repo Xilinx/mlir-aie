@@ -66,3 +66,33 @@ module @join_far {
     }
   }
 }
+
+// -----
+
+// The output, with initial values, owns the pool on the link tile (1,2). The
+// delegate is A's own tile, which the link tile reaches, but A cannot reach
+// the pool, so in0 moves by DMA. Before, the split gave in0 the pool anyway
+// and addressing could not place it in memory A reaches.
+
+// CHECK-LABEL: module @link_tile_east
+// CHECK:     %[[A:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.buffer(%[[A]]) {{.*}}sym_name = "in0__buf0"} : memref<1024xi32>
+// CHECK:     %[[L:.*]] = aie.tile(1, 2)
+// CHECK-DAG: aie.buffer(%[[L]]) {{.*}}sym_name = "out__buf0"} : memref<1024xi32> = dense<1>
+// CHECK-DAG: aie.flow(%[[A]], DMA : 0, %[[L]], DMA : 0)
+module @link_tile_east {
+  aie.device(npu2_2col) {
+    %s = aie.tile(1, 0)
+    %a = aie.tile(0, 2)
+    %l = aie.tile(1, 2)
+    aie.objectfifo @in0(%a, {%l}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @out(%l, {%s}, 2 : i32) : !aie.objectfifo<memref<1024xi32>> = [dense<1> : memref<1024xi32>, dense<2> : memref<1024xi32>]
+    aie.objectfifo.link [@in0] -> [@out] ([] [])
+    aie.objectfifo.allocate @in0 (%a)
+    aie.core(%a) {
+      %0 = aie.objectfifo.acquire @in0(Produce, 1) : memref<1024xi32>
+      aie.objectfifo.release @in0(Produce, 1)
+      aie.end
+    }
+  }
+}
