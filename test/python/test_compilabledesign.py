@@ -901,6 +901,29 @@ def test_self_referential_closure_terminates():
     assert isinstance(h, str) and h
 
 
+def test_walk_survives_objects_with_refusing_getattr():
+    """Objects whose __getattr__ refuses must not crash the key.
+
+    DispatchTime placeholders refuse every attribute access as a
+    generation-time guard; left in a walked container (a test-harness
+    ``retained`` list, say), the instance walk's ``__dict__`` probe fired
+    that guard.  The walk now asks the type's own storage.
+    """
+
+    class Guarded:
+        __slots__ = ()
+
+        def __getattr__(self, name):
+            raise TypeError("refused")
+
+    cfg = {"items": [Guarded()]}
+    ns = {"__name__": "guard_mod", "cfg": cfg}
+    exec("def gen(a, b, N=None):\n    return cfg['items'][0]\n", ns)
+    h1 = _compute_recipe_hash(ns["gen"], {}, (), ())
+    h2 = _compute_recipe_hash(ns["gen"], {}, (), ())
+    assert h1 == h2
+
+
 def test_cache_key_survives_a_self_configuring_generator(tmp_path):
     """A generator that records what it learns keeps finding its own entry.
 

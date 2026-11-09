@@ -465,7 +465,12 @@ def _python_identity(
             binding = (
                 f"{_import_name(type(value).__module__)}.{type(value).__qualname__}"
             )
-            state = getattr(value, "__dict__", None)
+            # Bypass any instance __getattr__ (a DispatchTime placeholder's
+            # refuses with TypeError): ask the type's own storage directly.
+            try:
+                state = object.__getattribute__(value, "__dict__")
+            except AttributeError:
+                state = None
             if not state:
                 return binding
             if id(value) in frozen:
