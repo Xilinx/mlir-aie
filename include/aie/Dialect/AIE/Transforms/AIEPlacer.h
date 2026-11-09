@@ -969,7 +969,7 @@ private:
   };
   mutable std::unordered_map<std::vector<int64_t>, int64_t, KeyHash>
       coreFitCache;
-  // Lock packings that stopped or found none, the costliest to repeat.
+  // Lock packings the moves repeat, the costliest to search again.
   mutable LockPlan::Memo lockMemo{64};
   mutable std::vector<int64_t> coreFitKey;
   struct CoreFitPlan {

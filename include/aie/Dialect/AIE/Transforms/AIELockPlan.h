@@ -60,34 +60,36 @@ private:
   enum class Packing { Found, None, Stopped };
 
 public:
-  /// Packings that stopped or found none, by what the packing reads, the
-  /// least recently used dropped first beyond `capacity`.
+  /// Packings by what the packing reads, the least recently used dropped
+  /// first beyond `capacity`. A packing found records each group's tile as
+  /// an offset into its eligible tiles.
   class Memo {
   public:
     explicit Memo(size_t capacity) : capacity(capacity) {}
 
   private:
     friend class LockPlan;
-    struct Undecided {
+    struct Outcome {
       Packing packing;
       llvm::SmallVector<unsigned> blocked;
+      llvm::SmallVector<unsigned> offsets;
     };
     struct KeyHash {
       size_t operator()(const std::vector<int64_t> &key) const {
         return llvm::hash_combine_range(key.begin(), key.end());
       }
     };
-    using Entries = std::list<std::pair<std::vector<int64_t>, Undecided>>;
+    using Entries = std::list<std::pair<std::vector<int64_t>, Outcome>>;
 
-    std::optional<Undecided> lookup(const std::vector<int64_t> &key) {
+    std::optional<Outcome> lookup(const std::vector<int64_t> &key) {
       auto hit = index.find(key);
       if (hit == index.end())
         return std::nullopt;
       entries.splice(entries.begin(), entries, hit->second);
       return hit->second->second;
     }
-    void record(const std::vector<int64_t> &key, Undecided undecided) {
-      entries.emplace_front(key, std::move(undecided));
+    void record(const std::vector<int64_t> &key, Outcome outcome) {
+      entries.emplace_front(key, std::move(outcome));
       index[key] = entries.begin();
       if (entries.size() > capacity) {
         index.erase(entries.back().first);
@@ -239,22 +241,34 @@ public:
               llvm::append_values(key, -1, -1, -1);
           }
         }
-      std::optional<Memo::Undecided> recorded;
+      std::optional<Memo::Outcome> recorded;
       if (memo)
         recorded = memo->lookup(key);
-      Packing packing = recorded
-                            ? recorded->packing
-                            : pack(groups, eligible, before, packed, blocked);
+      Packing packing;
       if (recorded) {
+        packing = recorded->packing;
         blocked = recorded->blocked;
+        for (auto [tilesOf, offset] : llvm::zip(eligible, recorded->offsets))
+          packed.push_back(tilesOf[offset]);
 #ifdef EXPENSIVE_CHECKS
-        llvm::SmallVector<unsigned> fresh;
-        assert(pack(groups, eligible, before, packed, fresh) == packing &&
-               fresh == blocked &&
+        llvm::SmallVector<std::optional<unsigned>> freshPacked;
+        llvm::SmallVector<unsigned> freshBlocked;
+        assert(pack(groups, eligible, before, freshPacked, freshBlocked) ==
+                   packing &&
+               freshBlocked == blocked &&
+               (packing != Packing::Found || freshPacked == packed) &&
                "a recorded packing differs from a fresh one");
 #endif
-      } else if (memo && packing != Packing::Found) {
-        memo->record(key, {packing, blocked});
+      } else {
+        packing = pack(groups, eligible, before, packed, blocked);
+        if (memo) {
+          Memo::Outcome outcome{packing, blocked, {}};
+          if (packing == Packing::Found)
+            for (auto [tilesOf, tile] : llvm::zip(eligible, packed))
+              outcome.offsets.push_back(llvm::find(tilesOf, *tile) -
+                                        tilesOf.begin());
+          memo->record(key, std::move(outcome));
+        }
       }
       if (packing == Packing::Found) {
         result.tiles = std::move(packed);
