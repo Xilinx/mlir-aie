@@ -282,7 +282,8 @@ private:
   /// positions at a time by bin completion: the open position with the
   /// fewest groups to choose from is filled with every subset of them that
   /// wastes no more room than the component can spare, then closed. A state
-  /// whose groups do not fit even when split is cut off. Groups of one count
+  /// whose groups do not fit even when split is cut off, as is one whose open
+  /// positions must waste more than it can spare. Groups of one count
   /// and one set of positions are interchangeable, so a subset takes how many
   /// of each. Each component may take kPackBudget steps; one that does not
   /// decide in them leaves the packing Stopped unless another has none. With
@@ -452,7 +453,57 @@ private:
           if (useful[position])
             capacity += room[position];
         int slack = capacity - demand;
-        if (slack < 0 || !covers()) {
+        // What an open position cannot fill with the groups left that reach
+        // it, those of count `skip` aside, is wasted wherever the others go.
+        auto unfilled = [&](unsigned position, int skip) {
+          std::vector<char> sums(room[position] + 1, 0);
+          sums[0] = 1;
+          for (auto [kind, k] : llvm::enumerate(kinds)) {
+            if (k.count == skip || !llvm::is_contained(k.reach, position))
+              continue;
+            int copies = std::min<int>(k.members.size() - taken[kind],
+                                       room[position] / k.count);
+            for (int copy = 0; copy < copies; ++copy)
+              for (int sum = room[position]; sum >= k.count; --sum)
+                sums[sum] |= sums[sum - k.count];
+          }
+          int most = room[position];
+          while (!sums[most])
+            --most;
+          return room[position] - most;
+        };
+        std::vector<int> least(local.size(), 0);
+        int wasted = 0;
+        for (unsigned position : llvm::seq<unsigned>(0, local.size()))
+          if (useful[position]) {
+            least[position] = unfilled(position, 0);
+            wasted += least[position];
+          }
+        // Groups of one count fill at most as many positions as are left of
+        // them, so only that many positions may do better with them.
+        int bound = wasted;
+        for (auto kind = kinds.begin(); kind != kinds.end();) {
+          int count = kind->count, copies = 0;
+          for (; kind != kinds.end() && kind->count == count; ++kind)
+            copies += kind->members.size() - taken[kind - kinds.begin()];
+          int without = 0;
+          llvm::SmallVector<int> gains;
+          for (unsigned position : llvm::seq<unsigned>(0, local.size())) {
+            if (!useful[position])
+              continue;
+            int lost = unfilled(position, count);
+            without += lost;
+            if (lost > least[position])
+              gains.push_back(lost - least[position]);
+          }
+          if (copies >= static_cast<int>(gains.size()))
+            continue;
+          llvm::sort(gains, std::greater<int>());
+          for (int gain : llvm::ArrayRef(gains).take_front(copies))
+            without -= gain;
+          bound = std::max(bound, without);
+        }
+        if (slack < bound || !covers()) {
           failed.insert({open, taken});
           return false;
         }
@@ -493,17 +544,33 @@ private:
             free.push_back(kind);
           }
         }
-        int maxWaste = std::min(slack, room[position]);
+        int maxWaste =
+            std::min(slack - wasted + least[position], room[position]);
+        // The fills the free kinds from each on can still make.
+        std::vector<std::vector<char>> later(
+            free.size() + 1, std::vector<char>(room[position] + 1, 0));
+        later.back()[0] = 1;
+        for (size_t next = free.size(); next-- > 0;) {
+          const Kind &k = kinds[free[next]];
+          later[next] = later[next + 1];
+          int copies = std::min<int>(k.members.size() - taken[free[next]],
+                                     room[position] / k.count);
+          for (int copy = 0; copy < copies; ++copy)
+            for (int sum = room[position]; sum >= k.count; --sum)
+              later[next][sum] |= later[next][sum - k.count];
+        }
         open[position] = 0;
         std::function<bool(size_t, int)> choose = [&](size_t next, int left) {
           if (steps-- <= 0) {
             stopped = true;
             return false;
           }
-          if (left < 0)
+          if (left < 0 || llvm::none_of(
+                              llvm::seq(std::max(0, left - maxWaste), left + 1),
+                              [&](int fill) { return later[next][fill]; }))
             return false;
           if (next == free.size())
-            return left <= maxWaste && complete();
+            return complete();
           unsigned kind = free[next];
           const Kind &k = kinds[kind];
           int most =
