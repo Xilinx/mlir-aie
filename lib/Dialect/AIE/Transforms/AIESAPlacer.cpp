@@ -454,6 +454,11 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
                            targetModel->getTileType(pos.col, pos.row), bytes);
     chargeCoreFifo(pos, bytes, sign * count);
   };
+  // A link's ends keep no objects of their own, shared memory or not: the
+  // split builds the link's one pool on its tile.
+  bool prodLinked = fb.producerLinkPool != LinkPool::None;
+  if (fb.producerLinkPool == LinkPool::Holds)
+    chargeLinkPool(prodPos, *fb.producerEnd);
 
   for (size_t ci = 0; ci < fb.consumerTiles.size(); ci++) {
     std::optional<TileID> consAt = positionOf(fb.consumerTiles[ci]);
@@ -474,11 +479,15 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
         std::max(fb.producerSizeBytes, fb.consumerSizeBytes) * fb.sharedDepth;
 
     int64_t sharedRaw = std::max(fb.producerRawBytes, fb.consumerRawBytes);
-    if (prodPos == consPos && isSharedMem) {
+    bool consLinked = fb.consumerLinkPools[ci] != LinkPool::None;
+    if (fb.consumerLinkPools[ci] == LinkPool::Holds)
+      chargeLinkPool(consPos, *fb.consumerEnds[ci]);
+    bool sharedPool = isSharedMem && !prodLinked && !consLinked;
+    if (prodPos == consPos && sharedPool) {
       currentMemUsage[delegatePos.value_or(prodPos)] += sign * sharedBytes;
       chargeCoreFifo(delegatePos.value_or(prodPos), sharedRaw,
                      sign * fb.sharedDepth);
-    } else if (isSharedMem) {
+    } else if (sharedPool) {
       TileID bufTile;
       if (delegatePos) {
         bufTile = *delegatePos;
@@ -505,22 +514,14 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       }
       currentMemUsage[bufTile] += sign * sharedBytes;
       chargeCoreFifo(bufTile, sharedRaw, sign * fb.sharedDepth);
-    } else {
-      if (!prodCharged && fb.producerLinkPool != LinkPool::None) {
-        if (fb.producerLinkPool == LinkPool::Holds)
-          chargeLinkPool(prodPos, *fb.producerEnd);
-        prodCharged = true;
-      }
-      if (!prodCharged && !prodIsShim && !fb.linkSharedProd) {
+    } else if (!isSharedMem) {
+      if (!prodCharged && !prodLinked && !prodIsShim && !fb.linkSharedProd) {
         currentMemUsage[prodPos] +=
             sign * fb.producerSizeBytes * fb.producerDepth;
         chargeCoreFifo(prodPos, fb.producerRawBytes, sign * fb.producerDepth);
         prodCharged = true;
       }
-      if (fb.consumerLinkPools[ci] != LinkPool::None) {
-        if (fb.consumerLinkPools[ci] == LinkPool::Holds)
-          chargeLinkPool(consPos, *fb.consumerEnds[ci]);
-      } else if (!consIsShim) {
+      if (!consLinked && !consIsShim) {
         currentMemUsage[consPos] +=
             sign * fb.consumerSizeBytes * fb.consumerDepths[ci];
         chargeCoreFifo(consPos, fb.consumerRawBytes,
