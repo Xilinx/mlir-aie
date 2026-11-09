@@ -13,14 +13,17 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <algorithm>
 #include <functional>
+#include <list>
 #include <optional>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 namespace xilinx::AIE {
@@ -51,6 +54,50 @@ public:
     bool reachable = false;
     /// The last such candidate, when all were full.
     std::optional<unsigned> full;
+  };
+
+private:
+  enum class Packing { Found, None, Stopped };
+
+public:
+  /// Packings that stopped or found none, by what the packing reads, the
+  /// least recently used dropped first beyond `capacity`.
+  class Memo {
+  public:
+    explicit Memo(size_t capacity) : capacity(capacity) {}
+
+  private:
+    friend class LockPlan;
+    struct Undecided {
+      Packing packing;
+      llvm::SmallVector<unsigned> blocked;
+    };
+    struct KeyHash {
+      size_t operator()(const std::vector<int64_t> &key) const {
+        return llvm::hash_combine_range(key.begin(), key.end());
+      }
+    };
+    using Entries = std::list<std::pair<std::vector<int64_t>, Undecided>>;
+
+    std::optional<Undecided> lookup(const std::vector<int64_t> &key) {
+      auto hit = index.find(key);
+      if (hit == index.end())
+        return std::nullopt;
+      entries.splice(entries.begin(), entries, hit->second);
+      return hit->second->second;
+    }
+    void record(const std::vector<int64_t> &key, Undecided undecided) {
+      entries.emplace_front(key, std::move(undecided));
+      index[key] = entries.begin();
+      if (entries.size() > capacity) {
+        index.erase(entries.back().first);
+        entries.pop_back();
+      }
+    }
+
+    size_t capacity;
+    Entries entries;
+    std::unordered_map<std::vector<int64_t>, Entries::iterator, KeyHash> index;
   };
 
   explicit LockPlan(const AIETargetModel &target) : target(target) {}
@@ -149,7 +196,7 @@ public:
   /// Groups of different counts (AIE1 pools of different depths) are packed
   /// by an exact search instead; when no packing exists, or the search
   /// stops after kPackBudget steps, the in-order placement stands.
-  Assignment assign(llvm::ArrayRef<Group> groups) {
+  Assignment assign(llvm::ArrayRef<Group> groups, Memo *memo = nullptr) {
     Assignment result;
     llvm::DenseMap<TileID, int> before = used;
     llvm::SmallVector<Placed> misses;
@@ -179,7 +226,36 @@ public:
                      [&](const Group &g) { return g.count != count; })) {
       llvm::SmallVector<std::optional<unsigned>> packed;
       llvm::SmallVector<unsigned> blocked;
-      Packing packing = pack(groups, eligible, before, packed, blocked);
+      // What the packing reads: each group's count and the positions of
+      // its eligible tiles in order, with the locks taken there before.
+      std::vector<int64_t> key;
+      if (memo)
+        for (auto [group, tilesOf] : llvm::zip(groups, eligible)) {
+          llvm::append_values(key, group.count, tilesOf.size());
+          for (unsigned tile : tilesOf) {
+            if (std::optional<TileID> at = tiles[tile].at)
+              llvm::append_values(key, at->col, at->row, before.lookup(*at));
+            else
+              llvm::append_values(key, -1, -1, -1);
+          }
+        }
+      std::optional<Memo::Undecided> recorded;
+      if (memo)
+        recorded = memo->lookup(key);
+      Packing packing = recorded
+                            ? recorded->packing
+                            : pack(groups, eligible, before, packed, blocked);
+      if (recorded) {
+        blocked = recorded->blocked;
+#ifdef EXPENSIVE_CHECKS
+        llvm::SmallVector<unsigned> fresh;
+        assert(pack(groups, eligible, before, packed, fresh) == packing &&
+               fresh == blocked &&
+               "a recorded packing differs from a fresh one");
+#endif
+      } else if (memo && packing != Packing::Found) {
+        memo->record(key, {packing, blocked});
+      }
       if (packing == Packing::Found) {
         result.tiles = std::move(packed);
         result.failed.reset();
@@ -274,8 +350,6 @@ public:
   static constexpr int64_t kPackBudget = 100000;
 
 private:
-  enum class Packing { Found, None, Stopped };
-
   /// Puts each group in `chosen` on a tile in `eligible` with room for it,
   /// from the room left `before` any group. A group that may use a tile not
   /// yet placed takes it. The others are solved one connected component of

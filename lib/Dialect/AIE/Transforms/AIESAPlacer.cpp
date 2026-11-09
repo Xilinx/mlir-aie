@@ -1177,7 +1177,7 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
         locks, records.empty() ? ranked.front() : records[0].tile,
         /*local=*/false, {}, records, ranked));
   }
-  LockPlan::Assignment assignment = plan.assign(planned);
+  LockPlan::Assignment assignment = plan.assign(planned, &lockMemo);
   if (stopped)
     *stopped = assignment.stopped;
   for (auto [group, tile] : llvm::zip(planned, assignment.tiles))

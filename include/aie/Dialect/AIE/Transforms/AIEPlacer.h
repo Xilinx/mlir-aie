@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
+#include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIE/Transforms/AIETileMemoryFit.h"
 #include "llvm/ADT/Hashing.h"
@@ -968,6 +969,8 @@ private:
   };
   mutable std::unordered_map<std::vector<int64_t>, int64_t, KeyHash>
       coreFitCache;
+  // Lock packings that stopped or found none, the costliest to repeat.
+  mutable LockPlan::Memo lockMemo{64};
   mutable std::vector<int64_t> coreFitKey;
   struct CoreFitPlan {
     int penalty = 0;
