@@ -445,6 +445,27 @@ def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
   let genVerifyDecl = 1;
 }
 
+def TileAttr : AttrDef<AIE_Dialect, "Tile", []> {
+  let mnemonic = "tile";
+  let summary = "A tile, by column and row";
+  let description = [{
+    Names a tile in an attribute, where an `aie.tile` value cannot go.
+
+    Example:
+    ```
+      aiex.started_by = [#aie.tile<0, 2>]
+    ```
+  }];
+
+  let parameters = (ins "int32_t":$col, "int32_t":$row);
+
+  let assemblyFormat = "`<` $col `,` $row `>`";
+
+  let extraClassDeclaration = [{
+    TileID getTileID() const { return {getCol(), getRow()}; }
+  }];
+}
+
 def ObjectFifoEndPortAttr : AttrDef<AIE_Dialect, "ObjectFifoEndPort", []> {
   let mnemonic = "end_port";
   let summary = "What drives one end of an objectFifo";

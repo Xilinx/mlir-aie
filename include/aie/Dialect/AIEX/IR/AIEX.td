@@ -227,6 +227,13 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   // The op assembly formats still print inherent attributes in `attr-dict`;
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
+  // started_by marks an aie.dma_start or aie.core proved unable to act during
+  // its configuration, listing the tiles (#aie.tile) of the cores whose enables
+  // may let it act; with none, only the host's transfers can. ctrl_pkt_transfer
+  // marks the DMA tasks aie-ctrl-packet-to-dma sends an
+  // aiex.control_packet_group's packets with, naming the group's device.
+  let discardableAttrs = (ins "::mlir::ArrayAttr":$started_by,
+      "::mlir::FlatSymbolRefAttr":$ctrl_pkt_transfer);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1268,16 +1275,34 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   let summary = "AIE control packet";
   let arguments = (ins UI32Attr:$address, OptionalAttr<I32Attr>:$length,
       I32Attr:$opcode, I32Attr:$stream_id,
-      OptionalAttr<DenseI32ArrayAttr>:$data);
+      OptionalAttr<DenseI32ArrayAttr>:$data,
+      OptionalAttr<I32Attr>:$multicast_id);
   let results = (outs);
   let assemblyFormat = [{ attr-dict }];
   let description = [{
     The control_packet operation represents a low-level AIE control packet header
     and payload.
+
+    With `multicast_id`, the packet goes on that control multicast of the
+    overlay (see `aie.ctrl_pkt_multicast`), and every tile of the multicast
+    applies the write at the address's offset in its own tile. The address
+    names the multicast's lowest tile, which picks the shim channel.
   }];
+  let builders = [OpBuilder<
+      (ins "::mlir::IntegerAttr":$address, "::mlir::IntegerAttr":$length,
+          "::mlir::IntegerAttr":$opcode, "::mlir::IntegerAttr":$stream_id,
+          "::mlir::DenseI32ArrayAttr":$data),
+      [{
+      build($_builder, $_state, address, length, opcode, stream_id, data,
+            /*multicast_id=*/nullptr);
+    }]>];
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
+    /// The tile the address names.
+    AIE::TileID getTileFromAddr();
+    /// The address within that tile.
+    uint32_t getLocalAddress();
 
     /// Most words -- data payload, or read length when there is no data --
     /// one packet can carry on the wire (the header's beat count field is 2
@@ -1285,6 +1310,41 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
     /// AIETranslateControlPacketsToUI32Vec.
     static constexpr unsigned getMaxDataWords() { return 4; }
   }];
+}
+
+def AIE_ControlPacketGroupOp
+    : AIEX_Op<"control_packet_group",
+              [HasAncestor<"AIE::RuntimeSequenceOp">, NoTerminator, SingleBlock,
+               DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let summary = "Control packets of one configuration or its teardown";
+  let description = [{
+    The control packets that write the configuration of `device_ref`
+    (`Config`) or undo it (`Teardown`), as aie-expand-load-pdi generates them.
+    aie-ctrl-packet-to-dma inlines them; control packets outside groups keep
+    their own transfers.
+
+    Example:
+    ```
+      aiex.control_packet_group @cfg(Config) {
+        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      }
+    ```
+  }];
+  let arguments = (ins AIEX_ControlPacketGroupKind:$kind,
+      FlatSymbolRefAttr:$device_ref);
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{ $device_ref `(` $kind `)` $body attr-dict }];
+  let hasVerifier = 1;
+}
+
+def AIE_ControlPacketBarrierOp
+    : AIEX_Op<
+          "control_packet_barrier", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Order the control packets around it";
+  let description = [{
+    Every control packet before it in its run lands before any after it.
+  }];
+  let assemblyFormat = [{ attr-dict }];
 }
 
 // NPU Bd Write operation

@@ -1053,13 +1053,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
        bf16 = bf16Emulation.getValue(),
        skipVerify = skipObjectFifoVerify.getValue(), opt = optLevel.getValue(),
        queueSpace = checkQueueSpace.getValue(),
-       adaptiveOverlay = ctrlpktAdaptiveOverlay.getValue()](
+       adaptiveOverlay = ctrlpktAdaptiveOverlay.getValue(),
+       span = ctrlpktMulticastSpan.getValue()](
           mlir::MLIRContext *ctx, mlir::ModuleOp mod,
           llvm::ArrayRef<int> coverColumns) {
         return getInputWithAddressesPipeline(
             ctx, mod, dyn, pkt, ctrl, bf16, opt, ldpdi, skipVerify,
             /*assignAddresses=*/false, coverColumns, adaptiveOverlay,
-            queueSpace);
+            queueSpace, span);
       };
   auto routedCache = std::make_shared<RoutedCache>();
   using ModEdge = EdgeWithTypedOutput<ModRef>;
@@ -1730,9 +1731,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       bundle(compiledElfs.out, preBakedElfs.out, physicalForElfs.out)
           .join<ModRef>(
               "physical_with_elfs.mlir",
-              [cache](const Node<Directory> &compiled,
-                      const Node<File> &preBaked, const Node<ModRef> &physicalN,
-                      Item<ModRef> &out) -> mlir::LogicalResult {
+              [cache, &context](const Node<Directory> &compiled,
+                                const Node<File> &preBaked,
+                                const Node<ModRef> &physicalN,
+                                Item<ModRef> &out) -> mlir::LogicalResult {
                 // ELF paths must be absolute for the aie-rt loader.
                 llvm::StringMap<std::string> byKey;
                 for (const auto &item : compiled.items) {
@@ -1741,7 +1743,20 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 for (const auto &item : preBaked.items) {
                   byKey[item.key] = absolutePath(item.filePath);
                 }
-                out.value = patchCoreElfFiles(physicalN.get().get(), byKey);
+                mlir::ModuleOp physicalMod = physicalN.get().get();
+                // aie-annotate-ctrl-packet-start-gating needs the cores'
+                // bodies, so it runs here; its marks survive the patch.
+                mlir::OwningOpRef<mlir::ModuleOp> checked;
+                if (loadPdiToCtrlPkt) {
+                  checked = physicalMod.clone();
+                  mlir::PassManager pm(&context);
+                  pm.addPass(xilinx::AIEX::
+                                 createAIEAnnotateCtrlPacketStartGatingPass());
+                  if (mlir::failed(pm.run(*checked)))
+                    return mlir::failure();
+                  physicalMod = *checked;
+                }
+                out.value = patchCoreElfFiles(physicalMod, byKey);
                 if (cache) {
                   cache->link(out.value->get(), byKey);
                 }

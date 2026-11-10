@@ -107,7 +107,7 @@ struct ControlPacketSplitPattern
       AIEX::NpuControlPacketOp::create(
           rewriter, loc, rewriter.getUI32IntegerAttr(address), nullptr,
           op.getOpcodeAttr(), op.getStreamIdAttr(),
-          DenseI32ArrayAttr::get(context, chunkData));
+          DenseI32ArrayAttr::get(context, chunkData), op.getMulticastIdAttr());
       address += count * sizeof(uint32_t);
       it += count;
     }

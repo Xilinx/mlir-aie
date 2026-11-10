@@ -20,6 +20,8 @@ struct BdIdGenerator {
   const int row;
   const AIETargetModel &targetModel;
   std::set<uint32_t> alreadyAssigned;
+  // Ids static DMAs hold, which nextBdId skips and freeBdId leaves alone.
+  std::set<uint32_t> reserved;
 
   BdIdGenerator(int col, int row, const AIETargetModel &targetModel);
 

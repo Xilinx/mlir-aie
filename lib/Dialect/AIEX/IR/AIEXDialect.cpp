@@ -2043,6 +2043,15 @@ uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
   return colInt;
 }
 
+AIE::TileID AIEX::NpuControlPacketOp::getTileFromAddr() {
+  return {static_cast<int>(getColumnFromAddr()),
+          static_cast<int>(getRowFromAddr())};
+}
+
+uint32_t AIEX::NpuControlPacketOp::getLocalAddress() {
+  return getAddress() & ((1u << AIE::getTargetModel(*this).getRowShift()) - 1);
+}
+
 //===----------------------------------------------------------------------===//
 // SetLockOp
 //===----------------------------------------------------------------------===//
@@ -2537,6 +2546,65 @@ AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
                     << " starts a shim DMA channel, which teardown cannot stop";
   diag.attachNote(shimStart->getLoc()) << "started here";
   return diag;
+}
+
+LogicalResult AIEX::ControlPacketGroupOp::verify() {
+  for (Operation &op : getBody().front())
+    if (!isa<NpuControlPacketOp>(op))
+      return op.emitOpError("cannot be in an aiex.control_packet_group, which "
+                            "holds only aiex.control_packet ops");
+  return success();
+}
+
+LogicalResult AIEX::ControlPacketGroupOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
+  if (!isa_and_present<AIE::DeviceOp>(
+          symbolTable.lookupSymbolIn(scope, getDeviceRefAttr())))
+    return emitOpError() << getDeviceRefAttr() << " is not a device";
+  return success();
+}
+
+SmallVector<AIEX::NpuControlPacketOp> AIEX::controlPacketsOf(Block &block) {
+  SmallVector<NpuControlPacketOp> packets;
+  for (Operation &op : block) {
+    if (auto packet = dyn_cast<NpuControlPacketOp>(op))
+      packets.push_back(packet);
+    else if (auto group = dyn_cast<ControlPacketGroupOp>(op))
+      llvm::append_range(packets,
+                         group.getBody().front().getOps<NpuControlPacketOp>());
+  }
+  return packets;
+}
+
+llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>
+AIEX::controllerIdsOf(AIE::DeviceOp device) {
+  llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr> ids;
+  for (auto tile : device.getOps<AIE::TileOp>())
+    if (auto id = tile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+        id && id.isAssigned())
+      ids[tile.getTileID()] = id;
+  return ids;
+}
+
+std::set<uint32_t> AIEX::staticBdIds(ArrayRef<AIE::DeviceOp> devices,
+                                     AIE::TileID tile) {
+  std::set<uint32_t> ids;
+  for (AIE::DeviceOp device : devices)
+    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+      if (program.getTileID() == tile)
+        for (uint32_t id : AIE::getAssignedBdIds(program))
+          ids.insert(id);
+  return ids;
+}
+
+void AIEX::inlineControlPacketGroups(Block &block) {
+  for (auto group :
+       llvm::make_early_inc_range(block.getOps<ControlPacketGroupOp>())) {
+    Block &body = group.getBody().front();
+    block.getOperations().splice(group->getIterator(), body.getOperations());
+    group.erase();
+  }
 }
 
 Operation *AIEX::findShimDmaStart(AIE::DeviceOp device) {

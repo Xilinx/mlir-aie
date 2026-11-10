@@ -48,9 +48,13 @@ def AIE_Dialect : Dialect {
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
   // Overlay-owned settings survive application configuration and teardown.
+  // On a control overlay's device, ctrl_pkt_multicast lists its control
+  // multicasts, each a dictionary of its packet `id`, the `column` whose
+  // control channel it leaves by, and its `tiles` (#aie.tile).
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_pkt_overlay,
       "::mlir::UnitAttr":$priority_route, "::mlir::ArrayAttr":$shareable_with,
-      "::mlir::UnitAttr":$reserve_controller_packet_ids);
+      "::mlir::UnitAttr":$reserve_controller_packet_ids,
+      "::mlir::ArrayAttr":$ctrl_pkt_multicast);
 }
 
 #endif // AIE_BASE
