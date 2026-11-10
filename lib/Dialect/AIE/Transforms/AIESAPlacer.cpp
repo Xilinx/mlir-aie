@@ -567,32 +567,28 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     if (!isSharedMem) {
       bool plio = cast<ObjectFifoCreateOp>(fb.fifoOp).getPlio();
       if (consIsShim ? !plio : fb.consumerEnds[ci].has_value())
-        drawChannel(consPos, false, fb.consumerChannels[ci], sign);
+        drawChannel(consPos, false, fb.consumerPins[ci], sign);
       prodNeedsDMA = prodIsShim ? !plio : fb.producerEnd.has_value();
     }
   }
 
   if (prodNeedsDMA)
-    drawChannel(prodPos, true, fb.producerChannel, sign);
+    drawChannel(prodPos, true, fb.producerPin, sign);
 }
 
 void SAPlacer::drawChannel(TileID position, bool output,
-                           std::optional<unsigned> pinned, int sign) {
-  if (pinned) {
-    int &users = pinnedChannelUsers[*pinned];
-    users += sign;
-    if (users != (sign > 0 ? 1 : 0))
-      return;
-  }
+                           const std::optional<PinnedChannels::End> &pin,
+                           int sign) {
+  int taken = pin ? pinUse->place(position, *pin, sign) : sign;
   auto &[in, out] = currentDMAUsage[position];
-  (output ? out : in) += sign;
+  (output ? out : in) += taken;
 }
 
 void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentLockDemand.clear();
   currentDMAUsage.clear();
-  pinnedChannelUsers.clear();
+  pinUse.emplace(*pinnedRule);
   sharedMemDestination.clear();
   coreFifoBuffers.clear();
 
@@ -1368,7 +1364,9 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
   int used[2] = {usage.first, usage.second + overlayChannels(tilePos)};
   int max[2] = {maxIn, maxOut};
-  int penalty = 0;
+  // Two ends that cannot share a channel they both pin clash here wherever
+  // the rest goes.
+  int penalty = pinUse->clashes(tilePos) * config.dmaPenaltyPerChannel;
   for (int dir : {0, 1}) {
     if (used[dir] <= max[dir])
       continue;
@@ -2150,7 +2148,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
 
   memTileEnds.clear();
   PoolLocks poolLocks(device);
-  PinnedChannels pinned(*targetModel);
+  pinnedRule.emplace(*targetModel);
   llvm::StringMap<Operation *> delegates;
   for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
     delegates[alloc.getObjFifoName()] = alloc.getDelegateTile().getDefiningOp();
@@ -2229,12 +2227,17 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
                  : planned;
     };
     if (drawsChannel(fb.producerTile, fb.producerEnd.has_value()))
-      fb.producerChannel = pinned.share(ofOp, std::nullopt);
-    for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
-      fb.consumerChannels.push_back(
-          drawsChannel(fb.consumerTiles[ci], fb.consumerEnds[ci].has_value())
-              ? pinned.share(ofOp, ci)
-              : std::nullopt);
+      fb.producerPin = PinnedChannels::endOf(ofOp, std::nullopt);
+    if (fb.producerPin)
+      pinnedRule->share(*fb.producerPin);
+    for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci) {
+      std::optional<PinnedChannels::End> pin;
+      if (drawsChannel(fb.consumerTiles[ci], fb.consumerEnds[ci].has_value()))
+        pin = PinnedChannels::endOf(ofOp, ci);
+      if (pin)
+        pinnedRule->share(*pin);
+      fb.consumerPins.push_back(pin);
+    }
     if (fb.producerEnd && onMemTile(fb.producerTile))
       memTileEnds[fb.producerTile].push_back(
           {DMAChannelDir::MM2S, *fb.producerEnd});
@@ -2603,7 +2606,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       oldDelegate = delegatePenalty, oldDMA = dmaPenalty;
   auto savedMemUsage = currentMemUsage;
   auto savedDMAUsage = currentDMAUsage;
-  auto savedPinnedUsers = pinnedChannelUsers;
+  PinnedChannelUse savedPins = *pinUse;
   auto savedSharedMemDest = sharedMemDestination;
   coreFifoLog.clear();
   lockUndo.clear();
@@ -2680,7 +2683,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       physToLogical[oldPos] = op;
     currentMemUsage = savedMemUsage;
     currentDMAUsage = savedDMAUsage;
-    pinnedChannelUsers = savedPinnedUsers;
+    *pinUse = savedPins;
     sharedMemDestination = savedSharedMemDest;
     for (auto &[pos, delta] : lockUndo)
       currentLockDemand[pos] -= delta;

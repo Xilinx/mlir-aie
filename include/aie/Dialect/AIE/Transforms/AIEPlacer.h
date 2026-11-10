@@ -229,25 +229,63 @@ public:
   // The objectFIFO ends that pin one DMA channel of one tile share it, as
   // objectFIFO allocation lets them: sending ends off a shim or off a core
   // that pushes its tasks, told apart by packet id, and receiving ends that
-  // take objects out of order. Tiles at the same coordinates, physical or
-  // fully pinned logical, are one tile; otherwise only the very same logical
-  // tile is, since that identity places them together.
+  // take objects out of order.
   class PinnedChannels {
   public:
+    // The end of `fifo` (its producer's when `consumer` is empty) on `tile`
+    // pinning `channel`.
+    struct End {
+      ObjectFifoCreateOp fifo;
+      std::optional<unsigned> consumer;
+      mlir::Operation *tile;
+      bool sends;
+      int channel;
+    };
     explicit PinnedChannels(const AIETargetModel &targetModel)
         : targetModel(&targetModel) {}
-    // The channel the end of `fifo` (its producer's when `consumer` is empty)
-    // shares with the ends that took it before, numbered by the first; none
-    // when it pins no channel it may share. An end that pins a taken channel
-    // but cannot share it is diagnosed.
-    std::optional<unsigned> share(ObjectFifoCreateOp fifo,
-                                  std::optional<unsigned> consumer);
+    // The end of `fifo` that pins a DMA channel, if it does.
+    static std::optional<End> endOf(ObjectFifoCreateOp fifo,
+                                    std::optional<unsigned> consumer);
+    // Why `a` and `b`, pinning one channel of one tile, cannot share it;
+    // nothing when they can.
+    std::optional<std::string> whyApart(End a, End b) const;
+    // The channel `end` shares with the ends of its own tile op that took it
+    // before, numbered by the first. An end that cannot share it is
+    // diagnosed: its tile holds both wherever it goes.
+    unsigned share(End end);
 
   private:
     const AIETargetModel *targetModel;
-    llvm::DenseMap<std::tuple<mlir::Operation *, int, int, int, int>,
-                   std::pair<ObjectFifoCreateOp, unsigned>>
+    llvm::DenseMap<std::tuple<mlir::Operation *, int, int>,
+                   std::pair<End, unsigned>>
         taken;
+  };
+
+  // The pinned ends at each position, where the ends of tiles placed together
+  // meet: one channel serves those that may share it, and two of different
+  // tile ops that may not clash there. Two of one tile op clash wherever it
+  // goes, which PinnedChannels::share reports.
+  class PinnedChannelUse {
+  public:
+    explicit PinnedChannelUse(const PinnedChannels &rule) : rule(&rule) {}
+    // Adds (`sign` 1) or removes (-1) `end` at `at`. Returns `sign` when the
+    // end takes or frees its channel there, 0 when other ends hold it too.
+    int place(TileID at, const PinnedChannels::End &end, int sign);
+    // The channels at `at` holding two ends that cannot share them.
+    int clashes(TileID at) const;
+    // The (input, output) channels `ends`, one tile op's, pin that `at`
+    // holds already; nothing when one of them clashes there.
+    std::optional<std::pair<int, int>>
+    heldAt(TileID at, llvm::ArrayRef<PinnedChannels::End> ends) const;
+    // An end at `at` that `end` cannot share its channel with, if any.
+    std::optional<PinnedChannels::End>
+    clashWith(TileID at, const PinnedChannels::End &end) const;
+
+  private:
+    const PinnedChannels *rule;
+    std::map<std::tuple<int, int, int, int>,
+             llvm::SmallVector<PinnedChannels::End, 2>>
+        placed;
   };
 
   // The objectFIFO end a runtime sequence names `symbol` for, before split:
@@ -527,6 +565,13 @@ private:
   void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
   RuntimeBdIds runtimeBdIds;
+
+  // The objectFIFO ends of each tile op that pin a DMA channel, the rule they
+  // share channels by, and where those of placed tiles meet.
+  std::optional<PinnedChannels> pinnedRule;
+  std::optional<PinnedChannelUse> pinsAt;
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<PinnedChannels::End>>
+      pinnedEnds;
 
   // DMA channels, as (output, index), that each logical tile's flows name by
   // index. Two logical tiles naming the same one cannot share a physical tile.
@@ -961,9 +1006,9 @@ private:
     llvm::SmallVector<LinkPool> consumerLinkPools;
     std::optional<PlannedDmaEnd> producerLinkPlan;
     llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerLinkPlans;
-    // PinnedChannels::share of each end that draws a channel.
-    std::optional<unsigned> producerChannel;
-    llvm::SmallVector<std::optional<unsigned>> consumerChannels;
+    // The channel each end that draws one pins, if it pins one.
+    std::optional<PinnedChannels::End> producerPin;
+    llvm::SmallVector<std::optional<PinnedChannels::End>> consumerPins;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
     // The tile of the link naming the fifo, if any.
@@ -1029,9 +1074,10 @@ private:
   llvm::DenseMap<TileID, int> currentLockDemand;
   llvm::SmallVector<std::pair<TileID, int>> lockUndo;
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
-  // The ends drawing each shared pinned channel, which counts in
-  // currentDMAUsage while any does.
-  llvm::DenseMap<unsigned, int> pinnedChannelUsers;
+  // The rule pinned ends share channels by, and the pinned ends at each
+  // position, whose channels count in currentDMAUsage once each.
+  std::optional<PinnedChannels> pinnedRule;
+  std::optional<PinnedChannelUse> pinUse;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
   // The resource terms that read only some tiles' positions, kept so a move
@@ -1145,8 +1191,8 @@ private:
   void initResourceTracking();
   void addFifoContribution(size_t fifoIdx, int sign);
   void addRouteEndContribution(size_t endIdx, int sign);
-  void drawChannel(TileID position, bool output, std::optional<unsigned> pinned,
-                   int sign);
+  void drawChannel(TileID position, bool output,
+                   const std::optional<PinnedChannels::End> &pin, int sign);
   int updateResourcePenalty(
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);

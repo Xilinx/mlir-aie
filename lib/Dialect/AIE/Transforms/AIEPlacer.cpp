@@ -23,6 +23,7 @@
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
+#include <limits>
 #include <numeric>
 
 using namespace mlir;
@@ -258,6 +259,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       updateChannelUsage(at, DmaDir::Out, out);
     for (auto named : namedChannels.lookup(placed))
       availability.namedChannelsUsed[at].insert(named);
+    for (const PinnedChannels::End &end : pinnedEnds.lookup(placed))
+      pinsAt->place(at, end, 1);
     recordShimEnds(at, placed);
   }
 
@@ -912,6 +915,22 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     PlacementOrigin origin) {
   auto [inChannels, outChannels] =
       channelRequirements.lookup(logicalTile.getOperation());
+  SmallVector<PinnedChannels::End> pins =
+      pinnedEnds.lookup(logicalTile.getOperation());
+  std::optional<std::pair<int, int>> held = pinsAt->heldAt(tile, pins);
+  if (!held) {
+    for (PinnedChannels::End end : pins)
+      if (std::optional<PinnedChannels::End> other =
+              pinsAt->clashWith(tile, end))
+        return end.fifo.emitError()
+               << "pins " << (end.sends ? "MM2S" : "S2MM") << " channel "
+               << end.channel << " of tile (" << tile.col << ", " << tile.row
+               << "), which @" << other->fifo.getSymName()
+               << " pins there too, but " << *pinnedRule->whyApart(end, *other);
+    llvm_unreachable("heldAt reports only a clash clashWith finds");
+  }
+  inChannels -= held->first;
+  outChannels -= held->second;
 
   if (!hasAvailableChannels(tile, inChannels, outChannels) &&
       !fitsSharingShim(tile, logicalTile, {inChannels, outChannels})) {
@@ -981,14 +1000,20 @@ SequentialPlacer::buildChannelRequirements(
         linkTilesOfSource[sym.getValue()].push_back(linkTileOp);
   }
 
-  // Endpoints that pin the same channel share it, so the tile pays for that
-  // channel once.
-  PinnedChannels pinned(*targetModel);
+  // A tile op's ends that pin one channel pay for it once; those of tile ops
+  // placed together meet in pinsAt.
+  pinnedRule.emplace(*targetModel);
+  pinsAt.emplace(*pinnedRule);
+  pinnedEnds.clear();
   llvm::DenseSet<unsigned> counted;
   auto drawsChannel = [&](ObjectFifoCreateOp fifo,
-                          std::optional<unsigned> consumer) {
-    std::optional<unsigned> channel = pinned.share(fifo, consumer);
-    return !channel || counted.insert(*channel).second;
+                          std::optional<unsigned> consumer, Operation *tile) {
+    std::optional<PinnedChannels::End> end =
+        PinnedChannels::endOf(fifo, consumer);
+    if (!end)
+      return true;
+    pinnedEnds[tile].push_back(*end);
+    return counted.insert(pinnedRule->share(*end)).second;
   };
 
   // Count channels for every ObjectFifo, omitting only the link-tile side of
@@ -1023,7 +1048,7 @@ SequentialPlacer::buildChannelRequirements(
 
       // Linked consumers and shared channels are counted separately.
       if (consumerOp && !llvm::is_contained(linkConsumers, consumerOp) &&
-          drawsChannel(ofOp, consumerIndex))
+          drawsChannel(ofOp, consumerIndex, consumerOp))
         channelRequirements[consumerOp].first++; // input++
 
       producerNeedsDMA = true;
@@ -1033,7 +1058,7 @@ SequentialPlacer::buildChannelRequirements(
     // producer IS the link tile of an outgoing linked dest fifo, or it shares
     // an already-counted shared channel).
     if (producerNeedsDMA && producerOp && !skipProducerSide &&
-        drawsChannel(ofOp, std::nullopt))
+        drawsChannel(ofOp, std::nullopt, producerOp))
       channelRequirements[producerOp].second++; // output++
   }
 
@@ -1490,59 +1515,130 @@ Placer::ShareableShimEnds Placer::collectShareableShimEnds(
   return ends;
 }
 
-std::optional<unsigned>
-Placer::PinnedChannels::share(ObjectFifoCreateOp fifo,
+std::optional<Placer::PinnedChannels::End>
+Placer::PinnedChannels::endOf(ObjectFifoCreateOp fifo,
                               std::optional<unsigned> consumer) {
-  bool sends = !consumer;
-  auto tile = dyn_cast_or_null<TileLike>(
-      (sends ? fifo.getProducerTile() : fifo.getConsumerTiles()[*consumer])
-          .getDefiningOp());
   ObjectFifoEndPortAttr port =
-      sends ? fifo.getProdPortAttr() : fifo.getConsumerPort(*consumer);
+      consumer ? fifo.getConsumerPort(*consumer) : fifo.getProdPortAttr();
   std::optional<int> pin = port ? port.channelIndex() : std::nullopt;
-  if (!tile || !pin || port.isCore())
+  if (!pin || port.isCore() || *pin < 0)
     return std::nullopt;
-  int channel = *pin;
-  AIETileType type = tile.getTileType();
-  if (sends ? type != AIETileType::ShimNOCTile &&
-                  type != AIETileType::ShimPLTile &&
-                  (type != AIETileType::CoreTile ||
-                   targetModel->getDmaTaskQueueDepth() == 0)
-            : channel < 0)
-    return std::nullopt;
-  std::optional<int> col = tile.tryGetCol();
-  std::optional<int> row = tile.tryGetRow();
-  auto key = col && row ? std::make_tuple(static_cast<Operation *>(nullptr),
-                                          static_cast<int>(*col),
-                                          static_cast<int>(*row), channel,
-                                          static_cast<int>(sends))
-                        : std::make_tuple(tile.getOperation(), -1, -1, channel,
-                                          static_cast<int>(sends));
+  Value tile =
+      consumer ? fifo.getConsumerTiles()[*consumer] : fifo.getProducerTile();
+  return End{fifo, consumer, tile.getDefiningOp(), !consumer, *pin};
+}
+
+std::optional<std::string> Placer::PinnedChannels::whyApart(End a,
+                                                            End b) const {
+  if (a.sends) {
+    for (ObjectFifoCreateOp fifo : {a.fifo, b.fifo}) {
+      auto tile = cast<TileLike>(fifo.getProducerTile().getDefiningOp());
+      AIETileType type = tile.getTileType();
+      if (type != AIETileType::ShimNOCTile && type != AIETileType::ShimPLTile &&
+          (type != AIETileType::CoreTile ||
+           targetModel->getDmaTaskQueueDepth() == 0))
+        return std::string("only a shim, or a core that pushes its tasks, "
+                           "sends two fifos on one channel");
+    }
+    if (!a.fifo.packetHeader() || !b.fifo.packetHeader())
+      return std::string("a shared channel carries both at once, which only "
+                         "packet-switched routes tell apart");
+  } else if (!a.fifo.getOutOfOrder() || !b.fifo.getOutOfOrder()) {
+    return std::string("a channel its fifos receive in turn holds their "
+                       "order; out_of_order puts that order in each "
+                       "object's header");
+  }
+  std::optional<uint16_t> id =
+      a.fifo.packetHeader() ? a.fifo.packetHeader().getPktId() : std::nullopt;
+  std::optional<uint16_t> otherId =
+      b.fifo.packetHeader() ? b.fifo.packetHeader().getPktId() : std::nullopt;
+  if (id && otherId && *id == *otherId)
+    return "both pin packet id " + std::to_string(*id);
+  return std::nullopt;
+}
+
+unsigned Placer::PinnedChannels::share(End end) {
+  auto key =
+      std::make_tuple(end.tile, end.channel, static_cast<int>(end.sends));
   auto [it, fresh] =
-      taken.try_emplace(key, fifo, static_cast<unsigned>(taken.size()));
+      taken.try_emplace(key, end, static_cast<unsigned>(taken.size()));
   if (fresh)
     return it->second.second;
-  ObjectFifoCreateOp other = it->second.first;
-  auto reject = [&](const Twine &why) -> std::optional<unsigned> {
-    fifo.emitError() << "shares " << (sends ? "MM2S" : "S2MM") << " channel "
-                     << channel << " with @" << other.getSymName() << ", but "
-                     << why;
-    return std::nullopt;
-  };
-  if (sends && (!fifo.packetHeader() || !other.packetHeader()))
-    return reject("a shared channel carries both at once, which only "
-                  "packet-switched routes tell apart");
-  if (!sends && (!fifo.getOutOfOrder() || !other.getOutOfOrder()))
-    return reject("a channel its fifos receive in turn holds their order; "
-                  "out_of_order puts that order in each object's header");
-  std::optional<uint16_t> id =
-      fifo.packetHeader() ? fifo.packetHeader().getPktId() : std::nullopt;
-  std::optional<uint16_t> otherId =
-      other.packetHeader() ? other.packetHeader().getPktId() : std::nullopt;
-  if (id && otherId && *id == *otherId)
-    return reject(Twine("both pin packet id ") +
-                  Twine(static_cast<unsigned>(*id)));
+  End other = it->second.first;
+  if (std::optional<std::string> why = whyApart(end, other))
+    end.fifo.emitError() << "shares " << (end.sends ? "MM2S" : "S2MM")
+                         << " channel " << end.channel << " with @"
+                         << other.fifo.getSymName() << ", but " << *why;
   return it->second.second;
+}
+
+int Placer::PinnedChannelUse::place(TileID at, const PinnedChannels::End &end,
+                                    int sign) {
+  auto key =
+      std::make_tuple(at.col, at.row, end.channel, static_cast<int>(end.sends));
+  if (sign > 0) {
+    auto &ends = placed[key];
+    ends.push_back(end);
+    return ends.size() == 1 ? 1 : 0;
+  }
+  auto it = placed.find(key);
+  assert(it != placed.end() && "removing an end never placed");
+  auto *found = llvm::find_if(it->second, [&](const PinnedChannels::End &e) {
+    return e.fifo == end.fifo && e.consumer == end.consumer;
+  });
+  assert(found != it->second.end() && "removing an end never placed");
+  it->second.erase(found);
+  if (!it->second.empty())
+    return 0;
+  placed.erase(it);
+  return -1;
+}
+
+int Placer::PinnedChannelUse::clashes(TileID at) const {
+  int count = 0;
+  for (auto it = placed.lower_bound(
+           std::make_tuple(at.col, at.row, std::numeric_limits<int>::min(), 0));
+       it != placed.end() && std::get<0>(it->first) == at.col &&
+       std::get<1>(it->first) == at.row;
+       ++it) {
+    const auto &ends = it->second;
+    bool clash = false;
+    for (size_t i = 0; i < ends.size() && !clash; ++i)
+      for (size_t j = i + 1; j < ends.size() && !clash; ++j)
+        clash = ends[i].tile != ends[j].tile &&
+                rule->whyApart(ends[i], ends[j]).has_value();
+    count += clash;
+  }
+  return count;
+}
+
+std::optional<Placer::PinnedChannels::End>
+Placer::PinnedChannelUse::clashWith(TileID at,
+                                    const PinnedChannels::End &end) const {
+  auto it = placed.find(std::make_tuple(at.col, at.row, end.channel,
+                                        static_cast<int>(end.sends)));
+  if (it == placed.end())
+    return std::nullopt;
+  for (const PinnedChannels::End &other : it->second)
+    if (other.tile != end.tile && rule->whyApart(end, other))
+      return other;
+  return std::nullopt;
+}
+
+std::optional<std::pair<int, int>>
+Placer::PinnedChannelUse::heldAt(TileID at,
+                                 ArrayRef<PinnedChannels::End> ends) const {
+  std::pair<int, int> held{0, 0};
+  llvm::SmallDenseSet<std::pair<int, int>, 4> counted;
+  for (const PinnedChannels::End &end : ends) {
+    if (clashWith(at, end))
+      return std::nullopt;
+    if (placed.count(std::make_tuple(at.col, at.row, end.channel,
+                                     static_cast<int>(end.sends))) &&
+        counted.insert({end.channel, end.sends}).second)
+      ++(end.sends ? held.second : held.first);
+  }
+  return held;
 }
 
 DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>>
@@ -1960,9 +2056,12 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     std::optional<std::pair<int, int>> bestKey;
     for (int col = 0, numCols = targetModel->columns(); col < numCols; ++col) {
       TileID tile{col, 0};
-      if ((colConstraint && col != *colConstraint) ||
+      std::optional<std::pair<int, int>> held =
+          pinsAt->heldAt(tile, pinnedEnds.lookup(logicalTile));
+      if ((colConstraint && col != *colConstraint) || !held ||
           !fitsSharingShim(tile, logicalTile,
-                           {numInputChannels, numOutputChannels}))
+                           {numInputChannels - held->first,
+                            numOutputChannels - held->second}))
         continue;
       std::pair<int, int> key{targetCol ? std::abs(col - *targetCol) : 0, col};
       if (!bestKey || key < *bestKey) {
@@ -2033,10 +2132,12 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   });
   if (!mergeLogicalTiles)
     assignedNonCoreTiles.insert(*maybeTile);
-  if (numInputChannels > 0)
-    updateChannelUsage(*maybeTile, DmaDir::In, numInputChannels);
-  if (numOutputChannels > 0)
-    updateChannelUsage(*maybeTile, DmaDir::Out, numOutputChannels);
+  auto [heldIn, heldOut] =
+      *pinsAt->heldAt(*maybeTile, pinnedEnds.lookup(logicalTile));
+  if (numInputChannels > heldIn)
+    updateChannelUsage(*maybeTile, DmaDir::In, numInputChannels - heldIn);
+  if (numOutputChannels > heldOut)
+    updateChannelUsage(*maybeTile, DmaDir::Out, numOutputChannels - heldOut);
   recordStreamAndBdUsage(logicalTile, *maybeTile);
   recordShimEnds(*maybeTile, logicalTile);
   return success();
@@ -2094,12 +2195,15 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
   // write shims onto different columns and need 2N columns for N chains.
   std::optional<TileID> best;
   std::tuple<int, int, int, int> bestKey;
+  SmallVector<PinnedChannels::End> pins = pinnedEnds.lookup(logicalTile);
 
   for (auto &tile : tiles) {
     if (targetModel->getTileType(tile.col, tile.row) != requestedType)
       continue;
-    if (!hasAvailableChannels(tile, requiredInputChannels,
-                              requiredOutputChannels))
+    std::optional<std::pair<int, int>> held = pinsAt->heldAt(tile, pins);
+    if (!held ||
+        !hasAvailableChannels(tile, requiredInputChannels - held->first,
+                              requiredOutputChannels - held->second))
       continue;
     // When merge-logical-tiles is disabled, a tile that already hosts a
     // non-core aie.logical_tile is off-limits even if it has spare DMA
@@ -2505,6 +2609,8 @@ void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
   broadcastFanoutUsed[tile] += broadcastFanout.lookup(logicalTile);
   for (auto named : namedChannels.lookup(logicalTile))
     availability.namedChannelsUsed[tile].insert(named);
+  for (const PinnedChannels::End &end : pinnedEnds.lookup(logicalTile))
+    pinsAt->place(tile, end, 1);
   if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())
     availability.streamsUsed[tile] += it->second;
   if (runtimeBdIds.uses(logicalTile))
