@@ -494,6 +494,11 @@ class Runtime(Declared, DeviceResources, Resolvable):
                 f"Runtime {self._name!r} belongs to configuration {owner!r}, "
                 f"not {configuration.name!r}."
             )
+        if configuration._enable_ctrl_pkts and configuration._trace_size:
+            raise ValueError(
+                "enable_ctrl_pkts does not support Runtime.call(): the called "
+                "sequence takes a control packet buffer that the call does not pass."
+            )
         values = [arg.op if isinstance(arg, RuntimeData) else arg for arg in args]
         run(self._name, values)
 
@@ -658,7 +663,12 @@ class Runtime(Declared, DeviceResources, Resolvable):
         ]
         # The control packets come from a trailing buffer the host passes ahead
         # of the trace buffer, which trace lowering appends after this one.
-        ctrl_ddr_id = len(rt_dtypes)
+        # The index counts host buffers only: a scalar argument takes no slot.
+        ctrl_ddr_id = sum(
+            1
+            for rt_data in self._block_data
+            if rt_data is not None and not rt_data.is_scalar
+        )
         if ctrl_pkt_shim is not None:
             rt_dtypes.append(
                 try_convert_np_type_to_mlir_type(np.ndarray[(8,), np.dtype[np.uint32]])
@@ -750,6 +760,8 @@ class Runtime(Declared, DeviceResources, Resolvable):
                     ctrl_ddr_id=ctrl_ddr_id,
                     trace_ddr_id=ctrl_ddr_id + 1,
                     output_offset=trace_size,
+                    host_buffer_bytes=trace_size
+                    * trace_utils.utils.CTRL_PKT_BUFFER_FACTOR,
                 )
 
         if implicit_configure_device_ref is not None:
