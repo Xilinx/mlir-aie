@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-11-10T12:51:19+00:00",
+ "generated_at": "2026-11-10T18:51:17+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 473,
+   "runs": 472,
    "main": {
     "passed": 8,
     "failed": 2,
@@ -723,18 +723,18 @@
    ],
    "pull_requests": {
     "passed": 98,
-    "failed": 100,
-    "rate": 0.495
+    "failed": 103,
+    "rate": 0.488
    },
    "merge_queue": {
-    "passed": 62,
+    "passed": 63,
     "failed": 6,
-    "rate": 0.912
+    "rate": 0.913
    },
    "flaky": {
-    "commits": 458,
-    "flaky": 41,
-    "rate": 0.09
+    "commits": 454,
+    "flaky": 40,
+    "rate": 0.088
    },
    "minutes_median": 70.1,
    "minutes_p90": 288.4,
@@ -746,7 +746,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 473,
+   "runs": 472,
    "main": {
     "passed": 10,
     "failed": 4,
@@ -1129,18 +1129,18 @@
    ],
    "pull_requests": {
     "passed": 152,
-    "failed": 120,
-    "rate": 0.559
+    "failed": 124,
+    "rate": 0.551
    },
    "merge_queue": {
-    "passed": 66,
+    "passed": 67,
     "failed": 9,
-    "rate": 0.88
+    "rate": 0.882
    },
    "flaky": {
-    "commits": 458,
-    "flaky": 45,
-    "rate": 0.098
+    "commits": 454,
+    "flaky": 44,
+    "rate": 0.097
    },
    "minutes_median": 58.3,
    "minutes_p90": 58.7,
@@ -1152,7 +1152,7 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 473,
+   "runs": 472,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -1433,19 +1433,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 202,
-    "failed": 93,
+    "passed": 207,
+    "failed": 95,
     "rate": 0.685
    },
    "merge_queue": {
-    "passed": 74,
+    "passed": 75,
     "failed": 1,
     "rate": 0.987
    },
    "flaky": {
-    "commits": 458,
+    "commits": 457,
     "flaky": 56,
-    "rate": 0.122
+    "rate": 0.123
    },
    "minutes_median": 27.1,
    "minutes_p90": 33.9,
@@ -1457,7 +1457,7 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 473,
+   "runs": 472,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -1738,19 +1738,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 213,
-    "failed": 91,
-    "rate": 0.701
+    "passed": 217,
+    "failed": 93,
+    "rate": 0.7
    },
    "merge_queue": {
-    "passed": 75,
+    "passed": 76,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 458,
-    "flaky": 57,
-    "rate": 0.124
+    "commits": 457,
+    "flaky": 56,
+    "rate": 0.123
    },
    "minutes_median": 23.2,
    "minutes_p90": 24.5,
@@ -1762,7 +1762,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 473,
+   "runs": 472,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -2043,19 +2043,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 236,
-    "failed": 98,
-    "rate": 0.707
+    "passed": 241,
+    "failed": 99,
+    "rate": 0.709
    },
    "merge_queue": {
-    "passed": 75,
+    "passed": 76,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 458,
-    "flaky": 63,
-    "rate": 0.138
+    "commits": 457,
+    "flaky": 62,
+    "rate": 0.136
    },
    "minutes_median": 2.7,
    "minutes_p90": 3.0,
@@ -2063,12 +2063,12 @@
   }
  ],
  "merge_time": {
-  "merged": 65,
+  "merged": 66,
   "hours_median": 26.0,
   "hours_p90": 1440.2,
-  "open": 43,
-  "open_drafts": 14,
-  "open_over_30_days": 25
+  "open": 46,
+  "open_drafts": 15,
+  "open_over_30_days": 24
  },
  "workflows": [
   {
@@ -3108,13 +3108,25 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
-     "id": 42813974654,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42813974654",
+     "id": 42851909465,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42851909465",
      "status": "in_progress",
      "conclusion": null,
+     "created_at": "2026-11-10T16:10:42Z",
+     "run_started_at": "2026-11-10T16:10:42Z",
+     "updated_at": "2026-11-10T16:11:18Z",
+     "head_sha": "cbfc9921dab673d58409a542c08d14c30042b683",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 42813974654,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42813974654",
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-10T12:13:55Z",
      "run_started_at": "2026-11-10T12:13:55Z",
-     "updated_at": "2026-11-10T12:14:47Z",
+     "updated_at": "2026-11-10T13:19:25Z",
      "head_sha": "cbfc9921dab673d58409a542c08d14c30042b683",
      "title": "MLIR Distro",
      "attempt": 1
@@ -3235,18 +3247,6 @@
      "created_at": "2026-11-08T20:08:42Z",
      "run_started_at": "2026-11-08T20:08:42Z",
      "updated_at": "2026-11-08T20:35:58Z",
-     "head_sha": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 42498398798,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42498398798",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-11-08T16:09:02Z",
-     "run_started_at": "2026-11-08T16:09:02Z",
-     "updated_at": "2026-11-08T20:13:40Z",
      "head_sha": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
      "title": "MLIR Distro",
      "attempt": 1
