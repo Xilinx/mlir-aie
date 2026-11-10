@@ -56,11 +56,9 @@ static StringRef getArchTargetTriple(AIEArch arch) {
 // AIE2PS has no core intrinsic set (see declareAIEIntrinsics), so an op that
 // lowers to an intrinsic call is diagnosed rather than left behind.
 static LogicalResult checkCoreIntrinsics(Operation *op) {
-  AIEArch arch =
-      op->getParentOfType<DeviceOp>().getTargetModel().getTargetArch();
-  if (arch != AIEArch::AIE2ps)
+  if (!isa<AIE2PSTargetModel>(op->getParentOfType<DeviceOp>().getTargetModel()))
     return success();
-  return op->emitOpError("has no core lowering for ") << stringifyAIEArch(arch);
+  return op->emitOpError("has no core lowering for AIE2ps");
 }
 
 using IntrinsicDecl =
@@ -463,7 +461,7 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
       // A lock in a core or in a function a core calls needs an intrinsic.
       // Any other lock (DMA regions, runtime sequences) is erased with its
       // parent.
-      if (targetModel.getTargetArch() == AIEArch::AIE2ps) {
+      if (isa<AIE2PSTargetModel>(targetModel)) {
         if (useLock->getParentOfType<CoreOp>() ||
             useLock->getParentOfType<func::FuncOp>())
           return checkCoreIntrinsics(useLock);
@@ -635,7 +633,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     auto device = op->getParentOfType<DeviceOp>();
     // AIE2ps cannot set the modes anywhere, so the functions the core calls
     // must be free of these ops too.
-    if (device && device.getTargetModel().getTargetArch() == AIEArch::AIE2ps) {
+    if (device && isa<AIE2PSTargetModel>(device.getTargetModel())) {
       SmallVector<func::FuncOp> worklist;
       DenseSet<Operation *> visited;
       auto addCallees = [&](Operation *root) {
@@ -655,12 +653,11 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     }
     if (hasSRS || hasBF16Matmul) {
       if (device) {
-        AIEArch arch = device.getTargetModel().getTargetArch();
-        if (arch == AIEArch::AIE2ps)
+        if (isa<AIE2PSTargetModel>(device.getTargetModel()))
           return op.emitOpError("needs the rounding and saturation modes set "
                                 "for aievec.srs or bf16 matmul, which has no "
-                                "lowering for ")
-                 << stringifyAIEArch(arch);
+                                "lowering for AIE2ps");
+        AIEArch arch = device.getTargetModel().getTargetArch();
         if (arch == AIEArch::AIE2 || arch == AIEArch::AIE2p) {
           std::string ctrlRegFuncName = (arch == AIEArch::AIE2p)
                                             ? "llvm.aie2p.set.ctrl.reg"
