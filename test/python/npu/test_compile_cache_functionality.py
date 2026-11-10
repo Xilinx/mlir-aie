@@ -19,9 +19,6 @@ from aie.iron import ObjectFifo, Worker, Runtime, Program
 
 from aie.iron.controlflow import range_
 
-# Peano -O2 has an FPU pipeline hazard for float32; skip until upstream fix.
-_skip_float32 = pytest.mark.skip(reason="Peano -O2 float32 FPU pipeline hazard")
-
 
 @iron.jit
 def transform(
@@ -460,8 +457,7 @@ def test_cache_tensor_shapes():
 
 def test_cache_tensor_dtypes():
     """Test that different tensor dtypes work correctly with caching."""
-    # Test with different dtypes (float32 skipped: Peano -O2 FPU pipeline hazard)
-    dtypes = [np.int32]
+    dtypes = [np.int32, np.float32]
     results = []
 
     for dtype in dtypes:

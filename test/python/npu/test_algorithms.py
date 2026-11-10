@@ -24,15 +24,6 @@ from aie.iron.algorithms import (
 
 TILE_SIZE = 16
 
-# Peano f32 issues — observed as either an -O2 FPU pipeline hazard or a
-# stack-overflow on certain f32 kernels. xfail(strict=False) so PASSes don't
-# fail the suite once an upstream fix lands.
-_skip_float32 = pytest.mark.xfail(
-    reason="Peano f32: -O2 FPU pipeline hazard / stack-overflow on certain kernels",
-    strict=False,
-)
-
-
 # =============================================================================
 # @iron.jit wrappers using typed algorithm variants
 # =============================================================================
@@ -188,7 +179,7 @@ def test_transform_add_parametrized(add_value):
     "dtype,c_type",
     [
         (np.int32, "int"),
-        pytest.param(np.float32, "float", marks=_skip_float32),
+        (np.float32, "float"),
     ],
 )
 def test_transform_different_datatypes_extern(dtype, c_type):
@@ -353,7 +344,7 @@ def test_transform_binary_add():
 
 @pytest.mark.parametrize(
     "dtype",
-    [pytest.param(np.float32, marks=_skip_float32), np.int32],
+    [np.float32, np.int32],
 )
 def test_transform_binary_different_datatypes(dtype):
     """Test transform_binary algorithm with different datatypes."""
@@ -438,7 +429,7 @@ def test_transform_parallel_add_parametrized(add_value):
 
 @pytest.mark.parametrize(
     "dtype",
-    [pytest.param(np.float32, marks=_skip_float32), np.int32],
+    [np.float32, np.int32],
 )
 def test_transform_parallel_different_datatypes(dtype):
     """Test transform_parallel algorithm with add operation on different datatypes."""
@@ -620,7 +611,7 @@ def test_transform_parallel_binary_add():
 
 @pytest.mark.parametrize(
     "dtype",
-    [pytest.param(np.float32, marks=_skip_float32), np.int32],
+    [np.float32, np.int32],
 )
 def test_transform_parallel_binary_different_datatypes(dtype):
     """Test transform_parallel_binary algorithm with add operation on different datatypes."""
@@ -682,7 +673,7 @@ def test_for_each_add():
 
 @pytest.mark.parametrize(
     "dtype",
-    [pytest.param(np.float32, marks=_skip_float32), np.int32],
+    [np.float32, np.int32],
 )
 def test_for_each_different_datatypes(dtype):
     """Test for_each algorithm on different datatypes."""
@@ -705,7 +696,7 @@ def test_for_each_different_datatypes(dtype):
     "dtype,c_type",
     [
         (np.int32, "int"),
-        pytest.param(np.float32, "float", marks=_skip_float32),
+        (np.float32, "float"),
     ],
 )
 def test_for_each_different_datatypes_extern(dtype, c_type):

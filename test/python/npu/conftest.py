@@ -6,7 +6,6 @@
 import copy
 import re
 import xml.etree.ElementTree as ET
-from contextlib import contextmanager
 
 import pytest
 
@@ -512,33 +511,6 @@ def pytest_collection_modifyitems(config, items):
             if pattern in item.nodeid:
                 item.add_marker(pytest.mark.skip(reason=f"HRX unsupported: {reason}"))
                 break
-
-
-@pytest.fixture
-def skip_on_f32_failure():
-    """Fixture that returns a context manager for skipping f32 Peano failures.
-
-    The Peano backend has a known stack-overflow bug when compiling certain
-    f32 kernels.  Rather than marking those tests as ``xfail`` (which hides
-    the issue permanently), request this fixture and wrap the test body so
-    the test is skipped when the failure actually occurs and automatically
-    starts passing if Peano fixes the bug.
-
-    Usage::
-
-        def test_something(dtype, skip_on_f32_failure):
-            with skip_on_f32_failure():
-                run_my_kernel(dtype=dtype)
-    """
-
-    @contextmanager
-    def _guard():
-        try:
-            yield
-        except Exception as exc:
-            pytest.skip(f"Skipping: f32 Peano compilation/execution failure: {exc}")
-
-    return _guard
 
 
 @pytest.fixture(autouse=True)
