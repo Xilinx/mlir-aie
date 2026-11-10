@@ -79,19 +79,21 @@ public:
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 
-  /// A DMA end of one tile still to get a channel: its direction, the BD ids
-  /// it takes, and the exclusive upper bound on the channels it may take.
+  /// A DMA end of one tile: its direction, the BD ids it takes, the
+  /// exclusive upper bound on the channels it may take, and the channel it
+  /// pins, if any, which every end pinning it shares.
   struct BDPlanEnd {
     DMAChannelDir dir;
     int64_t bds;
     int limit;
+    std::optional<int> pinned;
   };
 
-  /// A channel of the tile at (`col`, `row`) for each of `ends`, among those
-  /// `free` leaves, with no two ends of a direction on one channel and, for
-  /// every set of channels sharing BD ids, the ends on them plus the ids
-  /// `spent` on each channel within those ids; nothing when no assignment
-  /// fits.
+  /// A channel of the tile at (`col`, `row`) for each of `ends`: its pinned
+  /// one, else one `free` leaves that no other end of its direction takes;
+  /// and, for every set of channels sharing BD ids, the ends on them plus the
+  /// ids `spent` on each channel within those ids fit those ids. Nothing when
+  /// no assignment fits.
   static std::optional<llvm::SmallVector<int>>
   planBDChannels(const AIETargetModel &target, int col, int row,
                  llvm::ArrayRef<BDPlanEnd> ends,

@@ -2145,6 +2145,9 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
     return std::nullopt;
   auto device = (*this)->getParentOfType<DeviceOp>();
   int64_t maxLock = device.getTargetModel().getMaxLockValue();
+  ObjectFifoEndPortAttr port =
+      drains ? getProdPortAttr() : getConsumerPort(*consumer);
+  std::optional<int> channel = port ? port.channelIndex() : std::nullopt;
   auto walkable = [&](int64_t depth) {
     return tileLike.isMemTile() && depth > 1 && depth <= maxLock;
   };
@@ -2175,7 +2178,8 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
                            depth,
                            walkable(depth) && ordered(*this, false),
                            objectBytes(getConsumerElemTypeOrDefault()),
-                           0};
+                           0,
+                           channel};
     int64_t repeat = getRepeatCount().value_or(1);
     bool inHardware =
         repeat > 1 && (usesPushQueue() || (depth == 1 && !getIterCount()));
@@ -2187,7 +2191,8 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
                              !getRepeatCount() &&
                              getDimensionsToStream().empty(),
                          objectBytes(getElemType()),
-                         0};
+                         0,
+                         channel};
   }
 
   // A merge's participants fill one end, a dispatch's drain one, made by the
@@ -2245,7 +2250,8 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
                            !link.getRepeatCount() && !link.walksStream() &&
                            !link.isDispatch() && !drainLaysOut && linkOrdered,
                        objectBytes(link.getPoolOwner().getElemType()),
-                       contiguousObjects};
+                       contiguousObjects,
+                       channel};
 }
 
 bool ObjectFifoCreateOp::canTakeTurns() {

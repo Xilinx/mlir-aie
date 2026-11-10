@@ -1081,6 +1081,56 @@ struct AIEObjectFifoAllocatePass
       pending.push_back(endpoint);
     }
 
+    // A mem tile's pinned ends must fit the BD ids of the channels they pin,
+    // as a plan of the tile's BD ids weighs every end.
+    std::map<std::pair<int, int>, SmallVector<RouteEndpoint>> pinnedEnds;
+    for (auto endpoint : device.getOps<RouteEndpoint>()) {
+      TileLike tile = tileOf(endpoint);
+      std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (tile.isMemTile() && col && row && endpoint.getRouteChannel() &&
+          drawsOwnChannel(endpoint))
+        pinnedEnds[{*col, *row}].push_back(endpoint);
+    }
+    for (auto &[at, onTile] : pinnedEnds) {
+      auto [col, row] = at;
+      SmallVector<DMAChannelAnalysis::BDPlanEnd> ends;
+      for (RouteEndpoint endpoint : onTile) {
+        DMAChannelDir dir = endpoint.getRouteDirection();
+        ends.push_back({dir, bdsOf(endpoint),
+                        DMAChannelAnalysis::getDMAChannelLimit(tileOf(endpoint),
+                                                               dir, false),
+                        endpoint.getRouteChannel()});
+      }
+      if (DMAChannelAnalysis::planBDChannels(
+              device.getTargetModel(), col, row, ends,
+              [](DMAChannelDir, int) { return true; },
+              [&](int channel) {
+                return fixedBDs.lookup({col, row, channel}) +
+                       pinnedBDs.lookup({col, row, channel});
+              }))
+        continue;
+      auto roomOf = [&](RouteEndpoint endpoint) {
+        return bdRoom(tileOf(endpoint), col, row, *endpoint.getRouteChannel(),
+                      demand);
+      };
+      RouteEndpoint deepest;
+      for (RouteEndpoint endpoint : onTile)
+        if (roomOf(endpoint) < 0 &&
+            (!deepest || bdsOf(endpoint) > bdsOf(deepest)))
+          deepest = endpoint;
+      assert(deepest && "bdRoom and planBDChannels weigh the same BD ids");
+      channelFailure = deepest;
+      bdShortfall = true;
+      if (!diagnose)
+        return failure();
+      return deepest->emitOpError("needs ")
+             << bdsOf(deepest) << " buffer descriptors, but pinned "
+             << stringifyDMAChannelDir(deepest.getRouteDirection())
+             << " DMA channel " << *deepest.getRouteChannel()
+             << " of its tile has " << roomOf(deepest) + bdsOf(deepest)
+             << " left beside the ends on the channels sharing its BD ids";
+    }
+
     // Endpoints reaching a spilled buffer draw from a restricted channel
     // range, so they are served before the unrestricted ones. Channels the
     // design programs itself come after the objectFIFOs', whose BDs they are
@@ -1410,9 +1460,10 @@ struct AIEObjectFifoAllocatePass
       if (!drawsOwnChannel(endpoint))
         continue;
       DMAChannelDir dir = endpoint.getRouteDirection();
-      plan.ends.push_back({dir, dma.getNumBDs(),
-                           DMAChannelAnalysis::getDMAChannelLimit(
-                               tileOf(endpoint), dir, false)});
+      plan.ends.push_back(
+          {dir, dma.getNumBDs(),
+           DMAChannelAnalysis::getDMAChannelLimit(tileOf(endpoint), dir, false),
+           endpoint.getRouteChannel()});
       plan.poolOf.push_back(llvm::find(plan.pools, dma.getPoolOp()) -
                             plan.pools.begin());
     }

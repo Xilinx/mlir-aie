@@ -240,6 +240,7 @@ void SAPlacer::buildRouteModel(DeviceOp device, ArrayRef<FlowOp> flows,
              pool.getObjectSizeInBytes(),
              pool.getContiguous() ? pool.getObjectsPerBuffer() : 0};
     }
+    end.channel = endpoint.getRouteChannel();
     memTileEnds[tileOp].push_back({endpoint.getRouteDirection(), end});
   }
 }
@@ -1070,8 +1071,9 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
     unsigned pool = at - poolKeys.begin();
     pools[pool].walkable |= end->end.walkable;
     poolOf.push_back(pool);
-    planned.push_back(
-        {end->dir, end->end.bds, channels[end->dir == DMAChannelDir::MM2S]});
+    planned.push_back({end->dir, end->end.bds,
+                       channels[end->dir == DMAChannelDir::MM2S],
+                       end->end.channel});
   }
   DMAChannelAnalysis::BDWalkSets found = DMAChannelAnalysis::walkSetsThatFit(
       *targetModel, col, row, planned, poolOf, pools, free, unspent);

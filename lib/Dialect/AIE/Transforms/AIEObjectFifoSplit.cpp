@@ -897,6 +897,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
            end->objectBytes == pool.getObjectSizeInBytes() &&
            end->contiguousObjects ==
                (pool.getContiguous() ? pool.getObjectsPerBuffer() : 0) &&
+           end->channel ==
+               cast<RouteEndpoint>(endpoint.getOperation()).getRouteChannel() &&
            "plannedDmaEnd disagrees with the endpoint the split made");
     ++planned[endpoint];
   }

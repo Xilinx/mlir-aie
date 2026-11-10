@@ -419,6 +419,7 @@ struct StreamWindow {
 // pools apart. Walked whole, a pool's ends take one BD id each. The pool's
 // objects are `objectBytes` each, one a buffer, unless the split lays
 // `contiguousObjects` of them, zero objects included, in one buffer.
+// `channel` is the DMA channel the end pins, if any.
 struct PlannedDmaEnd {
   int64_t bds;
   mlir::Operation *pool;
@@ -427,6 +428,7 @@ struct PlannedDmaEnd {
   bool walkable;
   int64_t objectBytes;
   int64_t contiguousObjects;
+  std::optional<int> channel;
 };
 
 // One output of a StreamWindow: the first object it reads, counting the `top`
