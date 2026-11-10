@@ -3550,4 +3550,16 @@ CASES += [
         tag="odd-k",
         smoke=True,
     ),
+    # One and two trips of the block loop, which promises at least four; the
+    # count is a constant, so the promise must not change how many run.
+    *[
+        check(
+            "mm_bfp",
+            dict(dim_m=16, dim_k=64, dim_n=n, mixed=mixed),
+            devices=("npu2",),
+            tag="edge-tiny",
+        )
+        for n in (16, 32)
+        for mixed in (False, True)
+    ],
 ]

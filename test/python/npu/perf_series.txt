@@ -438,6 +438,10 @@ mm_activation_epilogue/80x4/float32/gelu-min-trips
 mm_activation_epilogue/80x4/float32/identity-min-trips
 mm_activation_epilogue/80x4/float32/relu-min-trips
 mm_activation_epilogue/80x4/float32/silu-min-trips
+mm_bfp/16x64x16x4/bfloat16/mixed=True/edge-tiny
+mm_bfp/16x64x16x4/bfp16ebs8/mixed=False/edge-tiny
+mm_bfp/16x64x32x4/bfloat16/mixed=True/edge-tiny
+mm_bfp/16x64x32x4/bfp16ebs8/mixed=False/edge-tiny
 mm_bfp/32x24x48x4/bfp16ebs8/odd-k
 mm_bfp/64x32x32x4/bfloat16/mixed=True/non-square
 mm_bfp/64x64x64x16/bfloat16/mixed=True
