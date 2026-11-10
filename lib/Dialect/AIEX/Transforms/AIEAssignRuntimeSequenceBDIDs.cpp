@@ -1144,7 +1144,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     }
   }
 
-  // Prints the scratchpad parameter `seq` reads at state-table index `index`.
   void printParameter(llvm::raw_ostream &os, int64_t index,
                       AIE::RuntimeSequenceOp seq) {
     auto module = getOperation()->getParentOfType<ModuleOp>();

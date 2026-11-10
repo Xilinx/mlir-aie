@@ -68,8 +68,7 @@ struct BufferAllocation {
 
 /// Buffers are laid out, and given a tile, largest buffer first: by the address
 /// layout below, the objectFIFO allocator, and the SA placer's estimate of it.
-/// A pool walked whole is one buffer of all its objects. Equal sizes keep their
-/// order.
+/// Equal sizes keep their order.
 template <typename Range, typename BytesFn>
 void sortLargestBufferFirst(Range &&buffers, BytesFn bytes) {
   llvm::stable_sort(buffers, [&](const auto &a, const auto &b) {

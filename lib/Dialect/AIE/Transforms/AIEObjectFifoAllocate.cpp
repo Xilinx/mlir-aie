@@ -97,9 +97,9 @@ struct AIEObjectFifoAllocatePass
   // channel being free.
   bool bdShortfall = false;
   /// Mem tiles once short of BD ids, whose ends since take their channels
-  /// from DMAChannelAnalysis::planBDChannels.
+  /// from planBDChannels.
   llvm::SetVector<Operation *> bdPlanned;
-  /// Pools channel turns walked whole (some walks are undone later).
+  /// Pools planTurnSharing walked whole (some walks are undone later).
   llvm::SetVector<Operation *> turnWalked;
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.

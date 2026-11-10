@@ -289,9 +289,8 @@ static std::optional<int64_t> tripCount(scf::ForOp forOp, DeviceOp device) {
   return *value > *lower ? (*value - *lower + *step - 1) / *step : 0;
 }
 
-/// How many objects of the fifo `in` a core has taken, at least, for each
-/// object of `out` it has released, at every point of its program: once it
-/// has released r objects of `out`, it has taken r * in / out of `in`.
+/// The ratio (in, out) such that a core, once it has released r objects of
+/// `out`, has taken at least r * in / out objects of `in`, at every point.
 ///
 /// Each region of the core is summarized by two sets of (taken, released)
 /// pairs: for a ratio k, the smallest taken - k * released over `end` bounds
