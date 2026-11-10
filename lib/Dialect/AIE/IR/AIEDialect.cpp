@@ -2847,14 +2847,29 @@ int64_t ObjectFifoLinkOp::getPoolDepth() {
   if (walksStream())
     return succeeded(getStreamWindow(window)) ? window.objects : 0;
   ObjectFifoCreateOp owner = getPoolOwner();
-  // An owner with an allocate shares the pool with its other end's core (the
-  // split rejects it otherwise), so the pool serves both ends, like the one
-  // pool of an unlinked fifo whose ends share memory.
-  if (owner.getAllocate())
-    return owner.sharedDepth();
-  if (std::optional<unsigned> index = getOwnerConsumerIndex())
-    return owner.dmaDepth(index);
-  return owner.size();
+  int64_t depth = 0;
+  if (!owner.getAllocate()) {
+    std::optional<unsigned> index = getOwnerConsumerIndex();
+    depth = index ? owner.dmaDepth(index) : owner.size();
+  }
+  // The owner's allocate puts both its ends in the pool; another
+  // participant's puts there only its end off the link's tile, the one its
+  // no-allocate twin keeps in a pool of its own (no core acquires on the
+  // link's tile).
+  std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
+  std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+  for (ObjectFifoCreateOp fifo : llvm::concat<ObjectFifoCreateOp>(ins, outs)) {
+    if (!fifo.getAllocate())
+      continue;
+    if (fifo == owner)
+      depth = std::max<int64_t>(
+          {depth, fifo.dmaDepth(std::nullopt), fifo.dmaDepth(0)});
+    else if (fifo.linkPoolMisfit() == LinkPoolMisfit::None)
+      depth = std::max<int64_t>(depth, llvm::is_contained(outs, fifo)
+                                           ? fifo.dmaDepth(0)
+                                           : fifo.dmaDepth(std::nullopt));
+  }
+  return depth;
 }
 
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {

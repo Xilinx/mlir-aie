@@ -3052,8 +3052,9 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     // When the pool owner is an input, the consumer of it whose end the pool
     // is: one on the shared tile, after those earlier links took there.
     std::optional<unsigned> getOwnerConsumerIndex();
-    // Objects in the pool on the shared tile: the owner's sharedDepth() when
-    // it shares the pool through an aie.objectfifo.allocate.
+    // Objects in the pool on the shared tile; with participants whose
+    // aie.objectfifo.allocate shares the pool, enough for the owner's ends and
+    // each other participant's end off the shared tile.
     int64_t getPoolDepth();
   }];
 }
