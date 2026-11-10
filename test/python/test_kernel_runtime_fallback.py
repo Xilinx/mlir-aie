@@ -36,8 +36,7 @@ _VARIANTS = [(name, kw) for name in _SIZED for kw in DTYPES.get(name, ({},))]
     "name,kwargs",
     _VARIANTS,
     ids=[
-        f"{name}-{np.dtype(kw['dtype']).name}" if kw else name
-        for name, kw in _VARIANTS
+        f"{name}-{np.dtype(kw['dtype']).name}" if kw else name for name, kw in _VARIANTS
     ],
 )
 def test_kernel_builds_without_its_size_define(tmp_path, arch, name, kwargs):
