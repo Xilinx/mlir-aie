@@ -127,7 +127,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
        Option<"clPlacementBudget", "placement-budget", "int64_t",
               /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
               "aie-assign-buffer-addresses' placement-budget, which the SA "
-              "placer lays core tiles out with as addressing will.">];
+              "placer lays core tiles out with as addressing will.">,
+       Option<"clCtrlPktOverlay", "ctrl-pkt-overlay", "bool",
+              /*default=*/"false",
+              "Leave each shim tile the MM2S channel the configuration "
+              "overlay of aie-generate-column-control-overlay takes, but "
+              "for the ends never in flight with its control packets">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,

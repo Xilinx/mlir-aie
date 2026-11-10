@@ -66,11 +66,8 @@ struct AIEGenerateColumnControlOverlayPass
 
   void runOnOperation() override {
     llvm::MapVector<AIEDevice, SmallVector<DeviceOp>> groups;
-    AIEDialect::IsCtrlPktOverlayAttrHelper marker(&getContext());
     for (DeviceOp device : getOperation().getOps<DeviceOp>())
-      if (!marker.isAttrPresent(device) && !device.getOverlayAttr() &&
-          device.getTargetModel().getTargetArch() != AIEArch::AIE1 &&
-          (configuration || !collectTokenIssuingTiles({device}).empty()))
+      if (getsColumnControlOverlay(device, configuration))
         groups[device.getDevice()].push_back(device);
     for (auto &[target, users] : groups)
       if (failed(generate(users)))
@@ -370,6 +367,17 @@ struct AIEGenerateColumnControlOverlayPass
     return success();
   }
 };
+
+bool AIE::getsColumnControlOverlay(DeviceOp device, bool configuration) {
+  return !AIEDialect::IsCtrlPktOverlayAttrHelper(device.getContext())
+              .isAttrPresent(device) &&
+         !device.getOverlayAttr() &&
+         device.getTargetModel().getTargetArch() != AIEArch::AIE1 &&
+         (configuration ||
+          !AIEGenerateColumnControlOverlayPass::collectTokenIssuingTiles(
+               {device})
+               .empty());
+}
 
 std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignTileCtrlIDsPass() {
   return std::make_unique<AIEAssignTileCtrlIDsPass>();

@@ -159,6 +159,7 @@ createAIEGenerateColumnControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEGenerateColumnControlOverlayPass(
     const AIEGenerateColumnControlOverlayOptions &options);
+bool getsColumnControlOverlay(DeviceOp device, bool configuration);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>

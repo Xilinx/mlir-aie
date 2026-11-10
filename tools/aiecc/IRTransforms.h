@@ -1379,7 +1379,8 @@ getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
                      xilinx::AIE::PlacerType placerType, int saSeed,
                      double saEffort, int64_t placementBudget,
                      llvm::ArrayRef<std::string> walkedFifos,
-                     llvm::ArrayRef<std::string> coreDataSizes) {
+                     llvm::ArrayRef<std::string> coreDataSizes,
+                     bool ctrlPktOverlay) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIE::AIEPlaceTilesOptions opts;
   opts.clPlacerType = placerType;
@@ -1387,6 +1388,7 @@ getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
   opts.clSASeed = saSeed;
   opts.clSAEffort = saEffort;
   opts.clPlacementBudget = placementBudget;
+  opts.clCtrlPktOverlay = ctrlPktOverlay;
   opts.clSAWalkedFifos.assign(walkedFifos.begin(), walkedFifos.end());
   opts.clSACoreDataSizes.assign(coreDataSizes.begin(), coreDataSizes.end());
   xilinx::AIEX::addPlacementStage(*pm, opts);

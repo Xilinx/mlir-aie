@@ -57,11 +57,16 @@ public:
   /// objectFIFO end it belongs to, or nothing when it belongs to none.
   /// `gates` holds each receiving end's gates, keyed as `endOf` keys ends;
   /// without them, a receiving end shares only by explicit permission, which
-  /// is all a caller running before the proofs can know.
+  /// is all a caller running before the proofs can know. With
+  /// `plannedOverlay`, the control overlay's channel on each column's shim
+  /// tile is an end too, overlayEnd(), before
+  /// aie-generate-column-control-overlay makes it: it carries the control
+  /// packets to its column and every configuration load, as the overlay's
+  /// own channel does once made.
   ShimTransferSpans(
       DeviceOp device,
       llvm::function_ref<std::optional<End>(mlir::StringAttr)> endOf,
-      std::optional<Gates> gates = std::nullopt);
+      std::optional<Gates> gates = std::nullopt, bool plannedOverlay = false);
 
   ShimTransferSpans(
       mlir::ModuleOp module,
@@ -81,6 +86,9 @@ public:
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
 
   bool isUsed(mlir::StringAttr end) const;
+
+  /// The planned control overlay channel's end on column `column`'s shim tile.
+  mlir::StringAttr overlayEnd(int column) const;
 
   /// Splits `ends` into groups whose members are pairwise apart, each group
   /// taking one channel: first fit, ordered by the ends' spans in flight.
@@ -134,6 +142,9 @@ private:
   bool unknown = false;
   llvm::SmallVector<llvm::DenseMap<mlir::StringAttr, Span>> spans;
   std::optional<Gates> gates;
+  mlir::MLIRContext *context = nullptr;
+  /// The columns with a planned overlay end, none without `plannedOverlay`.
+  int overlayColumns = 0;
 };
 
 } // namespace xilinx::AIE

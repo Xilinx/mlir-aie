@@ -337,7 +337,7 @@ DMAChannelAnalysis::TakenBDs::positions() const {
 
 std::optional<SmallVector<int>>
 DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
-                                   int row, ArrayRef<BDPlanEnd> ends,
+                                   int row, ArrayRef<BDPlanEnd> allEnds,
                                    function_ref<bool(DMAChannelDir, int)> free,
                                    function_ref<int64_t(int)> spent) {
   uint32_t numBDs = target.getNumBDs(col, row);
@@ -377,6 +377,32 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
       group.room -= spent(channel);
   }
 
+  // An end pinning a channel takes it, whatever `free` says, and shares it
+  // with every end pinning it too; the rest are planned around them.
+  SmallVector<BDPlanEnd> ends;
+  SmallVector<unsigned> looseOf;
+  llvm::DenseSet<std::pair<int, int>> pinned;
+  for (auto [index, end] : llvm::enumerate(allEnds)) {
+    if (!end.pinned) {
+      ends.push_back(end);
+      looseOf.push_back(index);
+      continue;
+    }
+    auto *group = llvm::find_if(groups, [&](const Group &group) {
+      return llvm::is_contained(group.channels, *end.pinned);
+    });
+    if (group == groups.end())
+      return std::nullopt;
+    group->room -= end.bds;
+    pinned.insert({static_cast<int>(end.dir), *end.pinned});
+  }
+  if (llvm::any_of(groups, [](const Group &group) { return group.room < 0; }))
+    return std::nullopt;
+  auto open = [&](DMAChannelDir dir, int channel) {
+    return free(dir, channel) &&
+           !pinned.contains({static_cast<int>(dir), channel});
+  };
+
   // Each end goes to a group, the most demanding first; a choice stands when
   // every group's ends fit its ids and, within a direction, take distinct free
   // channels below their bounds: the tightest bound first, each the lowest
@@ -403,7 +429,7 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
       channelOf[end] = -1;
       for (int channel : groups[groupOf[end]].channels) {
         int dir = static_cast<int>(ends[end].dir);
-        if (channel < ends[end].limit && free(ends[end].dir, channel) &&
+        if (channel < ends[end].limit && open(ends[end].dir, channel) &&
             taken.insert({dir, channel}).second) {
           channelOf[end] = channel;
           break;
@@ -431,7 +457,7 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
       for (auto [i, bound] : llvm::enumerate(bounds))
         for (int channel : group.channels)
           below[g * slots + static_cast<int>(dir) * bounds.size() + i] +=
-              channel < bound && free(dir, channel);
+              channel < bound && open(dir, channel);
   SmallVector<int64_t> held(groups.size() * slots, 0);
   auto fits = [&](unsigned g, DMAChannelDir dir) {
     size_t base = g * slots + static_cast<int>(dir) * bounds.size();
@@ -489,7 +515,12 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
   };
   if (!place(0))
     return std::nullopt;
-  return channelOf;
+  SmallVector<int> result;
+  for (const BDPlanEnd &end : allEnds)
+    result.push_back(end.pinned ? *end.pinned : -1);
+  for (auto [loose, index] : llvm::enumerate(looseOf))
+    result[index] = channelOf[loose];
+  return result;
 }
 
 std::optional<unsigned> DMAChannelAnalysis::nextPoolToWalk(
@@ -524,7 +555,7 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
                          !weighted     ? 0
                          : whole[pool] ? 1
                                        : end.bds,
-                         end.limit});
+                         end.limit, end.pinned});
     return planBDChannels(target, col, row, planned, free,
                           weighted ? spent : function_ref<int64_t(int)>(none))
         .has_value();
