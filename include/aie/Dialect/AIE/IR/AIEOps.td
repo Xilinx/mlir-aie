@@ -2798,6 +2798,22 @@ def AIE_ObjectFifoCreateOp
     sharedMemoryOf(const AIETargetModel &target, TileID producer,
                    TileID consumer, std::optional<TileID> delegate,
                    bool linked);
+    /// Why the fifo moves by DMA where its ends are placed: dmaReason(), or
+    /// that sharedMemoryOf() finds no module both reach; otherwise `shared`
+    /// names the module. Nothing while an end it needs is unplaced.
+    std::optional<llvm::StringRef>
+    placedDmaReason(AIETargetModel::SharedMemory &shared);
+    /// Whether another fifo moved by DMA pins the DMA channel this one's
+    /// producer pins, on the same tile off a shim. A channel cycling on one
+    /// fifo's buffers never reaches the other's, so aie-objectfifo-split
+    /// gives both `push_queue`, a task pushed per object.
+    bool sharesSendChannel();
+    /// Whether the producer's DMA end will push a task per object: it asks
+    /// for `push_queue`, or sharesSendChannel().
+    bool usesPushQueue() {
+      return getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
+             sharesSendChannel();
+    }
 
     /// Objects in the pool an end keeps on its own tile when the fifo moves by
     /// DMA: the producer's when `consumer` is empty, else that consumer's. An

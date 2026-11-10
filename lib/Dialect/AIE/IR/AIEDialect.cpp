@@ -2043,6 +2043,60 @@ AIETargetModel::SharedMemory ObjectFifoCreateOp::sharedMemoryOf(
   return target.getSharedMemory(producer, consumer);
 }
 
+static std::optional<TileID> placedAt(Value tile) {
+  auto tileLike = cast<TileLike>(tile.getDefiningOp());
+  std::optional<int> col = tileLike.tryGetCol(), row = tileLike.tryGetRow();
+  if (!col || !row)
+    return std::nullopt;
+  return TileID{*col, *row};
+}
+
+std::optional<StringRef>
+ObjectFifoCreateOp::placedDmaReason(AIETargetModel::SharedMemory &shared) {
+  if (std::optional<StringRef> reason = dmaReason())
+    return reason;
+  std::optional<ObjectFifoAllocateOp> alloc = getAllocate();
+  std::optional<TileID> producer = placedAt(getProducerTile());
+  std::optional<TileID> consumer = placedAt(getConsumerTiles()[0]);
+  std::optional<TileID> delegate =
+      alloc ? placedAt(alloc->getDelegateTile()) : std::nullopt;
+  if (!producer || !consumer || (alloc && !delegate))
+    return std::nullopt;
+  bool linked = getLink().has_value();
+  shared = sharedMemoryOf(getTargetModel(*this), *producer, *consumer, delegate,
+                          linked);
+  if (shared == AIETargetModel::SharedMemory::None)
+    return linked ? "it is linked through a tile's DMAs"
+                  : "its ends share no memory module";
+  return std::nullopt;
+}
+
+bool ObjectFifoCreateOp::sharesSendChannel() {
+  auto pinned = [](ObjectFifoCreateOp fifo) -> std::optional<int> {
+    ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
+    return port && !port.isCore() ? port.channelIndex() : std::nullopt;
+  };
+  auto byDMA = [](ObjectFifoCreateOp fifo) {
+    auto shared = AIETargetModel::SharedMemory::None;
+    return fifo.placedDmaReason(shared).has_value();
+  };
+  std::optional<int> channel = pinned(*this);
+  Value tile = getProducerTile();
+  if (!channel || cast<TileLike>(tile.getDefiningOp()).isShimTile() ||
+      !byDMA(*this))
+    return false;
+  std::optional<TileID> at = placedAt(tile);
+  for (ObjectFifoCreateOp other :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoCreateOp>()) {
+    Value otherTile = other.getProducerTile();
+    if (other != *this && pinned(other) == channel &&
+        (otherTile == tile || (at && placedAt(otherTile) == at)) &&
+        byDMA(other))
+      return true;
+  }
+  return false;
+}
+
 int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
   if (consumer ? streamsToConsumer(*consumer) : streamsFromProducer())
     return 0;
@@ -2110,9 +2164,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
     return type.getNumElements() * layout.getTypeSize(type.getElementType());
   };
   auto ordered = [](ObjectFifoCreateOp fifo, bool drains) {
-    return !fifo.getOutOfOrder() &&
-           (!drains ||
-            fifo.getReleaseStrategy() != ObjectFifoRelease::PushQueue);
+    return !fifo.getOutOfOrder() && (!drains || !fifo.usesPushQueue());
   };
   if (!link) {
     int depth = dmaDepth(consumer);
@@ -2126,8 +2178,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
                            0};
     int64_t repeat = getRepeatCount().value_or(1);
     bool inHardware =
-        repeat > 1 && (getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
-                       (depth == 1 && !getIterCount()));
+        repeat > 1 && (usesPushQueue() || (depth == 1 && !getIterCount()));
     return PlannedDmaEnd{depth * (inHardware ? 1 : repeat),
                          *this,
                          -1,
@@ -2165,10 +2216,8 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
       contiguousObjects = depth + window.top + window.bottom;
   }
   int64_t repeat = drains ? link.getRepeatCount().value_or(1) : 1;
-  bool inHardware =
-      repeat > 1 &&
-      ((drains && getReleaseStrategy() == ObjectFifoRelease::PushQueue) ||
-       (descriptors == 1 && !getIterCount()));
+  bool inHardware = repeat > 1 && ((drains && usesPushQueue()) ||
+                                   (descriptors == 1 && !getIterCount()));
   int64_t passes = 1;
   if (drains && link.isDispatch()) {
     int64_t objects = std::max<int64_t>(depth, 1);
