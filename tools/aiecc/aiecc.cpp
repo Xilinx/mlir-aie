@@ -1103,13 +1103,13 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue();
   auto &traced =
       withDefaultStackSize
-          .map<ModRef>("placed.mlir",
-                       PassPipeline{getPlacementPipeline(
-                           &context, coresPerCol.getValue(),
-                           placerType.getValue(), saSeed.getValue(),
-                           saEffort.getValue(), placementBudget.getValue(),
-                           llvm::to_vector(saWalkedFifos),
-                           llvm::to_vector(saCoreDataSizes), ctrlOverlay)})
+          .map<ModRef>(
+              "placed.mlir",
+              PassPipeline{getPlacementPipeline(
+                  &context, coresPerCol.getValue(), placerType.getValue(),
+                  saSeed.getValue(), saEffort.getValue(),
+                  placementBudget.getValue(), llvm::to_vector(saWalkedFifos),
+                  llvm::to_vector(saCoreDataSizes), ctrlOverlay)})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
   // Everything a core needs before it can be compiled: objectFifo lowering

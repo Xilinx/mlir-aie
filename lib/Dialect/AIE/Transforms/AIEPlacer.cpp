@@ -242,8 +242,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
   runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
-  shareableShimEnds =
-      collectShareableShimEnds(device, objectFifos, demandKeys);
+  shareableShimEnds = collectShareableShimEnds(device, objectFifos, demandKeys);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device), controlOverlay);
@@ -1457,8 +1456,7 @@ Placer::buildObjectFifoAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
   return adjacency;
 }
 
-Placer::ShareableShimEnds
-Placer::collectShareableShimEnds(
+Placer::ShareableShimEnds Placer::collectShareableShimEnds(
     DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos,
     const llvm::DenseMap<Operation *, Operation *> &routeKeys) {
   llvm::DenseSet<std::pair<Operation *, Value>> registered;
@@ -1501,9 +1499,10 @@ Placer::PinnedChannels::share(ObjectFifoCreateOp fifo,
           .getDefiningOp());
   ObjectFifoEndPortAttr port =
       sends ? fifo.getProdPortAttr() : fifo.getConsumerPort(*consumer);
-  if (!tile || !port || port.isCore() || !port.channelIndex())
+  std::optional<int> pin = port ? port.channelIndex() : std::nullopt;
+  if (!tile || !pin || port.isCore())
     return std::nullopt;
-  int channel = *port.channelIndex();
+  int channel = *pin;
   AIETileType type = tile.getTileType();
   if (sends ? type != AIETileType::ShimNOCTile &&
                   type != AIETileType::ShimPLTile &&

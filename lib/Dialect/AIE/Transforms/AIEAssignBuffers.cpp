@@ -122,9 +122,10 @@ static LogicalResult materializeCoreSections(DeviceOp device) {
       // A buffer that is not the reservation's exact extent cannot stand in
       // for it, and a second one cannot be made beside it.
       BufferOp clash;
+      bool dataRegion = held.kind == Kind::DataRegion;
       device.walk([&](BufferOp buffer) {
         if (buffer.getSymName() == StringRef(name) ||
-            (held.kind == Kind::DataRegion && buffer.getCoreData() &&
+            (dataRegion && buffer.getCoreData() &&
              buffer.getTile() == tile.getResult()))
           clash = buffer;
       });
@@ -1037,8 +1038,11 @@ private:
     deepest = buffer;
     deepestLayout.clear();
     for (size_t done : placed) {
-      assert(layout.at[done] && "placed buffer must have an address and bank");
-      auto [address, bank] = *layout.at[done];
+      const auto &at = layout.at[done];
+      assert(at && "placed buffer must have an address and bank");
+      if (!at)
+        continue;
+      auto [address, bank] = *at;
       deepestLayout.push_back({done, Placement{address, bank, 0, 0, 0, 0}});
     }
   }
@@ -1389,7 +1393,7 @@ TileLayout xilinx::AIE::layoutTile(const TileLayoutProblem &problem,
         return layout;
       }
       stackRun.start = *at;
-      layout.stackStart = *at;
+      layout.stackStart = at;
     }
     occupancy.markOccupied(stackRun.start,
                            std::min(stackRun.end(), problem.maxDataMemorySize));
@@ -1453,7 +1457,7 @@ static void deAllocationBuffers(SmallVectorImpl<BufferOp> &buffers,
   for (auto [buffer, request] : llvm::zip_equal(buffers, requested)) {
     buffer->removeAttr("address");
     if (request.memBank) {
-      buffer.setMemBank(*request.memBank);
+      buffer.setMemBank(request.memBank);
     } else {
       buffer->removeAttr("mem_bank");
     }
@@ -1479,8 +1483,9 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
   problem.hasCore = static_cast<bool>(coreOp);
   if (coreOp) {
     problem.stackRun = coreOp.getStackRun();
-    if (!coreOp.getStackAddress() && coreOp.getStackBank()) {
-      problem.stackBank = static_cast<int>(*coreOp.getStackBank());
+    std::optional<uint32_t> stackBank = coreOp.getStackBank();
+    if (!coreOp.getStackAddress() && stackBank) {
+      problem.stackBank = static_cast<int>(*stackBank);
       problem.stackAlignBytes = targetModel.getCoreStackAlignment();
     }
   }

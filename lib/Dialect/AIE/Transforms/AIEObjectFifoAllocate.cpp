@@ -1064,9 +1064,10 @@ struct AIEObjectFifoAllocatePass
               [](DMAChannelDir, int) { return true; },
               [&](int channel) { return taken.lookup(channel); }))
         continue;
+      int pinnedCol = col, pinnedRow = row;
       auto roomOf = [&](RouteEndpoint endpoint) {
-        return bdRoom(tileOf(endpoint), col, row, *endpoint.getRouteChannel(),
-                      demand);
+        return bdRoom(tileOf(endpoint), pinnedCol, pinnedRow,
+                      *endpoint.getRouteChannel(), demand);
       };
       RouteEndpoint deepest;
       for (RouteEndpoint endpoint : onTile)

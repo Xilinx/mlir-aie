@@ -331,8 +331,8 @@ struct AIEObjectFifoSplitPass
       }
       std::optional<TileID> linkTile;
       if (std::optional<ObjectFifoLinkOp> link = fifo.getLink())
-        linkTile = cast<TileOp>(link->getOptionalSharedTile()->getDefiningOp())
-                       .getTileID();
+        if (std::optional<Value> point = link->getOptionalSharedTile())
+          linkTile = cast<TileOp>(point->getDefiningOp()).getTileID();
       TileID producer = fifo.getProducerTileOp().getTileID();
       TileID consumer =
           cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp()).getTileID();

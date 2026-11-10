@@ -2342,9 +2342,10 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   // A linked fifo that shares memory keeps its objects in the link's one
   // pool, which a core fills or drains one pool object per acquire. Whether
   // it shares depends on where its tiles are placed.
+  std::optional<ObjectFifoLinkOp> linked = objFifo.getLink();
   if (LinkPoolMisfit misfit = objFifo.linkPoolMisfit();
-      misfit != LinkPoolMisfit::None) {
-    ObjectFifoLinkOp link = *objFifo.getLink();
+      linked && misfit != LinkPoolMisfit::None) {
+    ObjectFifoLinkOp link = *linked;
     auto producer = dyn_cast<TileOp>(objFifo.getProducerTile().getDefiningOp());
     auto consumer =
         dyn_cast<TileOp>(objFifo.getConsumerTiles()[0].getDefiningOp());
@@ -4533,7 +4534,7 @@ SmallVector<BufferOp> CoreOp::getSectionReservationBuffers(
              (held.kind == Kind::Bank ? buffer.getMemBank() == held.at
                                       : buffer.getAddress() == held.at);
     };
-    auto it = llvm::find_if(onTile, holds);
+    auto *it = llvm::find_if(onTile, holds);
     holders.push_back(it == onTile.end() ? BufferOp() : *it);
     if (it != onTile.end())
       claimed.insert(*it);
@@ -4575,7 +4576,7 @@ int64_t BufferOp::getSectionAlignment() {
       if (getCoreData())
         return core.getSectionAlignment(std::nullopt);
       std::optional<int32_t> bank = getMemBank();
-      return bank ? core.getSectionAlignment(*bank) : 1;
+      return bank ? core.getSectionAlignment(bank) : 1;
     }
   return 1;
 }

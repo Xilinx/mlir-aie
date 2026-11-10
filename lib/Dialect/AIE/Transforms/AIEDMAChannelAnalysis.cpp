@@ -388,8 +388,9 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
       looseOf.push_back(index);
       continue;
     }
+    int channel = *end.pinned;
     auto *group = llvm::find_if(groups, [&](const Group &group) {
-      return llvm::is_contained(group.channels, *end.pinned);
+      return llvm::is_contained(group.channels, channel);
     });
     if (group == groups.end())
       return std::nullopt;

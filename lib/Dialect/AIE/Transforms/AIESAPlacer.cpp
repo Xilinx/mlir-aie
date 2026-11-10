@@ -474,10 +474,9 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   // A link's ends keep no objects of their own, shared memory or not: the
   // split builds the link's one pool on its tile.
   bool prodLinked = fb.producerLinkPool != LinkPool::None;
-  if (fb.producerLinkPool == LinkPool::Holds) {
-    chargeLinkPool(prodPos, *fb.producerLinkPlan);
-    addLocks(prodPos, fb.producerLinkSegments, fb.producerLinkPlan->depth,
-             true);
+  if (const std::optional<PlannedDmaEnd> &plan = fb.producerLinkPlan) {
+    chargeLinkPool(prodPos, *plan);
+    addLocks(prodPos, fb.producerLinkSegments, plan->depth, true);
   }
 
   for (size_t ci = 0; ci < fb.consumerTiles.size(); ci++) {
@@ -500,10 +499,9 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
 
     int64_t sharedRaw = std::max(fb.producerRawBytes, fb.consumerRawBytes);
     bool consLinked = fb.consumerLinkPools[ci] != LinkPool::None;
-    if (fb.consumerLinkPools[ci] == LinkPool::Holds) {
-      chargeLinkPool(consPos, *fb.consumerLinkPlans[ci]);
-      addLocks(consPos, fb.consumerLinkSegments[ci],
-               fb.consumerLinkPlans[ci]->depth, true);
+    if (const std::optional<PlannedDmaEnd> &plan = fb.consumerLinkPlans[ci]) {
+      chargeLinkPool(consPos, *plan);
+      addLocks(consPos, fb.consumerLinkSegments[ci], plan->depth, true);
     }
     bool sharedPool = isSharedMem && !prodLinked && !consLinked;
     if (prodPos == consPos && sharedPool) {
@@ -1223,25 +1221,23 @@ SAPlacer::lockGroups() const {
     const FifoEndTypes &types = fifoEndTypes[index];
     std::optional<TileID> delegatePos = positionOf(fb.delegate);
     bool prodLinked = fb.producerLinkPool != LinkPool::None;
-    if (fb.producerLinkPool == LinkPool::Holds)
+    if (const std::optional<PlannedDmaEnd> &plan = fb.producerLinkPlan)
       add(endUsers(*prodPos, fb.producerCore, types.producer),
-          fb.producerLinkSegments, fb.producerLinkPlan->depth);
+          fb.producerLinkSegments, plan->depth);
     bool prodPool = false;
     for (size_t ci = 0; ci < fb.consumerTiles.size(); ++ci) {
       std::optional<TileID> consPos = positionOf(fb.consumerTiles[ci]);
       if (!consPos)
         continue;
       bool consLinked = fb.consumerLinkPools[ci] != LinkPool::None;
-      if (fb.consumerLinkPools[ci] == LinkPool::Holds)
+      if (const std::optional<PlannedDmaEnd> &plan = fb.consumerLinkPlans[ci])
         add(endUsers(*consPos, fb.consumerCore[ci], types.consumers[ci]),
-            fb.consumerLinkSegments[ci], fb.consumerLinkPlans[ci]->depth);
+            fb.consumerLinkSegments[ci], plan->depth);
       using SharedMemory = AIETargetModel::SharedMemory;
-      if (!fb.forcesDMA &&
-          ObjectFifoCreateOp::sharedMemoryOf(
-              *targetModel, *prodPos, *consPos, delegatePos,
-              positionOf(fb.linkTile)) != SharedMemory::None) {
-        if (prodLinked || consLinked || ci != 0 ||
-            !heldLocks(fb.sharedDepth))
+      if (!fb.forcesDMA && ObjectFifoCreateOp::sharedMemoryOf(
+                               *targetModel, *prodPos, *consPos, delegatePos,
+                               positionOf(fb.linkTile)) != SharedMemory::None) {
+        if (prodLinked || consLinked || ci != 0 || !heldLocks(fb.sharedDepth))
           continue;
         SmallVector<std::pair<TileID, bool>, 2> users;
         if (fb.producerCore)
@@ -2064,8 +2060,9 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     CoreTileContents &contents = coreContents[tileOp];
     contents.hasCore = true;
     contents.stackRun = coreOp.getStackRun();
-    if (!coreOp.getStackAddress() && coreOp.getStackBank()) {
-      contents.stackBank = static_cast<int>(*coreOp.getStackBank());
+    std::optional<uint32_t> stackBank = coreOp.getStackBank();
+    if (!coreOp.getStackAddress() && stackBank) {
+      contents.stackBank = static_cast<int>(*stackBank);
       contents.stackAlignBytes = targetModel->getCoreStackAlignment();
     }
     SmallVector<CoreSectionReservation> reservations =
