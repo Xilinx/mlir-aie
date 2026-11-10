@@ -16,6 +16,8 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
 
@@ -179,10 +181,23 @@ factorToLegal(Operation *forOp, BaseMemRefType bufType,
   return std::nullopt;
 }
 
+/// Memoized results of decomposeRecursive, keyed on the pattern's content
+/// (the remaining arguments are invariant within one decomposition).  Without
+/// it, the factoring/slicing recursion below revisits the same subpatterns
+/// exponentially often -- measured 43,281,700,161 nodes over 1,721 distinct
+/// subpatterns for one shim-DMA pattern with a non-contiguous re-read
+/// dimension, so aiecc never terminated on such a design.
+using DecompMemo = llvm::StringMap<std::optional<SmallVector<NdDmaPattern>>>;
+
 FailureOr<SmallVector<NdDmaPattern>>
 decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
                    const AIE::AIETargetModel &tm, int col, int row,
-                   const NdDmaPattern &pattern) {
+                   const NdDmaPattern &pattern, DecompMemo *memo = nullptr);
+
+FailureOr<SmallVector<NdDmaPattern>>
+decomposeRecursiveUncached(Operation *forOp, BaseMemRefType bufType,
+                           const AIE::AIETargetModel &tm, int col, int row,
+                           const NdDmaPattern &pattern, DecompMemo &memo) {
   if (patternPassesVerification(forOp, bufType, tm, col, row, pattern))
     return SmallVector<NdDmaPattern>{pattern};
 
@@ -214,7 +229,7 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
           factorToLegal(forOp, bufType, tm, col, row, pattern, elemWidth, gran))
     return SmallVector<NdDmaPattern>{*legal};
   for (const NdDmaPattern &factored : factorings(pattern, elemWidth, gran)) {
-    auto sub = decomposeRecursive(forOp, bufType, tm, col, row, factored);
+    auto sub = decomposeRecursive(forOp, bufType, tm, col, row, factored, &memo);
     if (succeeded(sub))
       return sub;
   }
@@ -269,7 +284,8 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
           slice.strides[d] = stride; // keep the singleton granule-aligned
         }
 
-        auto sub = decomposeRecursive(forOp, bufType, tm, col, row, slice);
+        auto sub =
+            decomposeRecursive(forOp, bufType, tm, col, row, slice, &memo);
         // failed() above already guards this deref; the checker just doesn't
         // associate FailureOr's failed()/succeeded() with its optional base.
         if (failed(sub))
@@ -285,6 +301,34 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   }
 
   return failure();
+}
+
+FailureOr<SmallVector<NdDmaPattern>>
+decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
+                   const AIE::AIETargetModel &tm, int col, int row,
+                   const NdDmaPattern &pattern, DecompMemo *memo) {
+  DecompMemo local;
+  DecompMemo &M = memo ? *memo : local;
+  std::string key;
+  {
+    llvm::raw_string_ostream os(key);
+    for (unsigned i = 0; i < kNdDmaDims; ++i)
+      os << pattern.sizes[i] << ',' << pattern.strides[i] << ','
+         << pattern.offsets[i] << ';';
+    os << pattern.baseOffset;
+  }
+  auto it = M.find(key);
+  if (it != M.end()) {
+    if (it->second)
+      return SmallVector<NdDmaPattern>(*it->second);
+    return failure();
+  }
+  FailureOr<SmallVector<NdDmaPattern>> result =
+      decomposeRecursiveUncached(forOp, bufType, tm, col, row, pattern, M);
+  M[key] = succeeded(result)
+                   ? std::optional<SmallVector<NdDmaPattern>>(*result)
+                   : std::nullopt;
+  return result;
 }
 
 // The kNdDmaDims-dimension patterns a longer pattern reduces to, in order (see
