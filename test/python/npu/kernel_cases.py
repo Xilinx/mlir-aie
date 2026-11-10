@@ -2176,6 +2176,20 @@ CASES: list[Case] = [
         calls=8,
         scalars=(7, 240, 40, 11, 1),
     ),
+    # One input-channel block: AIE2's reduction loop runs zero times, aligned
+    # rows (28) and not (7). AIE2P does not build eight channels.
+    *[
+        check(
+            name,
+            dict(input_width=w, input_channels=8, output_channels=64),
+            calls=8,
+            scalars=(w, 8, 64, *tail),
+            devices=("npu1",),
+            tag="one-ic-block",
+        )
+        for name, tail in (("bn_conv2dk1_relu", (6,)), ("bn_conv2dk1_skip", (6, 1)))
+        for w in (28, 7)
+    ],
     Case(
         "bn_conv2dk1_skip",
         dict(
