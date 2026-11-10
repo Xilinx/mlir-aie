@@ -666,6 +666,11 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     if (!packetOp)
       continue;
 
+    // The C API and Python callers can pass ops that were never verified,
+    // and the encoding below relies on the verifier's checks.
+    if (failed(packetOp.verify()))
+      return failure();
+
     uint32_t before =
         static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
 
@@ -707,7 +712,7 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // `beats` gets two bits, directly above the address, so an oversized
-    // payload corrupts the address instead of truncating. The op verifier
+    // payload corrupts the address instead of truncating. The verifier
     // rejects empty payloads and long reads; a long write is legal until
     // --aie-legalize-control-packet splits it, so it is caught here.
     if (size > AIEX::NpuControlPacketOp::getMaxDataWords())
