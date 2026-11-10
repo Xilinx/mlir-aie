@@ -205,3 +205,28 @@ def test_control_packets_reject_runtime_call():
     child_config._trace_size = 8192
     with pytest.raises(ValueError, match="Runtime.call"):
         Program.compose([main, child_config], entry=entry).resolve_program()
+
+
+def test_responses_follow_both_trace_channels():
+    host_ty = np.ndarray[(16,), np.dtype[np.int32]]
+    mlir = emit_with_ctrl_pkts([host_ty], lambda host: None)
+    # The first two trace_size bytes hold the trace, the responses come after
+    assert "buffer_offset = 16384" in mlir
+
+
+def test_host_splits_the_buffer_after_the_trace_region():
+    trace_size = 64
+    buffer = np.zeros(trace_size * 4, dtype=np.uint8)
+    buffer[:trace_size] = 1  # first channel
+    buffer[trace_size : trace_size * 2] = 2  # second channel
+    buffer[trace_size * 2 : trace_size * 2 + 4] = 3  # first response word
+
+    class Arg:
+        def numpy(self):
+            return buffer
+
+    config = TraceConfig(trace_size=trace_size, enable_ctrl_pkts=True)
+    trace, ctrl = HostRuntime.extract_trace_from_args([Arg()], config)
+    assert trace.view(np.uint8).tolist() == [1] * trace_size
+    assert ctrl.size == trace_size * 2
+    assert ctrl[:4].tolist() == [3] * 4

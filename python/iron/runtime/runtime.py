@@ -759,7 +759,8 @@ class Runtime(Declared, DeviceResources, Resolvable):
                     ctrl_pkt_shim,
                     ctrl_ddr_id=ctrl_ddr_id,
                     trace_ddr_id=ctrl_ddr_id + 1,
-                    output_offset=trace_size,
+                    output_offset=trace_size
+                    * trace_utils.utils.CTRL_PKT_TRACE_REGION_FACTOR,
                     host_buffer_bytes=trace_size
                     * trace_utils.utils.CTRL_PKT_BUFFER_FACTOR,
                 )
