@@ -1271,6 +1271,46 @@
     "full": 1.0
    },
    "iters": 20
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "42769816319",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42769816319",
+   "date": "2026-11-10T06:38:01+00:00",
+   "commit": {
+    "id": "cbfc9921dab673d58409a542c08d14c30042b683",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/cbfc9921dab673d58409a542c08d14c30042b683",
+    "message": "[AIEX] Verify buffer-relative runtime write bounds [MED] (#3766)",
+    "timestamp": "2026-11-09T17:06:02Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "cbfc9921da",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "dispatch": "dynamic"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 395,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "efforts": {
+    "default": 0.05,
+    "full": 1.0
+   },
+   "iters": 20
   }
  ]
 }

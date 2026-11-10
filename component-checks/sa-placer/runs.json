@@ -948,6 +948,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "42769816319",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42769816319",
+   "date": "2026-11-10T06:38:01+00:00",
+   "commit": {
+    "id": "cbfc9921dab673d58409a542c08d14c30042b683",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/cbfc9921dab673d58409a542c08d14c30042b683",
+    "message": "[AIEX] Verify buffer-relative runtime write bounds [MED] (#3766)",
+    "timestamp": "2026-11-09T17:06:02Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "Intel(R) Xeon(R) 6973P-C",
+   "device_raw": null,
+   "provenance": {
+    "commit": "cbfc9921da",
+    "fixtures": "9b6b41d42657",
+    "cpu": "Intel(R) Xeon(R) 6973P-C"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
