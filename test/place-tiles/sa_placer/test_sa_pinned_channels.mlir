@@ -81,3 +81,32 @@ module @shared_core_receive {
     }
   }
 }
+
+// -----
+
+// The same three sending ends on a physical core: it takes the one channel
+// too, with no over-capacity warning.
+// CHECK-LABEL: module @shared_physical_core_send
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__prod__dma{{.*}}channelIndex = 0{{.*}}release_strategy = #aie.release_strategy<push_queue>
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__prod__dma{{.*}}channelIndex = 0{{.*}}release_strategy = #aie.release_strategy<push_queue>
+// CHECK-DAG: aie.objectfifo.dma_endpoint @c__prod__dma{{.*}}channelIndex = 0{{.*}}release_strategy = #aie.release_strategy<push_queue>
+module @shared_physical_core_send {
+  aie.device(npu2) {
+    %core_tile = aie.tile(0, 2)
+    %s0 = aie.logical_tile<ShimNOCTile>(0, 0)
+    %s1 = aie.logical_tile<ShimNOCTile>(1, 0)
+    %s2 = aie.logical_tile<ShimNOCTile>(2, 0)
+    aie.objectfifo @a(%core_tile, {%s0}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%core_tile, {%s1}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%core_tile, {%s2}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%core_tile) {
+      %a = aie.objectfifo.acquire @a(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @a(Produce, 1)
+      %b = aie.objectfifo.acquire @b(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @b(Produce, 1)
+      %c = aie.objectfifo.acquire @c(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @c(Produce, 1)
+      aie.end
+    }
+  }
+}

@@ -1496,7 +1496,7 @@ std::optional<unsigned>
 Placer::PinnedChannels::share(ObjectFifoCreateOp fifo,
                               std::optional<unsigned> consumer) {
   bool sends = !consumer;
-  auto tile = dyn_cast_or_null<LogicalTileOp>(
+  auto tile = dyn_cast_or_null<TileLike>(
       (sends ? fifo.getProducerTile() : fifo.getConsumerTiles()[*consumer])
           .getDefiningOp());
   ObjectFifoEndPortAttr port =
@@ -1511,8 +1511,8 @@ Placer::PinnedChannels::share(ObjectFifoCreateOp fifo,
                    targetModel->getDmaTaskQueueDepth() == 0)
             : channel < 0)
     return std::nullopt;
-  auto col = tile.getCol();
-  auto row = tile.getRow();
+  std::optional<int> col = tile.tryGetCol();
+  std::optional<int> row = tile.tryGetRow();
   auto key = col && row ? std::make_tuple(static_cast<Operation *>(nullptr),
                                           static_cast<int>(*col),
                                           static_cast<int>(*row), channel,

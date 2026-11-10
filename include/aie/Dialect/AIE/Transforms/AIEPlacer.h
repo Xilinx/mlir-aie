@@ -229,9 +229,9 @@ public:
   // The objectFIFO ends that pin one DMA channel of one tile share it, as
   // objectFIFO allocation lets them: sending ends off a shim or off a core
   // that pushes its tasks, told apart by packet id, and receiving ends that
-  // take objects out of order. Fully pinned logical tiles at the same
-  // coordinates are one tile; otherwise only the very same logical tile is,
-  // since that identity places them together.
+  // take objects out of order. Tiles at the same coordinates, physical or
+  // fully pinned logical, are one tile; otherwise only the very same logical
+  // tile is, since that identity places them together.
   class PinnedChannels {
   public:
     explicit PinnedChannels(const AIETargetModel &targetModel)

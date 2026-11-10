@@ -2206,17 +2206,19 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
       return like && like.getTileType() == AIETileType::MemTile;
     };
     auto drawsChannel = [&](Operation *tile, bool planned) {
-      AIETileType type = tileTypes.lookup(tile);
-      return tile && (type == AIETileType::ShimNOCTile ||
-                              type == AIETileType::ShimPLTile
-                          ? !ofOp.getPlio()
-                          : planned);
+      auto like = dyn_cast_or_null<TileLike>(tile);
+      if (!like)
+        return false;
+      AIETileType type = like.getTileType();
+      return type == AIETileType::ShimNOCTile || type == AIETileType::ShimPLTile
+                 ? !ofOp.getPlio()
+                 : planned;
     };
-    if (drawsChannel(fb.producer, fb.producerEnd.has_value()))
+    if (drawsChannel(fb.producerTile, fb.producerEnd.has_value()))
       fb.producerChannel = pinned.share(ofOp, std::nullopt);
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
       fb.consumerChannels.push_back(
-          drawsChannel(fb.consumers[ci], fb.consumerEnds[ci].has_value())
+          drawsChannel(fb.consumerTiles[ci], fb.consumerEnds[ci].has_value())
               ? pinned.share(ofOp, ci)
               : std::nullopt);
     if (fb.producerEnd && onMemTile(fb.producerTile))
