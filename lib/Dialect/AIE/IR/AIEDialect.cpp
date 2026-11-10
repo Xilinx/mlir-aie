@@ -2210,8 +2210,10 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     auto consumer =
         dyn_cast<TileOp>(objFifo.getConsumerTiles()[0].getDefiningOp());
     auto delegate = dyn_cast<TileOp>(getDelegateTile().getDefiningOp());
+    // A link without a link point is the link verifier's to report.
+    std::optional<Value> linkPoint = link.getOptionalSharedTile();
     auto linkTile =
-        dyn_cast<TileOp>(link.getOptionalSharedTile()->getDefiningOp());
+        linkPoint ? dyn_cast<TileOp>(linkPoint->getDefiningOp()) : TileOp();
     bool shared = producer && consumer && delegate && linkTile &&
                   ObjectFifoCreateOp::allocatedHome(
                       (*this)->getParentOfType<DeviceOp>().getTargetModel(),
