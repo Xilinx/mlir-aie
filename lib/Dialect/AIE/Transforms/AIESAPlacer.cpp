@@ -513,18 +513,31 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     if (!isSharedMem) {
       bool plio = cast<ObjectFifoCreateOp>(fb.fifoOp).getPlio();
       if (consIsShim ? !plio : fb.consumerEnds[ci].has_value())
-        currentDMAUsage[consPos].first += sign;
+        drawChannel(consPos, false, fb.consumerChannels[ci], sign);
       prodNeedsDMA = prodIsShim ? !plio : fb.producerEnd.has_value();
     }
   }
 
   if (prodNeedsDMA)
-    currentDMAUsage[prodPos].second += sign;
+    drawChannel(prodPos, true, fb.producerChannel, sign);
+}
+
+void SAPlacer::drawChannel(TileID position, bool output,
+                           std::optional<unsigned> pinned, int sign) {
+  if (pinned) {
+    int &users = pinnedChannelUsers[*pinned];
+    users += sign;
+    if (users != (sign > 0 ? 1 : 0))
+      return;
+  }
+  auto &[in, out] = currentDMAUsage[position];
+  (output ? out : in) += sign;
 }
 
 void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentDMAUsage.clear();
+  pinnedChannelUsers.clear();
   sharedMemDestination.clear();
 
   auto typeOf = [&](Operation *tile) -> std::optional<AIETileType> {
@@ -1668,6 +1681,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
   mlir::DataLayout dataLayout(device->getParentOfType<ModuleOp>());
 
   memTileEnds.clear();
+  PinnedChannels pinned(*targetModel);
   llvm::StringMap<Operation *> delegates;
   for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
     delegates[alloc.getObjFifoName()] = alloc.getDelegateTile().getDefiningOp();
@@ -1729,6 +1743,20 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     auto onMemTile = [&](Operation *tile) {
       return tile && tileTypes.lookup(tile) == AIETileType::MemTile;
     };
+    auto drawsChannel = [&](Operation *tile, bool planned) {
+      AIETileType type = tileTypes.lookup(tile);
+      return tile && (type == AIETileType::ShimNOCTile ||
+                              type == AIETileType::ShimPLTile
+                          ? !ofOp.getPlio()
+                          : planned);
+    };
+    if (drawsChannel(fb.producer, fb.producerEnd.has_value()))
+      fb.producerChannel = pinned.share(ofOp, std::nullopt);
+    for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
+      fb.consumerChannels.push_back(
+          drawsChannel(fb.consumers[ci], fb.consumerEnds[ci].has_value())
+              ? pinned.share(ofOp, ci)
+              : std::nullopt);
     if (fb.producerEnd && onMemTile(fb.producer))
       memTileEnds[fb.producer].push_back(
           {DMAChannelDir::MM2S, *fb.producerEnd});
@@ -2022,6 +2050,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       oldDelegate = delegatePenalty, oldDMA = dmaPenalty;
   auto savedMemUsage = currentMemUsage;
   auto savedDMAUsage = currentDMAUsage;
+  auto savedPinnedUsers = pinnedChannelUsers;
   auto savedSharedMemDest = sharedMemDestination;
 
   // Apply moves: update placement maps and compute HPWL delta.
@@ -2094,6 +2123,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       physToLogical[oldPos] = op;
     currentMemUsage = savedMemUsage;
     currentDMAUsage = savedDMAUsage;
+    pinnedChannelUsers = savedPinnedUsers;
     sharedMemDestination = savedSharedMemDest;
     cachedResourcePenalty = oldResPenalty;
     memSpilloverPenalty = oldMemSpillover;

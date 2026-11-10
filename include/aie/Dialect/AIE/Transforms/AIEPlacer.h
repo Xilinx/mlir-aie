@@ -210,6 +210,30 @@ public:
   collectShareableShimEnds(DeviceOp device,
                            llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
+  // The objectFIFO ends that pin one DMA channel of one tile share it, as
+  // objectFIFO allocation lets them: sending ends off a shim or off a core
+  // that pushes its tasks, told apart by packet id, and receiving ends that
+  // take objects out of order. Fully pinned logical tiles at the same
+  // coordinates are one tile; otherwise only the very same logical tile is,
+  // since that identity places them together.
+  class PinnedChannels {
+  public:
+    explicit PinnedChannels(const AIETargetModel &targetModel)
+        : targetModel(&targetModel) {}
+    // The channel the end of `fifo` (its producer's when `consumer` is empty)
+    // shares with the ends that took it before, numbered by the first; none
+    // when it pins no channel it may share. An end that pins a taken channel
+    // but cannot share it is diagnosed.
+    std::optional<unsigned> share(ObjectFifoCreateOp fifo,
+                                  std::optional<unsigned> consumer);
+
+  private:
+    const AIETargetModel *targetModel;
+    llvm::DenseMap<std::tuple<mlir::Operation *, int, int, int, int>,
+                   std::pair<ObjectFifoCreateOp, unsigned>>
+        taken;
+  };
+
   // The objectFIFO end a runtime sequence names `symbol` for, before split:
   // the fifo itself, sending when its producer is a shim tile.
   static std::optional<ShimTransferSpans::End>
@@ -867,6 +891,9 @@ private:
     // ObjectFifoCreateOp::plannedDmaEnd of each end.
     std::optional<PlannedDmaEnd> producerEnd;
     llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerEnds;
+    // PinnedChannels::share of each end that draws a channel.
+    std::optional<unsigned> producerChannel;
+    llvm::SmallVector<std::optional<unsigned>> consumerChannels;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
     bool linked = false;
@@ -911,6 +938,9 @@ private:
       tileToFifoIndices;
   llvm::DenseMap<TileID, int64_t> currentMemUsage;
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
+  // The ends drawing each shared pinned channel, which counts in
+  // currentDMAUsage while any does.
+  llvm::DenseMap<unsigned, int> pinnedChannelUsers;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
   // The resource terms that read only some tiles' positions, kept so a move
@@ -981,6 +1011,8 @@ private:
   void initResourceTracking();
   void addFifoContribution(size_t fifoIdx, int sign);
   void addRouteEndContribution(size_t endIdx, int sign);
+  void drawChannel(TileID position, bool output, std::optional<unsigned> pinned,
+                   int sign);
   int updateResourcePenalty(
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);

@@ -14,6 +14,7 @@
 // the third has nowhere to go.
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles %s | FileCheck %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1' %s | FileCheck %s
 
 // CHECK-LABEL: @shared_shim_channel
 // CHECK:       %[[S:.*]] = aie.tile(0, 0)
