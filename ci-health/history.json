@@ -1526,7 +1526,7 @@
     "merged": 65,
     "hours_median": 26.0,
     "hours_p90": 1440.2,
-    "open": 44
+    "open": 43
    },
    "critical": {
     "buildAndTestRyzenAI.yml": {
@@ -1546,14 +1546,14 @@
     "buildAndTestMulti.yml": {
      "main": 1.0,
      "pull_requests": 0.685,
-     "flaky": 0.123,
+     "flaky": 0.122,
      "minutes_median": 27.1,
      "queued_median": 0.2
     },
     "buildAndTestPythons.yml": {
      "main": 1.0,
      "pull_requests": 0.701,
-     "flaky": 0.125,
+     "flaky": 0.124,
      "minutes_median": 23.2,
      "queued_median": 0.3
     },
