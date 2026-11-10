@@ -866,7 +866,7 @@ private:
     // The tile of the link naming the fifo, if any.
     mlir::Operation *linkTile = nullptr;
     // With an aie.objectfifo.allocate, ObjectFifoCreateOp's
-    // allocateFallsBackToDMA() and fitsLinkPool().
+    // allocateFallsBackToDMA() and whether linkPoolMisfit() is None.
     bool allocateFallsBackToDMA = false;
     bool fitsLinkPool = true;
     bool linkSharedProd = false;

@@ -1808,7 +1808,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
       fb.linkTile = link->getOptionalSharedTile()->getDefiningOp();
     if (fb.delegate) {
       fb.allocateFallsBackToDMA = ofOp.allocateFallsBackToDMA();
-      fb.fitsLinkPool = ofOp.fitsLinkPool();
+      fb.fitsLinkPool = ofOp.linkPoolMisfit() == LinkPoolMisfit::None;
     }
     // A link output's producer objects are the link input's consumer pool.
     fb.linkSharedProd =
@@ -1820,16 +1820,6 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
   // builds it once; the first end holds it. A merge's or dispatch's later
   // participants plan no DMA end of their own, so the pool's plan is the
   // first end's that names it.
-  auto linkOf = [&](ObjectFifoCreateOp fifo,
-                    std::optional<unsigned> consumer) -> ObjectFifoLinkOp {
-    if (consumer)
-      return fifo.getConsumerLink(*consumer);
-    for (ObjectFifoLinkOp link : device.getOps<ObjectFifoLinkOp>())
-      if (link.getOptionalSharedTile() == fifo.getProducerTile() &&
-          llvm::is_contained(link.getOutputObjectFifos(), fifo))
-        return link;
-    return {};
-  };
   DenseMap<Operation *, PlannedDmaEnd> linkPlans;
   for (FifoBufferInfo &fb : fifoBuffers)
     for (const std::optional<PlannedDmaEnd> &end :
@@ -1843,7 +1833,8 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     auto linkPoolOf = [&](std::optional<unsigned> consumer)
         -> std::pair<FifoBufferInfo::LinkPool, std::optional<PlannedDmaEnd>> {
       using LinkPool = FifoBufferInfo::LinkPool;
-      ObjectFifoLinkOp link = linkOf(fifo, consumer);
+      ObjectFifoLinkOp link =
+          consumer ? fifo.getConsumerLink(*consumer) : fifo.getProducerLink();
       auto plan = link ? linkPlans.find(link) : linkPlans.end();
       if (plan == linkPlans.end())
         return {LinkPool::None, std::nullopt};

@@ -96,3 +96,35 @@ module @link_tile_east {
     }
   }
 }
+
+// -----
+
+// A merge's input cannot share the merge's pool, but one whose ends do not
+// reach its delegate moves by DMA, so its allocate stands.
+
+// CHECK-LABEL: module @merge_far
+// CHECK:     %[[A:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.buffer(%[[A]]) {{.*}}sym_name = "in0__buf0"} : memref<1024xi32>
+module @merge_far {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %l = aie.tile(0, 5)
+    aie.objectfifo @in0(%a, {%l}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @in1(%b, {%l}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @out(%l, {%s}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo.link [@in0, @in1] -> [@out] ([] []) {mode = #aie.link_mode<time>}
+    aie.objectfifo.allocate @in0 (%l)
+    aie.core(%a) {
+      %0 = aie.objectfifo.acquire @in0(Produce, 1) : memref<1024xi32>
+      aie.objectfifo.release @in0(Produce, 1)
+      aie.end
+    }
+    aie.core(%b) {
+      %0 = aie.objectfifo.acquire @in1(Produce, 1) : memref<1024xi32>
+      aie.objectfifo.release @in1(Produce, 1)
+      aie.end
+    }
+  }
+}

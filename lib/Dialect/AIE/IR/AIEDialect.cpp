@@ -1966,12 +1966,23 @@ bool ObjectFifoCreateOp::allocateFallsBackToDMA() {
   return getLink().has_value();
 }
 
-bool ObjectFifoCreateOp::fitsLinkPool() {
-  std::optional<ObjectFifoLinkOp> link = getLink();
-  if (!link || !link->getOptionalSharedTile())
-    return true;
-  ObjectFifoCreateOp owner = link->getPoolOwner();
-  return owner == *this || owner.getElemType() == getElemType();
+LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
+  ObjectFifoLinkOp producerLink = getProducerLink();
+  ObjectFifoLinkOp consumerLink =
+      getConsumerTiles().empty() ? ObjectFifoLinkOp() : getConsumerLink(0);
+  if (producerLink && consumerLink)
+    return LinkPoolMisfit::BetweenLinks;
+  if (consumerLink && consumerLink.isMerge())
+    return LinkPoolMisfit::MergeInput;
+  if (producerLink && producerLink.isDispatch())
+    return LinkPoolMisfit::DispatchOutput;
+  ObjectFifoLinkOp link = producerLink ? producerLink : consumerLink;
+  if (!link)
+    return LinkPoolMisfit::None;
+  ObjectFifoCreateOp owner = link.getPoolOwner();
+  return owner == *this || owner.getElemType() == getElemType()
+             ? LinkPoolMisfit::None
+             : LinkPoolMisfit::ObjectType;
 }
 
 std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
@@ -2039,6 +2050,15 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
   return maxAcquire + 1;
 }
 
+ObjectFifoLinkOp ObjectFifoCreateOp::getProducerLink() {
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (link.getOptionalSharedTile() == getProducerTile() &&
+        llvm::is_contained(link.getOutputObjectFifos(), *this))
+      return link;
+  return {};
+}
+
 ObjectFifoLinkOp ObjectFifoCreateOp::getConsumerLink(unsigned consumer) {
   auto consumers = getConsumerTiles();
   Value tile = consumers[consumer];
@@ -2065,15 +2085,8 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
     return tileLike.isMemTile() && depth > 1 && depth <= maxLock;
   };
 
-  ObjectFifoLinkOp link;
-  if (drains) {
-    for (ObjectFifoLinkOp candidate : device.getOps<ObjectFifoLinkOp>())
-      if (candidate.getOptionalSharedTile() == tile &&
-          llvm::is_contained(candidate.getOutputObjectFifos(), *this))
-        link = candidate;
-  } else {
-    link = getConsumerLink(*consumer);
-  }
+  ObjectFifoLinkOp link =
+      drains ? getProducerLink() : getConsumerLink(*consumer);
   DataLayout layout = DataLayout::closest(*this);
   auto objectBytes = [&](Type fifoType) -> int64_t {
     MemRefType type = cast<AIEObjectFifoType>(fifoType).getElementType();
@@ -2188,7 +2201,8 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   // A linked fifo that shares memory keeps its objects in the link's one
   // pool, which a core fills or drains one pool object per acquire. Whether
   // it shares depends on where its tiles are placed.
-  if (!objFifo.fitsLinkPool()) {
+  if (LinkPoolMisfit misfit = objFifo.linkPoolMisfit();
+      misfit != LinkPoolMisfit::None) {
     ObjectFifoLinkOp link = *objFifo.getLink();
     auto producer = dyn_cast<TileOp>(objFifo.getProducerTile().getDefiningOp());
     auto consumer =
@@ -2196,22 +2210,47 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     auto delegate = dyn_cast<TileOp>(getDelegateTile().getDefiningOp());
     auto linkTile =
         dyn_cast<TileOp>(link.getOptionalSharedTile()->getDefiningOp());
-    ObjectFifoCreateOp owner = link.getPoolOwner();
-    if (producer && consumer && delegate && linkTile &&
-        ObjectFifoCreateOp::allocatedHome(
-            (*this)->getParentOfType<DeviceOp>().getTargetModel(),
-            producer.getTileID(), consumer.getTileID(), delegate.getTileID(),
-            linkTile.getTileID()))
-      return emitOpError("places @")
-             << objFifo.name().getValue()
-             << "'s objects in the link's pool, whose objects are @"
-             << owner.name().getValue() << "'s "
+    bool shared = producer && consumer && delegate && linkTile &&
+                  ObjectFifoCreateOp::allocatedHome(
+                      (*this)->getParentOfType<DeviceOp>().getTargetModel(),
+                      producer.getTileID(), consumer.getTileID(),
+                      delegate.getTileID(), linkTile.getTileID());
+    StringRef name = objFifo.name().getValue();
+    if (shared) {
+      InFlightDiagnostic diag = emitOpError("places @")
+                                << name << "'s objects in the link's pool";
+      switch (misfit) {
+      case LinkPoolMisfit::ObjectType: {
+        ObjectFifoCreateOp owner = link.getPoolOwner();
+        diag << ", whose objects are @" << owner.name().getValue() << "'s "
              << cast<AIEObjectFifoType>(owner.getElemType()).getElementType()
              << "; a fifo that shares memory with a link must have the pool's "
                 "object type (@"
-             << objFifo.name().getValue() << "'s is "
+             << name << "'s is "
              << cast<AIEObjectFifoType>(objFifo.getElemType()).getElementType()
              << ")";
+        break;
+      }
+      case LinkPoolMisfit::MergeInput:
+        diag << ", but @" << name
+             << " is a merge's input, and a merge's inputs take turns filling "
+                "the pool through one DMA end";
+        break;
+      case LinkPoolMisfit::DispatchOutput:
+        diag << ", but @" << name
+             << " is a dispatch's output, and a dispatch's outputs take turns "
+                "draining the pool through one DMA end";
+        break;
+      case LinkPoolMisfit::BetweenLinks:
+        diag << ", but @" << name
+             << " is one link's output and another link's input, so its "
+                "objects would be both links' pools";
+        break;
+      case LinkPoolMisfit::None:
+        break;
+      }
+      return diag;
+    }
   }
   for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
     if (auto other = dyn_cast<ObjectFifoAllocateOp>(op);

@@ -429,6 +429,20 @@ struct PlannedDmaEnd {
   int64_t contiguousObjects;
 };
 
+// Why a fifo's objects cannot be its link's pool's objects
+// (ObjectFifoCreateOp::linkPoolMisfit).
+enum class LinkPoolMisfit {
+  None,
+  // The pool's owner has another object type.
+  ObjectType,
+  // A merge's inputs take turns filling the pool through one DMA end.
+  MergeInput,
+  // A dispatch's outputs take turns draining the pool through one DMA end.
+  DispatchOutput,
+  // The fifo is one link's output and another's input.
+  BetweenLinks,
+};
+
 // One output of a StreamWindow: the first object it reads, counting the `top`
 // zero objects, and the lock units it takes before and gives back after.
 struct StreamWindowStep {

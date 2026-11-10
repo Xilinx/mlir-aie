@@ -2636,9 +2636,11 @@ def AIE_ObjectFifoCreateOp
     /// aie.objectfifo.allocate, when allocatedHome finds no home: a link's
     /// participant that does not own the link's pool.
     bool allocateFallsBackToDMA();
-    /// Whether the fifo's objects can be its link's pool's: it owns the pool
-    /// or has the owner's object type. Always true for an unlinked fifo.
-    bool fitsLinkPool();
+    /// Why the fifo's objects cannot be its link's pool's, should it share
+    /// memory with the link: None for an unlinked fifo, the pool's owner, or
+    /// a fifo of the owner's object type that its link's DMA ends do not
+    /// share with other fifos.
+    LinkPoolMisfit linkPoolMisfit();
 
     /// Why the fifo moves by DMA wherever its ends are placed; nothing when
     /// shared memory may carry it, which sharedMemoryOf then decides.
@@ -2666,6 +2668,8 @@ def AIE_ObjectFifoCreateOp
     /// The link reading consumer `consumer`'s end, if any: each link on a tile
     /// takes the next of the fifo's consumer ends there, in order.
     ObjectFifoLinkOp getConsumerLink(unsigned consumer);
+    /// The link on the producer's tile writing the fifo, if any.
+    ObjectFifoLinkOp getProducerLink();
     /// Whether the two DMA ends the split gives the fifo, one circuit apart,
     /// may each take turns with other ends on one channel: as
     /// aie-objectfifo-allocate requires of both, neither is pinned to a
