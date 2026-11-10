@@ -6325,6 +6325,13 @@ LogicalResult LockOp::verify() {
              << numLocks - 1 << ")";
   }
 
+  if (std::optional<int32_t> init = getInit()) {
+    int64_t max = getTargetModel(*this).getMaxLockValue();
+    if (*init < 0 || *init > max)
+      return emitOpError("init value ")
+             << *init << " is outside the lock's range [0, " << max << "]";
+  }
+
   return success();
 }
 

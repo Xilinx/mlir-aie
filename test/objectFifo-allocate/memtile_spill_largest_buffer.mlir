@@ -3,10 +3,10 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Buffers are placed largest buffer first. @whole's small objects make one
-// 300032-byte buffer that only fits at home before @big's objects take the
-// room; placed by object size, it comes last, and the spill search runs out
-// of retries over @small's choices before it revisits @big's.
+// Buffers are placed largest buffer first. @whole's objects, the smallest
+// here, make one 300032-byte buffer that only fits at home before @big's
+// objects take the room; placed by object size, it comes last, and the spill
+// search runs out of retries over @small's choices before it revisits @big's.
 // CHECK-LABEL: module @contiguous_first
 // CHECK-DAG: %[[M0:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[M1:.*]] = aie.tile(1, 1)
@@ -22,11 +22,11 @@ module @contiguous_first {
     aie.objectfifo.pool @big(%m0) {depth = 2 : i32} : memref<100032xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 100032 : i32}
     }
-    aie.objectfifo.pool @small(%m0) {depth = 9 : i32} : memref<1024xi8> {
-      aie.objectfifo.segment @s {offset = 0 : i32, size = 1024 : i32}
+    aie.objectfifo.pool @small(%m0) {depth = 9 : i32} : memref<10240xi8> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 10240 : i32}
     }
-    aie.objectfifo.pool @whole(%m0) {contiguous, depth = 586 : i32} : memref<512xi8> {
-      aie.objectfifo.segment @s {offset = 0 : i32, size = 512 : i32}
+    aie.objectfifo.pool @whole(%m0) {contiguous, depth = 32 : i32} : memref<9376xi8> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 9376 : i32}
     }
     aie.objectfifo.dma_endpoint @big_dma(%m0) fills @big
     aie.objectfifo.dma_endpoint @small_dma(%m0) fills @small
