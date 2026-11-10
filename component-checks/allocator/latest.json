@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "42556070302",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42556070302",
- "date": "2026-11-09T03:22:43+00:00",
+ "id": "42748831939",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42748831939",
+ "date": "2026-11-10T03:20:48+00:00",
  "commit": {
-  "id": "e5a3fa14879d2049295e2baff02fcc6a82697e73",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/e5a3fa14879d2049295e2baff02fcc6a82697e73",
-  "message": "Export AIE2P emulation helpers, q4nx unpacking and FLM Gemma 4 constants (#3865)",
-  "timestamp": "2026-11-07T18:46:36Z"
+  "id": "cbfc9921dab673d58409a542c08d14c30042b683",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/cbfc9921dab673d58409a542c08d14c30042b683",
+  "message": "[AIEX] Verify buffer-relative runtime write bounds [MED] (#3766)",
+  "timestamp": "2026-11-09T17:06:02Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V74 80-Core Processor",
+ "device": "AMD EPYC 7763 64-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "e5a3fa1487",
-  "cpu": "AMD EPYC 9V74 80-Core Processor"
+  "commit": "cbfc9921da",
+  "cpu": "AMD EPYC 7763 64-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 215.8,
+    "value": 177.7,
     "unit": "s"
    }
   }

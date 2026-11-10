@@ -678,6 +678,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "42748831939",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42748831939",
+   "date": "2026-11-10T03:20:48+00:00",
+   "commit": {
+    "id": "cbfc9921dab673d58409a542c08d14c30042b683",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/cbfc9921dab673d58409a542c08d14c30042b683",
+    "message": "[AIEX] Verify buffer-relative runtime write bounds [MED] (#3766)",
+    "timestamp": "2026-11-09T17:06:02Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "cbfc9921da",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
