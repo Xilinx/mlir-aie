@@ -37,6 +37,40 @@ module @input_owner {
 
 // -----
 
+// in0's producer end is four objects deep, all initial, and its link tile end
+// two. Without the allocate, A's pool holds the four and the link tile's two
+// start empty. Shared, the one pool serves both ends, so it takes the deeper
+// end's depth (sharedDepth(), as for an unlinked fifo) and starts with all four.
+// Before, the pool took the link tile's two and failed on "more 'init_values'
+// than 'depth' objects".
+
+// CHECK-LABEL: module @input_owner_deeper_producer
+// CHECK:     %[[L:.*]] = aie.tile(0, 3)
+// CHECK-DAG: aie.buffer(%[[L]]) {{.*}}sym_name = "in0__cons__buf0"} : memref<16xi32> = dense<5>
+// CHECK-DAG: aie.buffer(%[[L]]) {{.*}}sym_name = "in0__cons__buf1"} : memref<16xi32> = dense<6>
+// CHECK-DAG: aie.buffer(%[[L]]) {{.*}}sym_name = "in0__cons__buf2"} : memref<16xi32> = dense<7>
+// CHECK-DAG: aie.buffer(%[[L]]) {{.*}}sym_name = "in0__cons__buf3"} : memref<16xi32> = dense<8>
+// CHECK-DAG: aie.lock(%[[L]]) {init = 0 : i32, sym_name = "in0__cons__prodlock0"}
+// CHECK-DAG: aie.lock(%[[L]]) {init = 4 : i32, sym_name = "in0__cons__conslock0"}
+module @input_owner_deeper_producer {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %l = aie.tile(0, 3)
+    aie.objectfifo @in0(%a, {%l}, [4, 2]) : !aie.objectfifo<memref<16xi32>> = [dense<5> : memref<16xi32>, dense<6> : memref<16xi32>, dense<7> : memref<16xi32>, dense<8> : memref<16xi32>]
+    aie.objectfifo @out(%l, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@in0] -> [@out] ([] [])
+    aie.objectfifo.allocate @in0 (%l)
+    aie.core(%a) {
+      %0 = aie.objectfifo.acquire @in0(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in0(Produce, 1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
 // The output's initial values make it the pool's owner, so the pool starts
 // with them; in0's own initial objects have no place in it.
 

@@ -2677,9 +2677,15 @@ int64_t ObjectFifoLinkOp::getPoolDepth() {
   StreamWindow window;
   if (walksStream())
     return succeeded(getStreamWindow(window)) ? window.objects : 0;
+  ObjectFifoCreateOp owner = getPoolOwner();
+  // An owner with an allocate shares the pool with its other end's core (the
+  // split rejects it otherwise), so the pool serves both ends, like the one
+  // pool of an unlinked fifo whose ends share memory.
+  if (owner.getAllocate())
+    return owner.sharedDepth();
   if (std::optional<unsigned> index = getOwnerConsumerIndex())
-    return getPoolOwner().dmaDepth(index);
-  return getPoolOwner().size();
+    return owner.dmaDepth(index);
+  return owner.size();
 }
 
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
