@@ -27,8 +27,18 @@ the key first reaches that import, read once per import; a reload looks
 again. The script
 being run counts as that kind of module, under the name it is imported as.
 Code with no file behind it (a notebook cell, the REPL) is identified by its
-code and the plain constants it reads, since those can change without any
-file changing.
+code and the plain constants it reads -- through the mutable containers
+holding them as well, which are digested member by member, each object's
+content once per walk and recorded at every position it is read at -- since
+those can change without any file changing.
+
+A generator that reconfigures the state it reads (a full-ELF design appending
+each configuration it learns to a module-level list, say) would otherwise
+never find its own entry: every run moves the key.  Its mutations are told
+apart from the user's by when they happen -- ``_mask_generator_mutations``
+walks the same roots again after the generator runs and pins what moved, so
+later keys read the pinned identities, while a user's edit between compiles
+to anything the run did not touch still moves the key and rebuilds.
 
 `_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
@@ -48,6 +58,9 @@ import os
 import site
 import sys
 import sysconfig
+import threading
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from functools import cache, partial
 from pathlib import Path
 from types import CodeType, FunctionType, MethodType, ModuleType
@@ -133,6 +146,39 @@ def _code_identity(code: CodeType) -> bytes:
 
 
 _PLAIN = (int, float, complex, str, bytes, bool, type(None))
+
+# Mutable containers a generator can read compile inputs through (a
+# module-level list of kernel flags, say).
+_CONTAINER = (list, tuple, dict, set, frozenset)
+
+# Deepest nesting of containers and instances the key will walk before it
+# refuses (see ``_too_deep``).  Bounded so key time cannot grow with an
+# arbitrary object graph, and so state that mutates on every call (a memo
+# cache hanging off a reachable instance) cannot silently cost a key
+# computation each call.  32 is far past any real design input -- flags,
+# shapes and configs sit within a handful of levels -- and well inside
+# Python's own recursion limit, so an over-deep graph fails with this
+# readable error instead of a RecursionError from deep inside the walk.
+_MAX_KEY_DEPTH = 32
+
+
+def _too_deep(where: str) -> ValueError:
+    """Return the error for a key that would walk deeper than ``_MAX_KEY_DEPTH``.
+
+    Failing here is the graceful failure: the alternative to a clear error
+    is either hashing an unbounded object graph on every call (the cache
+    performance problem) or summarising it (a weaker key that can silently
+    reuse a stale entry -- the very bug this walk exists to close).  numba
+    makes the same call for oversized constants: it refuses to cache rather
+    than key what it cannot freeze; JAX rejects non-hashable static inputs
+    outright.  None of them publishes a nesting number, so the bound is
+    pragmatic, not theoretical.
+    """
+    return ValueError(
+        f"cache-key traversal exceeded the nesting bound of {_MAX_KEY_DEPTH} "
+        f"at {where}: flatten the state the generator reads (a plain "
+        f"constant, or a digest of it) instead of nesting it deeper."
+    )
 
 
 def _plain(value) -> bool:
@@ -267,58 +313,382 @@ def _import_identity(module: ModuleType) -> tuple[str, tuple[str, ...]]:
     return entry[1], entry[2]
 
 
-def _python_identity(roots) -> bytes:
+def _python_identity(
+    roots,
+    frozen: Mapping[int, str] | None = None,
+    snapshot: dict[int, str] | None = None,
+    obj_snapshot: dict[int, object] | None = None,
+) -> bytes:
     """Identify the Python ``roots`` reach: their code, helpers and modules.
 
     A generator's bytecode names a helper but does not contain it, so the key
-    follows globals, closure cells and attributes of modules. Functions and
+    follows globals, closure cells and attributes of modules read by the
+    *walked* code (the generator and fileless helpers); a file-backed helper's
+    own reads ride its file's stamp.  Functions and
     classes with no file behind them are identified by their code and the
-    plain constants they read; a module imported from a file, or the script
-    being run, by its source's stamp (see ``_import_identity``), and every
+    plain constants they read, directly or through a mutable container (a
+    list of kernel compile flags on the module, say), which is digested
+    member by member — its kind and length, the pairing of a mapping's
+    keys to its values, and which value sits at which position included;
+    a module imported from a file, or the script being
+    run, by its source's stamp (see ``_import_identity``), and every
     module its globals reach in turn. Installed third-party code is
     not followed. No design is generated to find any of it.
+
+    Each mutable object's content is digested once per walk and memoized
+    by id, and every position it is read at records that digest: a shared
+    sub-object is an input at each of its positions but is walked once, so
+    the work follows the object graph rather than the number of paths
+    through it. Digests are address-free and order-free — mapping entries
+    and set members are folded in a canonical (sorted) order — and a
+    mapping's keys are named the way values are (a plain key by its repr,
+    code or a module by its binding, a container by its digest), so the
+    same running design hashes identically in every process.
 
     An ``ExternalFunction`` it reaches is recorded by its content-based repr,
     as a ``CompileTime`` one is: the cache manifest never sees a kernel's
     compile flags.
+
+    ``frozen`` maps an object's ``id`` to the descriptor a previous walk of
+    this domain produced for it (see ``_mask_generator_mutations``): the walk
+    reads the pinned descriptor instead of the object, so a later key
+    reproduces the earlier one over the objects that pinning covers.  With
+    ``snapshot`` given, the walk fills it with the ``id`` and descriptor of
+    every container and file-backed instance it digested, pinned ones
+    included -- the two walks a mutation mask is diffed from.
     """
     # aie.iron imports this module.
     from aie.iron.kernel import ExternalFunction
 
+    frozen = dict(frozen) if frozen is not None else {}
+
     records: set[bytes] = set()
     seen: set[int] = set()
+    # Content digest per mutable object for THIS walk, keyed by id.  id() is
+    # an address, but it only decides where the one-time computation happens;
+    # the digest itself is content, so no key can move with it.  Per walk,
+    # not per process: any of this state may be mutated between keys.
+    digests: dict[int, str] = {}
+    # The descent currently being digested: a reference back up it is a
+    # cycle and contributes a marker instead of recursing.
+    active: set[int] = set()
     todo: list = []
     modules: list[ModuleType] = []
 
-    def visit(value, where: str):
+    def describe(value, where: str, depth: int) -> str:
+        """Return the position-free identity of ``value``: what it holds.
+
+        ``where`` threads the read position through for error messages and
+        key qualification only; it never enters a digest, so which path
+        happens to compute a digest first cannot move the key. Values the
+        walk does not follow — installed code, containers outside
+        ``_CONTAINER`` — all return one uniform marker, as interchangeable
+        as they were before.
+        """
         if isinstance(value, (staticmethod, classmethod)):
             value = value.__func__
         if isinstance(value, property):
-            for f in (value.fget, value.fset, value.fdel):
-                visit(f, where)
-        elif _plain(value) or isinstance(value, ExternalFunction):
-            records.add(f"{where}={value!r}".encode())
-        elif (module := _stamped_module(value)) is not None:
+            legs = ",".join(
+                "()" if leg is None else describe(leg, f"{where}.{name}", depth + 1)
+                for leg, name in (
+                    (value.fget, "fget"),
+                    (value.fset, "fset"),
+                    (value.fdel, "fdel"),
+                )
+            )
+            return f"<property:{legs}>"
+        if _plain(value) or isinstance(value, ExternalFunction):
+            return repr(value)
+        if isinstance(value, _CONTAINER):
+            if id(value) in frozen:
+                # Pinned by a run of the generator (see
+                # _mask_generator_mutations): the identity the key already
+                # holds for this object, not what it holds now.  Pinned
+                # subtrees are not walked, so they cost neither time nor a
+                # turn against the nesting bound.
+                if snapshot is not None:
+                    snapshot[id(value)] = frozen[id(value)]
+                    if obj_snapshot is not None:
+                        obj_snapshot[id(value)] = value
+                return frozen[id(value)]
+            d = digests.get(id(value))
+            if d is None:
+                if id(value) in active:
+                    return "<cycle>"
+                if depth >= _MAX_KEY_DEPTH:
+                    raise _too_deep(where)
+                digests[id(value)] = d = _digest(value, where, depth)
+            if snapshot is not None:
+                snapshot[id(value)] = d
+                if obj_snapshot is not None:
+                    obj_snapshot[id(value)] = value
+            return d
+        if (module := _stamped_module(value)) is not None:
             modules.append(module)
-        elif isinstance(value, (FunctionType, type)) and id(value) not in seen:
+            if isinstance(value, ModuleType):
+                # A module reached through a container (SOURCES = [scale_flags])
+                # is more than its file: the mutable state the generator reads
+                # off it (SOURCES[0].FLAGS) can change with the file unchanged.
+                # Digest its public state like a class's; the walk only lands
+                # here for design-tree modules (installed ones key as
+                # <not-followed>), so the surface stays bounded.
+                binding = f"module:{_import_name(value.__name__)}"
+                if id(value) in frozen:
+                    if snapshot is not None:
+                        snapshot[id(value)] = frozen[id(value)]
+                        if obj_snapshot is not None:
+                            obj_snapshot[id(value)] = value
+                    return frozen[id(value)]
+                d = digests.get(id(value))
+                if d is None:
+                    if id(value) in active:
+                        return f"{binding}=<cycle>"
+                    if depth >= _MAX_KEY_DEPTH:
+                        raise _too_deep(where)
+                    digests[id(value)] = d = _module_digest(
+                        value, binding, where, depth
+                    )
+                if snapshot is not None:
+                    snapshot[id(value)] = f"{binding}={d}"
+                    if obj_snapshot is not None:
+                        obj_snapshot[id(value)] = value
+                return f"{binding}={d}"
+            # The position binds what sits in it: two same-file helpers, or
+            # two modules, are not interchangeable at one read even though
+            # the file's stamp covers both, so the binding travels with the
+            # content. The file says what an instance's attributes mean,
+            # not what they hold, so the state read through it is an input
+            # like a container's members are.
+            if isinstance(value, (FunctionType, type)):
+                # _import_name keeps a design's file run as a script on the
+                # key its import gets.  A function also binds its code: two
+                # products of one factory share module and qualname while
+                # their constants differ.
+                if isinstance(value, FunctionType):
+                    ident = _callable_identity(value, where, depth)
+                    return (
+                        f"{_import_name(value.__module__)}.{value.__qualname__}"
+                        f"#{ident}"
+                    )
+                # A class's file covers its code but not its mutable
+                # class-level state (Config.FLAGS); that state is an input
+                # like an instance's attributes are.
+                binding = f"{_import_name(value.__module__)}.{value.__qualname__}"
+                if id(value) in frozen:
+                    if snapshot is not None:
+                        snapshot[id(value)] = frozen[id(value)]
+                        if obj_snapshot is not None:
+                            obj_snapshot[id(value)] = value
+                    return frozen[id(value)]
+                d = digests.get(id(value))
+                if d is None:
+                    if id(value) in active:
+                        return f"{binding}=<cycle>"
+                    if depth >= _MAX_KEY_DEPTH:
+                        raise _too_deep(where)
+                    digests[id(value)] = d = _type_digest(value, binding, where, depth)
+                if snapshot is not None:
+                    snapshot[id(value)] = f"{binding}={d}"
+                    if obj_snapshot is not None:
+                        obj_snapshot[id(value)] = value
+                return f"{binding}={d}"
+            binding = (
+                f"{_import_name(type(value).__module__)}.{type(value).__qualname__}"
+            )
+            # Bypass any instance __getattr__ (a DispatchTime placeholder's
+            # refuses with TypeError): ask the type's own storage directly.
+            try:
+                state = object.__getattribute__(value, "__dict__")
+            except AttributeError:
+                state = None
+            if not state:
+                return binding
+            if id(value) in frozen:
+                if snapshot is not None:
+                    snapshot[id(value)] = frozen[id(value)]
+                    if obj_snapshot is not None:
+                        obj_snapshot[id(value)] = value
+                return frozen[id(value)]
+            d = digests.get(id(value))
+            if d is None:
+                if id(value) in active:
+                    return f"{binding}=<cycle>"
+                if depth >= _MAX_KEY_DEPTH:
+                    raise _too_deep(where)
+                digests[id(value)] = d = _instance_digest(value, binding, where, depth)
+            if snapshot is not None:
+                snapshot[id(value)] = f"{binding}={d}"
+                if obj_snapshot is not None:
+                    obj_snapshot[id(value)] = value
+            return f"{binding}={d}"
+        if isinstance(value, (FunctionType, type)):
             home = sys.modules.get(value.__module__)
             # Followed by code only where no file stands for it; an
-            # installed package's is versioned with the install.
+            # installed package's is versioned with the install.  The body
+            # is walked once (``seen``); the binding is what every position
+            # records, however many positions reach it.
             if (
                 home is None
                 or home.__name__ == "__main__"
                 or not vars(home).get("__file__")
             ):
-                seen.add(id(value))
-                todo.append(value)
+                if id(value) not in seen:
+                    seen.add(id(value))
+                    todo.append(value)
+                # Two same-named fileless helpers (lambdas from one factory,
+                # a swapped OPS list) share a qualname; the position must
+                # bind the code, or swapping them leaves the key unchanged.
+                # Classes have no __code__; their binding is the name.
+                if isinstance(value, FunctionType):
+                    ident = _callable_identity(value, where, depth)
+                    return f"{value.__module__}.{value.__qualname__}#{ident}"
+                return f"{value.__module__}.{value.__qualname__}"
+        return "<not-followed>"
 
+    def _callable_identity(fn, where: str, depth: int) -> str:
+        """Code identity plus the closure cells a factory lambda/closure captures.
+
+        Two products of one factory share code and qualname while their cells
+        differ (``def make(flag): return lambda: [flag]``), so the position
+        must bind the cells or swapping the products leaves the key unchanged.
+
+        Cells are described like any other read, with the function itself in
+        ``active`` so a self-referential closure (``def f(): return f``)
+        terminates: the re-entrant frame contributes code identity only.
+        """
+        parts = [_code_identity(fn.__code__).hex()]
+        if id(fn) in active:
+            return parts[0]
+        active.add(id(fn))
+        try:
+            cells = fn.__closure__ or ()
+            for n, cell in zip(fn.__code__.co_freevars, cells):
+                if depth + 1 >= _MAX_KEY_DEPTH:
+                    raise _too_deep(where)
+                try:
+                    content = cell.cell_contents
+                except ValueError:  # an empty cell
+                    parts.append(f"<{n}:empty>")
+                    continue
+                parts.append(
+                    f"<{n}={describe(content, f'{where}.<cell>.{n}', depth + 1)}>"
+                )
+            return "|".join(parts)
+        finally:
+            active.discard(id(fn))
+
+    def _digest(value, where: str, depth: int) -> str:
+        """Digest a container's content: its kind, length and member identities."""
+        active.add(id(value))
+        try:
+            h = hashlib.sha256()
+            h.update(f"<{type(value).__name__}:{len(value)}>".encode())
+            if isinstance(value, dict):
+                # Insertion order is deliberately not an input: equal
+                # mappings built in different orders (say, folded from a
+                # set) must agree, at the price that a generator reading
+                # ``list(d.values())`` order after a pop-and-reinsert sees
+                # new order at the old key -- such a generator must rebuild
+                # the mapping to rekey.  A mapping entry's key qualifies its
+                # value, so a value reassigned between keys cannot keep the
+                # old entry's digest, and the entries fold in the keys'
+                # order so equal mappings built in different orders agree.
+                # The key is
+                # named the way a value is: ``repr(key)`` would embed a
+                # function's address and move the key in every process.
+                entries = []
+                for k, v in value.items():
+                    kd = describe(k, f"{where}[key].key", depth + 1)
+                    entries.append((kd, describe(v, f"{where}[{kd}]", depth + 1)))
+                for kd, vd in sorted(entries):
+                    h.update(f"{kd}={vd}\0".encode())
+            elif isinstance(value, (set, frozenset)):
+                # A set is read without order; fold its members sorted.
+                for d in sorted(
+                    describe(member, f"{where}.item", depth + 1) for member in value
+                ):
+                    h.update(f"{d}\0".encode())
+            else:
+                for index, member in enumerate(value):
+                    d = describe(member, f"{where}[{index}]", depth + 1)
+                    h.update(f"{d}\0".encode())
+            return h.hexdigest()
+        finally:
+            active.discard(id(value))
+
+    def _instance_digest(value, binding: str, where: str, depth: int) -> str:
+        """Digest the state a file-backed instance holds, attribute by attribute."""
+        active.add(id(value))
+        try:
+            h = hashlib.sha256()
+            h.update(binding.encode())
+            state = value.__dict__
+            for attr in sorted(state):
+                member = describe(state[attr], f"{where}.{attr}", depth + 1)
+                h.update(f".{attr}={member}\0".encode())
+            return h.hexdigest()
+        finally:
+            active.discard(id(value))
+
+    def _module_digest(value, binding: str, where: str, depth: int) -> str:
+        """Digest a design-tree module's mutable public state.
+
+        Code members (functions, classes) ride the file's stamp; other
+        modules are skipped.  Private names are skipped too: module-level
+        ``_x = None`` rebound later by a ``load()`` is the lazy-binding idiom
+        (aie.utils binds its default runtime this way), and keying it would
+        make the key depend on whether the process had loaded before the key
+        first reached the module.  What remains is the public state a
+        generator reads off the module (FLAGS lists, dicts, instances).
+        """
+        active.add(id(value))
+        try:
+            h = hashlib.sha256()
+            h.update(binding.encode())
+            for attr, member in sorted(vars(value).items()):
+                if attr.startswith("_"):
+                    continue
+                if isinstance(member, ModuleType):
+                    continue
+                d = describe(member, f"{where}.{attr}", depth + 1)
+                h.update(f".{attr}={d}\0".encode())
+            return h.hexdigest()
+        finally:
+            active.discard(id(value))
+
+    def _type_digest(value, binding: str, where: str, depth: int) -> str:
+        """Digest a file-backed class's mutable class-level state."""
+        active.add(id(value))
+        try:
+            h = hashlib.sha256()
+            h.update(binding.encode())
+            for attr, member in sorted(vars(value).items()):
+                # Key every attribute: private config (Config._FLAGS) is as
+                # much an input as public -- skipping it is a stale hit.  The
+                # price is registry churn (ExternalFunction._instances) moving
+                # keys as a conservative miss, which the mutation mask absorbs
+                # for generation-time constructions; between compiles a
+                # registry touch costs a rebuild, never a wrong binary.
+                if attr.startswith("__") and not isinstance(member, FunctionType):
+                    continue
+                d = describe(member, f"{where}.{attr}", depth + 1)
+                h.update(f".{attr}={d}\0".encode())
+            return h.hexdigest()
+        finally:
+            active.discard(id(value))
+
+    def visit(value, where: str):
+        """Record the identity of ``value`` as read at ``where``."""
+        records.add(f"{where}={describe(value, where, 0)}".encode())
+
+    root_ids = {id(r) for r in roots if isinstance(r, FunctionType)}
     for root in roots:
         if isinstance(root, FunctionType) and id(root) not in seen:
             seen.add(id(root))
             todo.append(root)
         else:
             visit(root, "<root>")
-    roots = set(map(id, todo))
+    roots = root_ids
     while todo:
         obj = todo.pop()
         home = _import_name(obj.__module__)
@@ -330,6 +700,11 @@ def _python_identity(roots) -> bytes:
             continue
         if id(obj) not in roots:
             records.add(name.encode() + _code_identity(obj.__code__))
+            # A root's defaults are keyed with its filtered signature already
+            # (a CompileTime default moves the key, a DispatchTime or
+            # overridden one does not); visiting them here would double-count
+            # them and let a dispatch default move the key.  A reached
+            # helper's defaults are content and are visited.
             visit(obj.__defaults__, f"{name}.__defaults__")
             visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
         names = _names(obj.__code__)
@@ -376,6 +751,115 @@ def _python_identity(roots) -> bytes:
     return b"\0".join(sorted(records))
 
 
+# Only the outermost watch masks.  A generator nested in another generator's
+# run mutates on the outer one's behalf, and a mask taken mid-run would pin
+# identities the nested key never read.  Per thread: two concurrent compiles
+# each mask their own generator.
+_MASKING = threading.local()
+
+
+@contextmanager
+def _mask_generator_mutations(
+    generator: Callable, extra_roots: Sequence = ()
+) -> Iterator[None]:
+    """Pin what ``generator`` mutates about its own inputs while it runs.
+
+    A self-configuring generator -- one that records what a run learns in
+    the module state the key walks, like appending every configuration it
+    composes to a module-level list -- would otherwise miss its own cache
+    entry: the key moves with every run, so the entry a cold compile builds
+    is already stale for the next lookup.  The generator's mutation and the
+    user's are structurally the same edit, so they are told apart by when
+    they happen: this wraps the generator call, walks the same roots the
+    key walks before and after it, and pins each container or file-backed
+    instance whose identity moved to the descriptor the key read before the
+    run.  The pins land on the generator as ``__iron_key_mask__`` (a mapping
+    of ``id`` to descriptor), which ``_compute_recipe_hash`` threads back
+    into the walk -- so the entry a run builds is the one the next lookup
+    finds.  A change made outside the run to an object the run did not pin
+    still moves the key and rebuilds; a pinned object is read at its pinned
+    identity until the next run re-derives the mask, so a user edit to a
+    *pinned* object between compiles is the one change that does not move
+    the key (it is indistinguishable from the generator's own rewrites).
+
+    The mask lives on the function rather than in a cache entry: it is a
+    same-process statement about which objects this generator rewrites, and
+    a fresh process re-derives it on its first cold compile.  An ``id`` is
+    only unique while its object lives, so the mask keeps the pinned objects
+    referenced (``__iron_key_mask_keepalive__``) -- a dead pin could
+    otherwise be inherited by a new object that reuses the id, masking the
+    wrong object.  This never raises on the compile's
+    behalf: a walk that cannot be taken, or a generator that cannot hold
+    the attribute, simply leaves the key as sensitive as it was.
+
+    Args:
+        generator: The generator function about to run.
+        extra_roots: The remaining walk roots the key uses -- the
+            generator's compile-time kwargs.
+    """
+    if getattr(_MASKING, "on", False):
+        yield
+        return
+    roots = [generator, *extra_roots]
+    frozen = dict(getattr(generator, "__iron_key_mask__", None) or {})
+    pre: dict[int, str] = {}
+    pre_objs: dict[int, object] = {}
+    try:
+        _python_identity(roots, frozen=frozen, snapshot=pre, obj_snapshot=pre_objs)
+    except Exception:  # the key's helper must not fail the compile
+        logger.debug(
+            "identity snapshot before generation failed; not masking", exc_info=True
+        )
+        pre = {}
+    _MASKING.on = True
+    try:
+        yield
+    finally:
+        # Every early exit below must be an `if`, never a `return`: a return
+        # inside a finally discards an exception propagating out of the
+        # generator, and the caller then proceeds as if the generator had
+        # finished -- reading the result it never assigned.
+        _MASKING.on = False
+        if pre:
+            post: dict[int, str] = {}
+            try:
+                _python_identity(roots, frozen=frozen, snapshot=post)
+            except Exception:  # as above: leave the key as sensitive as it was
+                logger.debug(
+                    "identity snapshot after generation failed; not masking",
+                    exc_info=True,
+                )
+            else:
+                moved = {i: d for i, d in pre.items() if i in post and post[i] != d}
+                if moved:
+                    mask = dict(getattr(generator, "__iron_key_mask__", None) or {})
+                    mask.update(moved)
+                    try:
+                        setattr(generator, "__iron_key_mask__", mask)
+                        # An id stays unique only while its object lives:
+                        # hold the pinned objects so no new object can
+                        # inherit their pins by reusing an id.
+                        keep = {i: pre_objs[i] for i in moved if i in pre_objs}
+                        prev = (
+                            getattr(generator, "__iron_key_mask_keepalive__", None)
+                            or {}
+                        )
+                        # The mask accumulates ids across runs; the keepalive
+                        # must cover every pinned id, deduped, not just this
+                        # run's.
+                        setattr(
+                            generator,
+                            "__iron_key_mask_keepalive__",
+                            {**prev, **keep},
+                        )
+                    except (AttributeError, TypeError):
+                        logger.debug(
+                            "generator %r cannot hold a key mask; its own "
+                            "mutations keep moving the key",
+                            getattr(generator, "__name__", generator),
+                        )
+
+
 def _compute_recipe_hash(
     generator: Callable | Path,
     compile_kwargs: Mapping[str, Any],
@@ -400,6 +884,11 @@ def _compute_recipe_hash(
     header trees compile to different objects. Hashed in ORDER, not sorted
     like the flag lists above, because ``-I`` search order decides which
     header wins when two directories provide the same name.
+
+    A generator carrying ``__iron_key_mask__`` (see
+    ``_mask_generator_mutations``) has the pins read by its identity walk:
+    the mutations the generator itself made do not move the key, everything
+    else the walk reaches still does.
     """
     h = hashlib.sha256()
 
@@ -410,7 +899,12 @@ def _compute_recipe_hash(
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(_import_name(generator.__module__ or "").encode())
-        h.update(_python_identity([generator, *compile_kwargs.values()]))
+        h.update(
+            _python_identity(
+                [generator, *compile_kwargs.values()],
+                frozen=getattr(generator, "__iron_key_mask__", None),
+            )
+        )
         d = declare(generator)
         assert d.signature is not None, "a generator's declaration has a signature"
         dispatch_params = {m.name for m in d.per_calls}
