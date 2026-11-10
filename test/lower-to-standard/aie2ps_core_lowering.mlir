@@ -223,7 +223,7 @@ module @srs_in_callee {
 module @runtime_sequence_lock {
   aie.device(xcve3858) {
     %t = aie.tile(2, 3)
-    %buf = aie.buffer(%t) {address = 4096 : i32} : memref<16xi32>
+    %buf = aie.buffer(%t) {address = 4096 : i32, sym_name = "seq_buf"} : memref<16xi32>
     %l = aie.lock(%t, 0) {init = 1 : i32}
     %c = aie.core(%t) {
       aie.end
