@@ -2085,7 +2085,9 @@ AIETargetModel::SharedMemory ObjectFifoCreateOp::sharedMemoryOf(
 }
 
 static std::optional<TileID> placedAt(Value tile) {
-  auto tileLike = cast<TileLike>(tile.getDefiningOp());
+  auto tileLike = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
+  if (!tileLike)
+    return std::nullopt;
   std::optional<int> col = tileLike.tryGetCol(), row = tileLike.tryGetRow();
   if (!col || !row)
     return std::nullopt;
@@ -2333,6 +2335,8 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   ObjectFifoCreateOp objFifo = getObjectFifo();
   if (!objFifo)
     return emitError("cannot retrieve associated object FIFO");
+  if (!isa_and_nonnull<TileLike>(getDelegateTile().getDefiningOp()))
+    return emitOpError("delegate must be a tile");
   if (objFifo.getConsumerTiles().size() != 1)
     return emitError("can only be used in 1-to-1 object FIFOs");
   if (std::optional<StringRef> reason = objFifo.dmaReason())

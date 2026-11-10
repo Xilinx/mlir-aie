@@ -233,10 +233,10 @@ struct AIEObjectFifoSplitPass
 
   /// Every pool sits on a concrete tile, so the fifo's ends must be placed.
   LogicalResult verifyTilesArePlaced() {
+    auto placed = [](Value tile) {
+      return isa_and_nonnull<TileOp>(tile.getDefiningOp());
+    };
     for (auto fifo : device.getOps<ObjectFifoCreateOp>()) {
-      auto placed = [](Value tile) {
-        return isa_and_nonnull<TileOp>(tile.getDefiningOp());
-      };
       if (!placed(fifo.getProducerTile())) {
         return fifo.emitOpError("producer tile is not a placed aie.tile; run "
                                 "--aie-place-tiles before this pass");
@@ -248,6 +248,10 @@ struct AIEObjectFifoSplitPass
         }
       }
     }
+    for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
+      if (!placed(alloc.getDelegateTile()))
+        return alloc.emitOpError("delegate tile is not a placed aie.tile; run "
+                                 "--aie-place-tiles before this pass");
     return success();
   }
 
