@@ -74,32 +74,38 @@ public:
       llvm::SmallVector<unsigned> blocked;
       llvm::SmallVector<unsigned> offsets;
     };
-    struct KeyHash {
-      size_t operator()(const std::vector<int64_t> &key) const {
-        return llvm::hash_combine_range(key.begin(), key.end());
-      }
+    struct Entry {
+      std::vector<int64_t> key;
+      size_t hash;
+      Outcome outcome;
     };
-    using Entries = std::list<std::pair<std::vector<int64_t>, Outcome>>;
+    using Entries = std::list<Entry>;
 
-    std::optional<Outcome> lookup(const std::vector<int64_t> &key) {
-      auto hit = index.find(key);
-      if (hit == index.end())
-        return std::nullopt;
-      entries.splice(entries.begin(), entries, hit->second);
-      return hit->second->second;
+    const Outcome *lookup(const std::vector<int64_t> &key, size_t hash) {
+      auto [first, last] = index.equal_range(hash);
+      for (auto hit = first; hit != last; ++hit)
+        if (hit->second->key == key) {
+          entries.splice(entries.begin(), entries, hit->second);
+          return &hit->second->outcome;
+        }
+      return nullptr;
     }
-    void record(const std::vector<int64_t> &key, Outcome outcome) {
-      entries.emplace_front(key, std::move(outcome));
-      index[key] = entries.begin();
+    void record(std::vector<int64_t> key, size_t hash, Outcome outcome) {
+      entries.push_front({std::move(key), hash, std::move(outcome)});
+      index.emplace(hash, entries.begin());
       if (entries.size() > capacity) {
-        index.erase(entries.back().first);
+        auto oldest = std::prev(entries.end());
+        auto [first, last] = index.equal_range(oldest->hash);
+        index.erase(std::find_if(first, last, [&](const auto &hit) {
+          return hit.second == oldest;
+        }));
         entries.pop_back();
       }
     }
 
     size_t capacity;
     Entries entries;
-    std::unordered_map<std::vector<int64_t>, Entries::iterator, KeyHash> index;
+    std::unordered_multimap<size_t, Entries::iterator> index;
   };
 
   explicit LockPlan(const AIETargetModel &target) : target(target) {}
@@ -231,7 +237,12 @@ public:
       // What the packing reads: each group's count and the positions of
       // its eligible tiles in order, with the locks taken there before.
       std::vector<int64_t> key;
-      if (memo)
+      size_t hash = 0;
+      if (memo) {
+        size_t size = 0;
+        for (const llvm::SmallVector<unsigned> &tilesOf : eligible)
+          size += 2 + 3 * tilesOf.size();
+        key.reserve(size);
         for (auto [group, tilesOf] : llvm::zip(groups, eligible)) {
           llvm::append_values(key, group.count, tilesOf.size());
           for (unsigned tile : tilesOf) {
@@ -241,9 +252,9 @@ public:
               llvm::append_values(key, -1, -1, -1);
           }
         }
-      std::optional<Memo::Outcome> recorded;
-      if (memo)
-        recorded = memo->lookup(key);
+        hash = llvm::hash_combine_range(key.begin(), key.end());
+      }
+      const Memo::Outcome *recorded = memo ? memo->lookup(key, hash) : nullptr;
       Packing packing;
       if (recorded) {
         packing = recorded->packing;
@@ -267,7 +278,7 @@ public:
             for (auto [tilesOf, tile] : llvm::zip(eligible, packed))
               outcome.offsets.push_back(llvm::find(tilesOf, *tile) -
                                         tilesOf.begin());
-          memo->record(key, std::move(outcome));
+          memo->record(std::move(key), hash, std::move(outcome));
         }
       }
       if (packing == Packing::Found) {
