@@ -55,8 +55,11 @@ def create_ctrl_pkt(
 # tile share a row, while the mem tile and shim tile are told apart by theirs.
 CTRL_PKT_CORE_ID = 28
 CTRL_PKT_MEM_ID = 27
-# The host trace buffer is this many times trace_size when control packets are on:
-# the trace data first, then the control packet responses.
+# With control packets on, the host trace buffer is CTRL_PKT_BUFFER_FACTOR times
+# trace_size. The first CTRL_PKT_TRACE_REGION_FACTOR times trace_size is the trace
+# region, which holds both S2MM channels' data when the trace is distributed over
+# two channels. The control packet responses follow it.
+CTRL_PKT_TRACE_REGION_FACTOR = 2
 CTRL_PKT_BUFFER_FACTOR = 4
 
 CTRL_PKT_READS = [

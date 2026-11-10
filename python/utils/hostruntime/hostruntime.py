@@ -23,6 +23,7 @@ from ..trace.utils import (
     CTRL_PKT_BUFFER_FACTOR,
     CTRL_PKT_MEM_ID,
     CTRL_PKT_READS,
+    CTRL_PKT_TRACE_REGION_FACTOR,
     create_ctrl_pkt,
     extract_tile,
 )
@@ -446,8 +447,11 @@ class HostRuntime(ABC):
 
         if trace_config.enable_ctrl_pkts:
             trace_buff, ctrl_buff = cls._extract_prefix(
-                trace_buff, trace_config.trace_size, np.dtype(np.uint8)
+                trace_buff,
+                trace_config.trace_size * CTRL_PKT_TRACE_REGION_FACTOR,
+                np.dtype(np.uint8),
             )
+            trace_buff = trace_buff[: trace_config.trace_size]
         trace_buff = trace_buff.view(np.uint32).reshape(
             trace_config.trace_size // np.dtype(np.uint32).itemsize
         )
