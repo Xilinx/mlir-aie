@@ -185,3 +185,57 @@ module @srs {
     }
   }
 }
+
+// -----
+
+// The same holds for SRS in a function the core reaches through calls,
+// including through recursion.
+module @srs_in_callee {
+  aie.device(xcve3858) {
+    %t = aie.tile(2, 3)
+    func.func private @inner(%n : i32) {
+      %c0 = arith.constant 0 : i32
+      %v = arith.constant dense<1.0> : vector<16xf32>
+      %srs = aievec.srs %v, %c0 : vector<16xf32>, i32, vector<16xbf16>
+      func.call @outer(%n) : (i32) -> ()
+      return
+    }
+    func.func private @outer(%n : i32) {
+      func.call @inner(%n) : (i32) -> ()
+      return
+    }
+    // expected-error@+2 {{'aie.core' op needs the rounding and saturation modes set for aievec.srs or bf16 matmul, which has no lowering for AIE2ps}}
+    // expected-error@+1 {{failed to legalize operation 'aie.core' that was explicitly marked illegal}}
+    %c = aie.core(%t) {
+      %n = arith.constant 1 : i32
+      func.call @outer(%n) : (i32) -> ()
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Locks in a runtime sequence's DMA tasks are erased with the sequence.
+// CHECK-LABEL: module @runtime_sequence_lock
+// CHECK: func.func @core_2_3()
+// CHECK-NOT: aie.use_lock
+module @runtime_sequence_lock {
+  aie.device(xcve3858) {
+    %t = aie.tile(2, 3)
+    %buf = aie.buffer(%t) {address = 4096 : i32} : memref<16xi32>
+    %l = aie.lock(%t, 0) {init = 1 : i32}
+    %c = aie.core(%t) {
+      aie.end
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      %task = aiex.dma_configure_task(%t, S2MM, 0) {
+        %c1 = arith.constant 1 : i32
+        aie.use_lock(%l, Acquire, %c1)
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32}
+        aie.use_lock(%l, Release, %c1)
+        aie.end
+      }
+    }
+  }
+}

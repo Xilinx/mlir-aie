@@ -460,12 +460,12 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
         return module.emitOpError("Device Not found!");
       }
       const auto &targetModel = device.getTargetModel();
-      // Locks in DMA regions are erased with the region; any other lock,
-      // in a core or in a function a core calls, needs an intrinsic.
+      // A lock in a core or in a function a core calls needs an intrinsic.
+      // Any other lock (DMA regions, runtime sequences) is erased with its
+      // parent.
       if (targetModel.getTargetArch() == AIEArch::AIE2ps) {
-        if (!useLock->getParentOfType<MemOp>() &&
-            !useLock->getParentOfType<MemTileDMAOp>() &&
-            !useLock->getParentOfType<ShimDMAOp>())
+        if (useLock->getParentOfType<CoreOp>() ||
+            useLock->getParentOfType<func::FuncOp>())
           return checkCoreIntrinsics(useLock);
         rewriter.eraseOp(useLock);
         return success();
@@ -605,7 +605,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     bool hasSRS = false;
     bool hasIntegerSRS = false;
     bool hasBF16Matmul = false;
-    coreFunc.walk([&](Operation *childOp) {
+    auto scan = [&](Operation *childOp) {
       StringRef opName = childOp->getName().getStringRef();
       if (opName == "aievec.srs") {
         hasSRS = true;
@@ -630,9 +630,30 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
               hasBF16Matmul = true;
         }
       }
-    });
+    };
+    coreFunc.walk(scan);
+    auto device = op->getParentOfType<DeviceOp>();
+    // AIE2ps cannot set the modes anywhere, so the functions the core calls
+    // must be free of these ops too.
+    if (device && device.getTargetModel().getTargetArch() == AIEArch::AIE2ps) {
+      SmallVector<func::FuncOp> worklist;
+      DenseSet<Operation *> visited;
+      auto addCallees = [&](Operation *root) {
+        root->walk([&](func::CallOp call) {
+          auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+              device, call.getCalleeAttr());
+          if (callee && visited.insert(callee).second)
+            worklist.push_back(callee);
+        });
+      };
+      addCallees(coreFunc);
+      while (!worklist.empty()) {
+        func::FuncOp callee = worklist.pop_back_val();
+        callee.walk(scan);
+        addCallees(callee);
+      }
+    }
     if (hasSRS || hasBF16Matmul) {
-      auto device = op->getParentOfType<DeviceOp>();
       if (device) {
         AIEArch arch = device.getTargetModel().getTargetArch();
         if (arch == AIEArch::AIE2ps)
@@ -805,8 +826,16 @@ struct AIECoreToStandardPass
     target.addLegalOp<func::FuncOp, ModuleOp, UnrealizedConversionCastOp>();
     // Ops this pass lowers must be illegal: a failed rewrite of an op with
     // unknown legality is silently left in place.
-    target.addIllegalOp<PutStreamOp, GetStreamOp, PutCascadeOp, GetCascadeOp,
-                        DebugOp, UseLockOp, EventOp, BufferOp>();
+    // A core that is not exported is erased, so its ops are left alone.
+    target.addIllegalOp<BufferOp>();
+    target.addDynamicallyLegalOp<PutStreamOp, GetStreamOp, PutCascadeOp,
+                                 GetCascadeOp, DebugOp, UseLockOp, EventOp>(
+        [col = static_cast<int>(tileCol),
+         row = static_cast<int>(tileRow)](Operation *op) {
+          auto core = op->getParentOfType<CoreOp>();
+          return core && ((row != core.rowIndex() && row != -1) ||
+                          (col != core.colIndex() && col != -1));
+        });
 
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
