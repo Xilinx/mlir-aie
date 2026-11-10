@@ -2490,6 +2490,18 @@ LogicalResult ObjectFifoLinkOp::verify() {
   if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
+  // getOptionalSharedTile reads only the first of a time link's inputs and
+  // outputs.
+  if (isTime()) {
+    for (ObjectFifoCreateOp out : getOutputObjectFifos())
+      if (out.getProducerTile() != *sharedTile)
+        return emitOpError("a time link's participants meet on its tile, but '")
+               << out.name().getValue() << "' is produced on another";
+    for (ObjectFifoCreateOp in : getInputObjectFifos())
+      if (!llvm::is_contained(in.getConsumerTiles(), *sharedTile))
+        return emitOpError("a time link's participants meet on its tile, but '")
+               << in.name().getValue() << "' is consumed on others";
+  }
 
   // A fifo has one producer, so one link at most fills it; each link reading
   // it takes one of its consumer ends on the link's tile. A fifo out of one
