@@ -195,43 +195,79 @@ public:
     bool stopped = false;
   };
 
-  /// Places `groups` in order. When one finds no room and all take the same
-  /// count (always on AIE2; on AIE1 when every pool has one depth), a tile
-  /// holds a whole number of groups, so they go to tiles as a maximum
-  /// bipartite matching instead: whether every group fits then does not
-  /// depend on their order. The matching augments the in-order placement, so
-  /// a group that found room there keeps its tile unless another needs it.
-  /// Groups of different counts (AIE1 pools of different depths) are packed
-  /// by an exact search instead; when no packing exists, or the search
-  /// stops after kPackBudget steps, the in-order placement stands.
-  Assignment assign(llvm::ArrayRef<Group> groups, Memo *memo = nullptr) {
+  /// Places `groups` first fit: with `callerOrder`, in order on each one's
+  /// candidates, then, should that miss on groups of different counts, in the
+  /// canonical order (canonicalFirstFit); without, in the canonical order only.
+  /// When one finds no room and all take one count (always on AIE2), a tile
+  /// holds a whole number of groups, so a maximum bipartite matching that
+  /// augments the first-fit placement decides, whatever their order. Groups of
+  /// different counts (AIE1 pools of different depths) are packed by an exact
+  /// search; when no packing exists, or it stops after kPackBudget steps, the
+  /// first-fit placement stands. A caller placing in canonical order only (the
+  /// SA) so fits only where one placing in its own order first (allocation)
+  /// fits too.
+  Assignment assign(llvm::ArrayRef<Group> groups, Memo *memo = nullptr,
+                    bool callerOrder = true) {
     Assignment result;
     llvm::DenseMap<TileID, int> before = used;
     llvm::SmallVector<Placed> misses;
-    for (auto [index, group] : llvm::enumerate(groups)) {
-      Placed placed = place(group);
-      result.tiles.push_back(placed.tile);
-      misses.push_back(placed);
-      if (!placed.tile && !result.failed) {
-        result.failed = index;
-        result.failure = placed;
+    // Each group's candidates every user reaches, found once on first need.
+    llvm::SmallVector<llvm::SmallVector<unsigned>> eligible;
+    auto findEligible = [&] {
+      if (!eligible.empty() || groups.empty())
+        return;
+      for (const Group &group : groups) {
+        llvm::SmallVector<unsigned> &tilesOf = eligible.emplace_back();
+        for (unsigned tile : group.candidates)
+          if (!llvm::is_contained(tilesOf, tile) &&
+              llvm::all_of(group.users, [&](const User &user) {
+                return reaches(user, tile);
+              }))
+            tilesOf.push_back(tile);
       }
-    }
+    };
+    auto record = [&](size_t index, const Placed &at) {
+      result.tiles[index] = at.tile;
+      misses[index] = at;
+      if (!at.tile && !result.failed) {
+        result.failed = index;
+        result.failure = at;
+      }
+    };
+    auto firstFit = [&](bool canonical) {
+      used = before;
+      result = {};
+      result.tiles.assign(groups.size(), std::nullopt);
+      misses.assign(groups.size(), {});
+      if (!canonical) {
+        for (auto [index, group] : llvm::enumerate(groups))
+          record(index, place(group));
+        return;
+      }
+      findEligible();
+      for (auto &[index, at] : canonicalFirstFit(groups, eligible))
+        record(index, at);
+    };
+    int count = groups.empty() ? 0 : groups.front().count;
+    bool mixed = llvm::any_of(
+        groups, [&](const Group &g) { return g.count != count; });
+    firstFit(/*canonical=*/!callerOrder);
     if (!result.failed)
       return result;
-
-    llvm::SmallVector<llvm::SmallVector<unsigned>> eligible;
-    for (const Group &group : groups) {
-      llvm::SmallVector<unsigned> &tilesOf = eligible.emplace_back();
-      for (unsigned tile : group.candidates)
-        if (!llvm::is_contained(tilesOf, tile) &&
-            llvm::all_of(group.users,
-                         [&](const User &user) { return reaches(user, tile); }))
-          tilesOf.push_back(tile);
+    if (callerOrder && mixed) {
+      Assignment own = result;
+      llvm::SmallVector<Placed> ownMisses = misses;
+      llvm::DenseMap<TileID, int> ownUsed = used;
+      firstFit(/*canonical=*/true);
+      if (!result.failed)
+        return result;
+      result = std::move(own);
+      misses = std::move(ownMisses);
+      used = std::move(ownUsed);
     }
-    int count = groups.front().count;
-    if (llvm::any_of(groups,
-                     [&](const Group &g) { return g.count != count; })) {
+    findEligible();
+
+    if (mixed) {
       llvm::SmallVector<std::optional<unsigned>> packed;
       llvm::SmallVector<unsigned> blocked;
       // What the packing reads: each group's count and the positions of
@@ -375,6 +411,54 @@ public:
   static constexpr int64_t kPackBudget = 1000000;
 
 private:
+  /// Places each group, larger counts first, then by the positions it may
+  /// take, on the first of `eligible` with room: a tile not yet placed, then
+  /// placed ones by position. The order comes from the groups' counts and
+  /// positions alone, and groups alike in both are interchangeable, so every
+  /// caller listing the same groups gets the same verdict. Returns each
+  /// group's index and placement, in the order placed.
+  llvm::SmallVector<std::pair<size_t, Placed>>
+  canonicalFirstFit(llvm::ArrayRef<Group> groups,
+                    llvm::ArrayRef<llvm::SmallVector<unsigned>> eligible) {
+    auto rank = [&](unsigned tile) {
+      std::optional<TileID> at = tiles[tile].at;
+      return at ? std::make_tuple(1, at->col, at->row)
+                : std::make_tuple(0, 0, 0);
+    };
+    llvm::SmallVector<llvm::SmallVector<unsigned>> sorted;
+    llvm::SmallVector<llvm::SmallVector<std::tuple<int, int, int>>> keys;
+    for (const llvm::SmallVector<unsigned> &tilesOf : eligible) {
+      llvm::SmallVector<unsigned> &order = sorted.emplace_back(tilesOf);
+      llvm::stable_sort(order, [&](unsigned a, unsigned b) {
+        return rank(a) < rank(b);
+      });
+      keys.push_back(llvm::map_to_vector(order, rank));
+    }
+    llvm::SmallVector<size_t> order =
+        llvm::to_vector(llvm::seq<size_t>(0, groups.size()));
+    llvm::stable_sort(order, [&](size_t a, size_t b) {
+      if (groups[a].count != groups[b].count)
+        return groups[a].count > groups[b].count;
+      return keys[a] < keys[b];
+    });
+    llvm::SmallVector<std::pair<size_t, Placed>> placed;
+    for (size_t index : order) {
+      Placed at;
+      at.reachable = !sorted[index].empty();
+      for (unsigned tile : sorted[index]) {
+        if (reserve(tile, groups[index].count)) {
+          at.tile = tile;
+          break;
+        }
+        at.full = tile;
+      }
+      if (at.tile)
+        at.full.reset();
+      placed.push_back({index, at});
+    }
+    return placed;
+  }
+
   /// Puts each group in `chosen` on a tile in `eligible` with room for it,
   /// from the room left `before` any group. A group that may use a tile not
   /// yet placed takes it. The others are solved one connected component of
