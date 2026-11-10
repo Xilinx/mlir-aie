@@ -435,6 +435,8 @@ enum class LinkPoolMisfit {
   None,
   // The pool's owner has another object type.
   ObjectType,
+  // The fifo has initial objects, but the pool starts with its owner's.
+  InitialValues,
   // A merge's inputs take turns filling the pool through one DMA end.
   MergeInput,
   // A dispatch's outputs take turns draining the pool through one DMA end.

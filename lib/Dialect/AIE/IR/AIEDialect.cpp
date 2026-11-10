@@ -1980,9 +1980,11 @@ LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
   if (!link)
     return LinkPoolMisfit::None;
   ObjectFifoCreateOp owner = link.getPoolOwner();
-  return owner == *this || owner.getElemType() == getElemType()
-             ? LinkPoolMisfit::None
-             : LinkPoolMisfit::ObjectType;
+  if (owner == *this)
+    return LinkPoolMisfit::None;
+  if (owner.getElemType() != getElemType())
+    return LinkPoolMisfit::ObjectType;
+  return getInitValues() ? LinkPoolMisfit::InitialValues : LinkPoolMisfit::None;
 }
 
 std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
@@ -2231,6 +2233,11 @@ LogicalResult ObjectFifoAllocateOp::verify() {
              << ")";
         break;
       }
+      case LinkPoolMisfit::InitialValues:
+        diag << ", which starts with @" << link.getPoolOwner().name().getValue()
+             << "'s initial objects, "
+             << "but @" << name << " has initial objects of its own";
+        break;
       case LinkPoolMisfit::MergeInput:
         diag << ", but @" << name
              << " is a merge's input, and a merge's inputs take turns filling "

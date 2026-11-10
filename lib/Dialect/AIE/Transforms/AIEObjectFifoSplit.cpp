@@ -458,9 +458,23 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
     bool disableSynchronization = llvm::any_of(ins, asksToSkipLocks) ||
                                   llvm::any_of(outs, asksToSkipLocks);
 
+    // The pool starts with the initial objects of the fifo whose producer
+    // fills it: the output's, or an input's that shares memory through its
+    // allocate.
+    bool holdsInitialContents = ownerIsOutput;
+    if (std::optional<ObjectFifoAllocateOp> alloc = owner.getAllocate();
+        alloc && !ownerIsOutput)
+      holdsInitialContents =
+          ObjectFifoCreateOp::allocatedHome(
+              device.getTargetModel(), owner.getProducerTileOp().getTileID(),
+              cast<TileOp>(owner.getConsumerTiles()[0].getDefiningOp())
+                  .getTileID(),
+              alloc->getDelegateTileOp().getTileID(),
+              cast<TileOp>(sharedTile->getDefiningOp()).getTileID())
+              .has_value();
+
     auto pool = createPool(linkLocation(linkOp), name, *sharedTile, depth,
-                           elemType, owner, extents,
-                           /*holdsInitialContents=*/ownerIsOutput,
+                           elemType, owner, extents, holdsInitialContents,
                            linkOp.getRepeatCount(), disableSynchronization);
     if (window) {
       pool.setContiguous(true);

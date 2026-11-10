@@ -2638,8 +2638,8 @@ def AIE_ObjectFifoCreateOp
     bool allocateFallsBackToDMA();
     /// Why the fifo's objects cannot be its link's pool's, should it share
     /// memory with the link: None for an unlinked fifo, the pool's owner, or
-    /// a fifo of the owner's object type that its link's DMA ends do not
-    /// share with other fifos.
+    /// a fifo of the owner's object type, without initial objects of its own,
+    /// that its link's DMA ends do not share with other fifos.
     LinkPoolMisfit linkPoolMisfit();
 
     /// Why the fifo moves by DMA wherever its ends are placed; nothing when
