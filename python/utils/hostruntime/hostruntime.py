@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from ..npukernel import NPUKernel
 from ..trace import TraceConfig
 from ..trace.utils import (
+    CTRL_PKT_BUFFER_FACTOR,
     CTRL_PKT_MEM_ID,
     CTRL_PKT_READS,
     create_ctrl_pkt,
@@ -412,7 +413,7 @@ class HostRuntime(ABC):
             # Allocate extra space for control packets if enabled
             alloc_size = trace_config.trace_size
             if trace_config.enable_ctrl_pkts:
-                alloc_size = trace_config.trace_size * 4
+                alloc_size = trace_config.trace_size * CTRL_PKT_BUFFER_FACTOR
 
             trace_buff = tensor((alloc_size,), dtype=np.uint8)
             args.append(trace_buff)

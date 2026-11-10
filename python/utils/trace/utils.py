@@ -55,6 +55,10 @@ def create_ctrl_pkt(
 # tile share a row, while the mem tile and shim tile are told apart by theirs.
 CTRL_PKT_CORE_ID = 28
 CTRL_PKT_MEM_ID = 27
+# The host trace buffer is this many times trace_size when control packets are on:
+# the trace data first, then the control packet responses.
+CTRL_PKT_BUFFER_FACTOR = 4
+
 CTRL_PKT_READS = [
     (0x340D8, CTRL_PKT_CORE_ID),  # core module of a core tile, and shim tile
     (0x140D8, CTRL_PKT_MEM_ID),  # memory module of a core tile

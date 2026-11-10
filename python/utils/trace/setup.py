@@ -264,12 +264,23 @@ def config_ctrl_pkts_aie(
     ctrl_ddr_id,  # ddr_id of the control packet buffer
     trace_ddr_id,  # ddr_id of the trace buffer
     output_offset=0,  # needs offset from trace buffer
+    host_buffer_bytes=None,  # size of the trace buffer the host allocates
     channel=0,
     mm2s_bd_id=14,  # TODO: default bd ids (hopefully doesn't conflict with other shim cfg)
     s2mm_bd_id=15,  # TODO: default bd ids (hopefully doesn't conflict with other shim cfg)
 ):
 
-    for shim2tile_pkt_id, read, tiles in get_ctrl_pkt_reads(tiles_to_trace):
+    reads = get_ctrl_pkt_reads(tiles_to_trace)
+    if host_buffer_bytes is not None:
+        response_bytes = sum(8 * len(tiles) for _, _, tiles in reads)
+        if output_offset + response_bytes > host_buffer_bytes:
+            raise ValueError(
+                f"The control packet responses need {response_bytes} bytes after "
+                f"the first {output_offset} bytes of the trace buffer, but the host "
+                f"allocates {host_buffer_bytes}. Trace fewer tiles or raise trace_size."
+            )
+
+    for shim2tile_pkt_id, read, tiles in reads:
         # config mm2s shim
         configure_shimtile_dma_aie2(
             shim=shim,
