@@ -12494,6 +12494,10 @@ register index holding the value.</p>
 </code></pre></div>
 <p>The control_packet operation represents a low-level AIE control packet header
 and payload.</p>
+<p><code>opcode</code> is 0 (write), 1 (read), or 2 (write with response); 3 is
+reserved. A write carries its payload in <code>data</code>. A read carries no <code>data</code>;
+<code>length</code> gives the number of words to read, at most 4. A write payload may
+be longer than 4 words: <code>aie-legalize-control-packet</code> splits it.</p>
 <h4 id="attributes_28">Attributes:<a class="headerlink" href="#attributes_28" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
