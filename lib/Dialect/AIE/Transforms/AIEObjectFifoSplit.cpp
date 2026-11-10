@@ -252,27 +252,6 @@ struct AIEObjectFifoSplitPass
 
   void runOnOperation() override;
 
-  /// Why `fifo` needs DMAs where its ends are placed, or nothing when both
-  /// ends reach the memory module `shared` names.
-  std::optional<StringRef> dmaReason(ObjectFifoCreateOp fifo,
-                                     AIETargetModel::SharedMemory &shared) {
-    std::optional<StringRef> reason = fifo.dmaReason();
-    if (reason)
-      return reason;
-    auto alloc = fifo.getAllocate();
-    bool linked = fifo.getLink().has_value();
-    shared = ObjectFifoCreateOp::sharedMemoryOf(
-        device.getTargetModel(), fifo.getProducerTileOp().getTileID(),
-        cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp()).getTileID(),
-        alloc ? std::optional(alloc->getDelegateTileOp().getTileID())
-              : std::nullopt,
-        linked);
-    if (shared == AIETargetModel::SharedMemory::None)
-      return linked ? "it is linked through a tile's DMAs"
-                    : "its ends share no memory module";
-    return std::nullopt;
-  }
-
   /// Every pool sits on a concrete tile, so the fifo's ends must be placed.
   LogicalResult verifyTilesArePlaced() {
     for (auto fifo : device.getOps<ObjectFifoCreateOp>()) {
@@ -301,7 +280,7 @@ struct AIEObjectFifoSplitPass
         onChannel;
     for (ObjectFifoCreateOp fifo : fifos) {
       auto shared = AIETargetModel::SharedMemory::None;
-      if (!dmaReason(fifo, shared))
+      if (!fifo.placedDmaReason(shared))
         continue;
       for (auto [index, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
         ObjectFifoEndPortAttr port = fifo.getConsumerPort(index);
@@ -330,37 +309,12 @@ struct AIEObjectFifoSplitPass
     return success();
   }
 
-  /// Two fifos pinned to one sending channel can only share it when the core
-  /// pushes a task per object, since a channel cycling on one fifo's buffers
-  /// never reaches the other's, so pinning them together selects that.
-  void selectPushQueueForSharedChannels(ArrayRef<ObjectFifoCreateOp> fifos) {
-    DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
-        onChannel;
-    for (ObjectFifoCreateOp fifo : fifos) {
-      auto shared = AIETargetModel::SharedMemory::None;
-      if (!dmaReason(fifo, shared))
-        continue;
-      ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
-      std::optional<int> channel =
-          port && !port.isCore() ? port.channelIndex() : std::nullopt;
-      auto tile = fifo.getProducerTile().getDefiningOp<TileOp>();
-      // Shared shim transfers are submitted by the runtime.
-      if (!channel || !tile || tile.isShimTile())
-        continue;
-      onChannel[{tile.getCol(), tile.getRow(), *channel}].push_back(fifo);
-    }
-    for (auto &[channel, sharing] : onChannel)
-      if (sharing.size() > 1)
-        for (ObjectFifoCreateOp fifo : sharing)
-          fifo.setReleaseStrategy(ObjectFifoRelease::PushQueue);
-  }
-
   LogicalResult verifyPushQueueProducers(ArrayRef<ObjectFifoCreateOp> fifos) {
     for (ObjectFifoCreateOp fifo : fifos) {
       if (fifo.getReleaseStrategy() != ObjectFifoRelease::PushQueue)
         continue;
       auto shared = AIETargetModel::SharedMemory::None;
-      if (!dmaReason(fifo, shared))
+      if (!fifo.placedDmaReason(shared))
         continue;
       if (auto values = fifo.getInitValues(); values && !values->empty())
         return fifo.emitOpError(
@@ -690,7 +644,9 @@ void AIEObjectFifoSplitPass::runOnOperation() {
   }
 #endif
 
-  selectPushQueueForSharedChannels(fifos);
+  for (ObjectFifoCreateOp fifo : fifos)
+    if (fifo.sharesSendChannel())
+      fifo.setReleaseStrategy(ObjectFifoRelease::PushQueue);
   if (failed(verifyPushQueueProducers(fifos)))
     return signalPassFailure();
 
@@ -709,7 +665,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
             .getElementType());
 
     auto sharedModule = AIETargetModel::SharedMemory::None;
-    std::optional<StringRef> needsDMAs = dmaReason(fifo, sharedModule);
+    std::optional<StringRef> needsDMAs = fifo.placedDmaReason(sharedModule);
     if (needsDMAs && fifo.forcesSharedMemory()) {
       fifo.emitOpError("asks for a shared_mem transport, but ") << *needsDMAs;
       return signalPassFailure();
