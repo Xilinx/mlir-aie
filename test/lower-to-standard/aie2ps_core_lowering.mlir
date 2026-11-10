@@ -62,6 +62,27 @@ module @use_lock {
 
 // -----
 
+// A lock in a function that a core calls needs an intrinsic too.
+module @use_lock_in_func {
+  aie.device(xcve3858) {
+    %t = aie.tile(2, 3)
+    %l = aie.lock(%t, 0)
+    func.func private @kernel(%lock : index) {
+      %c1 = arith.constant 1 : i32
+      // expected-error@+2 {{'aie.use_lock' op has no core lowering for AIE2ps}}
+      // expected-error@+1 {{failed to legalize operation 'aie.use_lock' that was explicitly marked illegal}}
+      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      return
+    }
+    %c = aie.core(%t) {
+      func.call @kernel(%l) : (index) -> ()
+      aie.end
+    }
+  }
+}
+
+// -----
+
 module @put_stream {
   aie.device(xcve3858) {
     %t = aie.tile(2, 3)

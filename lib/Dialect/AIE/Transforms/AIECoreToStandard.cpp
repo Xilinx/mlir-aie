@@ -460,10 +460,12 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
         return module.emitOpError("Device Not found!");
       }
       const auto &targetModel = device.getTargetModel();
-      // Locks in DMA regions are erased with the region; only a core lock
-      // needs an intrinsic.
+      // Locks in DMA regions are erased with the region; any other lock,
+      // in a core or in a function a core calls, needs an intrinsic.
       if (targetModel.getTargetArch() == AIEArch::AIE2ps) {
-        if (useLock->getParentOfType<CoreOp>())
+        if (!useLock->getParentOfType<MemOp>() &&
+            !useLock->getParentOfType<MemTileDMAOp>() &&
+            !useLock->getParentOfType<ShimDMAOp>())
           return checkCoreIntrinsics(useLock);
         rewriter.eraseOp(useLock);
         return success();
