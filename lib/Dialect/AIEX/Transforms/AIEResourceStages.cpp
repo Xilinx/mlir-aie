@@ -108,6 +108,8 @@ void AIEX::registerAIEResourceStagesPipeline() {
         place.clCoresPerCol = options.coresPerCol;
         place.clSASeed = options.saSeed;
         place.clSAEffort = options.saEffort;
+        place.clCtrlPktOverlay =
+            options.ctrlPktOverlay || options.loadPdiToCtrlPkt;
         addPlacementStage(pm, place);
         addTraceStage(pm);
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,

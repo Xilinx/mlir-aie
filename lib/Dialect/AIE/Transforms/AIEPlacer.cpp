@@ -53,8 +53,9 @@ void Placer::Adjacency::addEdgeFromValues(Value a, Value b) {
     addEdge(aT, bT);
 }
 
-void Placer::initialize(const AIETargetModel &tm) {
+void Placer::initialize(const AIETargetModel &tm, bool controlOverlay) {
   targetModel = &tm;
+  this->controlOverlay = controlOverlay;
   availability.compTiles.clear();
   availability.nonCompTiles.clear();
   for (int col = 0; col < tm.columns(); col++) {
@@ -113,8 +114,9 @@ bool Placer::satisfiesConstraints(Operation *tile, TileID pos) {
   return true;
 }
 
-void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
-  Placer::initialize(targetModel);
+void SequentialPlacer::initialize(const AIETargetModel &targetModel,
+                                  bool controlOverlay) {
+  Placer::initialize(targetModel, controlOverlay);
 
   // Compute tiles iterate column-major (fill a column top-to-bottom before
   // moving right); non-compute tiles iterate row-major.
@@ -216,7 +218,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
-      provenShimGates(device));
+      provenShimGates(device), controlOverlay);
   shimEndsAt.clear();
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
@@ -864,7 +866,8 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     // The same capacity as hasAvailableChannels, so the message matches it.
     auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
     int availIn = maxIn - availability.inputChannelsUsed[tile];
-    int availOut = maxOut - availability.outputChannelsUsed[tile];
+    int availOut =
+        maxOut - availability.outputChannelsUsed[tile] - overlayChannels(tile);
 
     auto diag = logicalTile.emitError();
     diag << "tile (" << tile.col << ", " << tile.row << ") requires "
@@ -1981,7 +1984,7 @@ bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
     return false;
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
   int used[2] = {availability.inputChannelsUsed[tile],
-                 availability.outputChannelsUsed[tile]};
+                 availability.outputChannelsUsed[tile] + overlayChannels(tile)};
   int need[2] = {required.first, required.second};
   int max[2] = {maxIn, maxOut};
   auto own = shareableShimEnds.lookup(logicalTile);
@@ -1990,6 +1993,8 @@ bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
       continue;
     SmallVector<StringAttr> ends(shimEndsAt[tile][dir]);
     llvm::append_range(ends, own[dir]);
+    if (dir == 1 && overlayChannels(tile))
+      ends.push_back(shimSpans->overlayEnd(tile.col));
     int fixed = used[dir] + need[dir] - static_cast<int>(ends.size());
     if (fixed + static_cast<int>(shimSpans->groups(ends).size()) > max[dir])
       return false;
@@ -2086,7 +2091,8 @@ SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
       diagnosis.inMax += maxIn;
       diagnosis.outMax += maxOut;
       int usedIn = availability.inputChannelsUsed.lookup(tile);
-      int usedOut = availability.outputChannelsUsed.lookup(tile);
+      int usedOut =
+          availability.outputChannelsUsed.lookup(tile) + overlayChannels(tile);
       diagnosis.inUsed += usedIn;
       diagnosis.outUsed += usedOut;
       int shortIn = std::max(0, requiredInputChannels - (maxIn - usedIn));
@@ -2123,7 +2129,8 @@ bool SequentialPlacer::hasAvailableChannels(TileID tile, int inputChannels,
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
 
   int currentIn = availability.inputChannelsUsed[tile];
-  int currentOut = availability.outputChannelsUsed[tile];
+  int currentOut =
+      availability.outputChannelsUsed[tile] + overlayChannels(tile);
 
   return (currentIn + inputChannels <= maxIn) &&
          (currentOut + outputChannels <= maxOut);

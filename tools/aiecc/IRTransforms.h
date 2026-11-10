@@ -1374,17 +1374,17 @@ inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
 //===----------------------------------------------------------------------===//
 
 // Tile placement (`aie-place-tiles`), nested under DeviceOp.
-inline std::unique_ptr<mlir::PassManager>
-getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
-                     xilinx::AIE::PlacerType placerType, int saSeed,
-                     double saEffort, llvm::ArrayRef<std::string> walkedFifos,
-                     llvm::ArrayRef<std::string> coreDataSizes) {
+inline std::unique_ptr<mlir::PassManager> getPlacementPipeline(
+    mlir::MLIRContext *ctx, int coresPerCol, xilinx::AIE::PlacerType placerType,
+    int saSeed, double saEffort, llvm::ArrayRef<std::string> walkedFifos,
+    llvm::ArrayRef<std::string> coreDataSizes, bool ctrlPktOverlay) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIE::AIEPlaceTilesOptions opts;
   opts.clPlacerType = placerType;
   opts.clCoresPerCol = coresPerCol;
   opts.clSASeed = saSeed;
   opts.clSAEffort = saEffort;
+  opts.clCtrlPktOverlay = ctrlPktOverlay;
   opts.clSAWalkedFifos.assign(walkedFifos.begin(), walkedFifos.end());
   opts.clSACoreDataSizes.assign(coreDataSizes.begin(), coreDataSizes.end());
   xilinx::AIEX::addPlacementStage(*pm, opts);

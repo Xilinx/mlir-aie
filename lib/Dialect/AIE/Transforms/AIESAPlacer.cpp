@@ -955,7 +955,7 @@ int SAPlacer::computeCoreOverflowPenalty() const {
 int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
   auto usage = currentDMAUsage.lookup(tilePos);
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
-  int used[2] = {usage.first, usage.second};
+  int used[2] = {usage.first, usage.second + overlayChannels(tilePos)};
   int max[2] = {maxIn, maxOut};
   int penalty = 0;
   for (int dir : {0, 1}) {
@@ -969,6 +969,8 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
         if (at != currentPlacement.end() && at->second == tilePos)
           llvm::append_range(ends, own[dir]);
       }
+      if (dir == 1 && overlayChannels(tilePos))
+        ends.push_back(shimSpans->overlayEnd(tilePos.col));
       used[dir] += static_cast<int>(shimSpans->groups(ends).size()) -
                    static_cast<int>(ends.size());
     }
@@ -1646,7 +1648,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
-      provenShimGates(device));
+      provenShimGates(device), controlOverlay);
   runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "

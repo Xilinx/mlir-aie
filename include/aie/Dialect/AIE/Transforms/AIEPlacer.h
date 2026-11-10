@@ -108,7 +108,7 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(const AIETargetModel &tm);
+  virtual void initialize(const AIETargetModel &tm, bool controlOverlay);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -306,9 +306,17 @@ public:
   };
 
 protected:
+  // ShimTransferSpans::overlayEnd's channel, on each shim tile.
+  int overlayChannels(TileID tile) const {
+    return controlOverlay && tile.row == 0 &&
+           targetModel->getTileType(tile.col, tile.row) ==
+               AIETileType::ShimNOCTile;
+  }
+
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
   const AIETargetModel *targetModel = nullptr;
+  bool controlOverlay = false;
   TileAvailability availability;
 };
 
@@ -408,7 +416,8 @@ public:
       : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles),
         spreadUnanchoredTiles(spreadUnanchoredTiles) {}
 
-  void initialize(const AIETargetModel &targetModel) override;
+  void initialize(const AIETargetModel &targetModel,
+                  bool controlOverlay) override;
 
   mlir::LogicalResult place(DeviceOp device) override;
 

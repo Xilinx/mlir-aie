@@ -1099,6 +1099,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return verifyStackSizeOverrides(out.value->get());
       });
 
+  const bool ctrlOverlay =
+      ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue();
   auto &traced =
       withDefaultStackSize
           .map<ModRef>("placed.mlir",
@@ -1106,14 +1108,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                            &context, coresPerCol.getValue(),
                            placerType.getValue(), saSeed.getValue(),
                            saEffort.getValue(), llvm::to_vector(saWalkedFifos),
-                           llvm::to_vector(saCoreDataSizes))})
+                           llvm::to_vector(saCoreDataSizes), ctrlOverlay)})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
   // Everything a core needs before it can be compiled: objectFifo lowering
   // (which creates buffers), lock and BD ids, and the core-body lowerings.
   // Buffer addresses are not among them; see the placement edge below.
-  const bool ctrlOverlay =
-      ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue();
   auto withSymbolsPipeline =
       [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
        ctrl = ctrlOverlay, ldpdi = loadPdiToCtrlPkt.getValue(),

@@ -123,7 +123,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
                   "in place of its estimate, as <device>:<core>=<bytes>, "
                   "<core> counting the device's aie.core ops in order. A "
                   "core's declared data_size or measured_data_size still "
-                  "wins">];
+                  "wins">,
+       Option<"clCtrlPktOverlay", "ctrl-pkt-overlay", "bool",
+              /*default=*/"false",
+              "Leave each shim tile the MM2S channel the configuration "
+              "overlay of aie-generate-column-control-overlay takes, but "
+              "for the ends never in flight with its control packets">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,

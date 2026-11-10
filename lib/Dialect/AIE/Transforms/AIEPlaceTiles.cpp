@@ -165,7 +165,9 @@ struct AIEPlaceTilesPass
     }
     }
 
-    placer->initialize(device.getTargetModel());
+    placer->initialize(device.getTargetModel(),
+                       clCtrlPktOverlay &&
+                           getsColumnControlOverlay(device, true));
     if (failed(placer->place(device)))
       return signalPassFailure();
     if (saPlacer)

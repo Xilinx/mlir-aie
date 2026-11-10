@@ -27,11 +27,14 @@ namespace xilinx::AIE {
 
 ShimTransferSpans::ShimTransferSpans(
     DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf,
-    std::optional<Gates> gates)
-    : gates(std::move(gates)) {
+    std::optional<Gates> gates, bool plannedOverlay)
+    : gates(std::move(gates)), context(device.getContext()),
+      overlayColumns(plannedOverlay ? device.getTargetModel().columns() : 0) {
   auto inDevice = [&](DeviceOp owner, StringAttr symbol) {
     return owner == device ? endOf(symbol) : std::nullopt;
   };
+  for (int column = 0; column < overlayColumns; ++column)
+    used.insert(overlayEnd(column));
   analyze(device, inDevice);
   if (this->gates)
     analyzeGates(device, inDevice);
@@ -41,7 +44,7 @@ ShimTransferSpans::ShimTransferSpans(
     ModuleOp module,
     function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf,
     std::optional<Gates> gates)
-    : gates(std::move(gates)) {
+    : gates(std::move(gates)), context(module.getContext()) {
   analyze(module, endOf);
   if (this->gates)
     analyzeGates(module, endOf);
@@ -145,6 +148,9 @@ void ShimTransferSpans::analyze(
                              std::optional<int> column = {}) {
       if (!configured)
         return;
+      for (int planned = 0; planned < overlayColumns; ++planned)
+        if (!column || planned == *column)
+          synchronous(op, overlayEnd(planned), position[op], position[op]);
       for (auto alloc : configured.getOps<ShimDMAAllocationOp>()) {
         if (!AIEDialect::IsCtrlPktOverlayAttrHelper(root->getContext())
                  .isAttrPresent(alloc) ||
@@ -494,6 +500,10 @@ ShimTransferSpans::Gates ShimTransferSpans::provenGates(
 
 bool ShimTransferSpans::isUsed(StringAttr endpoint) const {
   return used.contains(endpoint);
+}
+
+StringAttr ShimTransferSpans::overlayEnd(int column) const {
+  return StringAttr::get(context, "ctrlpkt_col" + std::to_string(column));
 }
 
 bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
