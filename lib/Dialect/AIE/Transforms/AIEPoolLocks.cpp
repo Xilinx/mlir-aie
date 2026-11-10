@@ -31,13 +31,10 @@ PoolLocks::PoolLocks(DeviceOp device) {
 }
 
 bool PoolLocks::needsLocks(ObjectFifoPoolOp pool) const {
-  if (pool.getDisableSynchronization())
-    return false;
   std::optional<ArrayAttr> initValues = pool.getInitValues();
-  int64_t full = initValues ? initValues->size() : 0;
-  // Locks would let a pool of constants be read only as many times as they
-  // count, so a second launch would hang, unless a reset re-arms them.
   std::optional<StringRef> fifo = pool.getFifoName();
-  return full != pool.getDepth() || full <= 0 || filled.contains(pool) ||
-         (fifo && rearmsByFifo.contains(*fifo));
+  return needsLocks(pool.getDisableSynchronization(),
+                    initValues ? initValues->size() : 0, pool.getDepth(),
+                    filled.contains(pool),
+                    fifo && rearmsByFifo.contains(*fifo));
 }

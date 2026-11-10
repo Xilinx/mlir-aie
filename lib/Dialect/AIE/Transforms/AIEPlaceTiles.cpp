@@ -174,8 +174,12 @@ struct AIEPlaceTilesPass
     placer->initialize(device);
     if (failed(placer->place(device)))
       return signalPassFailure();
-    if (saPlacer)
+    if (saPlacer) {
       saFinalCost += saPlacer->getFinalCost();
+      saLockGroups += saPlacer->getFinalLockGroups();
+      saLockPenalty += saPlacer->getFinalLockPenalty();
+      saLockStopped += saPlacer->getFinalLockStopped();
+    }
 
     ConversionTarget target(getContext());
     target.addLegalOp<TileOp>();

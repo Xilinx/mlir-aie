@@ -27,6 +27,16 @@ public:
   /// nor one that starts full, is never refilled and is not re-armed each
   /// launch: it holds constants its readers have nothing to wait for.
   bool needsLocks(ObjectFifoPoolOp pool) const;
+  /// The same rule on a pool's facts: whether synchronization is disabled,
+  /// the objects it starts full with, its depth, whether an endpoint fills
+  /// it, and whether a reset re-arms its fifo. The placers ask it of the
+  /// pools the split will make.
+  static bool needsLocks(bool unsynchronized, int64_t full, int64_t depth,
+                         bool filled, bool rearmed) {
+    // Locks would let a pool of constants be read only as many times as they
+    // count, so a second launch would hang, unless a reset re-arms them.
+    return !unsynchronized && (full != depth || full <= 0 || filled || rearmed);
+  }
 
   /// The `aiex.dma_channel_reset_for` ops re-arming each fifo, by fifo name.
   const llvm::StringMap<llvm::SmallVector<AIEX::DmaChannelResetForOp>> &

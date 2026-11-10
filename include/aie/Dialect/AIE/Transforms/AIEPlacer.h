@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "llvm/ADT/MapVector.h"
 
@@ -856,12 +857,17 @@ public:
   mlir::LogicalResult place(DeviceOp device) override;
   llvm::StringRef getName() const override { return "sa_placer"; }
   int getFinalCost() const { return finalCost; }
+  int getFinalLockGroups() const { return finalLockGroups; }
+  int getFinalLockPenalty() const { return finalLockPenalty; }
+  bool getFinalLockStopped() const { return finalLockStopped; }
 
 private:
   // Configuration
   unsigned rngSeed;
   SAConfig config;
   int finalCost = 0;
+  int finalLockGroups = 0, finalLockPenalty = 0;
+  bool finalLockStopped = false;
   std::mt19937 rng;
   SASchedule schedule;
 
@@ -870,6 +876,21 @@ private:
   llvm::DenseMap<mlir::Operation *, AIETileType> tileTypes;
   llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
   llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
+  // Locks the design already places on each logical tile, and on each
+  // placed tile; placed tiles take lock groups too.
+  llvm::DenseMap<mlir::Operation *, int> fixedLocks;
+  llvm::DenseMap<TileID, int> placedLocks;
+  llvm::SmallVector<TileID> placedTiles;
+  // The lock groups of pools already in the input, read as
+  // aie-objectfifo-allocate reads them: each segment without its locks, used
+  // by the tiles of the endpoints selecting it (a compute tile's DMA reaching
+  // only its own locks).
+  struct InputLockGroup {
+    mlir::Operation *home;
+    llvm::SmallVector<std::pair<mlir::Operation *, bool>, 2> users;
+    int locks;
+  };
+  llvm::SmallVector<InputLockGroup> inputLockGroups;
 
   // Net model
   struct FifoBufferInfo {
@@ -910,6 +931,17 @@ private:
     bool allocateFallsBackToDMA = false;
     bool fitsLinkPool = true;
     bool linkSharedProd = false;
+    // PoolLocks::needsLocks' facts for the pools the split makes, and which
+    // ends' cores use the fifo.
+    bool unsynchronized = false;
+    int64_t initObjects = 0;
+    bool rearmed = false;
+    bool producerCore = false;
+    llvm::SmallVector<bool> consumerCore;
+    // The lock groups of the link pool an end holds: the link's segments, or
+    // none when a participant disables synchronization.
+    int producerLinkSegments = 0;
+    llvm::SmallVector<int> consumerLinkSegments;
   };
   llvm::SmallVector<NetInfo> nets;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
@@ -949,6 +981,11 @@ private:
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>>
       tileToFifoIndices;
   llvm::DenseMap<TileID, int64_t> currentMemUsage;
+  // Lock packings the moves repeat, the costliest to search again.
+  mutable LockPlan::Memo lockMemo{64};
+  // The locks the pools at each position take, and the move's changes.
+  llvm::DenseMap<TileID, int> currentLockDemand;
+  llvm::SmallVector<std::pair<TileID, int>> lockUndo;
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
@@ -1104,6 +1141,17 @@ private:
   /// Fills `bdShortfallAt` and returns the penalty it gives.
   int computeBDCountPenalty();
   int computeDelegatePenalty() const;
+  /// The locks aie-objectfifo-allocate cannot place, by LockPlan on the pools
+  /// the split gives each fifo where its ends sit, charged per lock. Sets
+  /// `stopped`, when given, to whether LockPlan's packing search stopped.
+  int computeLockPenalty(bool *stopped = nullptr) const;
+  /// The lock groups aie-objectfifo-allocate gives the pools the split makes
+  /// where the tiles sit now: how many locks each takes (two a segment, or a
+  /// pool's depth on AIE1) and the tiles using them, a compute tile's DMA
+  /// reaching only its own.
+  llvm::SmallVector<
+      std::pair<int, llvm::SmallVector<std::pair<TileID, bool>, 2>>>
+  lockGroups() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
   int computeAdjacencyPenalty(const Adjacency &adj,

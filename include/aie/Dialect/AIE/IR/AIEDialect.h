@@ -461,6 +461,11 @@ struct StreamWindowStep {
 
 namespace xilinx::AIE {
 
+// Whether a core on `tile` acquires or releases `fifo` through `port`, so
+// the split gives that end a core endpoint.
+bool hasCoreAccess(DeviceOp device, mlir::Value tile, ObjectFifoCreateOp fifo,
+                   ObjectFifoPort port);
+
 // The endpoints `end`'s `turns` names, each once, in order of first turn;
 // none when it takes no turns.
 llvm::SmallVector<ObjectFifoDmaEndpointOp>
