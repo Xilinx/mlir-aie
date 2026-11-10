@@ -2430,6 +2430,12 @@ ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoLinkOp::verify() {
+  for (Attribute name : llvm::concat<const Attribute>(getFifoIns().getValue(),
+                                                      getFifoOuts().getValue()))
+    if (!isa_and_nonnull<ObjectFifoCreateOp>(SymbolTable::lookupNearestSymbolFrom(
+            *this, cast<FlatSymbolRefAttr>(name))))
+      return emitOpError("names no objectfifo ") << name;
+
   if (isJoin() && isDistribute())
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
@@ -2737,32 +2743,37 @@ LogicalResult ObjectFifoLinkOp::verify() {
 }
 
 std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
+  std::vector<ObjectFifoCreateOp> fifoIn = getInputObjectFifos();
+  std::vector<ObjectFifoCreateOp> fifoOut = getOutputObjectFifos();
+  // A name that resolves to no fifo is the link verifier's to report.
+  if (fifoIn.size() < getFifoIns().size() ||
+      fifoOut.size() < getFifoOuts().size() || fifoIn.empty() ||
+      fifoOut.empty())
+    return {};
+
   // An input read by several links meets each at its consumer end on that
   // link's tile, whichever of its ends that is.
   if (isJoin()) {
-    Value tile = getOutputObjectFifos()[0].getProducerTile();
-    for (auto fifoIn : getInputObjectFifos())
-      if (!llvm::is_contained(fifoIn.getConsumerTiles(), tile))
+    Value tile = fifoOut[0].getProducerTile();
+    for (auto in : fifoIn)
+      if (!llvm::is_contained(in.getConsumerTiles(), tile))
         return {};
     return {tile};
   }
 
   if (isDistribute()) {
-    Value tile = getOutputObjectFifos()[0].getProducerTile();
-    for (auto fifoOut : getOutputObjectFifos())
-      if (fifoOut.getProducerTile() != tile)
+    Value tile = fifoOut[0].getProducerTile();
+    for (auto out : fifoOut)
+      if (out.getProducerTile() != tile)
         return {};
-    if (!llvm::is_contained(getInputObjectFifos()[0].getConsumerTiles(), tile))
+    if (!llvm::is_contained(fifoIn[0].getConsumerTiles(), tile))
       return {};
     return {tile};
   }
 
-  auto fifoIn = getInputObjectFifos();
-  if (auto fifoOut = getOutputObjectFifos();
-      !fifoIn.empty() && !fifoOut.empty())
-    for (auto consumerIn : fifoIn[0].getConsumerTiles())
-      if (consumerIn == fifoOut[0].getProducerTile())
-        return {fifoOut[0].getProducerTile()};
+  for (auto consumerIn : fifoIn[0].getConsumerTiles())
+    if (consumerIn == fifoOut[0].getProducerTile())
+      return {fifoOut[0].getProducerTile()};
   return {};
 }
 
