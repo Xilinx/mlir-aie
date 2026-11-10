@@ -1,0 +1,5 @@
+<map id="FoldBF16RoundTripPattern" name="FoldBF16RoundTripPattern">
+<area shape="rect" id="Node000001" title="Pattern to drop bf16 &#45;&gt; f32 &#45;&gt; bf16 round trips." alt="" coords="5,98,197,126"/>
+<area shape="rect" id="Node000002" href="$classOpRewritePattern.html" title=" " alt="" coords="11,5,191,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="103,64,103,98,99,96,99,68"/>
+</map>
