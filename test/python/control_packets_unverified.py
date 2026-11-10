@@ -29,7 +29,7 @@ def gen(emit):
                 emit()
 
         words = generate_control_packets(ctx.module.operation)
-        print(f"words: {len(words)}")
+        print(f"words: {len(words)}", flush=True)
 
 
 # CHECK: control packet with a write opcode requires a data payload
