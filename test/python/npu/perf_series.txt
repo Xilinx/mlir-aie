@@ -15,6 +15,7 @@ add_sized/1024x16/bfloat16
 add_sized/2048x16/bfloat16/llama-prefill
 add_sized/256x16/bfloat16/llama-decode
 add_sized/32x4/bfloat16/edge-tiny
+add_weighted/128x4/uint8/line_width=128/edge-tiny
 add_weighted/1920x16/int16/gamma
 add_weighted/1920x16/uint8
 add_weighted/1920x16/uint8/gamma
@@ -42,8 +43,10 @@ axpy/64x4/bfloat16/short-row
 bf16_exp/1024x16/bfloat16
 bf16_exp/1024x256/bfloat16
 bitwise_and/1920x16/uint8
+bitwise_and/256x4/uint8/line_width=256/edge-tiny
 bitwise_and/64x4/uint8/line_width=64/edge-one-vector
 bitwise_or/1920x16/uint8
+bitwise_or/256x4/uint8/line_width=256/edge-tiny
 bitwise_or/64x4/uint8/line_width=64/edge-one-vector
 bn_conv2dk1_i8/2016x8/uint8_int8/input_channels=72/input_width=28/output_channels=40
 bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80
@@ -518,6 +521,7 @@ reduce_max/64x4/bfloat16/vectorized=False/all-neg-inf
 reduce_max/64x4/bfloat16/vectorized=True/all-neg-inf
 reduce_max/64x4/float32/vectorized=False/all-neg-inf
 reduce_max/64x4/float32/vectorized=True/all-neg-inf
+reduce_max/64x4/int32/edge-tiny
 reduce_max/96x4/float32/whisper-peaks
 reduce_min/1024x16/bfloat16
 reduce_min/1024x16/int32
@@ -525,6 +529,7 @@ reduce_min/1024x256/bfloat16
 reduce_min/1024x256/int32
 reduce_min/16x4/int32/edge-one-vector
 reduce_min/32x4/bfloat16/edge-one-vector
+reduce_min/64x4/int32/edge-tiny
 relu/1024x16/bfloat16
 relu/1024x256/bfloat16
 relu/32x4/bfloat16/edge-tiny
@@ -631,6 +636,11 @@ threshold/1920x16/int16
 threshold/1920x16/uint8
 threshold/1920x16/uint8/tozero-inv
 threshold/1920x16/uint8/trunc
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-0
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-1
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-2
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-3
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-4
 threshold/64x4/uint8/line_width=64/edge-one-vector-mode-0
 threshold/64x4/uint8/line_width=64/edge-one-vector-mode-1
 threshold/64x4/uint8/line_width=64/edge-one-vector-mode-2
