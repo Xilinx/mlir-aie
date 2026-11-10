@@ -530,11 +530,11 @@ _SHAPE_MUTATIONS = [
 
 
 @pytest.mark.parametrize(
-    "case_id,read_expr,mutate", _SHAPE_MUTATIONS, ids=[m[0] for m in _SHAPE_MUTATIONS]
+    "read_expr,mutate",
+    [(m[1], m[2]) for m in _SHAPE_MUTATIONS],
+    ids=[m[0] for m in _SHAPE_MUTATIONS],
 )
-def test_cache_key_covers_the_shape_of_a_read_container(
-    tmp_path, case_id, read_expr, mutate
-):
+def test_cache_key_covers_the_shape_of_a_read_container(tmp_path, read_expr, mutate):
     """A structural change to a read container moves the key with no leaf change.
 
     Recorded members alone cannot tell ``[]`` from ``[[]]``, one mapping
@@ -783,19 +783,19 @@ def test_swapped_factory_closures_rekey_their_positions():
     assert key([lb, la]) != forward, "swapping closures must move the key"
 
 
-def test_class_digest_skips_private_registries():
-    """Private class attributes are implementation detail and never keyed.
+def test_class_digest_keys_private_state_too():
+    """Class-level state is keyed conservatively, private names included.
 
-    Config lives in public class attributes (``Config.FLAGS``); registries
-    like ``_instances`` churn with unrelated constructions and must not move
-    the key.  The class digest walks public attributes only.
+    ``Config._FLAGS`` is configuration exactly like ``Config.FLAGS`` --
+    skipping it would serve stale binaries.  Registries churning between
+    compiles (``_instances``) cost a conservative rebuild, never a wrong
+    binary; the mutation mask absorbs the generation-time churn.
     """
 
     class Config:
         FLAGS = ["-DSTEP=1"]
-        STEP = 1
         _STEP = 1
-        _instances = []
+        _instances = set()
 
     def key():
         ns = {"__name__": "cfg_mod", "Config": Config}
@@ -803,13 +803,13 @@ def test_class_digest_skips_private_registries():
         return _compute_recipe_hash(ns["gen"], {}, (), ())
 
     before = key()
-    Config._instances.append(object())
-    assert key() == before, "a private container registry must not move the key"
+    Config._instances.add(object())
+    assert key() != before, "private container state moves the key (conservative miss)"
     Config._STEP = 2
-    assert key() != before, "a private scalar is configuration and must move the key"
+    assert key() != before, "private scalar state moves the key"
     Config._STEP = 1
     Config.FLAGS.append("-O2")
-    assert key() != before, "public class state must move the key"
+    assert key() != before, "public class state moves the key"
 
 
 def test_generation_cache_key_follows_mutable_inputs(tmp_path):
@@ -877,7 +877,7 @@ def test_mask_keepalive_covers_every_pinned_object():
     with hash_mod._mask_generator_mutations(gen):
         gen()
     keep = getattr(gen, "__iron_key_mask_keepalive__")
-    assert lists[0] in keep and lists[1] in keep
+    assert lists[0] in keep.values() and lists[1] in keep.values()
 
 
 def test_self_referential_closure_terminates():
@@ -922,6 +922,58 @@ def test_walk_survives_objects_with_refusing_getattr():
     h1 = _compute_recipe_hash(ns["gen"], {}, (), ())
     h2 = _compute_recipe_hash(ns["gen"], {}, (), ())
     assert h1 == h2
+
+
+def test_cache_key_covers_state_of_modules_reached_through_containers(tmp_path):
+    """A module held in a container is more than its file stamp.
+
+    With ``SOURCES = [scale_flags]`` and ``compile_flags=SOURCES[0].FLAGS``,
+    the walk reaches the module as a container member; mutating its FLAGS in
+    place (the file unchanged) must still move the key.
+    """
+    (tmp_path / "scale_flags.py").write_text("FLAGS = ['-DSTEP=1']\n")
+    (tmp_path / "mod_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import scale_flags\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        "SOURCES = [scale_flags]\n"
+        'SOURCE = "void k(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def k(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "k",\n'
+        '        object_file_name="k.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=SOURCES[0].FLAGS,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import mod_design
+
+        state = sys.modules["scale_flags"]
+
+        def key():
+            return CompilableDesign(
+                mod_design.k, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+        state.FLAGS.append("-O2")
+        assert (
+            key() != before
+        ), "mutating a container-held module's state must move the key"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("mod_design", None)
+        sys.modules.pop("scale_flags", None)
 
 
 def test_cache_key_survives_a_self_configuring_generator(tmp_path):

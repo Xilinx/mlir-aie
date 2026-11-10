@@ -389,8 +389,12 @@ def _python_identity(
             value = value.__func__
         if isinstance(value, property):
             legs = ",".join(
-                "()" if leg is None else describe(leg, where, depth)
-                for leg in (value.fget, value.fset, value.fdel)
+                "()" if leg is None else describe(leg, f"{where}.{name}", depth + 1)
+                for leg, name in (
+                    (value.fget, "fget"),
+                    (value.fset, "fset"),
+                    (value.fdel, "fdel"),
+                )
             )
             return f"<property:{legs}>"
         if _plain(value) or isinstance(value, ExternalFunction):
@@ -422,7 +426,33 @@ def _python_identity(
         if (module := _stamped_module(value)) is not None:
             modules.append(module)
             if isinstance(value, ModuleType):
-                return f"module:{_import_name(value.__name__)}"
+                # A module reached through a container (SOURCES = [scale_flags])
+                # is more than its file: the mutable state the generator reads
+                # off it (SOURCES[0].FLAGS) can change with the file unchanged.
+                # Digest its public state like a class's; the walk only lands
+                # here for design-tree modules (installed ones key as
+                # <not-followed>), so the surface stays bounded.
+                binding = f"module:{_import_name(value.__name__)}"
+                if id(value) in frozen:
+                    if snapshot is not None:
+                        snapshot[id(value)] = frozen[id(value)]
+                        if obj_snapshot is not None:
+                            obj_snapshot[id(value)] = value
+                    return frozen[id(value)]
+                d = digests.get(id(value))
+                if d is None:
+                    if id(value) in active:
+                        return f"{binding}=<cycle>"
+                    if depth >= _MAX_KEY_DEPTH:
+                        raise _too_deep(where)
+                    digests[id(value)] = d = _module_digest(
+                        value, binding, where, depth
+                    )
+                if snapshot is not None:
+                    snapshot[id(value)] = f"{binding}={d}"
+                    if obj_snapshot is not None:
+                        obj_snapshot[id(value)] = value
+                return f"{binding}={d}"
             # The position binds what sits in it: two same-file helpers, or
             # two modules, are not interchangeable at one read even though
             # the file's stamp covers both, so the binding travels with the
@@ -600,6 +630,32 @@ def _python_identity(
         finally:
             active.discard(id(value))
 
+    def _module_digest(value, binding: str, where: str, depth: int) -> str:
+        """Digest a design-tree module's mutable public state.
+
+        Code members (functions, classes) ride the file's stamp; other
+        modules are skipped.  Private names are skipped too: module-level
+        ``_x = None`` rebound later by a ``load()`` is the lazy-binding idiom
+        (aie.utils binds its default runtime this way), and keying it would
+        make the key depend on whether the process had loaded before the key
+        first reached the module.  What remains is the public state a
+        generator reads off the module (FLAGS lists, dicts, instances).
+        """
+        active.add(id(value))
+        try:
+            h = hashlib.sha256()
+            h.update(binding.encode())
+            for attr, member in sorted(vars(value).items()):
+                if attr.startswith("_"):
+                    continue
+                if isinstance(member, ModuleType):
+                    continue
+                d = describe(member, f"{where}.{attr}", depth + 1)
+                h.update(f".{attr}={d}\0".encode())
+            return h.hexdigest()
+        finally:
+            active.discard(id(value))
+
     def _type_digest(value, binding: str, where: str, depth: int) -> str:
         """Digest a file-backed class's mutable class-level state."""
         active.add(id(value))
@@ -607,12 +663,13 @@ def _python_identity(
             h = hashlib.sha256()
             h.update(binding.encode())
             for attr, member in sorted(vars(value).items()):
-                # Private *containers* are registries (ExternalFunction._instances)
-                # whose churn must not move the key; private scalars and
-                # callables are configuration (Config._STEP) and stay keyed.
-                # Skipping a private scalar would be a stale hit, which is
-                # worse than the churn a registry costs.
-                if attr.startswith("_") and isinstance(member, _CONTAINER):
+                # Key every attribute: private config (Config._FLAGS) is as
+                # much an input as public -- skipping it is a stale hit.  The
+                # price is registry churn (ExternalFunction._instances) moving
+                # keys as a conservative miss, which the mutation mask absorbs
+                # for generation-time constructions; between compiles a
+                # registry touch costs a rebuild, never a wrong binary.
+                if attr.startswith("__") and not isinstance(member, FunctionType):
                     continue
                 d = describe(member, f"{where}.{attr}", depth + 1)
                 h.update(f".{attr}={d}\0".encode())
@@ -782,17 +839,18 @@ def _mask_generator_mutations(
                         # An id stays unique only while its object lives:
                         # hold the pinned objects so no new object can
                         # inherit their pins by reusing an id.
-                        keep = [pre_objs[i] for i in moved if i in pre_objs]
+                        keep = {i: pre_objs[i] for i in moved if i in pre_objs}
                         prev = (
                             getattr(generator, "__iron_key_mask_keepalive__", None)
-                            or []
+                            or {}
                         )
                         # The mask accumulates ids across runs; the keepalive
-                        # must cover every pinned id, not just this run's.
+                        # must cover every pinned id, deduped, not just this
+                        # run's.
                         setattr(
                             generator,
                             "__iron_key_mask_keepalive__",
-                            [*prev, *keep],
+                            {**prev, **keep},
                         )
                     except (AttributeError, TypeError):
                         logger.debug(
