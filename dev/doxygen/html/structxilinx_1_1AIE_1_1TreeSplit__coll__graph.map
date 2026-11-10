@@ -1,0 +1,13 @@
+<map id="xilinx::AIE::TreeSplit" name="xilinx::AIE::TreeSplit">
+<area shape="rect" id="Node000001" title=" " alt="" coords="587,107,737,135"/>
+<area shape="rect" id="Node000002" href="$structxilinx_1_1AIE_1_1PathEndPoint.html" title=" " alt="" coords="318,65,497,92"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="509,93,589,108,584,109,509,98"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,8,219,87"/>
+<area shape="poly" id="edge4_Node000001_Node000003" title=" " alt="" coords="234,31,310,28,394,31,481,42,564,65,605,84,641,107,636,106,603,89,562,70,480,47,394,36,310,33,235,36"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="233,58,320,68,315,70,234,63"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="93,122,131,150"/>
+<area shape="poly" id="edge5_Node000001_Node000004" title=" " alt="" coords="147,137,299,150,397,153,497,148,600,135,594,136,497,154,397,158,298,156,147,143"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="146,127,333,90,331,95,147,132"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="330,212,484,257"/>
+<area shape="poly" id="edge6_Node000001_Node000005" title=" " alt="" coords="499,224,531,217,562,205,588,189,612,170,647,136,652,134,615,174,591,194,564,210,533,222,500,230"/>
+</map>

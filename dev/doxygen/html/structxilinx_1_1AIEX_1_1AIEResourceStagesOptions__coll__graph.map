@@ -1,0 +1,15 @@
+<map id="xilinx::AIEX::AIEResourceStagesOptions" name="xilinx::AIEX::AIEResourceStagesOptions">
+<area shape="rect" id="Node000001" title="Options of aie&#45;resource&#45;stages, named and defaulted as aiecc&#39;s flags." alt="" coords="471,172,655,217"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,232,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="246,15,297,17,348,24,400,36,448,56,483,80,512,111,553,172,547,171,508,115,479,84,445,61,398,41,347,29,296,22,248,20"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="22,74,215,102"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="230,85,337,94,393,104,448,120,495,142,536,171,531,172,492,147,446,125,392,110,337,99,232,90"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="63,152,174,180"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="189,168,472,186,469,191,190,173"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="49,208,188,236"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="203,222,319,222,446,214,473,213,468,215,447,219,319,227,204,227"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="57,398,180,426"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="195,423,254,427,319,425,385,413,416,402,445,387,468,370,487,350,519,303,540,255,554,219,558,215,545,257,523,305,491,353,471,374,448,392,418,407,386,418,319,431,254,433,195,428"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="49,454,188,482"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="185,483,245,493,313,496,348,493,382,486,415,475,445,458,474,434,497,405,516,372,530,337,549,269,558,219,561,215,554,271,535,339,520,374,501,408,477,438,448,463,417,480,384,491,349,498,313,501,245,498,185,488"/>
+</map>
