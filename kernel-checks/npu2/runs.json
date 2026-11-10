@@ -2534,6 +2534,53 @@
     "offered": 149,
     "checked": 127
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "42766884674",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42766884674",
+   "date": "2026-11-10T06:11:52+00:00",
+   "commit": {
+    "id": "cbfc9921dab673d58409a542c08d14c30042b683",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/cbfc9921dab673d58409a542c08d14c30042b683",
+    "message": "[AIEX] Verify buffer-relative runtime write bounds [MED] (#3766)",
+    "timestamp": "2026-11-09T17:06:02Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "cbfc9921da",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2693,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 999,
+    "failed": 0,
+    "timed": 455,
+    "timing_failed": 0,
+    "untimed": 548,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 149,
+    "checked": 127
+   }
   }
  ]
 }
