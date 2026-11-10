@@ -429,6 +429,22 @@ struct PlannedDmaEnd {
   int64_t contiguousObjects;
 };
 
+// Why a fifo's objects cannot be its link's pool's objects
+// (ObjectFifoCreateOp::linkPoolMisfit).
+enum class LinkPoolMisfit {
+  None,
+  // The pool's owner has another object type.
+  ObjectType,
+  // The fifo has initial objects, but the pool starts with its owner's.
+  InitialValues,
+  // A merge's inputs take turns filling the pool through one DMA end.
+  MergeInput,
+  // A dispatch's outputs take turns draining the pool through one DMA end.
+  DispatchOutput,
+  // The fifo is one link's output and another's input.
+  BetweenLinks,
+};
+
 // One output of a StreamWindow: the first object it reads, counting the `top`
 // zero objects, and the lock units it takes before and gives back after.
 struct StreamWindowStep {
@@ -542,6 +558,11 @@ mlir::LogicalResult verifyDMABDIteration(DMABDOp bd, AIETileType tileType);
 mlir::LogicalResult verifyAssignedPacket(mlir::Operation *op,
                                          PacketInfoAttr packet,
                                          llvm::StringRef what = "packet");
+
+// `channel` names one of `tile`'s DMA channels in `dir`. Callable from the
+// AIEX dialect.
+mlir::LogicalResult verifyDMAChannelIndex(mlir::Operation *op, TileLike tile,
+                                          DMAChannelDir dir, int64_t channel);
 
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult

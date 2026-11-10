@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -49,7 +50,26 @@ class DMAChannelAnalysis {
       usedStreams;
 
 public:
+  /// A channel claimed by index: by a DMA program start, a runtime task or a
+  /// shim allocation, on `tile`.
+  struct ChannelClaim {
+    mlir::Value tile;
+    DMAChannelDir dir;
+    int channel;
+  };
+
+private:
+  /// Every claim that took a channel, in the order they were made.
+  llvm::SmallVector<ChannelClaim> claims;
+  void claim(mlir::Value tile, DMAChannelDir dir, int channel,
+             mlir::Operation *owner);
+
+public:
   DMAChannelAnalysis(DeviceOp &device);
+
+  /// The channels taken by index rather than through a route endpoint, one
+  /// per channel, in the order the claims were made.
+  llvm::ArrayRef<ChannelClaim> getChannelClaims() const { return claims; }
 
   /// Exclusive upper bound on channel indices eligible for this transfer.
   static int getDMAChannelLimit(TileLike tile, DMAChannelDir dir,
@@ -82,6 +102,8 @@ public:
   /// A DMA end of one tile still to get a channel: its direction, the BD ids
   /// it takes, and the exclusive upper bound on the channels it may take.
   struct BDPlanEnd {
+    BDPlanEnd(DMAChannelDir dir, int64_t bds, int limit)
+        : dir(dir), bds(bds), limit(limit) {}
     DMAChannelDir dir;
     int64_t bds;
     int limit;
@@ -156,6 +178,35 @@ public:
                     llvm::function_ref<bool(llvm::ArrayRef<unsigned>)> places,
                     unsigned maxTries);
   static constexpr unsigned kMaxWalkPlacements = 1024;
+
+  /// Blocks of the BD chain `start` begins, following next_bd.
+  static llvm::SmallVector<mlir::Block *> chainOf(DMAStartOp start);
+  static int64_t countBDs(DMAStartOp start);
+
+  /// The BD ids tiles' own programs hold before objectFIFOs take theirs: the
+  /// chains DMA programs start by index, on their channels, and each id a
+  /// runtime task pins, once per tile, on the lowest channel reaching it
+  /// (aie-reserve-runtime-bd-ids keeps static BDs off those).
+  class TakenBDs {
+  public:
+    TakenBDs() = default;
+    explicit TakenBDs(DeviceOp device);
+    /// By channel, the ids held at (`col`, `row`) by `tiles` and by every
+    /// tile with those coordinates.
+    llvm::DenseMap<int, int64_t>
+    at(const AIETargetModel &target, int col, int row,
+       llvm::ArrayRef<mlir::Operation *> tiles = {}) const;
+    /// Coordinates of the tiles holding ids that have them.
+    llvm::SmallVector<std::pair<int, int>> positions() const;
+
+  private:
+    struct Pin {
+      unsigned order;
+      int channel;
+    };
+    llvm::MapVector<mlir::Operation *, llvm::DenseMap<int, int64_t>> fixed;
+    llvm::MapVector<mlir::Operation *, llvm::DenseMap<int32_t, Pin>> pinned;
+  };
 
   /// Claim a raw stream port for `user`, reporting on it when the port is
   /// taken; packet users may share it with other packets.

@@ -2005,6 +2005,46 @@ bool ObjectFifoCreateOp::delegateReaches(const AIETargetModel &target,
   });
 }
 
+std::optional<TileID>
+ObjectFifoCreateOp::allocatedHome(const AIETargetModel &target, TileID producer,
+                                  TileID consumer, TileID delegate,
+                                  std::optional<TileID> linkTile) {
+  TileID home = linkTile.value_or(delegate);
+  if (!delegateReaches(target, delegate, producer, consumer) ||
+      !delegateReaches(target, home, producer, consumer))
+    return std::nullopt;
+  return home;
+}
+
+bool ObjectFifoCreateOp::allocateFallsBackToDMA() {
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (link.getOptionalSharedTile() && link.getPoolOwner() == *this)
+      return false;
+  return getLink().has_value();
+}
+
+LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
+  ObjectFifoLinkOp producerLink = getProducerLink();
+  ObjectFifoLinkOp consumerLink =
+      getConsumerTiles().empty() ? ObjectFifoLinkOp() : getConsumerLink(0);
+  if (producerLink && consumerLink)
+    return LinkPoolMisfit::BetweenLinks;
+  if (consumerLink && consumerLink.isMerge())
+    return LinkPoolMisfit::MergeInput;
+  if (producerLink && producerLink.isDispatch())
+    return LinkPoolMisfit::DispatchOutput;
+  ObjectFifoLinkOp link = producerLink ? producerLink : consumerLink;
+  if (!link)
+    return LinkPoolMisfit::None;
+  ObjectFifoCreateOp owner = link.getPoolOwner();
+  if (owner == *this)
+    return LinkPoolMisfit::None;
+  if (owner.getElemType() != getElemType())
+    return LinkPoolMisfit::ObjectType;
+  return getInitValues() ? LinkPoolMisfit::InitialValues : LinkPoolMisfit::None;
+}
+
 std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
   if (forcesDMA())
     return "it asks for a dma transport";
@@ -2030,15 +2070,16 @@ std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
 
 AIETargetModel::SharedMemory ObjectFifoCreateOp::sharedMemoryOf(
     const AIETargetModel &target, TileID producer, TileID consumer,
-    std::optional<TileID> delegate, bool linked) {
+    std::optional<TileID> delegate, std::optional<TileID> linkTile) {
   using SharedMemory = AIETargetModel::SharedMemory;
   // A delegate both ends reach holds the objects even where the ends share no
   // memory of their own; a link's objects need one.
-  if (delegate && delegateReaches(target, *delegate, producer, consumer)) {
+  if (delegate &&
+      allocatedHome(target, producer, consumer, *delegate, linkTile)) {
     SharedMemory own = target.getSharedMemory(producer, consumer);
     return own == SharedMemory::None ? SharedMemory::Either : own;
   }
-  if (linked)
+  if (linkTile)
     return SharedMemory::None;
   return target.getSharedMemory(producer, consumer);
 }
@@ -2060,14 +2101,18 @@ ObjectFifoCreateOp::placedDmaReason(AIETargetModel::SharedMemory &shared) {
   std::optional<TileID> consumer = placedAt(getConsumerTiles()[0]);
   std::optional<TileID> delegate =
       alloc ? placedAt(alloc->getDelegateTile()) : std::nullopt;
-  if (!producer || !consumer || (alloc && !delegate))
+  std::optional<ObjectFifoLinkOp> link = getLink();
+  std::optional<Value> linkPoint =
+      link ? link->getOptionalSharedTile() : std::nullopt;
+  std::optional<TileID> linkTile =
+      linkPoint ? placedAt(*linkPoint) : std::nullopt;
+  if (!producer || !consumer || (alloc && !delegate) || (link && !linkTile))
     return std::nullopt;
-  bool linked = getLink().has_value();
   shared = sharedMemoryOf(getTargetModel(*this), *producer, *consumer, delegate,
-                          linked);
+                          linkTile);
   if (shared == AIETargetModel::SharedMemory::None)
-    return linked ? "it is linked through a tile's DMAs"
-                  : "its ends share no memory module";
+    return link ? "it is linked through a tile's DMAs"
+                : "its ends share no memory module";
   return std::nullopt;
 }
 
@@ -2123,6 +2168,15 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
   return maxAcquire + 1;
 }
 
+ObjectFifoLinkOp ObjectFifoCreateOp::getProducerLink() {
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (link.getOptionalSharedTile() == getProducerTile() &&
+        llvm::is_contained(link.getOutputObjectFifos(), *this))
+      return link;
+  return {};
+}
+
 ObjectFifoLinkOp ObjectFifoCreateOp::getConsumerLink(unsigned consumer) {
   auto consumers = getConsumerTiles();
   Value tile = consumers[consumer];
@@ -2149,15 +2203,8 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
     return tileLike.isMemTile() && depth > 1 && depth <= maxLock;
   };
 
-  ObjectFifoLinkOp link;
-  if (drains) {
-    for (ObjectFifoLinkOp candidate : device.getOps<ObjectFifoLinkOp>())
-      if (candidate.getOptionalSharedTile() == tile &&
-          llvm::is_contained(candidate.getOutputObjectFifos(), *this))
-        link = candidate;
-  } else {
-    link = getConsumerLink(*consumer);
-  }
+  ObjectFifoLinkOp link =
+      drains ? getProducerLink() : getConsumerLink(*consumer);
   DataLayout layout = DataLayout::closest(*this);
   auto objectBytes = [&](Type fifoType) -> int64_t {
     MemRefType type = cast<AIEObjectFifoType>(fifoType).getElementType();
@@ -2286,6 +2333,67 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     return emitError("cannot allocate a shared memory module to an objectfifo "
                      "that moves by DMA: ")
            << *reason;
+  // A linked fifo that shares memory keeps its objects in the link's one
+  // pool, which a core fills or drains one pool object per acquire. Whether
+  // it shares depends on where its tiles are placed.
+  if (LinkPoolMisfit misfit = objFifo.linkPoolMisfit();
+      misfit != LinkPoolMisfit::None) {
+    ObjectFifoLinkOp link = *objFifo.getLink();
+    auto producer = dyn_cast<TileOp>(objFifo.getProducerTile().getDefiningOp());
+    auto consumer =
+        dyn_cast<TileOp>(objFifo.getConsumerTiles()[0].getDefiningOp());
+    auto delegate = dyn_cast<TileOp>(getDelegateTile().getDefiningOp());
+    // A link without a link point is the link verifier's to report.
+    std::optional<Value> linkPoint = link.getOptionalSharedTile();
+    auto linkTile =
+        linkPoint ? dyn_cast<TileOp>(linkPoint->getDefiningOp()) : TileOp();
+    bool shared = producer && consumer && delegate && linkTile &&
+                  ObjectFifoCreateOp::allocatedHome(
+                      (*this)->getParentOfType<DeviceOp>().getTargetModel(),
+                      producer.getTileID(), consumer.getTileID(),
+                      delegate.getTileID(), linkTile.getTileID());
+    StringRef name = objFifo.name().getValue();
+    if (shared) {
+      InFlightDiagnostic diag = emitOpError("places @")
+                                << name << "'s objects in the link's pool";
+      switch (misfit) {
+      case LinkPoolMisfit::ObjectType: {
+        ObjectFifoCreateOp owner = link.getPoolOwner();
+        diag << ", whose objects are @" << owner.name().getValue() << "'s "
+             << cast<AIEObjectFifoType>(owner.getElemType()).getElementType()
+             << "; a fifo that shares memory with a link must have the pool's "
+                "object type (@"
+             << name << "'s is "
+             << cast<AIEObjectFifoType>(objFifo.getElemType()).getElementType()
+             << ")";
+        break;
+      }
+      case LinkPoolMisfit::InitialValues:
+        diag << ", which starts with @" << link.getPoolOwner().name().getValue()
+             << "'s initial objects, "
+             << "but @" << name << " has initial objects of its own";
+        break;
+      case LinkPoolMisfit::MergeInput:
+        diag << ", but @" << name
+             << " is a merge's input, and a merge's inputs take turns filling "
+                "the pool through one DMA end";
+        break;
+      case LinkPoolMisfit::DispatchOutput:
+        diag << ", but @" << name
+             << " is a dispatch's output, and a dispatch's outputs take turns "
+                "draining the pool through one DMA end";
+        break;
+      case LinkPoolMisfit::BetweenLinks:
+        diag << ", but @" << name
+             << " is one link's output and another link's input, so its "
+                "objects would be both links' pools";
+        break;
+      case LinkPoolMisfit::None:
+        break;
+      }
+      return diag;
+    }
+  }
   for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
     if (auto other = dyn_cast<ObjectFifoAllocateOp>(op);
         other && other.getObjFifoName() == getObjFifoName())
@@ -2704,9 +2812,15 @@ int64_t ObjectFifoLinkOp::getPoolDepth() {
   StreamWindow window;
   if (walksStream())
     return succeeded(getStreamWindow(window)) ? window.objects : 0;
+  ObjectFifoCreateOp owner = getPoolOwner();
+  // An owner with an allocate shares the pool with its other end's core (the
+  // split rejects it otherwise), so the pool serves both ends, like the one
+  // pool of an unlinked fifo whose ends share memory.
+  if (owner.getAllocate())
+    return owner.sharedDepth();
   if (std::optional<unsigned> index = getOwnerConsumerIndex())
-    return getPoolOwner().dmaDepth(index);
-  return getPoolOwner().size();
+    return owner.dmaDepth(index);
+  return owner.size();
 }
 
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
@@ -4382,9 +4496,83 @@ MemoryRun CoreOp::getStackRun() {
   return {getStackAddress().value_or(0), getEffectiveStackSize()};
 }
 
+int64_t CoreOp::getSectionAlignment(std::optional<int32_t> bank) {
+  if (!bank)
+    return getMeasuredDataAlignment().value_or(1);
+  auto alignments = getMeasuredBankAlignments();
+  if (alignments && *bank >= 0 &&
+      static_cast<size_t>(*bank) < alignments->size())
+    return std::max<int64_t>((*alignments)[*bank], 1);
+  return 1;
+}
+
+SmallVector<BufferOp> CoreOp::getSectionReservationBuffers(
+    ArrayRef<CoreSectionReservation> reservations) {
+  using Kind = CoreSectionReservation::Kind;
+  SmallVector<BufferOp> onTile;
+  (*this)->getParentOp()->walk([&](BufferOp buffer) {
+    if (buffer.getTile() == getTile())
+      onTile.push_back(buffer);
+  });
+  SmallVector<BufferOp> holders;
+  DenseSet<Operation *> claimed;
+  for (const CoreSectionReservation &held : reservations) {
+    auto holds = [&](BufferOp buffer) {
+      if (claimed.contains(buffer) || buffer.getAllocationSize() != held.bytes)
+        return false;
+      if (held.kind == Kind::DataRegion)
+        return static_cast<bool>(buffer.getCoreData());
+      return buffer.getBankReserved() &&
+             buffer.getAligned() == held.aligned() &&
+             (held.kind == Kind::Bank ? buffer.getMemBank() == held.at
+                                      : buffer.getAddress() == held.at);
+    };
+    auto it = llvm::find_if(onTile, holds);
+    holders.push_back(it == onTile.end() ? BufferOp() : *it);
+    if (it != onTile.end())
+      claimed.insert(*it);
+  }
+  return holders;
+}
+
+SmallVector<CoreSectionReservation> CoreOp::getSectionReservations() {
+  using Kind = CoreSectionReservation::Kind;
+  SmallVector<CoreSectionReservation> held;
+  // A declared data_size wins over the measurement: it is a reservation the
+  // design asked for, and may deliberately exceed what this build measures.
+  int64_t data = getDataSize().value_or(getMeasuredDataSize().value_or(0));
+  if (data > 0)
+    held.push_back(
+        {Kind::DataRegion, data, 0, getSectionAlignment(std::nullopt)});
+  if (auto sizes = getMeasuredBankSizes())
+    for (auto [index, size] : llvm::enumerate(*sizes)) {
+      auto bank = static_cast<int32_t>(index);
+      if (size > 0)
+        held.push_back({Kind::Bank, size, bank, getSectionAlignment(bank)});
+    }
+  if (auto ranges = getMeasuredDataRanges())
+    for (size_t i = 0; i + 1 < ranges->size(); i += 2)
+      if ((*ranges)[i + 1] > 0)
+        held.push_back({Kind::Prebaked, (*ranges)[i + 1], (*ranges)[i]});
+  return held;
+}
+
 //===----------------------------------------------------------------------===//
 // BufferOp
 //===----------------------------------------------------------------------===//
+
+int64_t BufferOp::getSectionAlignment() {
+  if (!getCoreData() && !getBankReserved())
+    return 1;
+  for (Operation *user : getTile().getUsers())
+    if (auto core = dyn_cast<CoreOp>(user)) {
+      if (getCoreData())
+        return core.getSectionAlignment(std::nullopt);
+      std::optional<int32_t> bank = getMemBank();
+      return bank ? core.getSectionAlignment(*bank) : 1;
+    }
+  return 1;
+}
 
 int64_t BufferOp::getAllocationSize() {
   auto type = llvm::cast<MemRefType>(getType());
@@ -4404,6 +4592,12 @@ LogicalResult BufferOp::verify() {
         initType.getElementType() != type.getElementType())
       return emitOpError("initial value of type ")
              << initType << " does not cover the buffer's " << type;
+  }
+
+  // Each marks space held for a different reservation of the core's sections.
+  if (getCoreData() && getBankReserved()) {
+    return emitOpError("cannot be both core_data and bank_reserved; a buffer "
+                       "holds one reservation of a core's sections");
   }
 
   // A logical tile stands for a placement the compiler has yet to choose, so
@@ -4626,6 +4820,20 @@ static bool isBdPacketEnabled(DMABDOp bd) {
   if (Block *blk = bd->getBlock())
     return !blk->getOps<DMABDPACKETOp>().empty();
   return false;
+}
+
+LogicalResult xilinx::AIE::verifyDMAChannelIndex(Operation *op, TileLike tile,
+                                                 DMAChannelDir dir,
+                                                 int64_t channel) {
+  int64_t channels = dir == DMAChannelDir::MM2S
+                         ? tile.getNumDestConnections(WireBundle::DMA)
+                         : tile.getNumSourceConnections(WireBundle::DMA);
+  if (channel >= 0 && channel < channels)
+    return success();
+  return op->emitOpError() << stringifyDMAChannelDir(dir) << " channel "
+                           << channel << " is out of range: the tile has "
+                           << channels << " " << stringifyDMAChannelDir(dir)
+                           << " channels";
 }
 
 LogicalResult xilinx::AIE::verifyAssignedPacket(Operation *op,
@@ -5929,6 +6137,12 @@ LogicalResult DMAStartOp::verify() {
                          "unavailable on this target");
   }
   if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
+    return failure();
+  if (auto program = dyn_cast<DmaBody>((*this)->getParentOp());
+      program && !getEndpoint() &&
+      failed(verifyDMAChannelIndex(
+          getOperation(), cast<TileLike>(program.getTile().getDefiningOp()),
+          getChannelDir(), getChannelIndex())))
     return failure();
   SmallVector<DMABDOp> bds;
   if (getOutOfOrder()) {

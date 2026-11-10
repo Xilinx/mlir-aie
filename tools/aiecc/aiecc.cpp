@@ -1105,7 +1105,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                        PassPipeline{getPlacementPipeline(
                            &context, coresPerCol.getValue(),
                            placerType.getValue(), saSeed.getValue(),
-                           saEffort.getValue(), llvm::to_vector(saWalkedFifos),
+                           saEffort.getValue(), placementBudget.getValue(),
+                           llvm::to_vector(saWalkedFifos),
                            llvm::to_vector(saCoreDataSizes))})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 

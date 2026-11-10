@@ -117,8 +117,14 @@ struct AIEPlaceTilesPass
             << effort;
         return signalPassFailure();
       }
+      int64_t budget = clPlacementBudget;
+      if (budget <= 0) {
+        device.emitError("placement-budget must be positive, got ") << budget;
+        return signalPassFailure();
+      }
       SAConfig config;
       config.effort = effort;
+      config.placementBudget = budget;
       // A device another device's entry names is reported once, by the
       // module's first device; each device checks the entries naming it.
       auto module = device->getParentOfType<ModuleOp>();
@@ -165,7 +171,7 @@ struct AIEPlaceTilesPass
     }
     }
 
-    placer->initialize(device.getTargetModel());
+    placer->initialize(device);
     if (failed(placer->place(device)))
       return signalPassFailure();
     if (saPlacer)

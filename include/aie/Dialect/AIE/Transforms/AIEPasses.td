@@ -119,11 +119,15 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
                   "walked whole, one buffer each, as allocation lays out "
                   "the pools a turn-sharing walk takes, as <device>:<fifo>">,
        ListOption<"clSACoreDataSizes", "sa-core-data-sizes", "std::string",
-                  "Bytes the SA placer reserves for a core's own sections "
-                  "in place of its estimate, as <device>:<core>=<bytes>, "
+                  "Bytes the SA placer reserves for a core's own sections, "
+                  "as <device>:<core>=<bytes>, "
                   "<core> counting the device's aie.core ops in order. A "
                   "core's declared data_size or measured_data_size still "
-                  "wins">];
+                  "wins">,
+       Option<"clPlacementBudget", "placement-budget", "int64_t",
+              /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
+              "aie-assign-buffer-addresses' placement-budget, which the SA "
+              "placer lays core tiles out with as addressing will.">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,
@@ -165,7 +169,7 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 
   let options = [Option<"clPlacementBudget", "placement-budget", "int64_t",
-                        /*default=*/"100000",
+                        /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
                         "Placements each search, ranked then exhaustive, may "
                         "try per tile before it gives up. A node count rather "
                         "than a time limit, so a build stays reproducible; "

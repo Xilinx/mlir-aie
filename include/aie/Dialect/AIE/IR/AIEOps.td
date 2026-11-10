@@ -576,6 +576,19 @@ def AIE_CoreOp
     /// existed. A stack_bank-only pin must first be resolved by the allocator
     /// before consumers use this run as its final placement.
     MemoryRun getStackRun();
+    /// What assign-buffer-addresses reserves for this core's own sections:
+    /// `data_size`, else `measured_data_size`; each `measured_bank_sizes`
+    /// bank; each `measured_data_ranges` run.
+    llvm::SmallVector<CoreSectionReservation> getSectionReservations();
+    /// The measured alignment of the sections in the data region (no
+    /// `bank`) or pinned to `bank`; 1 when unmeasured.
+    int64_t getSectionAlignment(std::optional<int32_t> bank);
+    /// For each of `reservations`, the aie.buffer on this core's tile that
+    /// already holds it exactly (the kind, bank or address, and size
+    /// assign-buffer-addresses would give it), or null. A buffer holds at
+    /// most one reservation.
+    llvm::SmallVector<BufferOp> getSectionReservationBuffers(
+        llvm::ArrayRef<CoreSectionReservation> reservations);
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }
@@ -1975,6 +1988,9 @@ def AIE_BufferOp
     TileOp getTileOp();
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
+    /// For a core_data or bank_reserved buffer, the measured alignment of the
+    /// core sections it holds (CoreOp::getSectionAlignment); otherwise 1.
+    int64_t getSectionAlignment();
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
@@ -2786,18 +2802,38 @@ def AIE_ObjectFifoCreateOp
     /// Whether a delegate on `delegate` holds objects both ends reach.
     static bool delegateReaches(const AIETargetModel &target, TileID delegate,
                                 TileID producer, TileID consumer);
+    /// Where the split keeps the objects of a fifo whose
+    /// aie.objectfifo.allocate names a delegate on `delegate`, with its
+    /// producer on `producer` and consumer on `consumer`: the delegate's
+    /// memory, or for a fifo whose link sits on `linkTile`, the link's pool
+    /// there. Both ends must reach the delegate and that home. Nothing when
+    /// the allocate is not honoured: the split then moves the fifo by DMA if
+    /// allocateFallsBackToDMA(), and rejects it otherwise.
+    static std::optional<TileID>
+    allocatedHome(const AIETargetModel &target, TileID producer,
+                  TileID consumer, TileID delegate,
+                  std::optional<TileID> linkTile);
+    /// Whether the split moves the fifo by DMA, ignoring its
+    /// aie.objectfifo.allocate, when allocatedHome finds no home: a link's
+    /// participant that does not own the link's pool.
+    bool allocateFallsBackToDMA();
+    /// Why the fifo's objects cannot be its link's pool's, should it share
+    /// memory with the link: None for an unlinked fifo, the pool's owner, or
+    /// a fifo of the owner's object type, without initial objects of its own,
+    /// that its link's DMA ends do not share with other fifos.
+    LinkPoolMisfit linkPoolMisfit();
 
     /// Why the fifo moves by DMA wherever its ends are placed; nothing when
     /// shared memory may carry it, which sharedMemoryOf then decides.
     std::optional<llvm::StringRef> dmaReason();
     /// The memory module a fifo dmaReason() leaves open shares with its
     /// producer on `producer`, its consumer on `consumer`, its
-    /// aie.objectfifo.allocate's delegate, if any, on `delegate`, and
-    /// `linked` when an aie.objectfifo.link names it; None means DMA.
+    /// aie.objectfifo.allocate's delegate, if any, on `delegate`, and its
+    /// aie.objectfifo.link's tile, if any, on `linkTile`; None means DMA.
     static AIETargetModel::SharedMemory
     sharedMemoryOf(const AIETargetModel &target, TileID producer,
                    TileID consumer, std::optional<TileID> delegate,
-                   bool linked);
+                   std::optional<TileID> linkTile);
     /// Why the fifo moves by DMA where its ends are placed: dmaReason(), or
     /// that sharedMemoryOf() finds no module both reach; otherwise `shared`
     /// names the module. Nothing while an end it needs is unplaced.
@@ -2829,6 +2865,8 @@ def AIE_ObjectFifoCreateOp
     /// The link reading consumer `consumer`'s end, if any: each link on a tile
     /// takes the next of the fifo's consumer ends there, in order.
     ObjectFifoLinkOp getConsumerLink(unsigned consumer);
+    /// The link on the producer's tile writing the fifo, if any.
+    ObjectFifoLinkOp getProducerLink();
     /// Whether the two DMA ends the split gives the fifo, one circuit apart,
     /// may each take turns with other ends on one channel: as
     /// aie-objectfifo-allocate requires of both, neither is pinned to a
@@ -3014,7 +3052,8 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     // When the pool owner is an input, the consumer of it whose end the pool
     // is: one on the shared tile, after those earlier links took there.
     std::optional<unsigned> getOwnerConsumerIndex();
-    // Objects in the pool on the shared tile.
+    // Objects in the pool on the shared tile: the owner's sharedDepth() when
+    // it shares the pool through an aie.objectfifo.allocate.
     int64_t getPoolDepth();
   }];
 }

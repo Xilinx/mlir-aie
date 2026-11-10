@@ -159,9 +159,10 @@ inline cl::list<std::string> saCoreDataSizes(
              "is given"));
 inline cl::opt<int64_t> placementBudget(
     "placement-budget",
-    cl::desc("Buffer placements aie-assign-buffer-addresses may try per tile "
+    cl::desc("Buffer placements aie-assign-buffer-addresses, and the SA "
+             "placer laying out core tiles as it will, may try per tile "
              "before giving up"),
-    cl::init(100000));
+    cl::init(xilinx::AIE::kDefaultPlacementBudget));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));

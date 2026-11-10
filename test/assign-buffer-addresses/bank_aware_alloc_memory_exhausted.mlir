@@ -8,6 +8,7 @@
 // The design asks for 69632 bytes on a 65536-byte core tile, so neither scheme
 // can place it. Both report, and the pass fails.
 // RUN: not aie-opt --aie-prepare-buffers --aie-assign-bd-ids --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s --check-prefix=UNNAMED
 
 // The two 24576-byte buffers are larger than a bank, so each straddles into
 // the next; the smaller ones fill what is left, packing the tile tight enough
@@ -26,6 +27,12 @@
 // CHECK:                 _anonymous4     : 0xF000-0xFFFF          (4096 bytes)
 
 // CHECK: error: {{.*}}could not be placed: buffer "_anonymous5" needs 4096 bytes and this tile has no room left for it
+
+// Without aie-prepare-buffers the buffers have no names, and the diagnostics
+// say so rather than abort ("couldn't get name").
+// UNNAMED: warning: Not all requested buffers fit in the available memory.
+// UNNAMED: (unnamed buffer) {{.*}}: 0x0-0x5FFF {{.*}}(24576 bytes) (straddles into bank 1)
+// UNNAMED: error: {{.*}}could not be placed: an unnamed buffer needs 4096 bytes and this tile has no room left for it
 
 module {
   aie.device(npu1_2col) {

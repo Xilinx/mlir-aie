@@ -8,6 +8,7 @@
 #ifndef AIE_DIALECT_AIE_TRANSFORMS_AIEBUFFERALLOCATION_H
 #define AIE_DIALECT_AIE_TRANSFORMS_AIEBUFFERALLOCATION_H
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -20,6 +21,7 @@
 #include <map>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace xilinx::AIE {
@@ -115,6 +117,8 @@ assignSequentialBufferAddresses(llvm::MutableArrayRef<BufferAllocation> buffers,
 /// `bytes` homed on `home`, and the DMA ends it has there in its busier
 /// direction.
 struct SpillPool {
+  SpillPool(int64_t bytes, int64_t count, unsigned home, int demand)
+      : bytes(bytes), count(count), home(home), demand(demand) {}
   int64_t bytes;
   int64_t count;
   unsigned home;
@@ -215,6 +219,8 @@ memTileSpillComponents(const AIETargetModel &target,
 class MemTileSpillSearch {
 public:
   struct Tile {
+    Tile(int64_t capacity, llvm::SmallVector<BufferAllocation> fixed)
+        : capacity(capacity), fixed(std::move(fixed)) {}
     int64_t capacity;
     llvm::SmallVector<BufferAllocation> fixed;
   };
@@ -222,6 +228,10 @@ public:
   /// is false, and the `neighbours` it may spill to, in the order tried when
   /// they are equally used.
   struct Buffer {
+    Buffer(int64_t bytes, unsigned home, bool atHome,
+           llvm::SmallVector<unsigned, 2> neighbours)
+        : bytes(bytes), home(home), atHome(atHome),
+          neighbours(std::move(neighbours)) {}
     int64_t bytes;
     unsigned home;
     bool atHome;
@@ -402,6 +412,117 @@ private:
   llvm::SmallVector<int64_t> plannedBytes;
   llvm::SmallVector<int> misaligned;
 };
+
+/// The alignment assign-buffer-addresses places `buffer` at, in bytes: the
+/// vector rule when `aligned`, and the measured section alignment either way.
+inline int64_t bufferAlignBytes(BufferOp buffer, uint32_t tileAlignBitWidth,
+                                uint32_t maxVecAlignBits) {
+  int64_t sectionAlign = buffer.getSectionAlignment();
+  if (!buffer.getAligned())
+    return sectionAlign;
+  return std::max<int64_t>(requiredBufferAlignBits(tileAlignBitWidth,
+                                                   maxVecAlignBits,
+                                                   buffer.getAllocationSize()) /
+                               8,
+                           sectionAlign);
+}
+
+/// One buffer of a tile, as assign-buffer-addresses lays it out.
+struct TileLayoutBuffer {
+  int64_t size = 0;
+  /// bufferAlignBytes.
+  int64_t alignBytes = 1;
+  /// The measured section alignment a pinned address must meet.
+  int64_t sectionAlignBytes = 1;
+  /// Whether a pinned address must meet the bus width.
+  bool aligned = true;
+  std::optional<int64_t> address;
+  std::optional<int32_t> memBank;
+  /// The banks the buffer's memory space allows, when it names some.
+  llvm::SmallVector<int, 2> spaceBanks;
+  /// Whether the buffer has an initial value, which keeps it off
+  /// TileLayoutProblem::initGuardBytes.
+  bool initialized = false;
+};
+
+/// A tile's data memory and what it must hold.
+struct TileLayoutProblem {
+  int numBanks = 1;
+  uint32_t tileAlignBitWidth = 0;
+  uint32_t maxVecAlignBits = 0;
+  int64_t maxDataMemorySize = 0;
+  /// Whether the tile runs a core, whose sections need a contiguous region.
+  bool hasCore = false;
+  /// The core's stack; empty without one.
+  MemoryRun stackRun;
+  /// For a stack pinned to a bank but not an address: the bank, and the
+  /// alignment of the address chosen in it.
+  std::optional<int> stackBank;
+  int64_t stackAlignBytes = 1;
+  /// Bytes at the start of the tile an initialized buffer must not cover.
+  int64_t initGuardBytes = 0;
+  /// In the order the device holds them.
+  llvm::SmallVector<TileLayoutBuffer> buffers;
+  /// Placements each search may try before it gives up.
+  int64_t budget = 0;
+};
+
+/// What the searches cost, for --mlir-pass-statistics.
+struct TileLayoutStats {
+  int64_t backtracks = 0; // placements undone because a later buffer had none
+  int64_t tilesSearched = 0; // tiles needing more than the ranked first try
+  int64_t budgetExhausted = 0;
+  int64_t tilesCompacted = 0; // placed only by the exhaustive search
+};
+
+/// assign-buffer-addresses' layout of one tile, or why there is none.
+struct TileLayout {
+  enum class Status {
+    Placed,
+    /// The bank-pinned stack has no room; `message` says why.
+    StackNoRoom,
+    /// Buffer `failed` has a pin or bank request the tile cannot honour;
+    /// `message` says why.
+    BadPin,
+    /// Buffer `failed` fits nowhere once the others are placed.
+    NoRoom,
+  };
+  Status status = Status::Placed;
+  size_t failed = 0;
+  std::string message;
+  /// Whether the search ran out of budget with arrangements untried.
+  bool exhausted = false;
+  /// Address and bank of each buffer placed: every buffer when Placed, and
+  /// the pinned ones plus the deepest attempt's on NoRoom.
+  llvm::SmallVector<std::optional<std::pair<int64_t, int>>> at;
+  /// The address chosen for a bank-pinned stack.
+  std::optional<int64_t> stackStart;
+  /// The buffers with an address or bank pin, in the order they were placed,
+  /// and the others in the order the search placed them.
+  llvm::SmallVector<size_t> preAllocated, allocated;
+  /// The banks buffer `failed` must lie in, and on NoRoom with one bank,
+  /// the bytes free there.
+  llvm::SmallVector<int, 2> failedBanks;
+  int64_t freeInFailedBank = 0;
+  /// Bytes of the buffers left without an address on NoRoom.
+  int64_t unplacedBytes = 0;
+};
+
+/// Lays out `problem` as assign-buffer-addresses does, without touching IR.
+TileLayout layoutTile(const TileLayoutProblem &problem, TileLayoutStats &stats);
+
+/// assign-buffer-addresses' placement-budget unless set.
+constexpr int64_t kDefaultPlacementBudget = 100000;
+
+/// What assign-buffer-addresses lays `buffer` out as, on a tile with
+/// `limits`.
+TileLayoutBuffer tileLayoutBuffer(BufferOp buffer,
+                                  const TileMemoryLimits &limits);
+
+/// What assign-buffer-addresses lays out the buffer it makes for `held` as,
+/// on a core tile with `limits`.
+TileLayoutBuffer tileLayoutBuffer(const CoreSectionReservation &held,
+                                  const TileMemoryLimits &limits);
 
 } // namespace xilinx::AIE
 

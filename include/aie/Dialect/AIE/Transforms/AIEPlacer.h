@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
+#include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "llvm/ADT/MapVector.h"
 
@@ -19,6 +20,7 @@
 #include <list>
 #include <map>
 #include <random>
+#include <unordered_map>
 
 namespace xilinx::AIE {
 
@@ -89,6 +91,11 @@ struct TileAvailability {
   // kept in sync with `compTiles` by any code that mutates the vector
   // (initialize(), limitCoresPerColumn(), removeTile()).
   llvm::DenseSet<TileID> compTilesSet;
+  // Core positions a physical aie.tile's own aie.core already holds.
+  llvm::DenseSet<TileID> physicalCores;
+  // Compute tiles cores-per-col leaves out. A core pinned by column or row
+  // outranks the budget and may still take one.
+  std::vector<TileID> overBudgetCompTiles;
 
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
@@ -108,7 +115,7 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(const AIETargetModel &tm);
+  virtual void initialize(DeviceOp device);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -161,16 +168,21 @@ public:
   // Collect all placement-relevant operations from the device.
   static CollectedOps collectOperations(DeviceOp device);
 
-  // The (input, output) DMA channels each logical tile's flows, packet flows
-  // and route endpoints take: one per endpoint however many routes name it,
-  // and one per channel a flow names by index. With `named`, the (output,
-  // index) channels named by index, by tile.
+  // The (input, output) DMA channels each tile's flows, packet flows, route
+  // endpoints and channel claims (DMAChannelAnalysis's: program starts,
+  // runtime tasks, shim allocations) take: one per endpoint however many
+  // routes name it, and one per channel named by index. Tiles with both
+  // coordinates are keyed by position. With `named`, the (output, index)
+  // channels named by index, by tile; with `keys`, the tile each tile's
+  // demand is keyed by.
   static llvm::MapVector<mlir::Operation *, std::pair<int, int>>
   flowChannelDemand(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       llvm::ArrayRef<RouteOp> routes,
+      llvm::ArrayRef<DMAChannelAnalysis::ChannelClaim> claims,
       llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
-          *named = nullptr);
+          *named = nullptr,
+      llvm::DenseMap<mlir::Operation *, mlir::Operation *> *keys = nullptr);
 
   // Check if a logical tile's col/row constraints are satisfied at a position.
   static bool satisfiesConstraints(mlir::Operation *tile, TileID pos);
@@ -206,9 +218,12 @@ public:
   using ShareableShimEnds =
       llvm::DenseMap<mlir::Operation *,
                      std::array<llvm::SmallVector<mlir::StringAttr>, 2>>;
-  static ShareableShimEnds
-  collectShareableShimEnds(DeviceOp device,
-                           llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+  // With `routeKeys` (flowChannelDemand's `keys`), a route endpoint's end
+  // goes to the tile its channel demand is keyed by.
+  static ShareableShimEnds collectShareableShimEnds(
+      DeviceOp device, llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+      const llvm::DenseMap<mlir::Operation *, mlir::Operation *> &routeKeys =
+          {});
 
   // The objectFIFO end a runtime sequence names `symbol` for, before split:
   // the fifo itself, sending when its producer is a shim tile.
@@ -384,7 +399,7 @@ public:
       : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles),
         spreadUnanchoredTiles(spreadUnanchoredTiles) {}
 
-  void initialize(const AIETargetModel &targetModel) override;
+  void initialize(DeviceOp device) override;
 
   mlir::LogicalResult place(DeviceOp device) override;
 
@@ -401,6 +416,8 @@ private:
   // non-core aie.logical_tile onto a tile that already hosts one.
   llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
+  // The compute tiles cores-per-col leaves to unpinned logical cores.
+  int placeableCores = 0;
 
   // Shim channels are counted one per end until a shim tile runs out; then
   // ends never in flight together count once, as allocation will share them.
@@ -425,7 +442,10 @@ private:
   // attributes) or chosen by the placer.
   enum class PlacementOrigin { Pinned, Selected };
 
-  void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
+  /// Keeps at most `maxCoresPerCol` cores in each column, counting the
+  /// `held` positions a physical or pinned core already takes.
+  void limitCoresPerColumn(int maxCoresPerCol, int numColumns,
+                           const llvm::DenseSet<TileID> &held);
 
   // targetCol == nullopt means no routing anchor is known, so candidates are
   // ranked by DMA load rather than by distance to a column. `withinBudgets`
@@ -589,10 +609,10 @@ private:
   // pass falls back to reserved candidates. Each candidate is filtered
   // by buffer adjacency, cascade adjacency, and the compute-peer DMA
   // budget. Does not mutate placer state.
-  UnpinnedSearchResult
-  findUnconstrainedCoreCandidate(LogicalTileOp logicalTile,
-                                 std::optional<int> col, std::optional<int> row,
-                                 const UnpinnedPlacementInputs &inputs);
+  UnpinnedSearchResult findUnconstrainedCoreCandidate(
+      LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
+      const UnpinnedPlacementInputs &inputs, llvm::ArrayRef<TileID> candidates,
+      llvm::ArrayRef<TileID> pastBudget);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
   // SequentialPlacer-only: walks CoreOps and BufferOps, and takes each end of
@@ -727,10 +747,6 @@ struct SAConfig {
   // fifo's worth of memory overflow, which a neighbour's spare room absorbs.
   int sharedMemWeightPerDist = 300;
 
-  // The core's own sections (tables, constants) a core that declares no
-  // data_size is taken to need, before aiecc measures them after placement.
-  int coreSectionsBytes = 3 * 1024;
-
   // Memory pressure (cost 4)
   int pressurePerKB = 3;           // quadratic pressure above threshold
   double pressureThreshold = 0.75; // utilization fraction triggering pressure
@@ -748,6 +764,8 @@ struct SAConfig {
   int minMaxIters = 10000;
   int greedyMultiplier = 50;       // greedyIters = multiplier * numMovable
   double effort = 1.0;             // scales movesPerIter and greedyIters
+  // assign-buffer-addresses' placement-budget, for core tile layouts.
+  int64_t placementBudget = kDefaultPlacementBudget;
   double tempScaleEstimate = 10.0; // initTemp cap: scale * estimated T
   double tempScaleCost = 2.0;      // initTemp cap: scale * totalCost
 
@@ -770,7 +788,8 @@ struct SAConfig {
   // ObjectFIFOs whose mem tile pools allocation walked whole.
   llvm::SmallVector<std::string> walkedFifos;
   // Bytes each core keeps for its own sections, by the device's core order,
-  // where a build measured them: used in place of coreSectionsBytes.
+  // where a build measured them: the data region of a core declaring neither
+  // data_size nor measured_data_size.
   llvm::DenseMap<unsigned, int64_t> coreDataBytes;
 };
 
@@ -855,11 +874,18 @@ private:
   // Net model
   struct FifoBufferInfo {
     mlir::Operation *fifoOp = nullptr;
+    // Logical ends, null for a physical one.
     mlir::Operation *producer = nullptr;
     llvm::SmallVector<mlir::Operation *> consumers;
+    // Every end's tile, physical ones included.
+    mlir::Operation *producerTile = nullptr;
+    llvm::SmallVector<mlir::Operation *> consumerTiles;
     mlir::Operation *delegate = nullptr;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;
+    // Each end's object bytes, unaligned, as addressing lays the buffers out.
+    int64_t producerRawBytes = 0;
+    int64_t consumerRawBytes = 0;
     // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
     int sharedDepth = 0;
     int producerDepth = 0;
@@ -867,9 +893,22 @@ private:
     // ObjectFifoCreateOp::plannedDmaEnd of each end.
     std::optional<PlannedDmaEnd> producerEnd;
     llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerEnds;
+    // Whether an end on a link's tile holds the link's one pool, which the
+    // split builds from getPoolOwner and getPoolDepth as the plan says, or
+    // shares one another end holds.
+    enum class LinkPool { None, Holds, Shares };
+    LinkPool producerLinkPool = LinkPool::None;
+    llvm::SmallVector<LinkPool> consumerLinkPools;
+    std::optional<PlannedDmaEnd> producerLinkPlan;
+    llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerLinkPlans;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
-    bool linked = false;
+    // The tile of the link naming the fifo, if any.
+    mlir::Operation *linkTile = nullptr;
+    // With an aie.objectfifo.allocate, ObjectFifoCreateOp's
+    // allocateFallsBackToDMA() and whether linkPoolMisfit() is None.
+    bool allocateFallsBackToDMA = false;
+    bool fitsLinkPool = true;
     bool linkSharedProd = false;
   };
   llvm::SmallVector<NetInfo> nets;
@@ -890,8 +929,8 @@ private:
   };
   llvm::SmallVector<RouteEndInfo> routeEnds;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
-  // The DMA ends of each logical mem tile and the BD ids each takes, as the
-  // split will make them.
+  // The DMA ends of each mem tile, logical or physical, and the BD ids each
+  // takes, as the split will make them.
   struct MemTileEnd {
     DMAChannelDir dir;
     PlannedDmaEnd end;
@@ -916,9 +955,44 @@ private:
   // The resource terms that read only some tiles' positions, kept so a move
   // recomputes one only when it moves a tile the term reads.
   int memSpilloverPenalty = 0, bdCountPenalty = 0, delegatePenalty = 0;
+  // What each core tile op holds besides objectFIFO buffers, as
+  // assign-buffer-addresses lays it out: its aie.buffers and unsplit pools,
+  // the buffers its core's section reservations become, and the stack.
+  struct CoreTileContents {
+    llvm::SmallVector<TileLayoutBuffer> buffers;
+    bool hasCore = false;
+    MemoryRun stackRun;
+    std::optional<int> stackBank;
+    int64_t stackAlignBytes = 1;
+  };
+  llvm::DenseMap<mlir::Operation *, CoreTileContents> coreContents;
+  // The objectFIFO buffers on each core tile by size, the changes to them
+  // since the last accepted move, for undo, and their net change in the
+  // current one.
+  llvm::DenseMap<TileID, std::map<int64_t, int>> coreFifoBuffers;
+  llvm::SmallVector<std::tuple<TileID, int64_t, int>> coreFifoLog;
+  llvm::DenseMap<TileID, std::map<int64_t, int>> coreFifoChange;
+  // coreUnplaced of each core tile, the tiles whose ops a move changed, and
+  // what the last move overwrote.
+  llvm::DenseMap<TileID, int64_t> coreUnplacedAt;
+  llvm::DenseSet<TileID> coreDirty;
+  llvm::SmallVector<std::pair<TileID, int64_t>> coreUndo;
+  // The core overflow penalty, kept while no tile it reads changes, and the
+  // overflowing tiles it was computed for.
+  int coreOverflowPenalty = 0;
+  llvm::SmallVector<TileID> coreOverflowTiles;
+  // coreUnplaced by layout problem, and by tile ops and objectFIFO buffers;
+  // a result equals a fresh layoutTile.
+  struct KeyHash {
+    size_t operator()(const std::vector<int64_t> &key) const {
+      return llvm::hash_combine_range(key.begin(), key.end());
+    }
+  };
+  mutable std::unordered_map<std::vector<int64_t>, int64_t, KeyHash>
+      coreUnplacedOf, coreUnplacedByTile;
   llvm::DenseSet<mlir::Operation *> spillTiles, delegateTermTiles, pairedTiles;
-  // The buffers each logical mem tile already holds, as the allocator lays
-  // them out.
+  // The buffers each mem tile, logical or physical, already holds, as the
+  // allocator lays them out.
   llvm::MapVector<mlir::Operation *, llvm::SmallVector<BufferAllocation>>
       memTileFixed;
   // The BD ids the mem tile ends at each position are short of, what the
@@ -941,6 +1015,14 @@ private:
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
   llvm::DenseMap<TileID, TileID> bdLayoutOf;
+  // What aie-objectfifo-allocate plans a tile's BD ids around: the channels
+  // and ids its own programs and pinned runtime ids already hold.
+  std::optional<DMAChannelAnalysis> channelAnalysis;
+  DMAChannelAnalysis::TakenBDs takenBDs;
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> physicalTiles;
+  // Every logical mem tile, objectFIFO ends or not: its programs hold BD ids
+  // and channels wherever it is placed.
+  llvm::SmallVector<mlir::Operation *> logicalMemTiles;
   int cachedPressure = 0;
   // The DMA-channel term per tile, and what the last move overwrote in it.
   int dmaPenalty = 0;
@@ -992,10 +1074,30 @@ private:
   int64_t bdShortfall(TileID position, llvm::ArrayRef<mlir::Operation *> tiles,
                       WalkSets *walkSets = nullptr,
                       llvm::SmallVector<int64_t> *walkBytes = nullptr);
-  /// The logical mem tiles at `position`, in memTileEnds order.
+  /// The mem tiles at `position`, in memTileEnds order.
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
   int computeMemSpilloverPenalty();
   int computeCoreOverflowPenalty() const;
+  /// Charges `count` objectFIFO buffers of `bytes` to the core tile at `pos`.
+  void chargeCoreFifo(TileID pos, int64_t bytes, int count);
+  /// The bytes assign-buffer-addresses' layout (layoutTile) leaves unplaced
+  /// on the core tile at `pos`, with `added` objectFIFO buffers more and
+  /// `removed` fewer.
+  int64_t coreUnplaced(TileID pos, const std::map<int64_t, int> &added = {},
+                       const std::map<int64_t, int> &removed = {}) const;
+  /// Relocates the intratile fifos of the core tile at `pos` to neighbours
+  /// whose layout still places everything with them and what `lent` already
+  /// gave them, as generateAllocates' allocates do; records each in `moves`
+  /// and returns the bytes the tile's layout still leaves unplaced.
+  int64_t
+  planCoreFit(TileID pos, llvm::DenseMap<TileID, std::map<int64_t, int>> &lent,
+              llvm::SmallVectorImpl<std::pair<size_t, TileID>> *moves) const;
+  /// Recomputes coreUnplacedAt for the core tiles whose contents changed, and
+  /// returns them.
+  llvm::SmallVector<TileID> refreshCoreUnplaced();
+  /// The overflowing core tiles and their neighbours, which the core
+  /// overflow penalty reads.
+  llvm::DenseSet<TileID> coreOverflowReads() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();
   int computeTileDMAPenalty(TileID tilePos) const;
@@ -1010,6 +1112,8 @@ private:
   /// Cascade neighbours placed apart, and shared-memory ends placed on
   /// tiles sharing no memory module, by how far.
   int computePairingPenalty() const;
+  /// Core tiles over local memory, in position order.
+  llvm::SmallVector<TileID> overflowingCoreTiles() const;
   void generateAllocates();
 
   // Move methods
@@ -1030,7 +1134,8 @@ private:
                            llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
   void buildRouteModel(DeviceOp device, llvm::ArrayRef<FlowOp> flows,
                        llvm::ArrayRef<PacketFlowOp> pktFlows,
-                       llvm::ArrayRef<RouteOp> routes);
+                       llvm::ArrayRef<RouteOp> routes,
+                       llvm::ArrayRef<DMAChannelAnalysis::ChannelClaim> claims);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();

@@ -39,6 +39,10 @@ public:
   /// A shim input gating a receiving end's senders, per its
   /// `#aie.consumed_by`.
   struct Gate {
+    Gate(mlir::StringAttr input, int64_t inputBytes, int64_t outputBytes,
+         int64_t granuleBytes)
+        : input(input), inputBytes(inputBytes), outputBytes(outputBytes),
+          granuleBytes(granuleBytes) {}
     mlir::StringAttr input;
     int64_t inputBytes;
     int64_t outputBytes;

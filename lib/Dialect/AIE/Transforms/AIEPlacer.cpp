@@ -53,16 +53,23 @@ void Placer::Adjacency::addEdgeFromValues(Value a, Value b) {
     addEdge(aT, bT);
 }
 
-void Placer::initialize(const AIETargetModel &tm) {
+void Placer::initialize(DeviceOp device) {
+  const AIETargetModel &tm = device.getTargetModel();
   targetModel = &tm;
+  availability.physicalCores.clear();
+  for (CoreOp core : device.getOps<CoreOp>())
+    if (auto tile = dyn_cast_or_null<TileOp>(core.getTile().getDefiningOp()))
+      availability.physicalCores.insert(tile.getTileID());
   availability.compTiles.clear();
+  availability.overBudgetCompTiles.clear();
   availability.nonCompTiles.clear();
   for (int col = 0; col < tm.columns(); col++) {
     for (int row = 0; row < tm.rows(); row++) {
       TileID id = {col, row};
       switch (tm.getTileType(col, row)) {
       case AIETileType::CoreTile:
-        availability.compTiles.push_back(id);
+        if (!availability.physicalCores.contains(id))
+          availability.compTiles.push_back(id);
         break;
       case AIETileType::MemTile:
       case AIETileType::ShimNOCTile:
@@ -113,8 +120,8 @@ bool Placer::satisfiesConstraints(Operation *tile, TileID pos) {
   return true;
 }
 
-void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
-  Placer::initialize(targetModel);
+void SequentialPlacer::initialize(DeviceOp device) {
+  Placer::initialize(device);
 
   // Compute tiles iterate column-major (fill a column top-to-bottom before
   // moving right); non-compute tiles iterate row-major.
@@ -137,36 +144,54 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
                                    availability.compTiles.end());
 
   if (coresPerCol.has_value()) {
-    llvm::DenseMap<int, int> coresInColumn;
-    for (const auto &tile : availability.compTiles)
-      coresInColumn[tile.col]++;
-    int maxDeviceCoresPerCol = 0;
-    for (const auto &[col, count] : coresInColumn)
-      maxDeviceCoresPerCol = std::max(maxDeviceCoresPerCol, count);
-    deviceCoresPerCol = maxDeviceCoresPerCol;
-    limitCoresPerColumn(*coresPerCol, targetModel.columns());
+    deviceCoresPerCol = 0;
+    for (int col = 0; col < targetModel->columns(); col++) {
+      int cores = 0;
+      for (int row = 0; row < targetModel->rows(); row++)
+        cores += targetModel->getTileType(col, row) == AIETileType::CoreTile;
+      deviceCoresPerCol = std::max(deviceCoresPerCol, cores);
+    }
+    DenseSet<TileID> held(availability.physicalCores.begin(),
+                          availability.physicalCores.end());
+    for (CoreOp core : device.getOps<CoreOp>())
+      if (auto tile =
+              dyn_cast_or_null<LogicalTileOp>(core.getTile().getDefiningOp()))
+        if (auto col = tile.tryGetCol(), row = tile.tryGetRow(); col && row)
+          held.insert({*col, *row});
+    limitCoresPerColumn(*coresPerCol, targetModel->columns(), held);
   }
 }
 
-void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
+void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns,
+                                           const DenseSet<TileID> &held) {
   llvm::DenseMap<int, std::vector<TileID>> tilesByColumn;
   for (const auto &tile : availability.compTiles)
-    tilesByColumn[tile.col].push_back(tile);
+    if (!held.contains(tile))
+      tilesByColumn[tile.col].push_back(tile);
 
-  // Keep the first maxCoresPerCol tiles from each column. The per-column
-  // vectors are already row-sorted because compTiles is column-major.
+  // Keep the first maxCoresPerCol tiles from each column, less the column's
+  // held cores. The per-column vectors are already row-sorted because
+  // compTiles is column-major.
+  DenseMap<int, int> heldInColumn;
+  for (TileID tile : held)
+    ++heldInColumn[tile.col];
   std::vector<TileID> limitedTiles;
   for (int col = 0; col < numColumns; col++) {
     auto it = tilesByColumn.find(col);
     if (it == tilesByColumn.end())
       continue;
     const auto &tilesInCol = it->second;
-    size_t numToTake =
-        std::min(tilesInCol.size(), static_cast<size_t>(maxCoresPerCol));
+    size_t numToTake = std::min<size_t>(
+        tilesInCol.size(),
+        std::max(0, maxCoresPerCol - heldInColumn.lookup(col)));
     limitedTiles.insert(limitedTiles.end(), tilesInCol.begin(),
                         tilesInCol.begin() + numToTake);
+    availability.overBudgetCompTiles.insert(
+        availability.overBudgetCompTiles.end(), tilesInCol.begin() + numToTake,
+        tilesInCol.end());
   }
 
+  placeableCores = limitedTiles.size();
   availability.compTiles = limitedTiles;
   availability.compTilesSet.clear();
   availability.compTilesSet.insert(availability.compTiles.begin(),
@@ -205,19 +230,36 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
   namedChannels.clear();
+  llvm::DenseMap<Operation *, Operation *> demandKeys;
   for (auto &[tile, inOut] :
-       flowChannelDemand(flows, pktFlows, routes, &namedChannels)) {
+       flowChannelDemand(flows, pktFlows, routes,
+                         DMAChannelAnalysis(device).getChannelClaims(),
+                         &namedChannels, &demandKeys)) {
     channelRequirements[tile].first += inOut.first;
     channelRequirements[tile].second += inOut.second;
   }
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
   runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
-  shareableShimEnds = collectShareableShimEnds(device, objectFifos);
+  shareableShimEnds =
+      collectShareableShimEnds(device, objectFifos, demandKeys);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device));
   shimEndsAt.clear();
+  // A physical tile's fifo ends, flows and claims hold channels at its
+  // position, which logical tiles placed there share.
+  for (TileOp placed : device.getOps<TileOp>()) {
+    TileID at = placed.getTileID();
+    auto [in, out] = channelRequirements.lookup(placed);
+    if (in)
+      updateChannelUsage(at, DmaDir::In, in);
+    if (out)
+      updateChannelUsage(at, DmaDir::Out, out);
+    for (auto named : namedChannels.lookup(placed))
+      availability.namedChannelsUsed[at].insert(named);
+    recordShimEnds(at, placed);
+  }
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
@@ -456,8 +498,14 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           computePeerAdjacency, needNeighborIn,
           needNeighborOut,      isReservedForOtherBound,
           preferredCols};
-      auto search =
-          findUnconstrainedCoreCandidate(logicalTile, col, row, inputs);
+      // A pin outranks the budget, so a pinned core searches the tiles it
+      // left out as well.
+      bool searchedPastBudget = col || row;
+      auto search = findUnconstrainedCoreCandidate(
+          logicalTile, col, row, inputs, availability.compTiles,
+          searchedPastBudget
+              ? ArrayRef<TileID>(availability.overBudgetCompTiles)
+              : ArrayRef<TileID>());
       std::optional<TileID> placement = search.placement;
       bool sawConstraintMatch = search.sawConstraintMatch;
       bool allConstraintMatchesFailedAdjacency =
@@ -494,11 +542,12 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         }
         // A cores-per-col budget leaves no trace in the message above: the
         // tiles it removed are simply absent from `availability.compTiles`.
-        if (coresPerCol.has_value() && deviceCoresPerCol > 0) {
+        if (coresPerCol.has_value() && deviceCoresPerCol > 0 &&
+            !searchedPastBudget) {
           int columns = targetModel->columns();
           diag.attachNote()
               << "cores-per-col=" << *coresPerCol << " leaves "
-              << columns * *coresPerCol << " of this device's "
+              << placeableCores << " of this device's "
               << columns * deviceCoresPerCol
               << " compute tiles placeable and may be limiting placement; "
                  "consider raising it or reducing the design's core count";
@@ -718,7 +767,8 @@ bool SequentialPlacer::PlacementContext::isReservedForOther(
 SequentialPlacer::UnpinnedSearchResult
 SequentialPlacer::findUnconstrainedCoreCandidate(
     LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
-    const UnpinnedPlacementInputs &inputs) {
+    const UnpinnedPlacementInputs &inputs, ArrayRef<TileID> candidates,
+    ArrayRef<TileID> pastBudget) {
   UnpinnedSearchResult result;
   auto neighborDemand = [&](Operation *op) {
     return inputs.needNeighborIn.lookup(op) + inputs.needNeighborOut.lookup(op);
@@ -741,8 +791,7 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       ++n;
     return n;
   };
-  SmallVector<TileID> orderedCandidates(availability.compTiles.begin(),
-                                        availability.compTiles.end());
+  SmallVector<TileID> orderedCandidates(candidates);
   if (neighborDemand(logicalTile.getOperation()) > 0) {
     llvm::stable_sort(orderedCandidates, [&](TileID a, TileID b) {
       if (a.col != b.col)
@@ -764,6 +813,11 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       return rankOf(a) < rankOf(b);
     });
   }
+
+  // Tiles past the budget come after it, so a pinned core exceeds the budget
+  // only when no tile within it passes a pass's checks; the strict passes see
+  // them before the last pass takes a tile a floating peer needs.
+  llvm::append_range(orderedCandidates, pastBudget);
 
   // A candidate that leaves no free core tile for one of this LTO's
   // unplaced shared-L1 peers is tried only in the final pass. Each peer
@@ -1480,19 +1534,20 @@ Placer::buildObjectFifoAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
 }
 
 Placer::ShareableShimEnds
-Placer::collectShareableShimEnds(DeviceOp device,
-                                 ArrayRef<ObjectFifoCreateOp> objectFifos) {
+Placer::collectShareableShimEnds(
+    DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos,
+    const llvm::DenseMap<Operation *, Operation *> &routeKeys) {
   llvm::DenseSet<std::pair<Operation *, Value>> registered;
   for (auto reg : device.getOps<ObjectFifoRegisterExternalBuffersOp>())
     registered.insert({reg.getObjectFifo(), reg.getTile()});
   ShareableShimEnds ends;
   auto shareable = [&](ObjectFifoCreateOp fifo, Value tile,
                        ObjectFifoEndPortAttr port) -> Operation * {
-    auto lt = dyn_cast_or_null<LogicalTileOp>(tile.getDefiningOp());
+    auto lt = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
     if (!lt || lt.getTileType() != AIETileType::ShimNOCTile || fifo.getPlio() ||
         (port && port.channelIndex()) || registered.contains({fifo, tile}))
       return nullptr;
-    return lt;
+    return lt.getOperation();
   };
   for (auto fifo : objectFifos) {
     if (Operation *lt =
@@ -1506,8 +1561,9 @@ Placer::collectShareableShimEnds(DeviceOp device,
     auto tile = dyn_cast<LogicalTileOp>(endpoint.getTile().getDefiningOp());
     if (tile && tile.isShimTile() && endpoint.getBundle() == WireBundle::DMA &&
         !endpoint.getChannelIndex())
-      ends[tile][endpoint.getRouteDirection() == DMAChannelDir::MM2S ? 1 : 0]
-          .push_back(endpoint.getSymNameAttr());
+      ends[routeKeys.lookup_or(tile.getOperation(), tile.getOperation())]
+          [endpoint.getRouteDirection() == DMAChannelDir::MM2S ? 1 : 0]
+              .push_back(endpoint.getSymNameAttr());
   }
   return ends;
 }
@@ -1637,9 +1693,10 @@ Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
   return adjacency;
 }
 
-// Already-resolved TileOps have no placer-visible budget, so only flows whose
-// endpoints are LogicalTileOps contribute to channelRequirements. A DMA
-// channel is a hardware resource: a broadcast (one source channel feeding
+// Tiles with both coordinates are one tile however many ops name them, as in
+// DMAChannelAnalysis::getTileKey: their demand is keyed by the first op seen
+// there, placed or not, so a physical tile's channels count at its position.
+// A DMA channel is a hardware resource: a broadcast (one source channel feeding
 // multiple destinations) consumes one MM2S channel on the producer regardless
 // of the number of `aie.flow` ops it lowers to, and a merge (multiple sources
 // landing on one destination channel) consumes one S2MM channel on the
@@ -1648,17 +1705,24 @@ Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
 // channel allocation has yet to pick holds a channel of its own.
 llvm::MapVector<Operation *, std::pair<int, int>> Placer::flowChannelDemand(
     ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
-    ArrayRef<RouteOp> routes,
-    llvm::DenseMap<Operation *, SmallVector<std::pair<int, int>>> *named) {
+    ArrayRef<RouteOp> routes, ArrayRef<DMAChannelAnalysis::ChannelClaim> claims,
+    llvm::DenseMap<Operation *, SmallVector<std::pair<int, int>>> *named,
+    llvm::DenseMap<Operation *, Operation *> *keys) {
   llvm::MapVector<Operation *, std::pair<int, int>> demand;
   llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
+  llvm::DenseMap<std::pair<int, int>, Operation *> byCoordinate;
 
   auto incIfDMA = [&](Operation *tileOp, WireBundle bundle,
                       std::optional<int> channel, bool isOutput) {
-    if (!tileOp || !isa<LogicalTileOp>(tileOp))
+    auto tile = dyn_cast_or_null<TileLike>(tileOp);
+    if (!tile || bundle != WireBundle::DMA)
       return;
-    if (bundle != WireBundle::DMA)
-      return;
+    Operation *key = tileOp;
+    if (auto col = tile.tryGetCol(), row = tile.tryGetRow(); col && row)
+      key = byCoordinate.try_emplace({*col, *row}, tileOp).first->second;
+    if (keys)
+      (*keys)[tileOp] = key;
+    tileOp = key;
     auto &seen = isOutput ? seenSrc : seenDst;
     if (channel && !seen.insert({tileOp, *channel}).second)
       return;
@@ -1688,6 +1752,10 @@ llvm::MapVector<Operation *, std::pair<int, int>> Placer::flowChannelDemand(
       }
     });
   }
+
+  for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
+    incIfDMA(claim.tile.getDefiningOp(), WireBundle::DMA, claim.channel,
+             claim.dir == DMAChannelDir::MM2S);
 
   // Packet routes may share an endpoint, which holds one channel however many
   // routes name it, and a fan-in's sources share one destination channel.
@@ -2470,6 +2538,7 @@ void TileAvailability::removeTile(TileID tile, AIETileType type) {
   switch (type) {
   case AIETileType::CoreTile:
     removeFromVector(compTiles);
+    removeFromVector(overBudgetCompTiles);
     compTilesSet.erase(tile);
     break;
   case AIETileType::MemTile:
