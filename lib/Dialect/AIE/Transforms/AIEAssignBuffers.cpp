@@ -1533,13 +1533,11 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
     }
   }
   auto opsOf = [&](ArrayRef<size_t> indices) {
-    return llvm::to_vector(
-        llvm::map_range(indices, [&](size_t i) { return buffers[i]; }));
+    return llvm::map_to_vector(indices, [&](size_t i) { return buffers[i]; });
   };
   SmallVector<BufferOp> allocatedBuffers = opsOf(layout.allocated);
-  SmallVector<TileLayoutBuffer> allocatedRequests =
-      llvm::to_vector(llvm::map_range(
-          layout.allocated, [&](size_t i) { return problem.buffers[i]; }));
+  SmallVector<TileLayoutBuffer> allocatedRequests = llvm::map_to_vector(
+      layout.allocated, [&](size_t i) { return problem.buffers[i]; });
   MemoryRun stackRun = problem.stackRun;
   if (layout.stackStart)
     stackRun.start = *layout.stackStart;

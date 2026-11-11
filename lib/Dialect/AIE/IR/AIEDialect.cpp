@@ -2367,11 +2367,11 @@ LogicalResult ObjectFifoAllocateOp::verify() {
       case LinkPoolMisfit::ObjectType: {
         ObjectFifoCreateOp owner = link.getPoolOwner();
         diag << ", whose objects are @" << owner.name().getValue() << "'s "
-             << cast<AIEObjectFifoType>(owner.getElemType()).getElementType()
+             << owner.getElemType().getElementType()
              << "; a fifo that shares memory with a link must have the pool's "
                 "object type (@"
              << name << "'s is "
-             << cast<AIEObjectFifoType>(objFifo.getElemType()).getElementType()
+             << objFifo.getElemType().getElementType()
              << ")";
         break;
       }
