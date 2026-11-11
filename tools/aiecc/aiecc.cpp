@@ -1116,7 +1116,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   saSeed.getValue(), saEffort.getValue(),
                   placementBudget.getValue(), llvm::to_vector(saWalkedFifos),
                   llvm::to_vector(saCoreDataSizes), ctrlOverlay,
-                  ctrlpktAdaptiveOverlay.getValue())})
+                  ctrlpktAdaptiveOverlay.getValue(),
+                  packetSwObjFifos.getValue())})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
   // Everything a core needs before it can be compiled: objectFifo lowering

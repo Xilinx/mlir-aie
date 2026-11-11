@@ -112,6 +112,7 @@ void AIEX::registerAIEResourceStagesPipeline() {
         place.clCtrlPktOverlay =
             options.ctrlPktOverlay || options.loadPdiToCtrlPkt;
         place.clCtrlPktOverlayAdaptive = options.adaptiveOverlay;
+        place.clPacketSwObjectFifos = options.packetSwObjFifos;
         addPlacementStage(pm, place);
         addTraceStage(pm);
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,

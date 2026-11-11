@@ -117,7 +117,7 @@ public:
   virtual ~Placer() = default;
 
   virtual void initialize(DeviceOp device, bool controlOverlay,
-                          bool adaptiveOverlay);
+                          bool adaptiveOverlay, bool packetSwitched);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -258,8 +258,9 @@ public:
       bool sends;
       int channel;
     };
-    explicit PinnedChannels(const AIETargetModel &targetModel)
-        : targetModel(&targetModel) {}
+    // With `packetSwitched`, an end asking for no packet header gets one.
+    PinnedChannels(const AIETargetModel &targetModel, bool packetSwitched)
+        : targetModel(&targetModel), packetSwitched(packetSwitched) {}
     // The end of `fifo` that pins a DMA channel, if it does.
     static std::optional<End> endOf(ObjectFifoCreateOp fifo,
                                     std::optional<unsigned> consumer);
@@ -275,6 +276,7 @@ public:
 
   private:
     const AIETargetModel *targetModel;
+    bool packetSwitched;
     bool diagnosed = false;
     llvm::DenseMap<std::tuple<mlir::Operation *, int, int>,
                    std::pair<End, unsigned>>
@@ -415,6 +417,8 @@ protected:
   const AIETargetModel *targetModel = nullptr;
   bool controlOverlay = false;
   bool adaptiveOverlay = true;
+  // Routes asking for no packet header carry one (packet-sw-objFifos).
+  bool packetSwitched = false;
   TileAvailability availability;
 };
 
@@ -514,8 +518,8 @@ public:
       : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles),
         spreadUnanchoredTiles(spreadUnanchoredTiles) {}
 
-  void initialize(DeviceOp device, bool controlOverlay,
-                  bool adaptiveOverlay) override;
+  void initialize(DeviceOp device, bool controlOverlay, bool adaptiveOverlay,
+                  bool packetSwitched) override;
 
   mlir::LogicalResult place(DeviceOp device) override;
 

@@ -138,7 +138,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
               /*default=*/"true",
               "With ctrl-pkt-overlay, where the overlay's MM2S channel goes, "
               "as aie-generate-column-control-overlay's adaptive option "
-              "says: on, any channel no circuit holds; off, channel 0">];
+              "says: on, any channel no circuit holds; off, channel 0">,
+       Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
+              /*default=*/"false",
+              "Count every route that asks for no packet header as packet "
+              "switched, as aie-assign-packet-ids' packet-sw-objFifos makes "
+              "it">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,

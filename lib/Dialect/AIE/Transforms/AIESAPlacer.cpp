@@ -1990,7 +1990,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   auto &logicalTiles = collected.logicalTiles;
   auto &objectFifos = collected.objectFifos;
   auto &objectFifoLinks = collected.objectFifoLinks;
-  pinnedRule.emplace(*targetModel);
+  pinnedRule.emplace(*targetModel, packetSwitched);
 
   if (logicalTiles.empty())
     return success();

@@ -55,11 +55,12 @@ void Placer::Adjacency::addEdgeFromValues(Value a, Value b) {
 }
 
 void Placer::initialize(DeviceOp device, bool controlOverlay,
-                        bool adaptiveOverlay) {
+                        bool adaptiveOverlay, bool packetSwitched) {
   const AIETargetModel &tm = device.getTargetModel();
   targetModel = &tm;
   this->controlOverlay = controlOverlay;
   this->adaptiveOverlay = adaptiveOverlay;
+  this->packetSwitched = packetSwitched;
   availability.physicalCores.clear();
   for (CoreOp core : device.getOps<CoreOp>())
     if (auto tile = dyn_cast_or_null<TileOp>(core.getTile().getDefiningOp()))
@@ -125,8 +126,8 @@ bool Placer::satisfiesConstraints(Operation *tile, TileID pos) {
 }
 
 void SequentialPlacer::initialize(DeviceOp device, bool controlOverlay,
-                                  bool adaptiveOverlay) {
-  Placer::initialize(device, controlOverlay, adaptiveOverlay);
+                                  bool adaptiveOverlay, bool packetSwitched) {
+  Placer::initialize(device, controlOverlay, adaptiveOverlay, packetSwitched);
 
   // Compute tiles iterate column-major (fill a column top-to-bottom before
   // moving right); non-compute tiles iterate row-major.
@@ -1017,7 +1018,7 @@ SequentialPlacer::buildChannelRequirements(
 
   // A tile op's ends that pin one channel pay for it once; those of tile ops
   // placed together meet in pinsAt.
-  pinnedRule.emplace(*targetModel);
+  pinnedRule.emplace(*targetModel, packetSwitched);
   pinsAt.emplace(*pinnedRule);
   pinnedEnds.clear();
   llvm::DenseSet<unsigned> counted;
@@ -1593,7 +1594,8 @@ std::optional<std::string> Placer::PinnedChannels::whyApart(End a,
         return std::string("only a shim, or a core that pushes its tasks, "
                            "sends two fifos on one channel");
     }
-    if (!a.fifo.packetHeader() || !b.fifo.packetHeader())
+    if (!isPacketSwitched(a.fifo.packetHeader(), packetSwitched) ||
+        !isPacketSwitched(b.fifo.packetHeader(), packetSwitched))
       return std::string("a shared channel carries both at once, which only "
                          "packet-switched routes tell apart");
   } else if (!a.fifo.getOutOfOrder() || !b.fifo.getOutOfOrder()) {
@@ -1724,8 +1726,8 @@ Placer::OverlayFit Placer::overlayAt(TileID at, const PinnedChannelUse &pins,
   for (int channel = 0; channel < count; ++channel) {
     auto ends = onChannel.lookup(channel);
     if (held.contains(channel) ||
-        llvm::any_of(ends, [](PinnedChannels::End end) {
-          return !end.fifo.packetHeader();
+        llvm::any_of(ends, [&](PinnedChannels::End end) {
+          return !isPacketSwitched(end.fifo.packetHeader(), packetSwitched);
         }))
       continue;
     if (ends.size() < fewest) {
