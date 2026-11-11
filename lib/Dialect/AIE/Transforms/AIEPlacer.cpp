@@ -234,6 +234,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // and cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
+  if (pinnedRule->failed())
+    return failure();
   namedChannels.clear();
   llvm::DenseMap<Operation *, Operation *> demandKeys;
   for (auto &[tile, inOut] :
@@ -948,6 +950,15 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
          << inChannels << " input/" << outChannels
          << " output DMA channels, but only " << availIn << " input/"
          << availOut << " output available";
+    if (OverlayFit overlay = overlayWith(tile, logicalTile);
+        overlay.channels || !overlay.fits)
+      diag.attachNote()
+          << "the control overlay "
+          << (overlay.fits ? "takes one of its output channels"
+                           : "has no output channel here it may take or "
+                             "share")
+          << "; aie-generate-column-control-overlay shares one only with "
+             "ends never in flight with its control packets";
     if (origin == PlacementOrigin::Selected)
       diag.attachNote() << "placer selected this tile; to fix, pin this LTO "
                            "to a tile with more spare DMA capacity, or reduce "
@@ -1569,10 +1580,12 @@ unsigned Placer::PinnedChannels::share(End end) {
   if (fresh)
     return it->second.second;
   End other = it->second.first;
-  if (std::optional<std::string> why = whyApart(end, other))
+  if (std::optional<std::string> why = whyApart(end, other)) {
     end.fifo.emitError() << "shares " << (end.sends ? "MM2S" : "S2MM")
                          << " channel " << end.channel << " with @"
                          << other.fifo.getSymName() << ", but " << *why;
+    diagnosed = true;
+  }
   return it->second.second;
 }
 
@@ -2131,7 +2144,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     StringRef tileTypeName = stringifyAIETileType(requestedType);
     auto diag = logicalTile.emitError();
     CapacityDiagnosis diagnosis = diagnoseCapacityExhaustion(
-        requestedType, numInputChannels, numOutputChannels);
+        requestedType, numInputChannels, numOutputChannels, logicalTile);
     if (!diagnosis.capacityExistsSomewhere) {
       diag << "no " << tileTypeName << " on the device has " << numInputChannels
            << " input/" << numOutputChannels
@@ -2142,8 +2155,22 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
       diag.attachNote() << "this is the device's total " << tileTypeName
                         << " DMA budget, not a placement choice -- no column "
                            "has spare capacity to pin to";
+      if (diagnosis.overlayOut)
+        diag.attachNote()
+            << diagnosis.overlayOut
+            << " of the output channels used are the control overlay's, "
+               "which aie-generate-column-control-overlay shares only with "
+               "ends never in flight with its control packets";
+      if (diagnosis.overlayUnfit)
+        diag.attachNote() << "on " << diagnosis.overlayUnfit << " "
+                          << tileTypeName
+                          << "(s), with this tile's pinned ends, the control "
+                             "overlay has no output channel it may take or "
+                             "share";
       int shortIn = diagnosis.closestShortIn;
       int shortOut = diagnosis.closestShortOut;
+      if (shortIn == 0 && shortOut == 0)
+        return failure();
       auto &remedy = diag.attachNote();
       remedy << "the closest " << tileTypeName << " is ";
       if (shortIn > 0 && shortOut > 0)
@@ -2304,7 +2331,8 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
 SequentialPlacer::CapacityDiagnosis
 SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
                                              int requiredInputChannels,
-                                             int requiredOutputChannels) {
+                                             int requiredOutputChannels,
+                                             Operation *joining) {
   // Walk the device directly rather than `availability.nonCompTiles`: a
   // fully-exhausted tile is meant to stay enumerable here even if a future
   // fix makes `updateChannelUsage`'s prune (see its `removeTile` call)
@@ -2320,8 +2348,11 @@ SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
       diagnosis.inMax += maxIn;
       diagnosis.outMax += maxOut;
       int usedIn = availability.inputChannelsUsed.lookup(tile);
-      int usedOut = availability.outputChannelsUsed.lookup(tile) +
-                    overlayWith(tile, nullptr).channels;
+      OverlayFit overlay = overlayWith(tile, joining);
+      diagnosis.overlayOut += overlay.channels;
+      diagnosis.overlayUnfit += !overlay.fits;
+      int usedOut =
+          availability.outputChannelsUsed.lookup(tile) + overlay.channels;
       diagnosis.inUsed += usedIn;
       diagnosis.outUsed += usedOut;
       int shortIn = std::max(0, requiredInputChannels - (maxIn - usedIn));
@@ -2333,7 +2364,7 @@ SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
         diagnosis.closestShortOut = shortOut;
       }
       if (hasAvailableChannels(tile, requiredInputChannels,
-                               requiredOutputChannels))
+                               requiredOutputChannels, joining))
         diagnosis.capacityExistsSomewhere = true;
     }
   }

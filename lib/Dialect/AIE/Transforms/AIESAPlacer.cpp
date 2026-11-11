@@ -2119,6 +2119,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
+  if (pinnedRule->failed())
+    return failure();
   buildRouteModel(device, collected.flows, collected.pktFlows, collected.routes,
                   channelAnalysis.emplace(device).getChannelClaims());
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);

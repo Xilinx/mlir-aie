@@ -254,9 +254,12 @@ public:
     // before, numbered by the first. An end that cannot share it is
     // diagnosed: its tile holds both wherever it goes.
     unsigned share(End end);
+    // Whether share() diagnosed an end, which fails the placement.
+    bool failed() const { return diagnosed; }
 
   private:
     const AIETargetModel *targetModel;
+    bool diagnosed = false;
     llvm::DenseMap<std::tuple<mlir::Operation *, int, int>,
                    std::pair<End, unsigned>>
         taken;
@@ -566,10 +569,16 @@ private:
     int inUsed = 0, inMax = 0, outUsed = 0, outMax = 0;
     // Both shortfalls belong to one tile, minimizing their sum.
     int closestShortIn = 0, closestShortOut = 0;
+    // Of outUsed, the control overlay's channels; and the tiles where it has
+    // none it can take.
+    int overlayOut = 0, overlayUnfit = 0;
   };
+  // `joining` is the logical tile that found no tile, whose pinned ends move
+  // the control overlay.
   CapacityDiagnosis diagnoseCapacityExhaustion(AIETileType requestedType,
                                                int requiredInputChannels,
-                                               int requiredOutputChannels);
+                                               int requiredOutputChannels,
+                                               mlir::Operation *joining);
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
