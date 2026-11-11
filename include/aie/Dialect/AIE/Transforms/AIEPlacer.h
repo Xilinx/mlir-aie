@@ -213,19 +213,35 @@ public:
   static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
                                       llvm::ArrayRef<PacketFlowOp> pktFlows);
 
-  // The objectFIFO ends each shim LTO hosts that may take turns on a channel
-  // with ends never in flight with them (ShimTransferSpans): DMA ends naming
-  // no channel, [0] receiving and [1] sending, as objectFIFO allocation sees
-  // them.
+  // What one shim tile op brings to a position in one direction that
+  // objectFIFO allocation shares channels by: its DMA ends naming no channel,
+  // which take turns with ends never in flight with them (ShimTransferSpans)
+  // or on a shareable allocation's channel whose list names them; those
+  // allocations' channels with their lists; and the channels its route ends
+  // pin, which such an allocation then shares with no listed end.
+  struct ShimSide {
+    llvm::SmallVector<mlir::StringAttr> ends;
+    llvm::SmallVector<std::pair<int, llvm::SmallVector<mlir::StringAttr>>>
+        shared;
+    llvm::SmallVector<int> pinned;
+  };
+  // Each shim tile op's sides, [0] receiving and [1] sending.
   using ShareableShimEnds =
-      llvm::DenseMap<mlir::Operation *,
-                     std::array<llvm::SmallVector<mlir::StringAttr>, 2>>;
+      llvm::DenseMap<mlir::Operation *, std::array<ShimSide, 2>>;
   // With `routeKeys` (flowChannelDemand's `keys`), a route endpoint's end
   // goes to the tile its channel demand is keyed by.
   static ShareableShimEnds collectShareableShimEnds(
       DeviceOp device, llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
       const llvm::DenseMap<mlir::Operation *, mlir::Operation *> &routeKeys =
           {});
+  // The channels `sides`, together at one shim position, save in one
+  // direction below one per end as allocation plans them
+  // (ShimTransferSpans::plan), with `extra` ends joining and objectFIFO ends
+  // pinning `pinnedHere` there.
+  static int shimChannelsSaved(const ShimTransferSpans &spans,
+                               llvm::ArrayRef<const ShimSide *> sides,
+                               llvm::ArrayRef<mlir::StringAttr> extra,
+                               llvm::ArrayRef<int> pinnedHere);
 
   // The objectFIFO ends that pin one DMA channel of one tile share it, as
   // objectFIFO allocation lets them: sending ends off a shim or off a core
@@ -287,6 +303,8 @@ public:
     // The sending ends at `at`, by the MM2S channel they pin.
     llvm::DenseMap<int, llvm::SmallVector<PinnedChannels::End, 2>>
     sendingAt(TileID at) const;
+    // The channels ends at `at` pin in one direction.
+    llvm::SmallVector<int> channelsAt(TileID at, bool sends) const;
 
   private:
     const PinnedChannels *rule;
@@ -521,8 +539,7 @@ private:
   // ends never in flight together count once, as allocation will share them.
   std::optional<ShimTransferSpans> shimSpans;
   ShareableShimEnds shareableShimEnds;
-  llvm::DenseMap<TileID, std::array<llvm::SmallVector<mlir::StringAttr>, 2>>
-      shimEndsAt;
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> shimTilesAt;
   bool fitsSharingShim(TileID tile, mlir::Operation *logicalTile,
                        std::pair<int, int> required);
   void recordShimEnds(TileID tile, mlir::Operation *logicalTile);

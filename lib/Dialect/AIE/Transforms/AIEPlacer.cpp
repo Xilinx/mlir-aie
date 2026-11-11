@@ -252,7 +252,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device), controlOverlay);
-  shimEndsAt.clear();
+  shimTilesAt.clear();
   // A physical tile's fifo ends, flows and claims hold channels at its
   // position, which logical tiles placed there share.
   for (TileOp placed : device.getOps<TileOp>()) {
@@ -1514,32 +1514,58 @@ Placer::ShareableShimEnds Placer::collectShareableShimEnds(
   for (auto fifo : objectFifos) {
     if (Operation *lt =
             shareable(fifo, fifo.getProducerTile(), fifo.getProdPortAttr()))
-      ends[lt][1].push_back(fifo.getSymNameAttr());
+      ends[lt][1].ends.push_back(fifo.getSymNameAttr());
     for (auto [i, consumer] : llvm::enumerate(fifo.getConsumerTiles()))
       if (Operation *lt = shareable(fifo, consumer, fifo.getConsumerPort(i)))
-        ends[lt][0].push_back(fifo.getSymNameAttr());
+        ends[lt][0].ends.push_back(fifo.getSymNameAttr());
   }
   for (auto endpoint : device.getOps<RouteEndpointOp>()) {
-    auto tile = dyn_cast<LogicalTileOp>(endpoint.getTile().getDefiningOp());
-    if (tile && tile.isShimTile() && endpoint.getBundle() == WireBundle::DMA &&
-        !endpoint.getChannelIndex())
-      ends[routeKeys.lookup_or(tile.getOperation(), tile.getOperation())]
-          [endpoint.getRouteDirection() == DMAChannelDir::MM2S ? 1 : 0]
-              .push_back(endpoint.getSymNameAttr());
+    auto tile = dyn_cast<TileLike>(endpoint.getTile().getDefiningOp());
+    if (!tile || !tile.isShimTile() || endpoint.getBundle() != WireBundle::DMA)
+      continue;
+    ShimSide &side =
+        ends[routeKeys.lookup_or(tile.getOperation(), tile.getOperation())]
+            [endpoint.getRouteDirection() == DMAChannelDir::MM2S ? 1 : 0];
+    if (std::optional<int> channel = endpoint.getChannelIndex())
+      side.pinned.push_back(*channel);
+    else if (isa<LogicalTileOp>(tile.getOperation()))
+      side.ends.push_back(endpoint.getSymNameAttr());
   }
-  // A shareable allocation's channel, which its claim holds, takes the ends
-  // its list names into its group.
   for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
     MLIRContext *context = alloc->getContext();
     auto tile = dyn_cast_or_null<TileLike>(alloc.getTile().getDefiningOp());
-    if (tile && tile.isShimTile() &&
-        AIEDialect::ShareableWithAttrHelper(context).isAttrPresent(alloc) &&
-        !AIEDialect::IsCtrlPktOverlayAttrHelper(context).isAttrPresent(alloc))
-      ends[routeKeys.lookup_or(tile.getOperation(), tile.getOperation())]
-          [alloc.getChannelDir() == DMAChannelDir::MM2S ? 1 : 0]
-              .push_back(alloc.getSymNameAttr());
+    auto allowed = AIEDialect::ShareableWithAttrHelper(context).getAttr(alloc);
+    if (!tile || !tile.isShimTile() || !allowed ||
+        AIEDialect::IsCtrlPktOverlayAttrHelper(context).isAttrPresent(alloc))
+      continue;
+    SmallVector<StringAttr> listed;
+    for (Attribute attr : allowed)
+      if (auto symbol = dyn_cast<FlatSymbolRefAttr>(attr))
+        listed.push_back(symbol.getAttr());
+    ends[routeKeys.lookup_or(tile.getOperation(), tile.getOperation())]
+        [alloc.getChannelDir() == DMAChannelDir::MM2S ? 1 : 0]
+            .shared.emplace_back(alloc.getChannelIndex(), std::move(listed));
   }
   return ends;
+}
+
+int Placer::shimChannelsSaved(const ShimTransferSpans &spans,
+                              ArrayRef<const ShimSide *> sides,
+                              ArrayRef<StringAttr> extra,
+                              ArrayRef<int> pinnedHere) {
+  SmallVector<StringAttr> ends;
+  SmallVector<int> pinned(pinnedHere);
+  for (const ShimSide *side : sides) {
+    llvm::append_range(ends, side->ends);
+    llvm::append_range(pinned, side->pinned);
+  }
+  llvm::append_range(ends, extra);
+  SmallVector<ShimTransferSpans::SharedChannel> shared;
+  for (const ShimSide *side : sides)
+    for (auto &[channel, listed] : side->shared)
+      shared.emplace_back(listed, llvm::is_contained(pinned, channel));
+  ShimTransferSpans::Plan plan = spans.plan(ends, ends, shared);
+  return static_cast<int>(ends.size() - plan.groups.size());
 }
 
 std::optional<Placer::PinnedChannels::End>
@@ -1652,6 +1678,19 @@ Placer::PinnedChannelUse::clashWith(TileID at,
     if (other.tile != end.tile && rule->whyApart(end, other))
       return other;
   return std::nullopt;
+}
+
+llvm::SmallVector<int> Placer::PinnedChannelUse::channelsAt(TileID at,
+                                                            bool sends) const {
+  llvm::SmallVector<int> channels;
+  for (auto it = placed.lower_bound(
+           std::make_tuple(at.col, at.row, std::numeric_limits<int>::min(), 0));
+       it != placed.end() && std::get<0>(it->first) == at.col &&
+       std::get<1>(it->first) == at.row;
+       ++it)
+    if (std::get<3>(it->first) == static_cast<int>(sends))
+      channels.push_back(std::get<2>(it->first));
+  return channels;
 }
 
 llvm::DenseMap<int, llvm::SmallVector<Placer::PinnedChannels::End, 2>>
@@ -1813,15 +1852,10 @@ Placer::provenShimGates(DeviceOp device) {
 
 std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,
                                                         StringAttr symbol) {
-  Operation *op = SymbolTable::lookupNearestSymbolFrom(device, symbol);
-  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(op))
+  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
+          SymbolTable::lookupNearestSymbolFrom(device, symbol)))
     return ShimTransferSpans::End{symbol, endpoint.getRouteDirection() ==
                                               DMAChannelDir::MM2S};
-  if (auto alloc = dyn_cast_or_null<ShimDMAAllocationOp>(op);
-      alloc && !AIEDialect::IsCtrlPktOverlayAttrHelper(alloc->getContext())
-                    .isAttrPresent(alloc))
-    return ShimTransferSpans::End{symbol,
-                                  alloc.getChannelDir() == DMAChannelDir::MM2S};
   auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(
       SymbolTable::lookupNearestSymbolFrom(device, symbol));
   if (!fifo)
@@ -2257,27 +2291,33 @@ bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
                  availability.outputChannelsUsed[tile] + overlay.channels};
   int need[2] = {required.first, required.second};
   int max[2] = {maxIn, maxOut};
-  auto own = shareableShimEnds.lookup(logicalTile);
+  SmallVector<Operation *> tilesHere(shimTilesAt.lookup(tile));
+  if (shareableShimEnds.contains(logicalTile))
+    tilesHere.push_back(logicalTile);
   for (int dir : {0, 1}) {
     if (used[dir] + need[dir] <= max[dir])
       continue;
-    SmallVector<StringAttr> ends(shimEndsAt[tile][dir]);
-    llvm::append_range(ends, own[dir]);
+    SmallVector<const ShimSide *> sides;
+    for (Operation *op : tilesHere)
+      sides.push_back(&shareableShimEnds.find(op)->second[dir]);
+    SmallVector<StringAttr> extra;
     if (dir == 1 && overlay.own)
-      ends.push_back(shimSpans->overlayEnd(tile.col));
-    int fixed = used[dir] + need[dir] - static_cast<int>(ends.size());
-    if (fixed + static_cast<int>(shimSpans->groups(ends).size()) > max[dir])
+      extra.push_back(shimSpans->overlayEnd(tile.col));
+    SmallVector<int> pinnedHere = pinsAt->channelsAt(tile, dir == 1);
+    for (const PinnedChannels::End &end : pinnedEnds.lookup(logicalTile))
+      if (end.sends == (dir == 1))
+        pinnedHere.push_back(end.channel);
+    if (used[dir] + need[dir] -
+            shimChannelsSaved(*shimSpans, sides, extra, pinnedHere) >
+        max[dir])
       return false;
   }
   return true;
 }
 
 void SequentialPlacer::recordShimEnds(TileID tile, Operation *logicalTile) {
-  auto own = shareableShimEnds.find(logicalTile);
-  if (own == shareableShimEnds.end())
-    return;
-  for (int dir : {0, 1})
-    llvm::append_range(shimEndsAt[tile][dir], own->second[dir]);
+  if (shareableShimEnds.contains(logicalTile))
+    shimTilesAt[tile].push_back(logicalTile);
 }
 
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(

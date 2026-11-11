@@ -1302,74 +1302,49 @@ struct AIEObjectFifoAllocatePass
           return endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
                                             : endpoint.getSymNameAttr();
         }));
-    auto canShare = [&](RouteEndpointOp a, RouteEndpointOp b) {
-      return spans.apart(
-          a.getFifoNameAttr() ? a.getFifoNameAttr() : a.getSymNameAttr(),
-          b.getFifoNameAttr() ? b.getFifoNameAttr() : b.getSymNameAttr());
-    };
     SmallVector<Operation *> candidates;
-    SmallVector<StringAttr> fifos;
+    SmallVector<StringAttr> fifos, names;
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {
       if (endpoint.getBundle() != WireBundle::DMA ||
           endpoint.getChannelIndex() ||
-          allocationSharers.count(endpoint.getOperation()) ||
           endpoint.getTile() != exhausted->getResult(0) ||
           endpoint.getRouteDirection() != dir)
         continue;
       candidates.push_back(endpoint);
       fifos.push_back(endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
                                                  : endpoint.getSymNameAttr());
+      names.push_back(endpoint.getSymNameAttr());
     }
+    SmallVector<ShimDMAAllocationOp> allocations;
+    SmallVector<ShimTransferSpans::SharedChannel> shared;
     for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
       auto allowed = AIEDialect::ShareableWithAttrHelper(alloc->getContext())
                          .getAttr(alloc);
       if (!allowed || alloc.getTile() != exhausted->getResult(0) ||
           alloc.getChannelDir() != dir)
         continue;
-      if (llvm::any_of(device.getOps<RouteEndpoint>(), [&](RouteEndpoint end) {
+      SmallVector<StringAttr> listed;
+      for (Attribute attr : allowed)
+        if (auto symbol = dyn_cast<FlatSymbolRefAttr>(attr))
+          listed.push_back(symbol.getAttr());
+      bool pinned =
+          llvm::any_of(device.getOps<RouteEndpoint>(), [&](RouteEndpoint end) {
             return end.getRouteBundle() == WireBundle::DMA &&
                    sameTile(end.getTile(), alloc.getTile()) &&
                    end.getRouteDirection() == dir &&
                    end.getRouteChannel() == alloc.getChannelIndex();
-          }))
-        continue;
-      for (Operation *candidate : candidates) {
-        auto endpoint = cast<RouteEndpointOp>(candidate);
-        if (allocationSharers.count(candidate) ||
-            channelSharers.count(candidate) ||
-            llvm::none_of(allowed, [&](Attribute attr) {
-              auto symbol = dyn_cast<FlatSymbolRefAttr>(attr);
-              return symbol && symbol.getValue() == endpoint.getSymName();
-            }))
-          continue;
-        if (llvm::any_of(allocationSharers, [&](const auto &entry) {
-              if (entry.second != alloc)
-                return false;
-              auto other = cast<RouteEndpointOp>(entry.first);
-              return !canShare(endpoint, other);
-            }))
-          continue;
-        allocationSharers[candidate] = alloc;
-        return true;
-      }
+          });
+      allocations.push_back(alloc);
+      shared.emplace_back(std::move(listed), pinned);
     }
-    SmallVector<unsigned> order;
-    for (auto &group : spans.groups(fifos))
-      llvm::append_range(order, group);
-    SmallVector<SmallVector<unsigned>> groups;
-    for (unsigned candidate : order) {
-      auto *group = llvm::find_if(groups, [&](ArrayRef<unsigned> members) {
-        return llvm::all_of(members, [&](unsigned member) {
-          return canShare(cast<RouteEndpointOp>(candidates[candidate]),
-                          cast<RouteEndpointOp>(candidates[member]));
-        });
-      });
-      if (group == groups.end())
-        groups.push_back({candidate});
-      else
-        group->push_back(candidate);
-    }
-    for (auto &members : groups)
+    ShimTransferSpans::Plan plan = spans.plan(fifos, names, shared);
+    for (unsigned channel : llvm::seq<unsigned>(0, shared.size()))
+      for (auto [candidate, taken] : llvm::zip(candidates, plan.sharedChannel))
+        if (taken == channel &&
+            allocationSharers.try_emplace(candidate, allocations[channel])
+                .second)
+          return true;
+    for (auto &members : plan.groups)
       for (unsigned sharer : llvm::drop_begin(members))
         if (channelSharers
                 .insert({candidates[sharer], candidates[members.front()]})

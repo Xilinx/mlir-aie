@@ -96,6 +96,33 @@ public:
   llvm::SmallVector<llvm::SmallVector<unsigned>>
   groups(llvm::ArrayRef<mlir::StringAttr> ends) const;
 
+  /// A shim allocation's channel the ends its `aie.shareable_with` lists may
+  /// take turns on.
+  struct SharedChannel {
+    SharedChannel(llvm::SmallVector<mlir::StringAttr> listed, bool pinned)
+        : listed(std::move(listed)), pinned(pinned) {}
+    llvm::SmallVector<mlir::StringAttr> listed;
+    /// Whether a route end pins the channel, which then takes no other end.
+    bool pinned;
+  };
+
+  /// How one shim tile's unpinned ends in one direction share channels, as
+  /// objectFIFO allocation shares them.
+  struct Plan {
+    /// Per end, the index of the shared channel it takes, if any.
+    llvm::SmallVector<std::optional<unsigned>> sharedChannel;
+    /// The other ends, in groups taking one channel each.
+    llvm::SmallVector<llvm::SmallVector<unsigned>> groups;
+  };
+
+  /// Plans `ends` (keys as apart() takes them), named `names` as the
+  /// channels in `shared` list them: each channel in order takes, in order,
+  /// the ends its list names that are apart from those it took before; the
+  /// rest group as groups() groups them. Indices are into `ends`.
+  Plan plan(llvm::ArrayRef<mlir::StringAttr> ends,
+            llvm::ArrayRef<mlir::StringAttr> names,
+            llvm::ArrayRef<SharedChannel> shared) const;
+
 private:
   /// An end's transfers in one runtime sequence, as the gates are checked.
   struct Span {

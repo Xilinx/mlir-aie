@@ -1383,15 +1383,16 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
       continue;
     if (shimSpans && targetModel->getTileType(tilePos.col, tilePos.row) ==
                          AIETileType::ShimNOCTile) {
-      SmallVector<StringAttr> ends;
+      SmallVector<const ShimSide *> sides;
       for (auto &[lt, own] : shareableShimEnds) {
         if (positionOf(lt) == tilePos)
-          llvm::append_range(ends, own[dir]);
+          sides.push_back(&own[dir]);
       }
+      SmallVector<StringAttr> extra;
       if (dir == 1 && overlay.own)
-        ends.push_back(shimSpans->overlayEnd(tilePos.col));
-      used[dir] += static_cast<int>(shimSpans->groups(ends).size()) -
-                   static_cast<int>(ends.size());
+        extra.push_back(shimSpans->overlayEnd(tilePos.col));
+      used[dir] -= shimChannelsSaved(*shimSpans, sides, extra,
+                                     pinUse->channelsAt(tilePos, dir == 1));
     }
     penalty += std::max(0, used[dir] - max[dir]) * config.dmaPenaltyPerChannel;
   }
