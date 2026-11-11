@@ -2153,14 +2153,17 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
     return size(*consumer + 1);
   if (size() == 0)
     return 0;
-  // Enough objects for the largest acquire made on the end's tile, plus one
-  // so a core can hold an object while the next arrives.
+  // Enough objects for the largest acquire the end's core makes, plus one so
+  // it can hold an object while the next arrives. A core on the producer's
+  // tile may also consume, through another end.
   Value tile = consumer ? getConsumerTiles()[*consumer] : getProducerTile();
+  ObjectFifoPort port =
+      consumer ? ObjectFifoPort::Consume : ObjectFifoPort::Produce;
   int maxAcquire = 0;
   for (CoreOp core : (*this)->getParentOfType<DeviceOp>().getOps<CoreOp>())
     if (core.getTile() == tile)
       core.walk([&](ObjectFifoAcquireOp acquire) {
-        if (acquire.getObjectFifo() == *this)
+        if (acquire.getObjectFifo() == *this && acquire.getPort() == port)
           maxAcquire = std::max(maxAcquire, acquire.acqNumber());
       });
   if (maxAcquire == 0)
