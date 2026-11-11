@@ -759,6 +759,13 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       return failure();
   auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
+  if (AIE::TileOp tile = allocOp ? allocOp.getTileOp() : nullptr) {
+    uint32_t numBds = targetModel.getNumBDs(tile.getCol(), tile.getRow());
+    if (getId() >= numBds)
+      return emitOpError("programs buffer descriptor ID ")
+             << getId() << ", but tile (" << tile.getCol() << ", "
+             << tile.getRow() << ") has " << numBds << " buffer descriptors";
+  }
   if (isDynamic)
     return verifyDynamicSizesStrides(targetModel, buffer, allocOp);
 
