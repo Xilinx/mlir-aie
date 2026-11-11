@@ -10,6 +10,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
@@ -1363,15 +1364,13 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
 int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
   auto usage = currentDMAUsage.lookup(tilePos);
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
-  llvm::DenseSet<int> held;
+  SmallVector<Operation *> tilesHere;
   if (overlayChannels(tilePos))
-    for (auto &[tile, named] : namedChannels)
+    for (Operation *tile : overlayTiles)
       if (positionOf(tile) == tilePos)
-        for (auto [output, channel] : named)
-          if (output)
-            held.insert(channel);
-  OverlayFit overlay =
-      overlayAt(tilePos, *pinUse, {}, held, shimSpans ? &*shimSpans : nullptr);
+        tilesHere.push_back(tile);
+  OverlayFit overlay = overlayAt(tilePos, *pinUse, {}, tilesHere,
+                                 shimSpans ? &*shimSpans : nullptr);
   int used[2] = {usage.first, usage.second + overlay.channels};
   int max[2] = {maxIn, maxOut};
   // Two ends that cannot share a channel they both pin clash here wherever
@@ -2125,6 +2124,16 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   buildRouteModel(device, collected.flows, collected.pktFlows, collected.routes,
                   channelAnalysis.emplace(device).getChannelClaims());
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
+  overlayUses = shimMM2SUses(device, packetSwitched);
+  overlayTiles.clear();
+  llvm::SetVector<Operation *> named;
+  for (auto &[tile, channels] : overlayUses.circuits)
+    named.insert(tile);
+  for (auto &[key, ends] : overlayUses.packetEnds)
+    named.insert(key.first);
+  for (auto &[key, flows] : overlayUses.packetFlows)
+    named.insert(key.first);
+  overlayTiles.assign(named.begin(), named.end());
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device), controlOverlay);

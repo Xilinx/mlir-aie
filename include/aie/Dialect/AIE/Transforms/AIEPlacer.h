@@ -401,11 +401,12 @@ protected:
   }
   // The control overlay's MM2S channel on shim tile `at`, where
   // aie-generate-column-control-overlay puts it: channel 0, or with
-  // `adaptiveOverlay` any one, that no circuit-switched end pins and no other
-  // claim holds (`held`), fewest pinned packet ends first. Those ends share
-  // it when ShimTransferSpans finds each apart from the overlay; otherwise
-  // allocation refuses them, and the overlay does not `fit`. `extra` are a
-  // tile op's pinned ends about to join `pins`'.
+  // `adaptiveOverlay` any one, that no circuit-switched end pins and that
+  // overlayUses of the tile ops at `at` (`tilesHere`) finds no circuit on,
+  // fewest packet-switched ends first. The pinned ends there share it when
+  // ShimTransferSpans finds each apart from the overlay; otherwise allocation
+  // refuses them, and the overlay does not `fit`. `extra` are a tile op's
+  // pinned ends about to join `pins`'.
   struct OverlayFit {
     bool fits = true;
     // The MM2S channels it adds: none on a pinned channel it shares.
@@ -415,8 +416,11 @@ protected:
   };
   OverlayFit overlayAt(TileID at, const PinnedChannelUse &pins,
                        llvm::ArrayRef<PinnedChannels::End> extra,
-                       const llvm::DenseSet<int> &held,
+                       llvm::ArrayRef<mlir::Operation *> tilesHere,
                        const ShimTransferSpans *spans) const;
+  // The shim MM2S channels each tile op's ends name, as the overlay's pass
+  // weighs them.
+  ShimMM2SUses overlayUses;
 
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
@@ -550,6 +554,8 @@ private:
   std::optional<ShimTransferSpans> shimSpans;
   ShareableShimEnds shareableShimEnds;
   llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> shimTilesAt;
+  // The tile ops placed at each position, whose overlayUses count there.
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> overlayTilesAt;
   bool fitsSharingShim(TileID tile, mlir::Operation *logicalTile,
                        std::pair<int, int> required);
   void recordShimEnds(TileID tile, mlir::Operation *logicalTile);
@@ -1235,6 +1241,9 @@ private:
   // still needs once ends never in flight together share them.
   std::optional<ShimTransferSpans> shimSpans;
   ShareableShimEnds shareableShimEnds;
+  // The tile ops overlayUses names, which the overlay's channel weighs where
+  // they are.
+  llvm::SmallVector<mlir::Operation *> overlayTiles;
   // A shim tile is also charged for the runtime BD ids its LTOs' tasks lack.
   RuntimeBdIds runtimeBdIds;
 

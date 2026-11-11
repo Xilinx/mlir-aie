@@ -254,6 +254,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device), controlOverlay);
   shimTilesAt.clear();
+  overlayTilesAt.clear();
+  overlayUses = shimMM2SUses(device, packetSwitched);
   // A physical tile's fifo ends, flows and claims hold channels at its
   // position, which logical tiles placed there share.
   for (TileOp placed : device.getOps<TileOp>()) {
@@ -265,6 +267,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       updateChannelUsage(at, DmaDir::Out, out);
     for (auto named : namedChannels.lookup(placed))
       availability.namedChannelsUsed[at].insert(named);
+    overlayTilesAt[at].push_back(placed);
     for (const PinnedChannels::End &end : pinnedEnds.lookup(placed))
       pinsAt->place(at, end, 1);
     recordShimEnds(at, placed);
@@ -1722,10 +1725,23 @@ Placer::PinnedChannelUse::sendingAt(TileID at) const {
 
 Placer::OverlayFit Placer::overlayAt(TileID at, const PinnedChannelUse &pins,
                                      ArrayRef<PinnedChannels::End> extra,
-                                     const llvm::DenseSet<int> &held,
+                                     ArrayRef<Operation *> tilesHere,
                                      const ShimTransferSpans *spans) const {
   if (!overlayChannels(at))
     return {};
+  llvm::DenseSet<int> circuits;
+  llvm::DenseMap<int, SmallVector<StringAttr>> packetEnds;
+  llvm::DenseMap<int, unsigned> packetFlows;
+  for (Operation *tile : tilesHere)
+    if (auto it = overlayUses.circuits.find(tile);
+        it != overlayUses.circuits.end())
+      circuits.insert(it->second.begin(), it->second.end());
+  for (auto &[key, ends] : overlayUses.packetEnds)
+    if (llvm::is_contained(tilesHere, key.first))
+      llvm::append_range(packetEnds[key.second], ends);
+  for (auto &[key, flows] : overlayUses.packetFlows)
+    if (llvm::is_contained(tilesHere, key.first))
+      packetFlows[key.second] += flows;
   auto onChannel = pins.sendingAt(at);
   for (const PinnedChannels::End &end : extra)
     if (end.sends)
@@ -1737,25 +1753,28 @@ Placer::OverlayFit Placer::overlayAt(TileID at, const PinnedChannelUse &pins,
   size_t fewest = std::numeric_limits<size_t>::max();
   for (int channel = 0; channel < count; ++channel) {
     auto ends = onChannel.lookup(channel);
-    if (held.contains(channel) ||
+    if (circuits.contains(channel) ||
         llvm::any_of(ends, [&](PinnedChannels::End end) {
           return !isPacketSwitched(end.fifo.packetHeader(), packetSwitched);
         }))
       continue;
-    if (ends.size() < fewest) {
-      fewest = ends.size();
+    size_t demand = ends.size() + packetEnds.lookup(channel).size() +
+                    packetFlows.lookup(channel);
+    if (demand < fewest) {
+      fewest = demand;
       chosen = channel;
     }
   }
   if (!chosen)
     return {/*fits=*/false, /*channels=*/1, /*own=*/false};
-  auto ends = onChannel.lookup(*chosen);
-  if (ends.empty())
+  SmallVector<StringAttr> sharers = packetEnds.lookup(*chosen);
+  for (PinnedChannels::End end : onChannel.lookup(*chosen))
+    sharers.push_back(end.fifo.getSymNameAttr());
+  if (sharers.empty() && !packetFlows.lookup(*chosen))
     return {/*fits=*/true, /*channels=*/1, /*own=*/true};
-  bool apart = spans && llvm::all_of(ends, [&](PinnedChannels::End end) {
-                 return spans->apart(spans->overlayEnd(at.col),
-                                     end.fifo.getSymNameAttr());
-               });
+  bool apart = llvm::all_of(sharers, [&](StringAttr end) {
+    return spans && spans->apart(spans->overlayEnd(at.col), end);
+  });
   return {apart, /*channels=*/0, /*own=*/false};
 }
 
@@ -2502,18 +2521,13 @@ Placer::OverlayFit SequentialPlacer::overlayWith(TileID tile,
                                                  Operation *joining) {
   if (!overlayChannels(tile))
     return {};
-  llvm::DenseSet<int> held;
-  for (auto [output, channel] : availability.namedChannelsUsed.lookup(tile))
-    if (output)
-      held.insert(channel);
+  SmallVector<Operation *> tilesHere(overlayTilesAt.lookup(tile));
   SmallVector<PinnedChannels::End> pins;
   if (joining) {
-    for (auto [output, channel] : namedChannels.lookup(joining))
-      if (output)
-        held.insert(channel);
+    tilesHere.push_back(joining);
     pins = pinnedEnds.lookup(joining);
   }
-  return overlayAt(tile, *pinsAt, pins, held,
+  return overlayAt(tile, *pinsAt, pins, tilesHere,
                    shimSpans ? &*shimSpans : nullptr);
 }
 
@@ -2820,6 +2834,7 @@ void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
   broadcastFanoutUsed[tile] += broadcastFanout.lookup(logicalTile);
   for (auto named : namedChannels.lookup(logicalTile))
     availability.namedChannelsUsed[tile].insert(named);
+  overlayTilesAt[tile].push_back(logicalTile);
   for (const PinnedChannels::End &end : pinnedEnds.lookup(logicalTile))
     pinsAt->place(tile, end, 1);
   if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())

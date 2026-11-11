@@ -13,6 +13,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <optional>
@@ -27,6 +28,20 @@ namespace xilinx::AIE {
 /// cannot send its words outside its turn: its senders wait on a gate the host
 /// fills only after the end before it is awaited, and each sequence drains all
 /// that gate lets them send.
+// The shim MM2S channels the ends of `device` name, by tile op, as
+// aie-generate-column-control-overlay weighs them for its overlay's channel:
+// those a circuit-switched route end, flow, allocation or shim mux holds, and
+// on each the packet-switched route ends, by name, and packet flows. A route
+// asking for no packet header is packet switched with `packetSwitched`.
+struct ShimMM2SUses {
+  llvm::DenseMap<mlir::Operation *, llvm::SmallSet<int, 2>> circuits;
+  llvm::DenseMap<std::pair<mlir::Operation *, int>,
+                 llvm::SmallVector<mlir::StringAttr>>
+      packetEnds;
+  llvm::DenseMap<std::pair<mlir::Operation *, int>, unsigned> packetFlows;
+};
+ShimMM2SUses shimMM2SUses(DeviceOp device, bool packetSwitched);
+
 class ShimTransferSpans {
 public:
   /// A shim end a runtime sequence transfers through.

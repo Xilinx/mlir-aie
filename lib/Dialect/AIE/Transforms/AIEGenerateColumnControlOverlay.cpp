@@ -8,6 +8,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+#include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
@@ -229,55 +230,20 @@ struct AIEGenerateColumnControlOverlayPass
   void collectShimMM2SUses(ArrayRef<DeviceOp> devices) {
     packetDemand.clear();
     fixedCircuits.clear();
-    auto shimCol = [](Value tile) -> std::optional<int> {
-      auto tOp = dyn_cast_or_null<TileOp>(tile.getDefiningOp());
-      if (!tOp || !tOp.isShimNOCorPLTile())
-        return std::nullopt;
-      return tOp.colIndex();
+    auto column = [](Operation *tile) {
+      return cast<TileLike>(tile).tryGetCol();
     };
     for (DeviceOp device : devices) {
-      for (auto endpoint : device.getOps<RouteEndpointOp>()) {
-        auto col = shimCol(endpoint.getTile());
-        auto channel = endpoint.getChannelIndex();
-        if (!col || endpoint.getBundle() != WireBundle::DMA ||
-            endpoint.getRouteDirection() != DMAChannelDir::MM2S || !channel)
-          continue;
-        bool packet =
-            llvm::any_of(device.getOps<RouteOp>(), [&](RouteOp route) {
-              return route.namesAsSource(endpoint.getSymName()) &&
-                     route.getPacket();
-            });
-        if (packet)
-          ++packetDemand[{*col, *channel}];
-        else
-          fixedCircuits[*col].insert(*channel);
-      }
-      for (auto alloc : device.getOps<AIE::ShimDMAAllocationOp>()) {
-        if (alloc.getChannelDir() != AIE::DMAChannelDir::MM2S)
-          continue;
-        int col = alloc.getTileOp().colIndex();
-        int chan = static_cast<int>(alloc.getChannelIndex());
-        fixedCircuits[col].insert(chan);
-      }
-      for (auto flow : device.getOps<AIE::FlowOp>())
-        if (flow.getSourceBundle() == WireBundle::DMA)
-          if (auto col = shimCol(flow.getSource())) {
-            fixedCircuits[*col].insert(flow.getSourceChannel());
-          }
-      for (auto flow : device.getOps<AIE::PacketFlowOp>()) {
-        for (auto src : flow.getOps<AIE::PacketSourceOp>())
-          if (src.getBundle() == WireBundle::DMA)
-            if (auto col = shimCol(src.getTile())) {
-              ++packetDemand[{*col, src.channelIndex()}];
-            }
-      }
-      for (auto mux : device.getOps<AIE::ShimMuxOp>())
-        for (auto connect :
-             mux.getConnections().front().getOps<AIE::ConnectOp>())
-          if (connect.getSourceBundle() == WireBundle::DMA) {
-            int col = mux.getTileOp().colIndex();
-            fixedCircuits[col].insert(connect.sourceIndex());
-          }
+      ShimMM2SUses uses = shimMM2SUses(device, /*packetSwitched=*/false);
+      for (auto &[tile, channels] : uses.circuits)
+        if (std::optional<int> col = column(tile))
+          fixedCircuits[*col].insert(channels.begin(), channels.end());
+      for (auto &[at, ends] : uses.packetEnds)
+        if (std::optional<int> col = column(at.first))
+          packetDemand[{*col, at.second}] += ends.size();
+      for (auto &[at, flows] : uses.packetFlows)
+        if (std::optional<int> col = column(at.first))
+          packetDemand[{*col, at.second}] += flows;
     }
   }
 
@@ -367,6 +333,52 @@ struct AIEGenerateColumnControlOverlayPass
     return success();
   }
 };
+
+ShimMM2SUses AIE::shimMM2SUses(DeviceOp device, bool packetSwitched) {
+  ShimMM2SUses uses;
+  auto shim = [](Value tile) -> Operation * {
+    auto like = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
+    return like && (like.getTileType() == AIETileType::ShimNOCTile ||
+                    like.getTileType() == AIETileType::ShimPLTile)
+               ? like.getOperation()
+               : nullptr;
+  };
+  for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+    Operation *tile = shim(endpoint.getTile());
+    std::optional<int> channel = endpoint.getChannelIndex();
+    if (!tile || endpoint.getBundle() != WireBundle::DMA ||
+        endpoint.getRouteDirection() != DMAChannelDir::MM2S || !channel)
+      continue;
+    bool packet = llvm::any_of(device.getOps<RouteOp>(), [&](RouteOp route) {
+      std::optional<PacketInfoAttr> header = route.getPacket();
+      return route.namesAsSource(endpoint.getSymName()) &&
+             isPacketSwitched(header.value_or(nullptr), packetSwitched);
+    });
+    if (packet)
+      uses.packetEnds[{tile, *channel}].push_back(endpoint.getSymNameAttr());
+    else
+      uses.circuits[tile].insert(*channel);
+  }
+  for (auto alloc : device.getOps<ShimDMAAllocationOp>())
+    if (alloc.getChannelDir() == DMAChannelDir::MM2S)
+      uses.circuits[alloc.getTile().getDefiningOp()].insert(
+          static_cast<int>(alloc.getChannelIndex()));
+  for (auto flow : device.getOps<FlowOp>())
+    if (flow.getSourceBundle() == WireBundle::DMA)
+      if (Operation *tile = shim(flow.getSource()))
+        uses.circuits[tile].insert(flow.getSourceChannel());
+  for (auto flow : device.getOps<PacketFlowOp>())
+    for (auto src : flow.getOps<PacketSourceOp>())
+      if (src.getBundle() == WireBundle::DMA)
+        if (Operation *tile = shim(src.getTile()))
+          ++uses.packetFlows[{tile, src.channelIndex()}];
+  for (auto mux : device.getOps<ShimMuxOp>())
+    for (auto connect : mux.getConnections().front().getOps<ConnectOp>())
+      if (connect.getSourceBundle() == WireBundle::DMA)
+        uses.circuits[mux.getTile().getDefiningOp()].insert(
+            connect.sourceIndex());
+  return uses;
+}
 
 bool AIE::getsColumnControlOverlay(DeviceOp device, bool configuration) {
   return !AIEDialect::IsCtrlPktOverlayAttrHelper(device.getContext())
