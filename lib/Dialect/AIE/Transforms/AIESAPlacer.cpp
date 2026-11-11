@@ -231,7 +231,8 @@ void SAPlacer::buildRouteModel(
     if (endpoint.getRouteBundle() != WireBundle::DMA || !tile ||
         tile.getTileType() != AIETileType::MemTile)
       continue;
-    PlannedDmaEnd end{0, nullptr, -1, 0, false, 0, 0};
+    std::optional<int> channel = endpoint.getRouteChannel();
+    PlannedDmaEnd end{0, nullptr, -1, 0, false, 0, 0, channel};
     if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation())) {
       ObjectFifoPoolOp pool = dma.getPoolOp();
       end = {dma.getNumBDs(),
@@ -240,9 +241,9 @@ void SAPlacer::buildRouteModel(
              pool.getDepth(),
              pool.canWalkWhole(),
              pool.getObjectSizeInBytes(),
-             pool.getContiguous() ? pool.getObjectsPerBuffer() : 0};
+             pool.getContiguous() ? pool.getObjectsPerBuffer() : 0,
+             channel};
     }
-    end.channel = endpoint.getRouteChannel();
     memTileEnds[tile].push_back({endpoint.getRouteDirection(), end});
   }
 }
@@ -1024,12 +1025,15 @@ int64_t SAPlacer::coreUnplaced(TileID pos, const std::map<int64_t, int> &added,
   problem.maxVecAlignBits = limits.maxVecAlignBits;
   problem.maxDataMemorySize = limits.maxDataMemorySize;
   problem.budget = config.placementBudget;
-  for (auto [bytes, count] : fifo)
+  for (auto [bytes, count] : fifo) {
+    TileLayoutBuffer buffer;
+    buffer.size = bytes;
+    buffer.alignBytes = requiredBufferAlignBits(limits.tileAlignBitWidth,
+                                                limits.maxVecAlignBits, bytes) /
+                        8;
     for (int i = 0; i < count; ++i)
-      problem.buffers.push_back(
-          {bytes, requiredBufferAlignBits(limits.tileAlignBitWidth,
-                                          limits.maxVecAlignBits, bytes) /
-                      8});
+      problem.buffers.push_back(buffer);
+  }
   for (const CoreTileContents *contents : here) {
     llvm::append_range(problem.buffers, contents->buffers);
     if (contents->hasCore) {
@@ -2004,12 +2008,14 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     if (!tile || tile.getTileType() != AIETileType::CoreTile ||
         pool.getBuffers())
       continue;
-    int64_t bytes = pool.getObjectSizeInBytes() * pool.getObjectsPerBuffer();
+    TileLayoutBuffer buffer;
+    buffer.size = pool.getObjectSizeInBytes() * pool.getObjectsPerBuffer();
+    buffer.alignBytes =
+        requiredBufferAlignBits(coreLimits.tileAlignBitWidth,
+                                coreLimits.maxVecAlignBits, buffer.size) /
+        8;
     for (int i = 0, e = pool.getContiguous() ? 1 : pool.getDepth(); i < e; ++i)
-      coreContents[tile].buffers.push_back(
-          {bytes, requiredBufferAlignBits(coreLimits.tileAlignBitWidth,
-                                          coreLimits.maxVecAlignBits, bytes) /
-                      8});
+      coreContents[tile].buffers.push_back(buffer);
   }
 
   device.walk([&](LockOp lock) {
