@@ -1,0 +1,7 @@
+<map id="hrx_test::LoadedKernel" name="hrx_test::LoadedKernel">
+<area shape="rect" id="Node000001" title=" " alt="" coords="50,106,221,134"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,138,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="90,44,130,105,124,106,87,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="162,5,237,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="185,45,146,107,142,104,180,47"/>
+</map>
