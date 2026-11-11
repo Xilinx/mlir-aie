@@ -552,6 +552,15 @@ struct AIEDMATasksToNPUPass
     if (failed(
             AIE::verifyBdLockPair(block, outOfOrder, acquire_op, release_op)))
       return failure();
+    // A memtile BD may use locks of its neighbours, so each lock ID is offset
+    // by the base index of the tile that owns that lock, as in AIERT.cpp.
+    auto lockIdFor = [&](AIE::LockOp lock, int32_t id) {
+      if (target_model.isMemTile(tile.getCol(), tile.getRow()))
+        if (auto offset = target_model.getLockLocalBaseIndex(
+                tile.getCol(), tile.getRow(), lock.colIndex(), lock.rowIndex()))
+          id += *offset;
+      return id;
+    };
     if (release_op) {
       AIE::LockOp rel_lock = release_op.getLockOp();
 
@@ -559,7 +568,7 @@ struct AIEDMATasksToNPUPass
       if (acquire_op) {
         AIE::LockOp acq_lock = acquire_op.getLockOp();
         if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
-          f.lock_acq_id = *acqLockId;
+          f.lock_acq_id = lockIdFor(acq_lock, *acqLockId);
           if (failed(lockValue(acquire_op, f.lock_acq_val, f.lock_acq_val_val)))
             return failure();
           f.lock_acq_enable = 1;
@@ -567,22 +576,9 @@ struct AIEDMATasksToNPUPass
       }
 
       if (std::optional<int32_t> relLockId = rel_lock.getLockID()) {
-        f.lock_rel_id = *relLockId;
+        f.lock_rel_id = lockIdFor(rel_lock, *relLockId);
         if (failed(lockValue(release_op, f.lock_rel_val, f.lock_rel_val_val)))
           return failure();
-      }
-
-      // For memtile, add lock offset using getLockLocalBaseIndex. This matches
-      // AIERT.cpp implementation.
-      if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
-        auto lockOffset = target_model.getLockLocalBaseIndex(
-            tile.getCol(), tile.getRow(), rel_lock.colIndex(),
-            rel_lock.rowIndex());
-        if (lockOffset && acquire_op &&
-            acquire_op.getLockOp().getLockID().has_value())
-          f.lock_acq_id += lockOffset.value();
-        if (lockOffset && rel_lock.getLockID().has_value())
-          f.lock_rel_id += lockOffset.value();
       }
     }
     return f;

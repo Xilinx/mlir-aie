@@ -333,19 +333,23 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn = false;
 
-  // switch (lock->getAc)
-  AIE::LockOp lock;
+  // A memtile BD may use locks of its neighbours, so each lock ID is offset
+  // by the base index of the tile that owns that lock.
+  auto lockIdFor = [&](AIE::LockOp lock) {
+    int id = lock.getLockIDValue();
+    if (targetModel.isMemTile(col, row))
+      if (auto offset = targetModel.getLockLocalBaseIndex(
+              col, row, lock.colIndex(), lock.rowIndex()))
+        id += *offset;
+    return id;
+  };
   for (auto op : block.getOps<AIE::UseLockOp>()) {
-    // Only dyn_cast if you are going to check if it was of the type
-    // expected; if you aren't checking use cast instead as it will at
-    // least assert in debug mode with an easier to understand error than
-    // dereferencing.
-    lock = cast<AIE::LockOp>(op.getLock().getDefiningOp());
+    auto lock = cast<AIE::LockOp>(op.getLock().getDefiningOp());
     switch (op.getAction()) {
     case AIE::LockAction::Acquire:
     case AIE::LockAction::AcquireGreaterEqual: {
       acqEn = op.getAcqEn();
-      acqLockId = lock.getLockIDValue();
+      acqLockId = lockIdFor(lock);
       auto value = op.getConstantValue();
       if (failed(value))
         return failure();
@@ -356,7 +360,7 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
       break;
     }
     case AIE::LockAction::Release: {
-      relLockId = lock.getLockIDValue();
+      relLockId = lockIdFor(lock);
       auto value = op.getConstantValue();
       if (failed(value))
         return failure();
@@ -364,15 +368,6 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
       break;
     }
     }
-  }
-
-  if (targetModel.isMemTile(col, row)) {
-    auto lockOffset = targetModel.getLockLocalBaseIndex(
-        col, row, lock.colIndex(), lock.rowIndex());
-    if (lockOffset && acqLockId)
-      acqLockId.value() += lockOffset.value();
-    if (lockOffset && relLockId)
-      relLockId.value() += lockOffset.value();
   }
 
   // no RelEn in the arch spec even though the API requires you to set it?
