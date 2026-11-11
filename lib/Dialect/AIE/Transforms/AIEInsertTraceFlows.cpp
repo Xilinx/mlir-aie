@@ -105,6 +105,23 @@ struct AIEInsertTraceFlowsPass
     if (traces.empty())
       return;
 
+    // The trace DMA program below targets one of the two shim S2MM channels
+    // and a shim BD; reject options it cannot encode.
+    int shimChannel = clShimChannel;
+    if (shimChannel < 0 || shimChannel > 1) {
+      device.emitError() << "shim-channel " << shimChannel
+                         << " is not a shim S2MM channel; expected 0 or 1";
+      return signalPassFailure();
+    }
+    uint32_t numShimBds = targetModel.getNumBDs(AIETileType::ShimNOCTile);
+    int bdId = clDefaultBdId;
+    if (bdId < 0 || static_cast<uint32_t>(bdId) >= numShimBds) {
+      device.emitError() << "default-bd-id " << bdId
+                         << " is not a shim BD; expected [0, " << numShimBds
+                         << ")";
+      return signalPassFailure();
+    }
+
     // Phase 1b: Collect every runtime_sequence with an aie.trace.host_config.
     // Each one drives the trace units on its own dispatch, so each one gets a
     // trace buffer and a shim DMA program.
