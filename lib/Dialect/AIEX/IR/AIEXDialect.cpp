@@ -2153,8 +2153,15 @@ static LogicalResult verifyBdPoolPartition(Operation *op, int col, int row,
 }
 
 LogicalResult AIEX::DMABdPoolPopOp::verify() {
-  return verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
-                               getBdEnd());
+  if (failed(verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
+                                   getBdEnd())))
+    return failure();
+  std::optional<uint32_t> id = getId();
+  if (id && (*id < getBdBegin() || *id >= getBdEnd()))
+    return emitOpError() << "takes buffer descriptor ID " << *id
+                         << ", which is outside its partition [" << getBdBegin()
+                         << ", " << getBdEnd() << ")";
+  return success();
 }
 
 LogicalResult AIEX::DMABdPoolPushOp::verify() {
