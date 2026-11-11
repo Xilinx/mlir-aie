@@ -337,7 +337,18 @@ static LogicalResult copyReferencedSSAValues(
                       "attributes";
           }
         }
-        clonedDefs[definingOp] = existingTile.getOperation();
+        // Clones go in at the insertion point; the caller's tile moves ahead
+        // of it, so the locks and buffers cloned onto it follow it.
+        Block *block = clonedSSAInsertPoint.getBlock();
+        Block::iterator point = clonedSSAInsertPoint.getPoint();
+        Operation *tile = existingTile.getOperation();
+        if (tile->getBlock() == block && point != block->end()) {
+          if (tile == &*point)
+            clonedSSAInsertPoint = OpBuilder::InsertPoint(block, ++point);
+          else if (!tile->isBeforeInBlock(&*point))
+            tile->moveBefore(&*point);
+        }
+        clonedDefs[definingOp] = tile;
       }
     }
 
