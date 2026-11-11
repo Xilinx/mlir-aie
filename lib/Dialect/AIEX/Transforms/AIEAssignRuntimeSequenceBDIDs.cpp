@@ -81,6 +81,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
+  // Bytes as a linear form in the sequence's scratchpad parameters: the
+  // constant at key -1, each parameter's coefficient at its state-table index.
+  using Volume = std::map<int64_t, int64_t>;
+
   // The channel a raw push, an aiex.npu.push_queue or aiex.npu.dma_memcpy_nd,
   // queues on, and whether it issues a token.
   static std::optional<std::pair<DmaQueueModel::ChannelKey, bool>>
@@ -609,7 +613,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
                 bool issuesToken, Operation *origin,
-                DMAStartTaskOp start = {}) {
+                AIE::ShimDMAAllocationOp allocation,
+                std::optional<Volume> moved) {
     uint64_t order = pushCount++;
     startedOnChannel[key].tasks.push_back({task, origin, issuesToken, order});
     if (task) {
@@ -617,14 +622,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       ++runningCount[task];
       lastPushOrder[task] = order;
     }
-    AIE::ShimDMAAllocationOp allocation = task ? allocationOf(task) : nullptr;
     if (!allocation)
       return;
     auto &pushes = pushesByAllocation[allocation];
     std::optional<Volume> through =
         pushes.empty() ? Volume() : pushes.back().through;
-    std::optional<Volume> moved =
-        start ? pushVolume(start, task) : std::nullopt;
     if (through && moved)
       for (auto [term, bytes] : *moved)
         (*through)[term] += bytes;
@@ -879,10 +881,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     releaseRetiredCopies(key);
   }
 
-  // Bytes as a linear form in the sequence's scratchpad parameters: the
-  // constant at key -1, each parameter's coefficient at its state-table index.
-  using Volume = std::map<int64_t, int64_t>;
-
   // Whether a * scaleA <= b * scaleB whatever values the parameters take.
   // Every parameter is at least 0, so it is enough to compare the terms one
   // by one, a term missing from either side counting as 0.
@@ -991,6 +989,19 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (llvm::MulOverflow(coefficient, *repeat + 1, coefficient))
         return std::nullopt;
     return bytes;
+  }
+
+  // The bytes one push of `copy` moves, or nullopt where a size is runtime-
+  // valued: unlike a task's chain, a copy's length_parameter/state-table index
+  // is not threaded through this Volume's linear form, only its own constant
+  // sizes.
+  static std::optional<Volume> copyVolume(NpuDmaMemcpyNdOp copy) {
+    std::optional<int64_t> bytes = copy.getStaticBytesStreamed();
+    if (!bytes)
+      return std::nullopt;
+    Volume volume;
+    volume[-1] = *bytes;
+    return volume;
   }
 
   // The device's shim allocations, by name; a task names one of its own
@@ -1147,7 +1158,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return WalkResult::advance();
       auto start = dyn_cast<DMAStartTaskOp>(op);
       DMAConfigureTaskOp cfg = start ? start.getTaskOp() : nullptr;
-      AIE::ShimDMAAllocationOp allocation = cfg ? allocationOf(cfg) : nullptr;
+      auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
+      AIE::ShimDMAAllocationOp allocation =
+          cfg    ? allocationOf(cfg)
+          : copy ? AIE::ShimDMAAllocationOp::getForSymbol(
+                       getOperation(), copy.getMetadata().getRootReference())
+                 : nullptr;
       std::optional<DmaQueueModel::ChannelKey> channel =
           cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
       bool circuit = byChannel && allocation && !allocation.getPacket();
@@ -1169,8 +1185,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return WalkResult::advance();
       // A dynamic-pool sequence keeps its loops, whose trip counts these
       // counts cannot follow.
-      std::optional<Volume> moved =
-          op->getParentOp() == seq ? pushVolume(start, cfg) : std::nullopt;
+      std::optional<Volume> moved = op->getParentOp() != seq ? std::nullopt
+                                    : cfg ? pushVolume(start, cfg)
+                                          : copyVolume(copy);
       if (!moved) {
         why = Unbalanced::Unsized;
         if (at)
@@ -2055,7 +2072,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             knownComplete.erase(cfg);
             provenFinished.erase(cfg);
             notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg), start,
-                     start);
+                     allocationOf(cfg), pushVolume(start, cfg));
           }
         } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
           noteLoadPdi(load);
@@ -2079,8 +2096,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             return WalkResult::interrupt();
           frees.push_back(freeOp);
         } else if (auto push = otherPush(op)) {
-          notePush(push->first, DMAConfigureTaskOp{}, push->second, op);
-          if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+          auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
+          AIE::ShimDMAAllocationOp allocation =
+              copy ? AIE::ShimDMAAllocationOp::getForSymbol(
+                         getOperation(), copy.getMetadata().getRootReference())
+                   : nullptr;
+          notePush(push->first, DMAConfigureTaskOp{}, push->second, op,
+                   allocation, copy ? copyVolume(copy) : std::nullopt);
+          if (copy) {
             if (failed(
                     holdCopy(copy, push->first, pushCount - 1, push->second)))
               return WalkResult::interrupt();
