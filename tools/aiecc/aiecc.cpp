@@ -954,9 +954,15 @@ static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
 // What the probe link measured of each core's own sections, as
 // `<device>:<core>` (the device's aie.core ops counted in order) to bytes; the
 // address edge fills it in from its worker threads.
+// A core's data region as the probe link measured it: its bytes and the
+// alignment its sections start at.
+struct MeasuredRegion {
+  int64_t bytes = 0;
+  int64_t align = 1;
+};
 struct MeasuredCoreData {
   std::mutex mutex;
-  llvm::StringMap<int64_t> bytes;
+  llvm::StringMap<MeasuredRegion> regions;
 };
 
 // The edge that routes the placed design's flows.
@@ -1445,9 +1451,11 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                            llvm::enumerate(device.getOps<CoreOp>()))
                         if (auto bytes = core.getMeasuredDataSize();
                             bytes && !core.getDataSize())
-                          measuredCores.bytes[(device.getSymName() + ":" +
-                                               llvm::Twine(ordinal))
-                                                  .str()] = *bytes;
+                          measuredCores.regions[(device.getSymName() + ":" +
+                                                 llvm::Twine(ordinal))
+                                                    .str()] = {
+                              *bytes,
+                              core.getMeasuredDataAlignment().value_or(1)};
                     if (!noMeasureStackSize.getValue() &&
                         mlir::failed(recordStackDemand(
                             mod, elfLookup(probes), elfLookup(coreObjects)))) {
@@ -3355,7 +3363,7 @@ int main(int argc, char **argv) {
                         });
                });
   };
-  llvm::StringMap<int64_t> coreData;
+  llvm::StringMap<MeasuredRegion> coreData;
   while ((mayWalkAgain && noRoom(kWithSymbolsEdge, xilinx::AIE::kNoBufferRoom,
                                  xilinx::AIE::kTurnWalkedNote)) ||
          (mayCoreAgain && noRoom(kAddressesEdge, xilinx::AIE::kNoTileRoom,
@@ -3413,10 +3421,12 @@ int main(int argc, char **argv) {
     bool grew = false;
     {
       std::lock_guard<std::mutex> lock(measuredCores.mutex);
-      for (auto &[core, bytes] : measuredCores.bytes)
+      for (auto &[core, region] : measuredCores.regions)
         if (fullDevices.contains(llvm::StringRef(core).rsplit(':').first))
-          if (int64_t &charged = coreData[core]; bytes > charged) {
-            charged = bytes;
+          if (MeasuredRegion &charged = coreData[core];
+              region.bytes > charged.bytes || region.align > charged.align) {
+            charged = {std::max(charged.bytes, region.bytes),
+                       std::max(charged.align, region.align)};
             grew = true;
           }
     }
@@ -3434,8 +3444,11 @@ int main(int argc, char **argv) {
     }
     if (grew) {
       saCoreDataSizes.clear();
-      for (auto &[core, bytes] : coreData)
-        saCoreDataSizes.push_back((core + "=" + llvm::Twine(bytes)).str());
+      for (auto &[core, region] : coreData)
+        saCoreDataSizes.push_back(
+            (core + "=" + llvm::Twine(region.bytes) +
+             (region.align > 1 ? "@" + llvm::Twine(region.align) : ""))
+                .str());
       llvm::sort(saCoreDataSizes);
       why.emplace_back(
           "a core's buffers found no room beside its own sections");

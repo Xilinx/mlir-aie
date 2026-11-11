@@ -17,11 +17,11 @@
 // CHECK: could not place buffers
 // CHECK: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // CHECK: note: the core on this tile keeps its own sections in
-// CHECK: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in --sa-core-data-sizes=main:0={{[0-9]+}} (a core's buffers found no room beside its own sections); the messages above are from placement 2
+// CHECK: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in --sa-core-data-sizes=main:0={{[0-9]+}}@16 (a core's buffers found no room beside its own sections); the messages above are from placement 2
 // CHECK: aiecc: no placement with what allocation found counted fits either; placement 3's failure stands
 // CHECK: aiecc: edge 'input_with_addresses.mlir' failed
 // REPEAT: "--sa-walked-fifos=main:b_in,main:a_in"
-// REPEAT: "--sa-core-data-sizes=main:0={{[0-9]+}}"
+// REPEAT: "--sa-core-data-sizes=main:0={{[0-9]+}}@16"
 
 module @turn_walk_then_core {
   aie.device(npu2) {

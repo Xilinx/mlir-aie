@@ -23,15 +23,15 @@
 // RETRY: warning: func 'never_called' has link_with but is never called from any core
 // RETRY: warning: Not all requested buffers fit
 // RETRY: error: 'aie.buffer' op could not be placed:
-// RETRY: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=28672 (a core's buffers found no room beside its own sections); the messages above are from placement 1
+// RETRY: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=28672@16 (a core's buffers found no room beside its own sections); the messages above are from placement 1
 // RETRY-NOT: error:
 // RETRY: warning: func 'never_called' has link_with but is never called from any core
 // RETRY-NOT: error:
-// RETRY: aiecc: placement 2 (--sa-core-data-sizes=main:0=0,main:1=28672) stands
+// RETRY: aiecc: placement 2 (--sa-core-data-sizes=main:0=0,main:1=28672@16) stands
 
 // Walked fifos the command line chose leave this retry on.
-// OTHERPIN: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=28672 (a core's buffers found no room beside its own sections); the messages above are from placement 1
-// OTHERPIN: aiecc: placement 2 (--sa-core-data-sizes=main:0=0,main:1=28672) stands
+// OTHERPIN: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=28672@16 (a core's buffers found no room beside its own sections); the messages above are from placement 1
+// OTHERPIN: aiecc: placement 2 (--sa-core-data-sizes=main:0=0,main:1=28672@16) stands
 // OTHERPIN-NOT: error:
 
 // Core data sizes the command line chose are kept.
@@ -41,7 +41,7 @@
 
 // %c keeps 60 KiB of .bss here, and its own buffers fit beside that nowhere;
 // both placements fail at the same edge, so the later one stands.
-// NEVER: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=61440 (a core's buffers found no room beside its own sections); the messages above are from placement 1
+// NEVER: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=61440@16 (a core's buffers found no room beside its own sections); the messages above are from placement 1
 // NEVER-NOT: placing again
 // NEVER: error: 'aie.buffer' op could not be placed:
 // NEVER: note: the core on this tile keeps its own sections in 61440 bytes

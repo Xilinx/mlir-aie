@@ -82,15 +82,20 @@ struct AIEPlaceTilesPass
       walked.push_back({name.str(), fifo.str()});
     }
     for (StringRef entry : clSACoreDataSizes) {
-      auto [core, bytes] = entry.rsplit('=');
+      auto [core, charge] = entry.rsplit('=');
       auto [name, ordinal] = core.rsplit(':');
+      auto [bytes, alignment] = charge.split('@');
       unsigned index;
       int64_t size;
+      int64_t align = 1;
       if (name.empty() || ordinal.getAsInteger(10, index) ||
-          bytes.getAsInteger(10, size) || size < 0)
+          bytes.getAsInteger(10, size) || size < 0 ||
+          (charge.contains('@') &&
+           (alignment.getAsInteger(10, align) || align <= 0 ||
+            !llvm::isPowerOf2_64(align))))
         return emitError(UnknownLoc::get(context), "sa-core-data-sizes entry '")
-               << entry << "' is not <device>:<core>=<bytes>";
-      coreSizes.push_back({name.str(), index, size});
+               << entry << "' is not <device>:<core>=<bytes>[@<align>]";
+      coreSizes.push_back({name.str(), index, size, align});
     }
     return success();
   }
@@ -135,7 +140,7 @@ struct AIEPlaceTilesPass
         llvm::SmallVector<StringRef> named;
         for (auto &[name, fifo] : walked)
           named.push_back(name);
-        for (auto &[name, index, size] : coreSizes)
+        for (auto &[name, index, size, align] : coreSizes)
           named.push_back(name);
         for (StringRef name : named)
           if (!devices.contains(name)) {
@@ -155,7 +160,7 @@ struct AIEPlaceTilesPass
         config.walkedFifos.push_back(fifo);
       }
       size_t cores = llvm::range_size(device.getOps<CoreOp>());
-      for (auto &[name, index, size] : coreSizes) {
+      for (auto &[name, index, size, align] : coreSizes) {
         if (name != device.getSymName())
           continue;
         if (index >= cores) {
@@ -164,7 +169,8 @@ struct AIEPlaceTilesPass
               << " cores";
           return signalPassFailure();
         }
-        config.coreDataBytes[index] = size;
+        config.coreDataCharges.insert_or_assign(
+            index, SAConfig::CoreDataCharge(size, align));
       }
       placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
@@ -226,8 +232,9 @@ struct AIEPlaceTilesPass
 private:
   // sa-walked-fifos, as (device, fifo).
   llvm::SmallVector<std::pair<std::string, std::string>> walked;
-  // sa-core-data-sizes, as (device, core, bytes).
-  llvm::SmallVector<std::tuple<std::string, unsigned, int64_t>> coreSizes;
+  // sa-core-data-sizes, as (device, core, bytes, alignment).
+  llvm::SmallVector<std::tuple<std::string, unsigned, int64_t, int64_t>>
+      coreSizes;
 };
 
 } // namespace

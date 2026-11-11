@@ -2077,9 +2077,11 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     SmallVector<CoreSectionReservation> reservations =
         coreOp.getSectionReservations();
     if (!coreOp.getDataSize() && !coreOp.getMeasuredDataSize())
-      if (int64_t data = config.coreDataBytes.lookup_or(ordinal, 0))
-        reservations.push_back({CoreSectionReservation::Kind::DataRegion, data,
-                                0, coreOp.getSectionAlignment(std::nullopt)});
+      if (auto charge = config.coreDataCharges.find(ordinal);
+          charge != config.coreDataCharges.end() && charge->second.bytes)
+        reservations.push_back({CoreSectionReservation::Kind::DataRegion,
+                                charge->second.bytes, 0,
+                                charge->second.alignBytes});
     for (auto [held, holder] : llvm::zip_equal(
              reservations, coreOp.getSectionReservationBuffers(reservations)))
       if (!holder) {

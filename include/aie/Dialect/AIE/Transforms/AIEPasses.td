@@ -120,8 +120,9 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
                   "the pools a turn-sharing walk takes, as <device>:<fifo>">,
        ListOption<"clSACoreDataSizes", "sa-core-data-sizes", "std::string",
                   "Bytes the SA placer reserves for a core's own sections, "
-                  "as <device>:<core>=<bytes>, "
-                  "<core> counting the device's aie.core ops in order. A "
+                  "as <device>:<core>=<bytes>[@<align>], <core> counting the "
+                  "device's aie.core ops in order and <align> the alignment "
+                  "the sections start at (1 when absent). A "
                   "core's declared data_size or measured_data_size still "
                   "wins">,
        Option<"clPlacementBudget", "placement-budget", "int64_t",

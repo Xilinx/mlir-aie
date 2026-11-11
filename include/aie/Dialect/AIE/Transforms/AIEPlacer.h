@@ -820,10 +820,17 @@ struct SAConfig {
 
   // ObjectFIFOs whose mem tile pools allocation walked whole.
   llvm::SmallVector<std::string> walkedFifos;
-  // Bytes each core keeps for its own sections, by the device's core order,
-  // where a build measured them: the data region of a core declaring neither
-  // data_size nor measured_data_size.
-  llvm::DenseMap<unsigned, int64_t> coreDataBytes;
+  // The data region each core keeps for its own sections, by the device's
+  // core order, where a build measured it, for a core declaring neither
+  // data_size nor measured_data_size: its bytes and the alignment its
+  // sections start at.
+  struct CoreDataCharge {
+    CoreDataCharge(int64_t bytes, int64_t alignBytes)
+        : bytes(bytes), alignBytes(alignBytes) {}
+    int64_t bytes;
+    int64_t alignBytes;
+  };
+  llvm::DenseMap<unsigned, CoreDataCharge> coreDataCharges;
 };
 
 // SA temperature schedule with windowed acceptance tracking.
