@@ -133,7 +133,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
               /*default=*/"false",
               "Leave each shim tile the MM2S channel the configuration "
               "overlay of aie-generate-column-control-overlay takes, but "
-              "for the ends never in flight with its control packets">];
+              "for the ends never in flight with its control packets">,
+       Option<"clCtrlPktOverlayAdaptive", "ctrl-pkt-overlay-adaptive", "bool",
+              /*default=*/"true",
+              "With ctrl-pkt-overlay, where the overlay's MM2S channel goes, "
+              "as aie-generate-column-control-overlay's adaptive option "
+              "says: on, any channel no circuit holds; off, channel 0">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,

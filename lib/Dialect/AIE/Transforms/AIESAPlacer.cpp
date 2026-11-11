@@ -185,8 +185,9 @@ void SAPlacer::buildRouteModel(
     ArrayRef<RouteOp> routes,
     ArrayRef<DMAChannelAnalysis::ChannelClaim> claims) {
   routeEnds.clear();
+  namedChannels.clear();
   for (auto &[tile, inOut] :
-       flowChannelDemand(flows, pktFlows, routes, claims)) {
+       flowChannelDemand(flows, pktFlows, routes, claims, &namedChannels)) {
     for (int i = 0; i < inOut.first; ++i)
       routeEnds.push_back({tile, /*output=*/false});
     for (int i = 0; i < inOut.second; ++i)
@@ -1362,11 +1363,21 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
 int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
   auto usage = currentDMAUsage.lookup(tilePos);
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
-  int used[2] = {usage.first, usage.second + overlayChannels(tilePos)};
+  llvm::DenseSet<int> held;
+  if (overlayChannels(tilePos))
+    for (auto &[tile, named] : namedChannels)
+      if (positionOf(tile) == tilePos)
+        for (auto [output, channel] : named)
+          if (output)
+            held.insert(channel);
+  OverlayFit overlay =
+      overlayAt(tilePos, *pinUse, {}, held, shimSpans ? &*shimSpans : nullptr);
+  int used[2] = {usage.first, usage.second + overlay.channels};
   int max[2] = {maxIn, maxOut};
   // Two ends that cannot share a channel they both pin clash here wherever
-  // the rest goes.
-  int penalty = pinUse->clashes(tilePos) * config.dmaPenaltyPerChannel;
+  // the rest goes, and so does an overlay with nowhere to sit.
+  int penalty =
+      (pinUse->clashes(tilePos) + !overlay.fits) * config.dmaPenaltyPerChannel;
   for (int dir : {0, 1}) {
     if (used[dir] <= max[dir])
       continue;
@@ -1377,7 +1388,7 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
         if (positionOf(lt) == tilePos)
           llvm::append_range(ends, own[dir]);
       }
-      if (dir == 1 && overlayChannels(tilePos))
+      if (dir == 1 && overlay.own)
         ends.push_back(shimSpans->overlayEnd(tilePos.col));
       used[dir] += static_cast<int>(shimSpans->groups(ends).size()) -
                    static_cast<int>(ends.size());

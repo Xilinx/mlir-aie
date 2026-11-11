@@ -54,10 +54,12 @@ void Placer::Adjacency::addEdgeFromValues(Value a, Value b) {
     addEdge(aT, bT);
 }
 
-void Placer::initialize(DeviceOp device, bool controlOverlay) {
+void Placer::initialize(DeviceOp device, bool controlOverlay,
+                        bool adaptiveOverlay) {
   const AIETargetModel &tm = device.getTargetModel();
   targetModel = &tm;
   this->controlOverlay = controlOverlay;
+  this->adaptiveOverlay = adaptiveOverlay;
   availability.physicalCores.clear();
   for (CoreOp core : device.getOps<CoreOp>())
     if (auto tile = dyn_cast_or_null<TileOp>(core.getTile().getDefiningOp()))
@@ -122,8 +124,9 @@ bool Placer::satisfiesConstraints(Operation *tile, TileID pos) {
   return true;
 }
 
-void SequentialPlacer::initialize(DeviceOp device, bool controlOverlay) {
-  Placer::initialize(device, controlOverlay);
+void SequentialPlacer::initialize(DeviceOp device, bool controlOverlay,
+                                  bool adaptiveOverlay) {
+  Placer::initialize(device, controlOverlay, adaptiveOverlay);
 
   // Compute tiles iterate column-major (fill a column top-to-bottom before
   // moving right); non-compute tiles iterate row-major.
@@ -932,13 +935,13 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
   inChannels -= held->first;
   outChannels -= held->second;
 
-  if (!hasAvailableChannels(tile, inChannels, outChannels) &&
+  if (!hasAvailableChannels(tile, inChannels, outChannels, logicalTile) &&
       !fitsSharingShim(tile, logicalTile, {inChannels, outChannels})) {
     // The same capacity as hasAvailableChannels, so the message matches it.
     auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
     int availIn = maxIn - availability.inputChannelsUsed[tile];
-    int availOut =
-        maxOut - availability.outputChannelsUsed[tile] - overlayChannels(tile);
+    int availOut = maxOut - availability.outputChannelsUsed[tile] -
+                   overlayWith(tile, logicalTile).channels;
 
     auto diag = logicalTile.emitError();
     diag << "tile (" << tile.col << ", " << tile.row << ") requires "
@@ -952,11 +955,12 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     return failure();
   }
 
+  // Its pins and named channels first: they decide where the overlay sits.
+  recordStreamAndBdUsage(logicalTile, tile);
   if (inChannels > 0)
     updateChannelUsage(tile, DmaDir::In, inChannels);
   if (outChannels > 0)
     updateChannelUsage(tile, DmaDir::Out, outChannels);
-  recordStreamAndBdUsage(logicalTile, tile);
   recordShimEnds(tile, logicalTile);
 
   return success();
@@ -1625,6 +1629,58 @@ Placer::PinnedChannelUse::clashWith(TileID at,
   return std::nullopt;
 }
 
+llvm::DenseMap<int, llvm::SmallVector<Placer::PinnedChannels::End, 2>>
+Placer::PinnedChannelUse::sendingAt(TileID at) const {
+  llvm::DenseMap<int, llvm::SmallVector<PinnedChannels::End, 2>> sending;
+  for (auto it = placed.lower_bound(
+           std::make_tuple(at.col, at.row, std::numeric_limits<int>::min(), 0));
+       it != placed.end() && std::get<0>(it->first) == at.col &&
+       std::get<1>(it->first) == at.row;
+       ++it)
+    if (std::get<3>(it->first))
+      llvm::append_range(sending[std::get<2>(it->first)], it->second);
+  return sending;
+}
+
+Placer::OverlayFit Placer::overlayAt(TileID at, const PinnedChannelUse &pins,
+                                     ArrayRef<PinnedChannels::End> extra,
+                                     const llvm::DenseSet<int> &held,
+                                     const ShimTransferSpans *spans) const {
+  if (!overlayChannels(at))
+    return {};
+  auto onChannel = pins.sendingAt(at);
+  for (const PinnedChannels::End &end : extra)
+    if (end.sends)
+      onChannel[end.channel].push_back(end);
+  int count = adaptiveOverlay ? targetModel->getNumSourceShimMuxConnections(
+                                    at.col, at.row, WireBundle::DMA)
+                              : 1;
+  std::optional<int> chosen;
+  size_t fewest = std::numeric_limits<size_t>::max();
+  for (int channel = 0; channel < count; ++channel) {
+    auto ends = onChannel.lookup(channel);
+    if (held.contains(channel) ||
+        llvm::any_of(ends, [](PinnedChannels::End end) {
+          return !end.fifo.packetHeader();
+        }))
+      continue;
+    if (ends.size() < fewest) {
+      fewest = ends.size();
+      chosen = channel;
+    }
+  }
+  if (!chosen)
+    return {/*fits=*/false, /*channels=*/1, /*own=*/false};
+  auto ends = onChannel.lookup(*chosen);
+  if (ends.empty())
+    return {/*fits=*/true, /*channels=*/1, /*own=*/true};
+  bool apart = spans && llvm::all_of(ends, [&](PinnedChannels::End end) {
+                 return spans->apart(spans->overlayEnd(at.col),
+                                     end.fifo.getSymNameAttr());
+               });
+  return {apart, /*channels=*/0, /*own=*/false};
+}
+
 std::optional<std::pair<int, int>>
 Placer::PinnedChannelUse::heldAt(TileID at,
                                  ArrayRef<PinnedChannels::End> ends) const {
@@ -2134,11 +2190,11 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     assignedNonCoreTiles.insert(*maybeTile);
   auto [heldIn, heldOut] =
       *pinsAt->heldAt(*maybeTile, pinnedEnds.lookup(logicalTile));
+  recordStreamAndBdUsage(logicalTile, *maybeTile);
   if (numInputChannels > heldIn)
     updateChannelUsage(*maybeTile, DmaDir::In, numInputChannels - heldIn);
   if (numOutputChannels > heldOut)
     updateChannelUsage(*maybeTile, DmaDir::Out, numOutputChannels - heldOut);
-  recordStreamAndBdUsage(logicalTile, *maybeTile);
   recordShimEnds(*maybeTile, logicalTile);
   return success();
 }
@@ -2150,8 +2206,11 @@ bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
       !shimSpans)
     return false;
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
+  OverlayFit overlay = overlayWith(tile, logicalTile);
+  if (!overlay.fits)
+    return false;
   int used[2] = {availability.inputChannelsUsed[tile],
-                 availability.outputChannelsUsed[tile] + overlayChannels(tile)};
+                 availability.outputChannelsUsed[tile] + overlay.channels};
   int need[2] = {required.first, required.second};
   int max[2] = {maxIn, maxOut};
   auto own = shareableShimEnds.lookup(logicalTile);
@@ -2160,7 +2219,7 @@ bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
       continue;
     SmallVector<StringAttr> ends(shimEndsAt[tile][dir]);
     llvm::append_range(ends, own[dir]);
-    if (dir == 1 && overlayChannels(tile))
+    if (dir == 1 && overlay.own)
       ends.push_back(shimSpans->overlayEnd(tile.col));
     int fixed = used[dir] + need[dir] - static_cast<int>(ends.size());
     if (fixed + static_cast<int>(shimSpans->groups(ends).size()) > max[dir])
@@ -2201,9 +2260,9 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     if (targetModel->getTileType(tile.col, tile.row) != requestedType)
       continue;
     std::optional<std::pair<int, int>> held = pinsAt->heldAt(tile, pins);
-    if (!held ||
-        !hasAvailableChannels(tile, requiredInputChannels - held->first,
-                              requiredOutputChannels - held->second))
+    if (!held || !hasAvailableChannels(
+                     tile, requiredInputChannels - held->first,
+                     requiredOutputChannels - held->second, logicalTile))
       continue;
     // When merge-logical-tiles is disabled, a tile that already hosts a
     // non-core aie.logical_tile is off-limits even if it has spare DMA
@@ -2261,8 +2320,8 @@ SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
       diagnosis.inMax += maxIn;
       diagnosis.outMax += maxOut;
       int usedIn = availability.inputChannelsUsed.lookup(tile);
-      int usedOut =
-          availability.outputChannelsUsed.lookup(tile) + overlayChannels(tile);
+      int usedOut = availability.outputChannelsUsed.lookup(tile) +
+                    overlayWith(tile, nullptr).channels;
       diagnosis.inUsed += usedIn;
       diagnosis.outUsed += usedOut;
       int shortIn = std::max(0, requiredInputChannels - (maxIn - usedIn));
@@ -2295,15 +2354,35 @@ void SequentialPlacer::updateChannelUsage(TileID tile, DmaDir direction,
 }
 
 bool SequentialPlacer::hasAvailableChannels(TileID tile, int inputChannels,
-                                            int outputChannels) {
+                                            int outputChannels,
+                                            Operation *joining) {
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
+  OverlayFit overlay = overlayWith(tile, joining);
 
   int currentIn = availability.inputChannelsUsed[tile];
-  int currentOut =
-      availability.outputChannelsUsed[tile] + overlayChannels(tile);
+  int currentOut = availability.outputChannelsUsed[tile] + overlay.channels;
 
-  return (currentIn + inputChannels <= maxIn) &&
+  return overlay.fits && (currentIn + inputChannels <= maxIn) &&
          (currentOut + outputChannels <= maxOut);
+}
+
+Placer::OverlayFit SequentialPlacer::overlayWith(TileID tile,
+                                                 Operation *joining) {
+  if (!overlayChannels(tile))
+    return {};
+  llvm::DenseSet<int> held;
+  for (auto [output, channel] : availability.namedChannelsUsed.lookup(tile))
+    if (output)
+      held.insert(channel);
+  SmallVector<PinnedChannels::End> pins;
+  if (joining) {
+    for (auto [output, channel] : namedChannels.lookup(joining))
+      if (output)
+        held.insert(channel);
+    pins = pinnedEnds.lookup(joining);
+  }
+  return overlayAt(tile, *pinsAt, pins, held,
+                   shimSpans ? &*shimSpans : nullptr);
 }
 
 void SequentialPlacer::recordColumnStreamUsage(Operation *tile, int col) {

@@ -1374,11 +1374,13 @@ inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
 //===----------------------------------------------------------------------===//
 
 // Tile placement (`aie-place-tiles`), nested under DeviceOp.
-inline std::unique_ptr<mlir::PassManager> getPlacementPipeline(
-    mlir::MLIRContext *ctx, int coresPerCol, xilinx::AIE::PlacerType placerType,
-    int saSeed, double saEffort, int64_t placementBudget,
-    llvm::ArrayRef<std::string> walkedFifos,
-    llvm::ArrayRef<std::string> coreDataSizes, bool ctrlPktOverlay) {
+inline std::unique_ptr<mlir::PassManager>
+getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
+                     xilinx::AIE::PlacerType placerType, int saSeed,
+                     double saEffort, int64_t placementBudget,
+                     llvm::ArrayRef<std::string> walkedFifos,
+                     llvm::ArrayRef<std::string> coreDataSizes,
+                     bool ctrlPktOverlay, bool adaptiveOverlay) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIE::AIEPlaceTilesOptions opts;
   opts.clPlacerType = placerType;
@@ -1387,6 +1389,7 @@ inline std::unique_ptr<mlir::PassManager> getPlacementPipeline(
   opts.clSAEffort = saEffort;
   opts.clPlacementBudget = placementBudget;
   opts.clCtrlPktOverlay = ctrlPktOverlay;
+  opts.clCtrlPktOverlayAdaptive = adaptiveOverlay;
   opts.clSAWalkedFifos.assign(walkedFifos.begin(), walkedFifos.end());
   opts.clSACoreDataSizes.assign(coreDataSizes.begin(), coreDataSizes.end());
   xilinx::AIEX::addPlacementStage(*pm, opts);

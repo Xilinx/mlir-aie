@@ -116,7 +116,8 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(DeviceOp device, bool controlOverlay);
+  virtual void initialize(DeviceOp device, bool controlOverlay,
+                          bool adaptiveOverlay);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -280,6 +281,9 @@ public:
     // An end at `at` that `end` cannot share its channel with, if any.
     std::optional<PinnedChannels::End>
     clashWith(TileID at, const PinnedChannels::End &end) const;
+    // The sending ends at `at`, by the MM2S channel they pin.
+    llvm::DenseMap<int, llvm::SmallVector<PinnedChannels::End, 2>>
+    sendingAt(TileID at) const;
 
   private:
     const PinnedChannels *rule;
@@ -360,17 +364,36 @@ public:
   };
 
 protected:
-  // ShimTransferSpans::overlayEnd's channel, on each shim tile.
+  // Whether the control overlay takes an MM2S channel on `tile`.
   int overlayChannels(TileID tile) const {
     return controlOverlay && tile.row == 0 &&
            targetModel->getTileType(tile.col, tile.row) ==
                AIETileType::ShimNOCTile;
   }
+  // The control overlay's MM2S channel on shim tile `at`, where
+  // aie-generate-column-control-overlay puts it: channel 0, or with
+  // `adaptiveOverlay` any one, that no circuit-switched end pins and no other
+  // claim holds (`held`), fewest pinned packet ends first. Those ends share
+  // it when ShimTransferSpans finds each apart from the overlay; otherwise
+  // allocation refuses them, and the overlay does not `fit`. `extra` are a
+  // tile op's pinned ends about to join `pins`'.
+  struct OverlayFit {
+    bool fits = true;
+    // The MM2S channels it adds: none on a pinned channel it shares.
+    int channels = 0;
+    // Whether it holds a channel of its own, which unpinned ends may share.
+    bool own = false;
+  };
+  OverlayFit overlayAt(TileID at, const PinnedChannelUse &pins,
+                       llvm::ArrayRef<PinnedChannels::End> extra,
+                       const llvm::DenseSet<int> &held,
+                       const ShimTransferSpans *spans) const;
 
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
   const AIETargetModel *targetModel = nullptr;
   bool controlOverlay = false;
+  bool adaptiveOverlay = true;
   TileAvailability availability;
 };
 
@@ -470,7 +493,8 @@ public:
       : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles),
         spreadUnanchoredTiles(spreadUnanchoredTiles) {}
 
-  void initialize(DeviceOp device, bool controlOverlay) override;
+  void initialize(DeviceOp device, bool controlOverlay,
+                  bool adaptiveOverlay) override;
 
   mlir::LogicalResult place(DeviceOp device) override;
 
@@ -585,7 +609,13 @@ private:
   // `tile`.
   void recordStreamAndBdUsage(mlir::Operation *logicalTile, TileID tile);
 
-  bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels);
+  // With `joining`, as that logical tile's pinned ends and named channels
+  // would find the control overlay there.
+  bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels,
+                            mlir::Operation *joining = nullptr);
+  // Where the control overlay sits on `tile`, with `joining`'s pinned ends
+  // and the MM2S channels named there, its own included.
+  OverlayFit overlayWith(TileID tile, mlir::Operation *joining);
 
   mlir::LogicalResult validateAndUpdateChannelUsage(
       LogicalTileOp logicalTile, TileID tile,
@@ -1047,6 +1077,10 @@ private:
     bool output;
   };
   llvm::SmallVector<RouteEndInfo> routeEnds;
+  // DMA channels, as (output, index), that each tile's flows and claims name
+  // by index.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+      namedChannels;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
   // The DMA ends of each mem tile, logical or physical, and the BD ids each
   // takes, as the split will make them.
