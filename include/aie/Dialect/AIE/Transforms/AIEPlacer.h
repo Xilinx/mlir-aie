@@ -599,6 +599,11 @@ private:
     // Of outUsed, the control overlay's channels; and the tiles where it has
     // none it can take.
     int overlayOut = 0, overlayUnfit = 0;
+    // The tiles where a pinned end of the joining tile clashes with one
+    // already there, and the first such pair.
+    int clashTiles = 0;
+    std::optional<std::tuple<TileID, PinnedChannels::End, PinnedChannels::End>>
+        clash;
   };
   // `joining` is the logical tile that found no tile, whose pinned ends move
   // the control overlay.

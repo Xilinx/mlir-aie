@@ -2210,7 +2210,24 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     auto diag = logicalTile.emitError();
     CapacityDiagnosis diagnosis = diagnoseCapacityExhaustion(
         requestedType, numInputChannels, numOutputChannels, logicalTile);
-    if (!diagnosis.capacityExistsSomewhere) {
+    auto noteClash = [&]() {
+      if (!diagnosis.clash)
+        return;
+      auto &[at, end, other] = *diagnosis.clash;
+      diag.attachNote() << "@" << end.fifo.getSymName() << " pins "
+                        << (end.sends ? "MM2S" : "S2MM") << " channel "
+                        << end.channel << ", which @" << other.fifo.getSymName()
+                        << " pins on (" << at.col << ", " << at.row
+                        << ") too, but " << *pinnedRule->whyApart(end, other)
+                        << "; " << diagnosis.clashTiles << " " << tileTypeName
+                        << "(s) hold such a pin";
+    };
+    if (!diagnosis.capacityExistsSomewhere && diagnosis.clash) {
+      diag << "no " << tileTypeName
+           << " with DMA channels to spare can hold this tile's pinned ends "
+              "beside the ends pinned there";
+      noteClash();
+    } else if (!diagnosis.capacityExistsSomewhere) {
       diag << "no " << tileTypeName << " on the device has " << numInputChannels
            << " input/" << numOutputChannels
            << " output DMA channel(s) free: all " << diagnosis.tilesOfType
@@ -2258,12 +2275,14 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
         diag << "near centroid column " << *centroidCol;
       else
         diag << "on any column";
-      diag.attachNote() << "every " << tileTypeName
-                        << " with spare DMA capacity already hosts a "
-                           "different logical tile (merge-logical-tiles is "
-                           "off); enable merging, or pin logical tiles "
-                           "one-per-column if fewer of them than physical "
-                        << tileTypeName << "s remain unclaimed";
+      noteClash();
+      if (!mergeLogicalTiles)
+        diag.attachNote() << "every " << tileTypeName
+                          << " with spare DMA capacity already hosts a "
+                             "different logical tile (merge-logical-tiles is "
+                             "off); enable merging, or pin logical tiles "
+                             "one-per-column if fewer of them than physical "
+                          << tileTypeName << "s remain unclaimed";
     }
     return failure();
   }
@@ -2434,8 +2453,19 @@ SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
         diagnosis.closestShortIn = shortIn;
         diagnosis.closestShortOut = shortOut;
       }
-      if (hasAvailableChannels(tile, requiredInputChannels,
-                               requiredOutputChannels, joining))
+      SmallVector<PinnedChannels::End> pins = pinnedEnds.lookup(joining);
+      std::optional<std::pair<int, int>> held = pinsAt->heldAt(tile, pins);
+      if (!held) {
+        ++diagnosis.clashTiles;
+        for (const PinnedChannels::End &end : pins)
+          if (std::optional<PinnedChannels::End> other =
+                  pinsAt->clashWith(tile, end);
+              other && !diagnosis.clash)
+            diagnosis.clash = std::make_tuple(tile, end, *other);
+        continue;
+      }
+      if (hasAvailableChannels(tile, requiredInputChannels - held->first,
+                               requiredOutputChannels - held->second, joining))
         diagnosis.capacityExistsSomewhere = true;
     }
   }
