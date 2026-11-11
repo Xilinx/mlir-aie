@@ -94,3 +94,48 @@ module @join_on_core {
 // CHECK:   aie.objectfifo.dma_endpoint @out__prod__dma(%[[U02]]) drains @out__pool {fifoName = "out", segments = [@s0, @s1]}
 // CHECK:   aie.route_endpoint @out__cons__dma(%[[U00]]) DMA {fifoName = "out"}
 // CHECK-NOT: aie.objectfifo.link
+
+// -----
+
+// A tile listed twice as one fifo's consumer, each occurrence its own link's
+// tile (not the core's): legal, since neither end is read by the core.
+
+module @two_links_on_core_tile {
+  aie.device(npu1) {
+    %tile00 = aie.tile(0, 0)
+    %tile02 = aie.tile(0, 2)
+    %tile04 = aie.tile(0, 4)
+    %tile05 = aie.tile(0, 5)
+
+    aie.objectfifo @in (%tile00, {%tile02, %tile02}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out0 (%tile02, {%tile04}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out1 (%tile02, {%tile05}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@in] -> [@out0] ([][])
+    aie.objectfifo.link [@in] -> [@out1] ([][])
+
+    %core04 = aie.core(%tile04) {
+      %e = aie.objectfifo.acquire @out0 (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @out0 (Consume, 1)
+      aie.end
+    }
+    %core05 = aie.core(%tile05) {
+      %e = aie.objectfifo.acquire @out1 (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @out1 (Consume, 1)
+      aie.end
+    }
+  }
+}
+
+// CHECK-LABEL: @two_links_on_core_tile
+// CHECK-DAG:   %[[V02:.*]] = aie.tile(0, 2)
+// CHECK-DAG:   %[[V04:.*]] = aie.tile(0, 4)
+// CHECK-DAG:   %[[V05:.*]] = aie.tile(0, 5)
+
+// Each repeated consumer end gets its own pool on the tile, one per link.
+// CHECK: aie.objectfifo.pool @in__cons0__pool(%[[V02]])
+// CHECK: aie.objectfifo.pool @in__cons1__pool(%[[V02]])
+// CHECK:   aie.objectfifo.dma_endpoint @out0__prod__dma(%[[V02]]) drains @in__cons0__pool {fifoName = "out0"}
+// CHECK:   aie.objectfifo.pool @out0__cons__pool(%[[V04]])
+// CHECK:   aie.objectfifo.dma_endpoint @out1__prod__dma(%[[V02]]) drains @in__cons1__pool {fifoName = "out1"}
+// CHECK:   aie.objectfifo.pool @out1__cons__pool(%[[V05]])
+// CHECK-NOT: aie.objectfifo.link

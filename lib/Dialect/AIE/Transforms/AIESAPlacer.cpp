@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/Support/Debug.h"
 
@@ -1347,6 +1348,56 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
   });
   positions.erase(llvm::unique(positions), positions.end());
 
+  // The verdict reads the groups, the locks logical tiles hold and the
+  // occupied positions a group may take: those its first user reaches, or
+  // every one for a group without users. Placed tiles' locks never move.
+  // Recording stops after a long run of misses, where moves seldom revisit.
+  bool recording = lockVerdictMissRun < kLockVerdictMissRun;
+  std::vector<int64_t> key;
+  auto known = lockVerdicts.end();
+  if (recording) {
+    bool unanchored = false;
+    int rows = targetModel->rows();
+    BitVector reached(targetModel->columns() * rows);
+    BitVector anchored(reached.size());
+    SmallVector<TileID> anchors;
+    for (auto &[locks, users] : groups) {
+      llvm::append_values(key, locks, static_cast<int64_t>(users.size()));
+      for (auto [at, localOnly] : users)
+        llvm::append_values(key, at.col, at.row,
+                            static_cast<int64_t>(localOnly));
+      if (users.empty())
+        unanchored = true;
+      else if (auto [first, localOnly] = users.front(); localOnly)
+        reached.set(first.col * rows + first.row);
+      else if (!anchored.test(first.col * rows + first.row)) {
+        anchored.set(first.col * rows + first.row);
+        anchors.push_back(first);
+      }
+    }
+    for (TileID anchor : anchors)
+      for (TileID at : lockReach.find(anchor)->second)
+        reached.set(at.col * rows + at.row);
+    key.push_back(-1);
+    for (auto &[tile, locks] : fixedLocks) {
+      std::optional<TileID> at = positionOf(tile);
+      llvm::append_values(key, at ? at->col : -1, at ? at->row : -1, locks);
+    }
+    llvm::append_values(key, -1, static_cast<int64_t>(positions.empty()));
+    for (TileID at : positions)
+      if (unanchored || reached.test(at.col * rows + at.row))
+        llvm::append_values(key, at.col, at.row);
+    known = lockVerdicts.find(key);
+    if (known != lockVerdicts.end()) {
+      lockVerdictMissRun = 0;
+#ifndef EXPENSIVE_CHECKS
+      if (stopped)
+        *stopped = known->second.second;
+      return known->second.first;
+#endif
+    }
+  }
+
   LockPlan plan(*targetModel);
   DenseMap<TileID, unsigned> index;
   auto tileAt = [&](TileID at) {
@@ -1368,14 +1419,39 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
     ranked.push_back(tileAt(at));
   if (ranked.empty())
     return penalty;
+  // A group may take the occupied positions all its users reach, so those
+  // come from the first user's reach, not from every position.
   SmallVector<LockPlan::Group> planned;
   for (auto &[locks, users] : groups) {
     SmallVector<LockPlan::User> records;
     for (auto [at, localOnly] : users)
       records.push_back({tileAt(at), localOnly});
-    planned.push_back(LockPlan::group(
-        locks, records.empty() ? ranked.front() : records[0].tile,
-        /*local=*/false, {}, records, ranked));
+    auto reachesAt = [&](std::pair<TileID, bool> user, TileID at) {
+      return user.first == at ||
+             (!user.second &&
+              llvm::is_contained(lockReach.find(user.first)->second, at));
+    };
+    SmallVector<unsigned> eligible;
+    if (users.empty()) {
+      eligible = ranked;
+    } else {
+      auto [first, localOnly] = users.front();
+      for (TileID at : localOnly ? ArrayRef<TileID>(first)
+                                 : ArrayRef(lockReach.find(first)->second))
+        if (index.contains(at) &&
+            llvm::all_of(users, [&](auto user) { return reachesAt(user, at); }))
+          eligible.push_back(index.lookup(at));
+    }
+#ifdef EXPENSIVE_CHECKS
+    for (unsigned tile : ranked)
+      assert(llvm::is_contained(eligible, tile) ==
+                 llvm::all_of(records,
+                              [&](const LockPlan::User &user) {
+                                return plan.reaches(user, tile);
+                              }) &&
+             "a lock group's tiles differ from those every user reaches");
+#endif
+    planned.push_back({locks, std::move(eligible), std::move(records)});
   }
   // Allocation places in its own order first, which the SA cannot know; the
   // canonical order alone fits only where allocation fits too.
@@ -1386,6 +1462,28 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
   for (auto [group, tile] : llvm::zip(planned, assignment.tiles))
     if (!tile)
       penalty += group.count * config.dmaPenaltyPerChannel;
+#ifdef EXPENSIVE_CHECKS
+  assert((known == lockVerdicts.end() ||
+          known->second == std::pair(penalty, assignment.stopped)) &&
+         "a recorded lock verdict differs from a fresh one");
+#endif
+  if (recording && known == lockVerdicts.end()) {
+    if (++lockVerdictMissRun == kLockVerdictMissRun) {
+      decltype(lockVerdicts)().swap(lockVerdicts);
+      lockVerdictBytes = 0;
+      return penalty;
+    }
+    // Bounded by bytes, since moves reach more lock states than they revisit.
+    key.shrink_to_fit();
+    size_t bytes = key.capacity() * sizeof(int64_t);
+    if (lockVerdictBytes + bytes > kLockVerdictBytes) {
+      lockVerdicts.clear();
+      lockVerdictBytes = 0;
+    }
+    lockVerdictBytes += bytes;
+    lockVerdicts.emplace(std::move(key),
+                         std::pair(penalty, assignment.stopped));
+  }
   return penalty;
 }
 
@@ -2141,6 +2239,18 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   });
   for (auto tile : device.getOps<TileOp>())
     placedTiles.push_back(tile.getTileID());
+  lockReach.clear();
+  for (int col = 0; col < targetModel->columns(); ++col)
+    for (int row = 0; row < targetModel->rows(); ++row) {
+      TileID user{col, row};
+      SmallVector<TileID> &reach = lockReach[user];
+      for (int c = 0; c < targetModel->columns(); ++c)
+        for (int r = 0; r < targetModel->rows(); ++r)
+          if (TileID at{c, r};
+              at == user ||
+              LockPlan::reaches(*targetModel, user, at, /*localOnly=*/false))
+            reach.push_back(at);
+    }
   {
     PoolLocks poolLocks(device);
     bool aie1 = targetModel->getTargetArch() == AIEArch::AIE1;

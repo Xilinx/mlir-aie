@@ -761,6 +761,27 @@ LogicalResult ObjectFifoCreateOp::verify() {
     }
   }
 
+  // A core takes its consumer accesses from the first of its tile's ends
+  // a link does not already claim; a link on the tile reads one end each
+  // (getConsumerLink), in the order its own aie.objectfifo.link ops appear.
+  for (auto [index, consumer] : llvm::enumerate(getConsumerTiles())) {
+    size_t first =
+        llvm::find(getConsumerTiles(), consumer) - getConsumerTiles().begin();
+    TileLike tile = getTileLikeFromValue(consumer);
+    if (first == index || tile.getTileType() != AIETileType::CoreTile ||
+        getConsumerLink(index))
+      continue;
+    InFlightDiagnostic diag = emitOpError("lists core tile ");
+    if (std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+        col && row)
+      diag << "(" << *col << ", " << *row << ") ";
+    diag << "as consumers " << first << " and " << index
+         << "; its core reads only the first of those ends, so the other "
+            "would never be drained";
+    diag.attachNote(consumer.getLoc()) << "the tile";
+    return diag;
+  }
+
   if (getRepeatCount().has_value()) {
     if (producerTile.isShimTile())
       return emitError("`repeat_count` unavailable for shim tiles");
@@ -2153,14 +2174,17 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
     return size(*consumer + 1);
   if (size() == 0)
     return 0;
-  // Enough objects for the largest acquire made on the end's tile, plus one
-  // so a core can hold an object while the next arrives.
+  // Enough objects for the largest acquire the end's core makes, plus one so
+  // it can hold an object while the next arrives. A core on the producer's
+  // tile may also consume, through another end.
   Value tile = consumer ? getConsumerTiles()[*consumer] : getProducerTile();
+  ObjectFifoPort port =
+      consumer ? ObjectFifoPort::Consume : ObjectFifoPort::Produce;
   int maxAcquire = 0;
   for (CoreOp core : (*this)->getParentOfType<DeviceOp>().getOps<CoreOp>())
     if (core.getTile() == tile)
       core.walk([&](ObjectFifoAcquireOp acquire) {
-        if (acquire.getObjectFifo() == *this)
+        if (acquire.getObjectFifo() == *this && acquire.getPort() == port)
           maxAcquire = std::max(maxAcquire, acquire.acqNumber());
       });
   if (maxAcquire == 0)

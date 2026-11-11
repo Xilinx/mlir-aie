@@ -28,9 +28,8 @@
 
 namespace xilinx::AIE {
 
-/// Where aie-objectfifo-allocate puts locks, on plain records the placers
-/// also run: each group, in order, takes its locks on the first of its
-/// candidates that every user reaches and that has room.
+/// Where aie-objectfifo-allocate puts locks (assign), on plain records the SA
+/// placer also runs.
 class LockPlan {
 public:
   /// The positions a tile may take, one once placed, and that position.
