@@ -262,8 +262,9 @@ module @named_id_while_copy_in_flight {
 
 // -----
 
-// Two copies of BD 0 in flight: the first sync retires the first, and the
-// second still holds 0 for %t's configure.
+// Two copies of BD 0 in flight: the second reprograms the first's BD, which
+// warns. The first sync retires the first, and the second still holds 0 for
+// %t's configure.
 // CHECK-LABEL: @second_copy_same_id
 // CHECK: aie.dma_bd({{.*}}) {bd_id = 1 : i32}
 module @second_copy_same_id {
@@ -272,7 +273,9 @@ module @second_copy_same_id {
     aie.shim_dma_allocation @ctrl(%shim, MM2S, 0)
     aie.shim_dma_allocation @in(%shim, MM2S, 1)
     aie.runtime_sequence @run(%x : memref<16xi32>, %pkts : memref<?xi32>) {
+      // expected-note@+1 {{the earlier copy is here}}
       aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrl} : memref<?xi32>
+      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) while an earlier aiex.npu.dma_memcpy_nd of that ID may still be in flight, so this reprograms it underneath. Give this copy another ID, or retire the earlier copy first: wait for it (aiex.npu.sync or aiex.npu.dma_wait on its channel, consuming its token).}}
       aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 3][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrl} : memref<?xi32>
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
@@ -499,6 +502,43 @@ module @too_many_copy_note {
       aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
       aiex.dma_await_task(%t)
       aiex.dma_await_task(%big)
+    }
+  }
+}
+
+// -----
+
+// A tokenless copy reprogrammed by a later copy of its id: the advice names
+// what retires a copy without a token.
+// CHECK-LABEL: @tokenless_copy_reused
+module @tokenless_copy_reused {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%shim, MM2S, 1)
+    // expected-warning@+1 {{may exit with 2 DMA transfer(s) neither awaited nor freed}}
+    aie.runtime_sequence @run(%x : memref<16xi32>) {
+      // expected-note@+2 {{the earlier copy is here}}
+      // expected-note@+1 {{first outstanding transfer starts here}}
+      aiex.npu.dma_memcpy_nd(%x[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @in} : memref<16xi32>
+      // expected-warning@+1 {{reuses buffer descriptor ID 2 on tile (0,0) while an earlier aiex.npu.dma_memcpy_nd of that ID may still be in flight, so this reprograms it underneath. Give this copy another ID, or retire the earlier copy first: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%x[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @in} : memref<16xi32>
+    }
+  }
+}
+
+// -----
+
+// A wait that retires the first copy leaves the second free to reuse its id.
+// CHECK-LABEL: @copy_reused_after_wait
+module @copy_reused_after_wait {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrl(%shim, MM2S, 0)
+    aie.runtime_sequence @run(%pkts : memref<?xi32>) {
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrl} : memref<?xi32>
+      aiex.npu.dma_wait {symbol = @ctrl}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 3][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrl} : memref<?xi32>
+      aiex.npu.dma_wait {symbol = @ctrl}
     }
   }
 }

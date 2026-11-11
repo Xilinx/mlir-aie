@@ -428,15 +428,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                  "ids and an odd channel only the high half.";
           return WalkResult::interrupt();
         }
-        if (NpuDmaMemcpyNdOp copy =
-                copyHolding(tile, bd_op.getBdId().value())) {
+        if (const HeldBy *held = copyHolding(tile, bd_op.getBdId().value())) {
           InFlightDiagnostic diag =
               op.emitOpError("Specified buffer descriptor ID ")
               << bd_op.getBdId().value()
               << " is the one an aiex.npu.dma_memcpy_nd on this tile "
                  "programs, and that copy may still be in flight here. Give "
                  "the task another ID, or ";
-          if (otherPush(copy)->second)
+          if (held->issuesToken)
             diag << "wait for the copy first (aiex.npu.sync or "
                     "aiex.npu.dma_wait on its channel, consuming its token).";
           else
@@ -444,7 +443,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                     "await of a later tokened task on its channel, a status "
                     "poll, or issue_token = true on it and a wait for it "
                     "shows it done.";
-          diag.attachNote(copy.getLoc()) << "the copy is here";
+          diag.attachNote(held->copy->getLoc()) << "the copy is here";
           return WalkResult::interrupt();
         }
         if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
@@ -529,7 +528,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           if (owner == tile.getOperation() &&
               targetModel.isBdChannelAccessible(tile.getCol(), tile.getRow(),
                                                 id, op.getChannel()))
-            copied.push_back({id, copyHolding(tile, id), false});
+            copied.push_back({id, copyHolding(tile, id)->copy, false});
         llvm::sort(copied);
         if (!copied.empty()) {
           diag << " Of those, aiex.npu.dma_memcpy_nd ops program "
@@ -678,7 +677,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   };
   std::map<DmaQueueModel::ChannelKey, std::deque<CopyHold>> holdsByChannel;
   using TileBdId = std::pair<Operation *, int32_t>;
-  llvm::DenseMap<TileBdId, std::map<uint64_t, NpuDmaMemcpyNdOp>> holdsOn;
+  struct HeldBy {
+    NpuDmaMemcpyNdOp copy;
+    bool issuesToken;
+  };
+  llvm::DenseMap<TileBdId, std::map<uint64_t, HeldBy>> holdsOn;
   llvm::DenseSet<TileBdId> copyOwned;
   // Per configure, the ids it may not take and the copy that reprograms each
   // while it may run.
@@ -690,10 +693,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   SmallVector<Operation *> insertedHere;
 
   // The oldest copy still holding `id` on `tile`, if copies hold it.
-  NpuDmaMemcpyNdOp copyHolding(AIE::TileOp tile, int32_t id) const {
+  const HeldBy *copyHolding(AIE::TileOp tile, int32_t id) const {
     if (!copyOwned.contains({tile, id}))
-      return {};
-    return holdsOn.find({tile, id})->second.begin()->second;
+      return nullptr;
+    return &holdsOn.find({tile, id})->second.begin()->second;
   }
 
   // Return a task's id to the pool; a copy waiting for it takes it at once.
@@ -719,15 +722,26 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // The copy reprograms its BD at once, so a task on that id must neither be
   // in flight nor be started again after it.
   LogicalResult holdCopy(NpuDmaMemcpyNdOp copy,
-                         const DmaQueueModel::ChannelKey &key, uint64_t order) {
+                         const DmaQueueModel::ChannelKey &key, uint64_t order,
+                         bool issuesToken) {
     AIE::TileOp tile =
         AIE::ShimDMAAllocationOp::getForSymbol(
             getOperation(), copy.getMetadata().getRootReference())
             .getTileOp();
     auto id = static_cast<int32_t>(copy.getId());
+    if (auto held = holdsOn.find({tile, id});
+        held != holdsOn.end() && warnUnsafeBdReuse) {
+      const HeldBy &earlier = held->second.begin()->second;
+      auto [entry, inserted] = copiesOverCopies.try_emplace(
+          copy.getLoc(),
+          CopyOverCopy{id, tile.getCol(), tile.getRow(), earlier.copy->getLoc(),
+                       earlier.issuesToken});
+      entry->second.tiles.insert({tile.getCol(), tile.getRow()});
+      entry->second.count++;
+    }
     BdIdGenerator &gen = getGeneratorForTile(tile);
     holdsByChannel[key].push_back({order, tile, id});
-    holdsOn[{tile, id}][order] = copy;
+    holdsOn[{tile, id}][order] = {copy, issuesToken};
     if (!gen.bdIdAlreadyAssigned(id)) {
       checkReallocation(tile, id, copy.getLoc());
       gen.assignBdId(id);
@@ -1584,6 +1598,17 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     SmallVector<std::pair<Location, std::string>> notes = {};
   };
   llvm::MapVector<Location, UnsafeReuse> unsafeReuses;
+  // Copies that reprogram a BD id an earlier copy on the tile may still have
+  // in flight, reported once per copy like unsafeReuses.
+  struct CopyOverCopy {
+    int32_t id;
+    int col, row;
+    Location earlier;
+    bool earlierIssuesToken;
+    std::set<std::pair<int, int>> tiles = {};
+    int64_t count = 0;
+  };
+  llvm::MapVector<Location, CopyOverCopy> copiesOverCopies;
 
   void emitUnsafeReuses() {
     for (auto &[loc, reuse] : unsafeReuses) {
@@ -1615,6 +1640,33 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       }
     }
     unsafeReuses.clear();
+    for (auto &[loc, reuse] : copiesOverCopies) {
+      auto diag = mlir::emitWarning(loc)
+                  << "reuses buffer descriptor ID " << reuse.id << " on tile ("
+                  << reuse.col << "," << reuse.row
+                  << ") while an earlier aiex.npu.dma_memcpy_nd of that ID may "
+                     "still be in flight, so this reprograms it underneath. "
+                     "Give this copy another ID, or retire the earlier copy "
+                     "first: ";
+      if (reuse.earlierIssuesToken)
+        diag << "wait for it (aiex.npu.sync or aiex.npu.dma_wait on its "
+                "channel, consuming its token).";
+      else
+        diag << "it issues no token, so only an await of a later tokened "
+                "task on its channel, a status poll, or issue_token = true on "
+                "it and a wait for it shows it done.";
+      diag.attachNote(reuse.earlier) << "the earlier copy is here";
+      if (reuse.count > 1) {
+        Diagnostic &note = diag.attachNote();
+        note << "and " << reuse.count - 1
+             << " more times from this copy, on tile"
+             << (reuse.tiles.size() > 1 ? "s " : " ");
+        llvm::interleaveComma(reuse.tiles, note, [&](auto tile) {
+          note << "(" << tile.first << "," << tile.second << ")";
+        });
+      }
+    }
+    copiesOverCopies.clear();
   }
 
   // Configures already completed by an aiex.dma_await_task. Awaiting a task
@@ -2029,7 +2081,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         } else if (auto push = otherPush(op)) {
           notePush(push->first, DMAConfigureTaskOp{}, push->second, op);
           if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-            if (failed(holdCopy(copy, push->first, pushCount - 1)))
+            if (failed(
+                    holdCopy(copy, push->first, pushCount - 1, push->second)))
               return WalkResult::interrupt();
             if (reallocate)
               return WalkResult::interrupt();
@@ -2043,6 +2096,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       // instances share the context, so only this thread's are held.
       forbidden.clear();
       auto reusesBefore = unsafeReuses;
+      auto copiesBefore = copiesOverCopies;
       WalkResult r = WalkResult::advance();
       std::vector<Diagnostic> held;
       for (;;) {
@@ -2067,6 +2121,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         for (Operation *inserted : llvm::reverse(insertedHere))
           inserted->erase();
         unsafeReuses = reusesBefore;
+        copiesOverCopies = copiesBefore;
       }
       for (Diagnostic &diag : held)
         getContext().getDiagEngine().emit(std::move(diag));
