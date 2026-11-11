@@ -38,6 +38,11 @@ def AIE_Dialect : Dialect {
     On a device, `aie.reserve_controller_packet_ids` reserves controller IDs
     when assigning packet IDs.
 
+    `aie.generated_configure` marks the runtime sequence that
+    convert-aie-to-transaction generated to hold its device's configuration.
+    That sequence is named `configure` unless a user sequence already has the
+    name, so consumers key on the attribute, not the name.
+
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
@@ -50,7 +55,8 @@ def AIE_Dialect : Dialect {
   // Overlay-owned settings survive application configuration and teardown.
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_pkt_overlay,
       "::mlir::UnitAttr":$priority_route, "::mlir::ArrayAttr":$shareable_with,
-      "::mlir::UnitAttr":$reserve_controller_packet_ids);
+      "::mlir::UnitAttr":$reserve_controller_packet_ids,
+      "::mlir::UnitAttr":$generated_configure);
 }
 
 #endif // AIE_BASE

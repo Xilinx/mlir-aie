@@ -944,6 +944,10 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
     auto seq = AIE::RuntimeSequenceOp::create(
         builder, loc, seq_sym_name, BoolAttr{}, AIE::TraceBufferAttr{},
         ArrayAttr{}, ArrayAttr{});
+    // A user sequence may already own the name `configure`; consumers find
+    // the configuration by this tag.
+    AIE::AIEDialect::GeneratedConfigureAttrHelper(device.getContext())
+        .setAttr(seq, builder.getUnitAttr());
     seq.getBody().push_back(new Block);
     builder.setInsertionPointToStart(&seq.getBody().front());
   } else {

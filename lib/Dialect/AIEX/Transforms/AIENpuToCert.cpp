@@ -52,6 +52,39 @@ static constexpr uint32_t cert_page_limit = 8192;
 static constexpr uint32_t cert_job_start_cost = 8;
 static constexpr uint32_t cert_job_end_cost = 4;
 
+// True if `seq` holds its device's generated configuration, i.e. carries the
+// aie.generated_configure tag, either from convert-aie-to-transaction or from
+// tagConfigureByName.
+static bool isGeneratedConfigure(AIE::RuntimeSequenceOp seq) {
+  return AIE::AIEDialect::GeneratedConfigureAttrHelper(seq.getContext())
+      .isAttrPresent(seq);
+}
+
+// Hand-written IR may have no tag: there the sequence named `configure` is the
+// configuration. Tag it, unless a sequence of the device is already tagged (the
+// generated one was then named `configure0`, and `configure` is the user's).
+// Runs on every device before any sequence is converted, so the choice does
+// not depend on conversion order.
+static void tagConfigureByName(AIE::DeviceOp device) {
+  auto seqs = device.getBody()->getOps<AIE::RuntimeSequenceOp>();
+  if (llvm::any_of(seqs, isGeneratedConfigure))
+    return;
+  for (auto seq : seqs)
+    if (seq.getSymName() == "configure") {
+      AIE::AIEDialect::GeneratedConfigureAttrHelper(device.getContext())
+          .setAttr(seq, UnitAttr::get(device.getContext()));
+      return;
+    }
+}
+
+// The generated configuration sequence of `device`, or null if it has none.
+static AIE::RuntimeSequenceOp findGeneratedConfigure(AIE::DeviceOp device) {
+  for (auto seq : device.getBody()->getOps<AIE::RuntimeSequenceOp>())
+    if (isGeneratedConfigure(seq))
+      return seq;
+  return nullptr;
+}
+
 // Returns the PDI id to use for a cert.load_pdi that references `deviceSymName`
 // within `parentDevice`. If a load_pdi for that symbol already exists, its id
 // is reused so repeated loads of the same PDI share an id; otherwise a fresh id
@@ -81,9 +114,9 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
   matchAndRewrite(AIE::RuntimeSequenceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto symName = op.getSymName();
+    bool isConfigure = isGeneratedConfigure(op);
     uint32_t newJobId = 1;
-    if (symName != "configure") {
+    if (!isConfigure) {
       uint32_t maxJobId = 1;
       op->getParentOp()->walk([&](AIEX::CertJobOp certJobOp) {
         maxJobId = std::max(maxJobId, certJobOp.getJobId());
@@ -99,7 +132,7 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
 
     // Tag the implicit configuration job so a later step can force it to be the
     // first page on uC0 and keep it out of user implicit pages.
-    if (symName == "configure")
+    if (isConfigure)
       jobOp->setAttr("cert.configure", rewriter.getUnitAttr());
 
     // Clone runtime sequence body into job
@@ -524,17 +557,13 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
 
     // Find the "configure" sequence content from the referenced device
     // It could be either:
-    // 1. Still a RuntimeSequenceOp named "configure" (if that device hasn't
+    // 1. Still the generated configuration sequence (if that device hasn't
     // been processed yet)
     // 2. Already converted to cert.page/cert.job (if that device was processed
     // first)
 
-    AIE::RuntimeSequenceOp configureSeq = nullptr;
-    referencedDevice.walk([&](AIE::RuntimeSequenceOp seq) {
-      if (seq.getSymName() == "configure") {
-        configureSeq = seq;
-      }
-    });
+    AIE::RuntimeSequenceOp configureSeq =
+        findGeneratedConfigure(referencedDevice);
 
     if (configureSeq) {
       // Clone operations from the "configure" runtime_sequence
@@ -960,6 +989,9 @@ struct AIENpuToCertPass
       }
     }
 
+    for (auto dev : devices)
+      tagConfigureByName(dev);
+
     // Process main device first (named "main" or specified by --device-name)
     // so referenced devices' "configure" sequences can be found before they
     // get converted to cert.job
@@ -1121,13 +1153,9 @@ struct AIENpuToCertPass
           if (!refDevice)
             continue;
 
-          // Find "configure" runtime sequence
-          AIE::RuntimeSequenceOp configureSeq = nullptr;
-          refDevice.walk([&](AIE::RuntimeSequenceOp seq) {
-            if (seq.getSymName() == "configure") {
-              configureSeq = seq;
-            }
-          });
+          // Find the generated configuration sequence
+          AIE::RuntimeSequenceOp configureSeq =
+              findGeneratedConfigure(refDevice);
 
           if (!configureSeq)
             continue;
