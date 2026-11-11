@@ -2439,12 +2439,13 @@ ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoLinkOp::verify() {
-  for (Attribute name : llvm::concat<const Attribute>(getFifoIns().getValue(),
-                                                      getFifoOuts().getValue()))
-    if (!isa_and_nonnull<ObjectFifoCreateOp>(
-            SymbolTable::lookupNearestSymbolFrom(
-                *this, cast<FlatSymbolRefAttr>(name))))
+  for (Attribute name : llvm::concat<const Attribute>(
+           getFifoIns().getValue(), getFifoOuts().getValue())) {
+    auto flat = dyn_cast<FlatSymbolRefAttr>(name);
+    if (!flat || !isa_and_nonnull<ObjectFifoCreateOp>(
+                     SymbolTable::lookupNearestSymbolFrom(*this, flat)))
       return emitOpError("names no objectfifo ") << name;
+  }
 
   if (isJoin() && isDistribute())
     return emitError("ObjectFifoLinkOp does not support 'join' and "
@@ -2961,7 +2962,9 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoIns()) {
-        auto name = cast<FlatSymbolRefAttr>(sym);
+        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        if (!name)
+          continue;
         if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           inputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
@@ -2977,7 +2980,9 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
-        auto name = cast<FlatSymbolRefAttr>(sym);
+        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        if (!name)
+          continue;
         if (auto *st = mlir::SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
