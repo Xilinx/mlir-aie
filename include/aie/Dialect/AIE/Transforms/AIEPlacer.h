@@ -1025,6 +1025,9 @@ private:
   llvm::DenseMap<TileID, int64_t> currentMemUsage;
   // Lock packings the moves repeat, the costliest to search again.
   mutable LockPlan::Memo lockMemo{64};
+  // Every position whose memory a lock user at a position reaches, by
+  // LockPlan::reaches, in position order and its own included.
+  llvm::DenseMap<TileID, llvm::SmallVector<TileID>> lockReach;
   // The locks the pools at each position take, and the move's changes.
   llvm::DenseMap<TileID, int> currentLockDemand;
   llvm::SmallVector<std::pair<TileID, int>> lockUndo;

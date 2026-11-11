@@ -1342,14 +1342,39 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
     ranked.push_back(tileAt(at));
   if (ranked.empty())
     return penalty;
+  // A group may take the occupied positions all its users reach, so those
+  // come from the first user's reach, not from every position.
   SmallVector<LockPlan::Group> planned;
   for (auto &[locks, users] : groups) {
     SmallVector<LockPlan::User> records;
     for (auto [at, localOnly] : users)
       records.push_back({tileAt(at), localOnly});
-    planned.push_back(LockPlan::group(
-        locks, records.empty() ? ranked.front() : records[0].tile,
-        /*local=*/false, {}, records, ranked));
+    auto reachesAt = [&](std::pair<TileID, bool> user, TileID at) {
+      return user.first == at ||
+             (!user.second &&
+              llvm::is_contained(lockReach.find(user.first)->second, at));
+    };
+    SmallVector<unsigned> eligible;
+    if (users.empty()) {
+      eligible = ranked;
+    } else {
+      auto [first, localOnly] = users.front();
+      for (TileID at : localOnly ? ArrayRef<TileID>(first)
+                                 : ArrayRef(lockReach.find(first)->second))
+        if (index.contains(at) &&
+            llvm::all_of(users, [&](auto user) { return reachesAt(user, at); }))
+          eligible.push_back(index.lookup(at));
+    }
+#ifdef EXPENSIVE_CHECKS
+    for (unsigned tile : ranked)
+      assert(llvm::is_contained(eligible, tile) ==
+                 llvm::all_of(records,
+                              [&](const LockPlan::User &user) {
+                                return plan.reaches(user, tile);
+                              }) &&
+             "a lock group's tiles differ from those every user reaches");
+#endif
+    planned.push_back({locks, std::move(eligible), std::move(records)});
   }
   // Allocation places in its own order first, which the SA cannot know; the
   // canonical order alone fits only where allocation fits too.
@@ -2027,6 +2052,18 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   });
   for (auto tile : device.getOps<TileOp>())
     placedTiles.push_back(tile.getTileID());
+  lockReach.clear();
+  for (int col = 0; col < targetModel->columns(); ++col)
+    for (int row = 0; row < targetModel->rows(); ++row) {
+      TileID user{col, row};
+      SmallVector<TileID> &reach = lockReach[user];
+      for (int c = 0; c < targetModel->columns(); ++c)
+        for (int r = 0; r < targetModel->rows(); ++r)
+          if (TileID at{c, r};
+              at == user ||
+              LockPlan::reaches(*targetModel, user, at, /*localOnly=*/false))
+            reach.push_back(at);
+    }
   {
     PoolLocks poolLocks(device);
     bool aie1 = targetModel->getTargetArch() == AIEArch::AIE1;
