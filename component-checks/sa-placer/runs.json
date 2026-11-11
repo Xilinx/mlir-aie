@@ -976,6 +976,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "42973875325",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42973875325",
+   "date": "2026-11-11T06:38:43+00:00",
+   "commit": {
+    "id": "bb5bda7ace16812ffd7ee09b1799389eede393bc",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/bb5bda7ace16812ffd7ee09b1799389eede393bc",
+    "message": "[cert] Give each job on a page a distinct firmware job slot (#4041)",
+    "timestamp": "2026-11-11T02:25:41Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "bb5bda7ace",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

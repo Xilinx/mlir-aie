@@ -727,6 +727,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "llama-chain-hw",
+   "id": "42973875325",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42973875325",
+   "date": "2026-11-11T06:38:43+00:00",
+   "commit": {
+    "id": "bb5bda7ace16812ffd7ee09b1799389eede393bc",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/bb5bda7ace16812ffd7ee09b1799389eede393bc",
+    "message": "[cert] Give each job on a page a distinct firmware job slot (#4041)",
+    "timestamp": "2026-11-11T02:25:41Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "bb5bda7ace",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 71,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
