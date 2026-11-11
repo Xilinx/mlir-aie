@@ -269,9 +269,9 @@ void ShimTransferSpans::analyze(
     if (auto alloc = dyn_cast<ShimDMAAllocationOp>(op)) {
       sends = alloc.getChannelDir() == DMAChannelDir::MM2S;
       used.insert(endpoint->fifo);
-    } else if (auto allowed =
-                   AIEDialect::ShareableWithAttrHelper(op->getContext())
-                       .getAttr(op)) {
+    }
+    if (auto allowed =
+            AIEDialect::ShareableWithAttrHelper(op->getContext()).getAttr(op)) {
       auto &peers = permissions[endpoint->fifo];
       for (Attribute attr : allowed)
         if (auto ref = dyn_cast<FlatSymbolRefAttr>(attr))

@@ -1527,6 +1527,18 @@ Placer::ShareableShimEnds Placer::collectShareableShimEnds(
           [endpoint.getRouteDirection() == DMAChannelDir::MM2S ? 1 : 0]
               .push_back(endpoint.getSymNameAttr());
   }
+  // A shareable allocation's channel, which its claim holds, takes the ends
+  // its list names into its group.
+  for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
+    MLIRContext *context = alloc->getContext();
+    auto tile = dyn_cast_or_null<TileLike>(alloc.getTile().getDefiningOp());
+    if (tile && tile.isShimTile() &&
+        AIEDialect::ShareableWithAttrHelper(context).isAttrPresent(alloc) &&
+        !AIEDialect::IsCtrlPktOverlayAttrHelper(context).isAttrPresent(alloc))
+      ends[routeKeys.lookup_or(tile.getOperation(), tile.getOperation())]
+          [alloc.getChannelDir() == DMAChannelDir::MM2S ? 1 : 0]
+              .push_back(alloc.getSymNameAttr());
+  }
   return ends;
 }
 
@@ -1801,10 +1813,15 @@ Placer::provenShimGates(DeviceOp device) {
 
 std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,
                                                         StringAttr symbol) {
-  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
-          SymbolTable::lookupNearestSymbolFrom(device, symbol)))
+  Operation *op = SymbolTable::lookupNearestSymbolFrom(device, symbol);
+  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(op))
     return ShimTransferSpans::End{symbol, endpoint.getRouteDirection() ==
                                               DMAChannelDir::MM2S};
+  if (auto alloc = dyn_cast_or_null<ShimDMAAllocationOp>(op);
+      alloc && !AIEDialect::IsCtrlPktOverlayAttrHelper(alloc->getContext())
+                    .isAttrPresent(alloc))
+    return ShimTransferSpans::End{symbol,
+                                  alloc.getChannelDir() == DMAChannelDir::MM2S};
   auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(
       SymbolTable::lookupNearestSymbolFrom(device, symbol));
   if (!fifo)
