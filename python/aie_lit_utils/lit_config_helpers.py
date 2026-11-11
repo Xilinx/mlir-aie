@@ -970,6 +970,15 @@ class LitConfigHelper:
         current_pythonpath = config_obj.environment.get(
             "PYTHONPATH", os.environ.get("PYTHONPATH", "")
         )
+        # pyxrt ships in the XRT install, which is on PYTHONPATH only after
+        # sourcing XRT's setup.sh. Fall back to the XRT found at configure time,
+        # after the ambient entries so a sourced XRT still wins.
+        xrt_dir = getattr(config_obj, "xrt_dir", "")
+        xrt_python_dir = os.path.join(xrt_dir, "python")
+        if xrt_dir and os.path.isdir(xrt_python_dir):
+            current_pythonpath = LitConfigHelper._prepend_env_paths(
+                xrt_python_dir, current_pythonpath
+            )
         config_obj.environment["PYTHONPATH"] = LitConfigHelper._prepend_env_paths(
             current_pythonpath, aie_python_dir
         )
@@ -994,6 +1003,10 @@ class LitConfigHelper:
         # A kernel-source override must reach the JIT, or a design test
         # silently compiles the configure-time copy under build/include.
         llvm_config.with_system_environment(["MLIR_AIE_KERNEL_SOURCES"])
+
+        # Compile-parallelism caps. Without them, every aiecc and every Python
+        # kernel-compile pool in every lit worker uses all cores.
+        llvm_config.with_system_environment(["AIECC_JOBS", "AIE_KERNEL_COMPILE_JOBS"])
 
     @staticmethod
     def setup_test_lib_substitutions(
