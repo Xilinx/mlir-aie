@@ -122,13 +122,13 @@ def AIE_CertJobOp
     This operation starts a job identified by the given job ID.
 
     The job ID is a *label*, not an execution or emission order: it must be
-    unique among jobs on the same page, and the CERT firmware uses it as a
-    job-table key (and as the handle referenced by deferred/launch jobs). It is
-    NOT a priority. Emission order and execution order are both determined by
-    textual (IR) order: within a page the firmware starts jobs in textual order
-    (running each until it blocks or ends), and between pages on one uC
-    execution is strictly sequential. Emitters must therefore preserve IR order
-    and must not sort jobs by job_id.
+    unique modulo 64 among jobs on the same page, because the CERT firmware
+    indexes its 64 job contexts by job_id % 64. `cert-legalize-pages` may
+    reassign IDs to meet this. It is NOT a priority. Emission order and
+    execution order are both determined by textual (IR) order: within a page
+    the firmware starts jobs in textual order (running each until it blocks or
+    ends), and between pages on one uC execution is strictly sequential.
+    Emitters must therefore preserve IR order and must not sort jobs by job_id.
 
     Example:
     ```
@@ -141,6 +141,8 @@ def AIE_CertJobOp
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $job_id `)` $body attr-dict }];
   let extraClassDeclaration = [{
+    /// Job contexts in the firmware; a page holds at most this many jobs.
+    static constexpr unsigned NumSlots = 64;
     int getJobID() { return getJobId(); }
   }];
 }

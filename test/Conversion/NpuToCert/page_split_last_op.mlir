@@ -84,7 +84,8 @@ aie.device(npu2) {
 // after the following job's first op, and split there. That cut is on the wrong
 // side of the fat op, so the earlier page came back over the limit and hit the
 // same blind spot on the re-split: the miss was deferred, not avoided. The cut
-// belongs before the fat op, on the first pass.
+// belongs before the fat op, on the first pass. The following job (2) then
+// shares its ID with the fat op's job and moves to free slot 0.
 
 // CHECK: aiex.cert.page
 // CHECK: aiex.cert.job(1)
@@ -93,7 +94,7 @@ aie.device(npu2) {
 // CHECK: aiex.cert.page
 // CHECK: aiex.cert.job(2)
 // CHECK: aiex.cert.uc_dma_write_des_sync(@mj_fat)
-// CHECK: aiex.cert.job(3)
+// CHECK: aiex.cert.job(0)
 // CHECK: aiex.cert.maskwrite32
 // CHECK: aiex.cert.maskwrite32
 aie.device(npu2) {

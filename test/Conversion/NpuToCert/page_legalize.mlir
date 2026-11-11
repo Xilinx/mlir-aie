@@ -10,7 +10,7 @@
 // page, then re-split by size. Size-based splitting yields three pages: the
 // first two hold split fragments (job(1), job(2)), and the last page holds the
 // remaining fragment of the first job (job(3)) together with the second job
-// (job(4)).
+// (job(2), unchanged).
 // CHECK: aiex.cert.page
 // CHECK-NEXT: aiex.cert.job(1)
 // CHECK: aiex.cert.page
@@ -18,7 +18,7 @@
 // CHECK: aiex.cert.page
 // CHECK-NEXT: aiex.cert.job(3)
 // CHECK-NOT: aiex.cert.page
-// CHECK: aiex.cert.job(4)
+// CHECK: aiex.cert.job(2)
 
 module {
   aie.device(npu2) {

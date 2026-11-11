@@ -21,6 +21,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 
+#include <bitset>
 #include <map>
 #include <set>
 #include <type_traits>
@@ -1979,18 +1980,9 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
            "a job-boundary cut needs a preceding job with content, else the "
            "earlier page is empty and the split makes no progress");
 
-    // NOTE: the device-wide job-id shift below only keeps job ids unique per
-    // page; job_id is a label, not an order, so it does not affect
-    // emission/execution order, which is textual. A device-wide job-id renumber
-    // is left for a follow-up. A job-boundary cut creates no new job -- every
-    // job keeps its id, just on a different page -- so there is nothing to
-    // renumber and the walk is skipped.
-    if (!jobBoundaryCut)
-      op->getParentOfType<AIE::DeviceOp>().walk([&](AIEX::CertJobOp certJobOp) {
-        if (certJobOp.getJobId() > split_job.getJobId())
-          certJobOp.setJobId(certJobOp.getJobId() + 1);
-      });
-
+    // The second half of a split job takes the next ID, which may collide
+    // with another job on its page; allocateJobIds resolves that after all
+    // splitting is done.
     auto cloneJobRange = [&](AIEX::CertJobOp sourceJob, uint32_t jobId,
                              Block::iterator begin, Block::iterator end) {
       auto newJobOp = AIEX::CertJobOp::create(rewriter, loc, jobId);
@@ -2244,6 +2236,39 @@ static void lowerPagePlacementToGroups(AIE::DeviceOp dev) {
   }
 }
 
+// The firmware indexes job contexts by job_id % 64, and a page's jobs finish
+// before the next page starts. Keep each page's noncolliding IDs and move the
+// colliding ones to free slots.
+static LogicalResult allocateJobIds(AIE::DeviceOp device) {
+  WalkResult result = device.walk([&](AIEX::CertPageOp page) {
+    std::bitset<AIEX::CertJobOp::NumSlots> used;
+    SmallVector<AIEX::CertJobOp> collisions;
+    unsigned count = 0;
+    for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
+      unsigned slot = job.getJobId() % AIEX::CertJobOp::NumSlots;
+      if (used.test(slot))
+        collisions.push_back(job);
+      used.set(slot);
+      ++count;
+    }
+    if (count > AIEX::CertJobOp::NumSlots) {
+      page.emitError() << "cert.page has " << count << " jobs, exceeding the "
+                       << AIEX::CertJobOp::NumSlots
+                       << " firmware job slots; reduce the jobs on this page";
+      return WalkResult::interrupt();
+    }
+    unsigned slot = 0;
+    for (auto job : collisions) {
+      while (used.test(slot))
+        ++slot;
+      job.setJobId(slot);
+      used.set(slot);
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
 struct AIECertPagesPass
     : xilinx::AIEX::impl::AIECertPagesBase<AIECertPagesPass> {
   void runOnOperation() override {
@@ -2285,6 +2310,9 @@ struct AIECertPagesPass
       signalPassFailure();
     if (splitError)
       signalPassFailure();
+
+    if (failed(allocateJobIds(getOperation())))
+      return signalPassFailure();
 
     // Add the merge pattern for CertUcDmaWriteDesSyncOps
     RewritePatternSet p3(&getContext());
