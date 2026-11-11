@@ -2374,8 +2374,7 @@ LogicalResult ObjectFifoAllocateOp::verify() {
              << owner.getElemType().getElementType()
              << "; a fifo that shares memory with a link must have the pool's "
                 "object type (@"
-             << name << "'s is "
-             << objFifo.getElemType().getElementType()
+             << name << "'s is " << objFifo.getElemType().getElementType()
              << ")";
         break;
       }
@@ -2436,8 +2435,9 @@ ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
 LogicalResult ObjectFifoLinkOp::verify() {
   for (Attribute name : llvm::concat<const Attribute>(getFifoIns().getValue(),
                                                       getFifoOuts().getValue()))
-    if (!isa_and_nonnull<ObjectFifoCreateOp>(SymbolTable::lookupNearestSymbolFrom(
-            *this, cast<FlatSymbolRefAttr>(name))))
+    if (!isa_and_nonnull<ObjectFifoCreateOp>(
+            SymbolTable::lookupNearestSymbolFrom(
+                *this, cast<FlatSymbolRefAttr>(name))))
       return emitOpError("names no objectfifo ") << name;
 
   if (isJoin() && isDistribute())

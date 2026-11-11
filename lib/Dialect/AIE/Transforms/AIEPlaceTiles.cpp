@@ -90,9 +90,8 @@ struct AIEPlaceTilesPass
       int64_t align = 1;
       if (name.empty() || ordinal.getAsInteger(10, index) ||
           bytes.getAsInteger(10, size) || size < 0 ||
-          (charge.contains('@') &&
-           (alignment.getAsInteger(10, align) || align <= 0 ||
-            !llvm::isPowerOf2_64(align))))
+          (charge.contains('@') && (alignment.getAsInteger(10, align) ||
+                                    align <= 0 || !llvm::isPowerOf2_64(align))))
         return emitError(UnknownLoc::get(context), "sa-core-data-sizes entry '")
                << entry << "' is not <device>:<core>=<bytes>[@<align>]";
       coreSizes.push_back({name.str(), index, size, align});

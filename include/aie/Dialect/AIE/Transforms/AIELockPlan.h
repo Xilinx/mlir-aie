@@ -249,8 +249,8 @@ public:
         record(index, at);
     };
     int count = groups.empty() ? 0 : groups.front().count;
-    bool mixed = llvm::any_of(
-        groups, [&](const Group &g) { return g.count != count; });
+    bool mixed =
+        llvm::any_of(groups, [&](const Group &g) { return g.count != count; });
     firstFit(/*canonical=*/!callerOrder);
     if (!result.failed)
       return result;
@@ -429,9 +429,8 @@ private:
     llvm::SmallVector<llvm::SmallVector<std::tuple<int, int, int>>> keys;
     for (const llvm::SmallVector<unsigned> &tilesOf : eligible) {
       llvm::SmallVector<unsigned> &order = sorted.emplace_back(tilesOf);
-      llvm::stable_sort(order, [&](unsigned a, unsigned b) {
-        return rank(a) < rank(b);
-      });
+      llvm::stable_sort(
+          order, [&](unsigned a, unsigned b) { return rank(a) < rank(b); });
       keys.push_back(llvm::map_to_vector(order, rank));
     }
     llvm::SmallVector<size_t> order =
@@ -460,17 +459,16 @@ private:
   }
 
   /// Puts each group in `chosen` on a tile in `eligible` with room for it,
-  /// from the room left `before` any group. A group that may use a tile not
-  /// yet placed takes it. The others are solved one connected component of
-  /// positions at a time by bin completion: the open position with the
-  /// fewest groups to choose from is filled with every subset of them that
-  /// wastes no more room than the component can spare, then closed. A state
-  /// whose groups do not fit even when split is cut off, as is one whose open
-  /// positions must waste more than it can spare. Groups of one count
-  /// and one set of positions are interchangeable, so a subset takes how many
-  /// of each. Each component may take kPackBudget steps; one that does not
-  /// decide in them leaves the packing Stopped unless another has none. With
-  /// None, `blocked` holds the groups of the component that has none.
+  /// from the room left `before` any group; a group that may use a tile not
+  /// yet placed takes it. The rest is solved one connected component of
+  /// positions at a time by bin completion: the open position with the fewest
+  /// groups to choose from takes every subset of them wasting no more room
+  /// than the component can spare, then closes. A state whose groups do not
+  /// fit even when split is cut off, as is one whose open positions must waste
+  /// more than it can spare. Groups alike in count and positions are
+  /// interchangeable, so a subset takes how many of each. Each component may
+  /// take kPackBudget steps; one that does not decide leaves the packing
+  /// Stopped unless another has none, whose groups `blocked` then holds.
   Packing pack(llvm::ArrayRef<Group> groups,
                llvm::ArrayRef<llvm::SmallVector<unsigned>> eligible,
                const llvm::DenseMap<TileID, int> &before,
