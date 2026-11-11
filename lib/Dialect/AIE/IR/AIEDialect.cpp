@@ -2193,6 +2193,12 @@ ObjectFifoLinkOp ObjectFifoCreateOp::getConsumerLink(unsigned consumer) {
 
 std::optional<PlannedDmaEnd>
 ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
+  return plannedDmaEnd(consumer, placedAt);
+}
+
+std::optional<PlannedDmaEnd>
+ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
+                                  TilePositions positions) {
   bool drains = !consumer;
   Value tile = drains ? getProducerTile() : getConsumerTiles()[*consumer];
   auto tileLike = cast<TileLike>(tile.getDefiningOp());
@@ -2256,7 +2262,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
         break;
       }
   }
-  int64_t depth = link.getPoolDepth();
+  int64_t depth = link.getPoolDepth(positions);
   int64_t segments = link.getPoolSegments().size();
   int64_t selected =
       (drains ? link.isDistribute() : link.isJoin()) ? 1 : segments;
@@ -2433,12 +2439,13 @@ ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoLinkOp::verify() {
-  for (Attribute name : llvm::concat<const Attribute>(getFifoIns().getValue(),
-                                                      getFifoOuts().getValue()))
-    if (!isa_and_nonnull<ObjectFifoCreateOp>(
-            SymbolTable::lookupNearestSymbolFrom(
-                *this, cast<FlatSymbolRefAttr>(name))))
+  for (Attribute name : llvm::concat<const Attribute>(
+           getFifoIns().getValue(), getFifoOuts().getValue())) {
+    auto flat = dyn_cast<FlatSymbolRefAttr>(name);
+    if (!flat || !isa_and_nonnull<ObjectFifoCreateOp>(
+                     SymbolTable::lookupNearestSymbolFrom(*this, flat)))
       return emitOpError("names no objectfifo ") << name;
+  }
 
   if (isJoin() && isDistribute())
     return emitError("ObjectFifoLinkOp does not support 'join' and "
@@ -2842,19 +2849,63 @@ std::optional<unsigned> ObjectFifoLinkOp::getOwnerConsumerIndex() {
   return std::nullopt;
 }
 
-int64_t ObjectFifoLinkOp::getPoolDepth() {
+int64_t ObjectFifoLinkOp::getPoolDepth() { return getPoolDepth(placedAt); }
+
+int64_t ObjectFifoLinkOp::getPoolDepth(TilePositions positions) {
+  return getPoolPlan().depthAt(getTargetModel(*this), positions);
+}
+
+LinkPoolPlan ObjectFifoLinkOp::getPoolPlan() {
+  LinkPoolPlan plan{getOptionalSharedTile().value_or(Value()), 0, {}};
   StreamWindow window;
-  if (walksStream())
-    return succeeded(getStreamWindow(window)) ? window.objects : 0;
+  if (walksStream()) {
+    plan.depth = succeeded(getStreamWindow(window)) ? window.objects : 0;
+    return plan;
+  }
   ObjectFifoCreateOp owner = getPoolOwner();
-  // An owner with an allocate shares the pool with its other end's core (the
-  // split rejects it otherwise), so the pool serves both ends, like the one
-  // pool of an unlinked fifo whose ends share memory.
-  if (owner.getAllocate())
-    return owner.sharedDepth();
-  if (std::optional<unsigned> index = getOwnerConsumerIndex())
-    return owner.dmaDepth(index);
-  return owner.size();
+  if (!owner.getAllocate()) {
+    std::optional<unsigned> index = getOwnerConsumerIndex();
+    plan.depth = index ? owner.dmaDepth(index) : owner.size();
+  }
+  // The owner's allocate puts both its ends in the pool; another
+  // participant's puts there only its end off the link's tile, the one its
+  // no-allocate twin keeps in a pool of its own (no core acquires on the
+  // link's tile).
+  std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
+  std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+  for (ObjectFifoCreateOp fifo : llvm::concat<ObjectFifoCreateOp>(ins, outs)) {
+    std::optional<ObjectFifoAllocateOp> alloc = fifo.getAllocate();
+    if (!alloc)
+      continue;
+    if (fifo == owner)
+      plan.depth = std::max<int64_t>(
+          {plan.depth, fifo.dmaDepth(std::nullopt), fifo.dmaDepth(0)});
+    else if (plan.linkTile && fifo.getConsumerTiles().size() == 1 &&
+             fifo.linkPoolMisfit() == LinkPoolMisfit::None)
+      plan.sharers.push_back(
+          {fifo.getProducerTile(), fifo.getConsumerTiles()[0],
+           alloc->getDelegateTile(),
+           llvm::is_contained(outs, fifo) ? fifo.dmaDepth(0)
+                                          : fifo.dmaDepth(std::nullopt)});
+  }
+  return plan;
+}
+
+int64_t LinkPoolPlan::depthAt(const AIETargetModel &target,
+                              TilePositions positions) const {
+  int64_t result = depth;
+  std::optional<TileID> link =
+      sharers.empty() ? std::nullopt : positions(linkTile);
+  for (const LinkPoolSharer &sharer : sharers) {
+    std::optional<TileID> producer = positions(sharer.producer);
+    std::optional<TileID> consumer = positions(sharer.consumer);
+    std::optional<TileID> delegate = positions(sharer.delegate);
+    if (link && producer && consumer && delegate &&
+        ObjectFifoCreateOp::allocatedHome(target, *producer, *consumer,
+                                          *delegate, link))
+      result = std::max(result, sharer.depth);
+  }
+  return result;
 }
 
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
@@ -2911,7 +2962,9 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoIns()) {
-        auto name = cast<FlatSymbolRefAttr>(sym);
+        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        if (!name)
+          continue;
         if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           inputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
@@ -2927,7 +2980,9 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
-        auto name = cast<FlatSymbolRefAttr>(sym);
+        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        if (!name)
+          continue;
         if (auto *st = mlir::SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));

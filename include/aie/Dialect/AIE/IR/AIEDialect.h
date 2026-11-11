@@ -413,6 +413,31 @@ struct StreamWindow {
   int64_t transfer() const;
 };
 
+// Where a tile sits, if known: a placed tile's coordinates, or a placer's
+// current position for a logical one.
+using TilePositions = llvm::function_ref<std::optional<TileID>(mlir::Value)>;
+
+// A link participant other than the pool's owner whose aie.objectfifo.allocate
+// may share the link's pool: its tiles, and the objects of its end off the
+// link's tile.
+struct LinkPoolSharer {
+  mlir::Value producer;
+  mlir::Value consumer;
+  mlir::Value delegate;
+  int64_t depth;
+};
+
+// What sizes a link's pool wherever tiles sit (ObjectFifoLinkOp::getPoolPlan):
+// the depth without sharers, and each participant that may share it.
+struct LinkPoolPlan {
+  mlir::Value linkTile;
+  int64_t depth;
+  llvm::SmallVector<LinkPoolSharer> sharers;
+  // The pool's depth where `positions` puts the tiles: a sharer counts where
+  // ObjectFifoCreateOp::allocatedHome finds it a home on the link's tile.
+  int64_t depthAt(const AIETargetModel &target, TilePositions positions) const;
+};
+
 // The DMA end aie-objectfifo-split gives a fifo on one tile, known before
 // placement: the BD ids it takes, as ObjectFifoDmaEndpointOp::getNumBDs
 // counts them, and the pool it walks, `id` telling a fifo's own consumer

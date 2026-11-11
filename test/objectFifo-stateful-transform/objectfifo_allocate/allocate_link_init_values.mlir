@@ -40,7 +40,7 @@ module @input_owner {
 // in0's producer end is four objects deep, all initial, and its link tile end
 // two. Without the allocate, A's pool holds the four and the link tile's two
 // start empty. Shared, the one pool serves both ends, so it takes the deeper
-// end's depth (sharedDepth(), as for an unlinked fifo) and starts with all four.
+// end's depth and starts with all four.
 // Before, the pool took the link tile's two and failed on "more 'init_values'
 // than 'depth' objects".
 

@@ -21,6 +21,7 @@
 #include <list>
 #include <map>
 #include <random>
+#include <tuple>
 #include <unordered_map>
 
 namespace xilinx::AIE {
@@ -36,6 +37,10 @@ public:
       return nullptr;
     order.splice(order.begin(), order, it->second);
     return &it->second->second;
+  }
+  void clear() {
+    order.clear();
+    index.clear();
   }
   void insert(const Key &key, Value value) {
     order.emplace_front(key, std::move(value));
@@ -950,9 +955,12 @@ private:
     int sharedDepth = 0;
     int producerDepth = 0;
     llvm::SmallVector<int> consumerDepths;
-    // ObjectFifoCreateOp::plannedDmaEnd of each end.
+    // ObjectFifoCreateOp::plannedDmaEnd of each end, and the index of its
+    // entry in memTileEnds on a mem tile.
     std::optional<PlannedDmaEnd> producerEnd;
     llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerEnds;
+    std::optional<unsigned> producerMemTileEntry;
+    llvm::SmallVector<std::optional<unsigned>> consumerMemTileEntries;
     // Whether an end on a link's tile holds the link's one pool, which the
     // split builds from getPoolOwner and getPoolDepth as the plan says, or
     // shares one another end holds.
@@ -1010,6 +1018,36 @@ private:
     PlannedDmaEnd end;
   };
   llvm::MapVector<mlir::Operation *, llvm::SmallVector<MemTileEnd>> memTileEnds;
+  // A link whose pool's depth follows where tiles sit: a participant other
+  // than the owner shares the pool through its allocate only where its ends,
+  // its delegate and the link's tile let it (ObjectFifoLinkOp::getPoolPlan).
+  // `tiles` are those tiles; `depth` is the pool's depth the participants'
+  // plans hold now. `holds` are the participants' ends that hold the pool's
+  // plan. A participant's ends depend on where tiles sit only through link
+  // pools' depths, so `replans` keeps them, and the pool's plan, by the
+  // depths every variable link has.
+  struct VariableLink {
+    struct Replan {
+      llvm::SmallVector<llvm::SmallVector<std::optional<PlannedDmaEnd>>> ends;
+      std::optional<PlannedDmaEnd> held;
+    };
+    ObjectFifoLinkOp link;
+    LinkPoolPlan plan;
+    int64_t depth;
+    llvm::SmallVector<mlir::Operation *> tiles;
+    llvm::SmallVector<size_t> fifos;
+    llvm::SmallVector<std::pair<size_t, std::optional<unsigned>>> holds;
+    std::map<std::vector<int64_t>, Replan> replans;
+  };
+  llvm::SmallVector<VariableLink, 0> variableLinks;
+  // The variable links the move being weighed planned again, with their
+  // depths before and after it.
+  struct ReplannedLink {
+    unsigned index;
+    int64_t from;
+    int64_t to;
+  };
+  llvm::SmallVector<ReplannedLink> replannedLinks;
   // The pools of memTileEnds that config.walkedFifos names.
   llvm::DenseSet<mlir::Operation *> chargedPools;
 
@@ -1079,7 +1117,10 @@ private:
       memTileFixed;
   // The BD ids the mem tile ends at each position are short of, what the
   // last move overwrote in it, and the shortfall of each set of logical tiles
-  // sharing a position, by its tiles in order.
+  // sharing a position, by its tiles in order. A variable link's depth
+  // changes what ends its participants plan there, so every cache below that
+  // reads a position's ends or buffers also keys on every variable link's
+  // depth, not the tiles' positions alone.
   llvm::DenseMap<TileID, int64_t> bdShortfallAt;
   llvm::SmallVector<std::pair<TileID, int64_t>> bdUndo;
   using WalkSets =
@@ -1089,11 +1130,16 @@ private:
     WalkSets sets;
     llvm::SmallVector<int64_t> bytes;
   };
-  LRUCache<std::pair<TileID, std::vector<mlir::Operation *>>, BDShortfall>
+  LRUCache<
+      std::tuple<TileID, std::vector<mlir::Operation *>, std::vector<int64_t>>,
+      BDShortfall>
       bdShortfallOf{1u << 16};
   /// The bytes the spill search leaves unplaced in one spill component, by its
-  /// tiles' contents and each mem tile's walk set.
+  /// tiles' contents and each mem tile's walk set (bdShortfallAt's comment).
   LRUCache<std::vector<uintptr_t>, int64_t> unplacedOf{1u << 16};
+  /// The spill penalty, by where every mem tile's holders sit
+  /// (bdShortfallAt's comment).
+  LRUCache<std::vector<int64_t>, int> spillPenaltyOf{1u << 14};
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
   llvm::DenseMap<TileID, TileID> bdLayoutOf;
@@ -1188,6 +1234,11 @@ private:
   /// Fills `bdShortfallAt` and returns the penalty it gives.
   int computeBDCountPenalty();
   int computeDelegatePenalty() const;
+  /// Plans the pools of the links `depths` names for the depths it gives
+  /// them, and their participants' ends; a link already at its given depth
+  /// keeps its plans. Every other variable link's tiles must not have moved
+  /// since its last plan.
+  void replanLinks(llvm::ArrayRef<std::pair<unsigned, int64_t>> depths);
   /// The locks aie-objectfifo-allocate cannot place, by LockPlan on the pools
   /// the split gives each fifo where its ends sit, charged per lock. Sets
   /// `stopped`, when given, to whether LockPlan's packing search stopped.

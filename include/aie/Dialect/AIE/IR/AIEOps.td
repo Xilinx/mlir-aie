@@ -2860,8 +2860,12 @@ def AIE_ObjectFifoCreateOp
     /// The DMA end the fifo gets on its producer's tile (`consumer` empty) or
     /// consumer `consumer`'s, unless that end takes no BD ids of the tile's:
     /// a shim's, a stream port's, or a merge's or dispatch's but the one end
-    /// its participants share.
+    /// its participants share. A link's pool is sized where `positions` puts
+    /// the tiles (ObjectFifoLinkOp::getPoolDepth); by default, where they are
+    /// placed.
     std::optional<PlannedDmaEnd> plannedDmaEnd(std::optional<unsigned> consumer);
+    std::optional<PlannedDmaEnd> plannedDmaEnd(std::optional<unsigned> consumer,
+                                               TilePositions positions);
     /// The link reading consumer `consumer`'s end, if any: each link on a tile
     /// takes the next of the fifo's consumer ends there, in order.
     ObjectFifoLinkOp getConsumerLink(unsigned consumer);
@@ -3052,9 +3056,16 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     // When the pool owner is an input, the consumer of it whose end the pool
     // is: one on the shared tile, after those earlier links took there.
     std::optional<unsigned> getOwnerConsumerIndex();
-    // Objects in the pool on the shared tile: the owner's sharedDepth() when
-    // it shares the pool through an aie.objectfifo.allocate.
+    // Objects in the pool on the shared tile; with participants whose
+    // aie.objectfifo.allocate shares the pool, enough for the owner's ends and
+    // each other participant's end off the shared tile. The owner's allocate
+    // is honoured or rejected; another participant's, one of a single consumer
+    // that fits the pool (linkPoolMisfit), shares it only where `positions`
+    // puts its tiles so that allocatedHome finds the shared tile (by default,
+    // where they are placed). getPoolPlan holds what no placement changes.
+    LinkPoolPlan getPoolPlan();
     int64_t getPoolDepth();
+    int64_t getPoolDepth(TilePositions positions);
   }];
 }
 
