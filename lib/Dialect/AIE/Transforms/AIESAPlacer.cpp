@@ -646,6 +646,10 @@ void SAPlacer::initResourceTracking() {
     tileToRouteEnds[routeEnds[i].tile].push_back(i);
     addRouteEndContribution(i, +1);
   }
+  for (auto &[tile, claims] : claimsOf)
+    if (std::optional<TileID> pos = positionOf(tile))
+      for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
+        pinUse->claim(*pos, claim, 1);
 
   spillTiles.clear();
   for (auto &[op, _] : memTileEnds)
@@ -1674,18 +1678,24 @@ int SAPlacer::updateResourcePenalty(
   }
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, -1);
-  for (auto &[op, _] : oldPlacements)
+  for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, -1);
+    for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op))
+      pinUse->claim(currentPlacement[op], claim, -1);
+  }
 
   // Restore new positions and add new contributions
   for (auto &[op, newPos] : savedPositions)
     currentPlacement[op] = newPos;
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, +1);
-  for (auto &[op, _] : oldPlacements)
+  for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, +1);
+    for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op))
+      pinUse->claim(currentPlacement[op], claim, 1);
+  }
 
   // Add new static buffer and stack contributions
   for (auto &[op, _] : oldPlacements) {
@@ -2123,6 +2133,10 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     return failure();
   buildRouteModel(device, collected.flows, collected.pktFlows, collected.routes,
                   channelAnalysis.emplace(device).getChannelClaims());
+  claimsOf.clear();
+  for (const DMAChannelAnalysis::ChannelClaim &claim :
+       channelAnalysis->getChannelClaims())
+    claimsOf[claim.tile.getDefiningOp()].push_back(claim);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   overlayUses = shimMM2SUses(device, packetSwitched);
   overlayTiles.clear();

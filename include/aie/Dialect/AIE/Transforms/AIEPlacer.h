@@ -278,6 +278,11 @@ public:
     unsigned share(End end);
     // Whether share() diagnosed an end, which fails the placement.
     bool failed() const { return diagnosed; }
+    // Whether `end` may take turns on the channel of `claim`, as allocation
+    // lets a pinned end: a shim allocation whose aie.shareable_with names it,
+    // when it sends packet-switched or receives out of order.
+    bool sharesClaim(End end,
+                     const DMAChannelAnalysis::ChannelClaim &claim) const;
 
   private:
     const AIETargetModel *targetModel;
@@ -311,6 +316,13 @@ public:
     // The sending ends at `at`, by the MM2S channel they pin.
     llvm::DenseMap<int, llvm::SmallVector<PinnedChannels::End, 2>>
     sendingAt(TileID at) const;
+    // Adds (`sign` 1) or removes (-1) `claim` at `at`. A claimed channel is
+    // held from every pinned end there but those sharesClaim() lets share it.
+    void claim(TileID at, const DMAChannelAnalysis::ChannelClaim &claim,
+               int sign);
+    // The claim at `at` that holds `end`'s channel from it, if any.
+    std::optional<DMAChannelAnalysis::ChannelClaim>
+    claimWith(TileID at, const PinnedChannels::End &end) const;
     // The channels ends at `at` pin in one direction.
     llvm::SmallVector<int> channelsAt(TileID at, bool sends) const;
 
@@ -319,6 +331,9 @@ public:
     std::map<std::tuple<int, int, int, int>,
              llvm::SmallVector<PinnedChannels::End, 2>>
         placed;
+    std::map<std::tuple<int, int, int, int>,
+             llvm::SmallVector<DMAChannelAnalysis::ChannelClaim, 1>>
+        claimed;
   };
 
   // The objectFIFO end a runtime sequence names `symbol` for, before split:
@@ -643,6 +658,11 @@ private:
   std::optional<PinnedChannelUse> pinsAt;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<PinnedChannels::End>>
       pinnedEnds;
+  // The channels each tile op's claims (DMAChannelAnalysis) take by index,
+  // which hold them from pinned ends placed with it.
+  llvm::DenseMap<mlir::Operation *,
+                 llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
+      claimsOf;
 
   // DMA channels, as (output, index), that each logical tile's flows name by
   // index. Two logical tiles naming the same one cannot share a physical tile.
@@ -1227,6 +1247,11 @@ private:
   // What aie-objectfifo-allocate plans a tile's BD ids around: the channels
   // and ids its own programs and pinned runtime ids already hold.
   std::optional<DMAChannelAnalysis> channelAnalysis;
+  // The channels each tile op's claims take by index, which hold them from
+  // pinned ends placed with it.
+  llvm::DenseMap<mlir::Operation *,
+                 llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
+      claimsOf;
   DMAChannelAnalysis::TakenBDs takenBDs;
   llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> physicalTiles;
   // Every logical mem tile, objectFIFO ends or not: its programs hold BD ids

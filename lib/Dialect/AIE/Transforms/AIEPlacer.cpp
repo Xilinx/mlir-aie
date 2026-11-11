@@ -239,10 +239,14 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     return failure();
   namedChannels.clear();
   llvm::DenseMap<Operation *, Operation *> demandKeys;
-  for (auto &[tile, inOut] :
-       flowChannelDemand(flows, pktFlows, routes,
-                         DMAChannelAnalysis(device).getChannelClaims(),
-                         &namedChannels, &demandKeys)) {
+  DMAChannelAnalysis channelAnalysis(device);
+  claimsOf.clear();
+  for (const DMAChannelAnalysis::ChannelClaim &claim :
+       channelAnalysis.getChannelClaims())
+    claimsOf[claim.tile.getDefiningOp()].push_back(claim);
+  for (auto &[tile, inOut] : flowChannelDemand(
+           flows, pktFlows, routes, channelAnalysis.getChannelClaims(),
+           &namedChannels, &demandKeys)) {
     channelRequirements[tile].first += inOut.first;
     channelRequirements[tile].second += inOut.second;
   }
@@ -270,6 +274,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     overlayTilesAt[at].push_back(placed);
     for (const PinnedChannels::End &end : pinnedEnds.lookup(placed))
       pinsAt->place(at, end, 1);
+    for (const DMAChannelAnalysis::ChannelClaim &claim :
+         claimsOf.lookup(placed))
+      pinsAt->claim(at, claim, 1);
     recordShimEnds(at, placed);
   }
 
@@ -928,7 +935,7 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
       pinnedEnds.lookup(logicalTile.getOperation());
   std::optional<std::pair<int, int>> held = pinsAt->heldAt(tile, pins);
   if (!held) {
-    for (PinnedChannels::End end : pins)
+    for (PinnedChannels::End end : pins) {
       if (std::optional<PinnedChannels::End> other =
               pinsAt->clashWith(tile, end))
         return end.fifo.emitError()
@@ -936,7 +943,18 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
                << end.channel << " of tile (" << tile.col << ", " << tile.row
                << "), which @" << other->fifo.getSymName()
                << " pins there too, but " << *pinnedRule->whyApart(end, *other);
-    llvm_unreachable("heldAt reports only a clash clashWith finds");
+      if (std::optional<DMAChannelAnalysis::ChannelClaim> claim =
+              pinsAt->claimWith(tile, end)) {
+        auto diag = end.fifo.emitError()
+                    << "pins " << (end.sends ? "MM2S" : "S2MM") << " channel "
+                    << end.channel << " of tile (" << tile.col << ", "
+                    << tile.row << "), which another op holds";
+        diag.attachNote(claim->owner->getLoc()) << "held here";
+        return diag;
+      }
+    }
+    llvm_unreachable(
+        "heldAt reports only a clash clashWith or claimWith finds");
   }
   inChannels -= held->first;
   outChannels -= held->second;
@@ -1643,6 +1661,55 @@ unsigned Placer::PinnedChannels::share(End end) {
   return number;
 }
 
+bool Placer::PinnedChannels::sharesClaim(
+    End end, const DMAChannelAnalysis::ChannelClaim &claim) const {
+  auto alloc = dyn_cast_or_null<ShimDMAAllocationOp>(claim.owner);
+  if (!alloc)
+    return false;
+  auto allowed =
+      AIEDialect::ShareableWithAttrHelper(alloc->getContext()).getAttr(alloc);
+  if (!allowed || llvm::none_of(allowed, [&](Attribute attr) {
+        auto symbol = dyn_cast<FlatSymbolRefAttr>(attr);
+        return symbol && symbol.getAttr() == end.fifo.getSymNameAttr();
+      }))
+    return false;
+  return end.sends ? isPacketSwitched(end.fifo.packetHeader(), packetSwitched)
+                   : end.fifo.getOutOfOrder();
+}
+
+void Placer::PinnedChannelUse::claim(
+    TileID at, const DMAChannelAnalysis::ChannelClaim &claim, int sign) {
+  auto key =
+      std::make_tuple(at.col, at.row, claim.channel,
+                      static_cast<int>(claim.dir == DMAChannelDir::MM2S));
+  auto &claims = claimed[key];
+  if (sign > 0) {
+    claims.push_back(claim);
+    return;
+  }
+  auto *found =
+      llvm::find_if(claims, [&](const DMAChannelAnalysis::ChannelClaim &c) {
+        return c.owner == claim.owner;
+      });
+  assert(found != claims.end() && "removing a claim never placed");
+  claims.erase(found);
+  if (claims.empty())
+    claimed.erase(key);
+}
+
+std::optional<DMAChannelAnalysis::ChannelClaim>
+Placer::PinnedChannelUse::claimWith(TileID at,
+                                    const PinnedChannels::End &end) const {
+  auto it = claimed.find(std::make_tuple(at.col, at.row, end.channel,
+                                         static_cast<int>(end.sends)));
+  if (it == claimed.end())
+    return std::nullopt;
+  for (const DMAChannelAnalysis::ChannelClaim &claim : it->second)
+    if (!rule->sharesClaim(end, claim))
+      return claim;
+  return std::nullopt;
+}
+
 int Placer::PinnedChannelUse::place(TileID at, const PinnedChannels::End &end,
                                     int sign) {
   auto key =
@@ -1679,6 +1746,14 @@ int Placer::PinnedChannelUse::clashes(TileID at) const {
         clash = (ends[i].tile != ends[j].tile || !ends[i].movesByDma ||
                  !ends[j].movesByDma) &&
                 rule->whyApart(ends[i], ends[j]).has_value();
+    if (auto held = claimed.find(it->first); held != claimed.end())
+      clash = clash || llvm::any_of(ends, [&](const PinnedChannels::End &end) {
+                return llvm::any_of(
+                    held->second,
+                    [&](const DMAChannelAnalysis::ChannelClaim &claim) {
+                      return !rule->sharesClaim(end, claim);
+                    });
+              });
     count += clash;
   }
   return count;
@@ -1784,10 +1859,11 @@ Placer::PinnedChannelUse::heldAt(TileID at,
   std::pair<int, int> held{0, 0};
   llvm::SmallDenseSet<std::pair<int, int>, 4> counted;
   for (const PinnedChannels::End &end : ends) {
-    if (clashWith(at, end))
+    if (clashWith(at, end) || claimWith(at, end))
       return std::nullopt;
-    if (placed.count(std::make_tuple(at.col, at.row, end.channel,
-                                     static_cast<int>(end.sends))) &&
+    auto key = std::make_tuple(at.col, at.row, end.channel,
+                               static_cast<int>(end.sends));
+    if ((placed.count(key) || claimed.count(key)) &&
         counted.insert({end.channel, end.sends}).second)
       ++(end.sends ? held.second : held.first);
   }
@@ -2837,6 +2913,9 @@ void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
   overlayTilesAt[tile].push_back(logicalTile);
   for (const PinnedChannels::End &end : pinnedEnds.lookup(logicalTile))
     pinsAt->place(tile, end, 1);
+  for (const DMAChannelAnalysis::ChannelClaim &claim :
+       claimsOf.lookup(logicalTile))
+    pinsAt->claim(tile, claim, 1);
   if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())
     availability.streamsUsed[tile] += it->second;
   if (runtimeBdIds.uses(logicalTile))

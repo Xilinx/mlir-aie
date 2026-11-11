@@ -34,7 +34,7 @@ Value DMAChannelAnalysis::getTileKey(Value tile) {
 void DMAChannelAnalysis::claim(Value tile, DMAChannelDir dir, int channel,
                                Operation *owner) {
   if (usedChannels.try_emplace({getTileKey(tile), dir, channel}, owner).second)
-    claims.push_back({tile, dir, channel});
+    claims.emplace_back(tile, dir, channel, owner);
 }
 
 DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
@@ -125,8 +125,8 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
                         (int)allocOp.getChannelIndex()),
         allocOp.getOperation());
     if (!AIEDialect::IsCtrlPktOverlayAttrHelper(context).isAttrPresent(allocOp))
-      claims.push_back({allocOp.getTile(), allocOp.getChannelDir(),
-                        (int)allocOp.getChannelIndex()});
+      claims.emplace_back(allocOp.getTile(), allocOp.getChannelDir(),
+                          (int)allocOp.getChannelIndex(), allocOp);
   }
 }
 
