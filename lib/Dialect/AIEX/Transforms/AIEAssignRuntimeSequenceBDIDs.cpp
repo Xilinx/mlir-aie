@@ -541,34 +541,57 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               copied, diag, [&](auto &entry) { diag << std::get<0>(entry); });
           diag << " while this task may run (see the notes).";
         }
-        diag << " Emit an aiex.dma_await_task to free BDs for reuse; it "
-                "waits for hardware completion, so the recycled ids are no "
-                "longer in flight. aiex.dma_free_task also recycles ids but "
-                "does NOT wait for completion -- using it before the task "
-                "has finished is a race -- so reach for it only when some "
-                "other synchronization already guarantees completion (see "
-                "programming_guide/section-2/section-2d/DMATasks.md).";
-        if (reclaimBds && tookBack)
-          diag << " The ids the compiler took back did not cover it, and it "
-                  "could not take more: every other task holding one is not "
-                  "started yet, is started again later, waits on a lock this "
-                  "or a later task releases, or runs on a channel whose "
-                  "status it cannot poll.";
-        else if (reclaimBds)
-          diag << " The compiler could not take any back either: every "
-                  "task holding one is not started yet, is started again "
-                  "later, waits on a lock this or a later task releases, "
-                  "or runs on a channel whose status it cannot poll.";
-        else
-          diag << " Or let the compiler poll for finished tasks and take "
-                  "their ids (reclaim-bds, aiecc --reclaim-runtime-bds), "
-                  "provided no task depends on a push issued after it.";
-        for (auto [id, copy, isForbidden] : copied)
-          diag.attachNote(copy->getLoc())
-              << "this copy " << (isForbidden ? "reprograms" : "holds")
-              << " buffer descriptor ID " << id
-              << (isForbidden ? " while the task may run"
-                              : " until it is retired");
+        // reclaimFor only ever considers a liveByTile task, never a copy, so
+        // its advice -- and the task-shaped reasons it failed -- apply only
+        // where some other task actually lives on this tile to reclaim from.
+        bool otherLiveTask =
+            llvm::any_of(liveByTile[tile], [&](DMAConfigureTaskOp t) {
+              return !releasedTasks.contains(t);
+            });
+        if (otherLiveTask) {
+          diag << " Emit an aiex.dma_await_task to free BDs for reuse; it "
+                  "waits for hardware completion, so the recycled ids are no "
+                  "longer in flight. aiex.dma_free_task also recycles ids but "
+                  "does NOT wait for completion -- using it before the task "
+                  "has finished is a race -- so reach for it only when some "
+                  "other synchronization already guarantees completion (see "
+                  "programming_guide/section-2/section-2d/DMATasks.md).";
+          if (reclaimBds && tookBack)
+            diag << " The ids the compiler took back did not cover it, and "
+                    "it could not take more: every other task holding one is "
+                    "not started yet, is started again later, waits on a "
+                    "lock this or a later task releases, or runs on a "
+                    "channel whose status it cannot poll.";
+          else if (reclaimBds)
+            diag << " The compiler could not take any back either: every "
+                    "task holding one is not started yet, is started again "
+                    "later, waits on a lock this or a later task releases, "
+                    "or runs on a channel whose status it cannot poll.";
+          else
+            diag << " Or let the compiler poll for finished tasks and take "
+                    "their ids (reclaim-bds, aiecc --reclaim-runtime-bds), "
+                    "provided no task depends on a push issued after it.";
+        } else if (!copied.empty()) {
+          diag << " Every id in use here is an aiex.npu.dma_memcpy_nd copy "
+                  "(reclaim-bds does not consider those); retire the ones "
+                  "the notes name, or give this task's buffer descriptors "
+                  "other ids.";
+        }
+        for (auto [id, copyOp, isForbidden] : copied) {
+          auto copy = cast<NpuDmaMemcpyNdOp>(copyOp);
+          Diagnostic &note = diag.attachNote(copy.getLoc());
+          note << "this copy " << (isForbidden ? "reprograms" : "holds")
+               << " buffer descriptor ID " << id
+               << (isForbidden ? " while the task may run; "
+                               : " until it is retired: ");
+          if (otherPush(copy)->second)
+            note << "wait for it (aiex.npu.sync or aiex.npu.dma_wait on its "
+                    "channel, consuming its token).";
+          else
+            note << "it issues no token, so only an await of a later tokened "
+                    "task on its channel, a status poll, or issue_token = "
+                    "true on it and a wait for it shows it done.";
+        }
         return WalkResult::interrupt();
       }
       checkReallocation(tile, *next_id, bd_op.getLoc());
@@ -763,6 +786,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (!held)
         continue;
       bool running = runningCount.lookup(task);
+      // A task not yet started even once has no prior push to its name: its
+      // only start landing after the copy is its first, not a restart.
+      bool everStarted = lastPushOrder.contains(task);
       DMAStartTaskOp restart = startAfter(task, copy);
       if (!running && !restart)
         return success();
@@ -773,14 +799,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           diag << " is the one an aiex.npu.dma_memcpy_nd on this tile "
                   "programs while this task may be in flight. Give the task "
                   "another ID, or await it before the copy.";
-        else
+        else if (everStarted)
           diag << " is the one an aiex.npu.dma_memcpy_nd on this tile "
                   "programs before this task is started again, so the "
                   "restart would run the copy's descriptor. Give the task "
                   "another ID, or configure a new task after the copy.";
+        else
+          diag << " is the one an aiex.npu.dma_memcpy_nd on this tile "
+                  "programs after this task's own configure wrote it, so "
+                  "starting the task would launch the copy's descriptor "
+                  "instead of its own. Give the task another ID, or start it "
+                  "before the copy.";
         diag.attachNote(copy.getLoc()) << "the copy is here";
         if (!running)
-          diag.attachNote(restart.getLoc()) << "the task is started again here";
+          diag.attachNote(restart.getLoc())
+              << (everStarted ? "the task is started again here"
+                              : "the task starts here, after the copy");
         return failure();
       }
       assert(llvm::none_of(forbidden[task],

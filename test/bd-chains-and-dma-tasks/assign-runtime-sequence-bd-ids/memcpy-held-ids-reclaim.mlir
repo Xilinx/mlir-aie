@@ -187,3 +187,62 @@ module @retry_reclaims_again {
     }
   }
 }
+
+
+// -----
+
+// Every id on this tile is held by an unretired copy, none by a task: the
+// reclaim-bds advice about tasks does not apply, and each copy gets its own
+// retirement advice.
+module @too_many_all_copies_reclaim {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrl(%shim, MM2S, 0)
+    aie.shim_dma_allocation @in(%shim, MM2S, 1)
+    aie.shim_dma_allocation @out(%shim, S2MM, 0)
+    aie.runtime_sequence @run(%x : memref<16xi32>, %pkts : memref<?xi32>) {
+      // expected-note@+1 {{this copy holds buffer descriptor ID 0 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 1 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 1][1, 1, 1, 3][0, 0, 0, 1]) {id = 1 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 2 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 2][1, 1, 1, 3][0, 0, 0, 1]) {id = 2 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 3 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 3][1, 1, 1, 3][0, 0, 0, 1]) {id = 3 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 4 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 4][1, 1, 1, 3][0, 0, 0, 1]) {id = 4 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 5 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 5][1, 1, 1, 3][0, 0, 0, 1]) {id = 5 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 6 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 6][1, 1, 1, 3][0, 0, 0, 1]) {id = 6 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 7 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 7][1, 1, 1, 3][0, 0, 0, 1]) {id = 7 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 8 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 8][1, 1, 1, 3][0, 0, 0, 1]) {id = 8 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 9 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 9][1, 1, 1, 3][0, 0, 0, 1]) {id = 9 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 10 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 10][1, 1, 1, 3][0, 0, 0, 1]) {id = 10 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 11 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 11][1, 1, 1, 3][0, 0, 0, 1]) {id = 11 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 12 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 12][1, 1, 1, 3][0, 0, 0, 1]) {id = 12 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 13 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 13][1, 1, 1, 3][0, 0, 0, 1]) {id = 13 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 14 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 14][1, 1, 1, 3][0, 0, 0, 1]) {id = 14 : i64, metadata = @in} : memref<?xi32>
+      // expected-note@+1 {{this copy holds buffer descriptor ID 15 until it is retired: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 15][1, 1, 1, 3][0, 0, 0, 1]) {id = 15 : i64, metadata = @in} : memref<?xi32>
+      // expected-error@+1 {{Too many simultaneously active buffer descriptors on tile (0,0), which supports up to 16. Of those, aiex.npu.dma_memcpy_nd ops program ids 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 while this task may run (see the notes). Every id in use here is an aiex.npu.dma_memcpy_nd copy (reclaim-bds does not consider those); retire the ones the notes name, or give this task's buffer descriptors other ids.}}
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+      %c0 = arith.constant 0 : i32
+      %c1 = arith.constant 1 : i32
+      aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+      aiex.dma_await_task(%t)
+    }
+  }
+}

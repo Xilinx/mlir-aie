@@ -404,6 +404,34 @@ module @tokenless_copy_named {
 
 // -----
 
+// %t is configured (its BD written) before the copy, but started for the
+// first time after it: not a restart, but the copy still overwrites the BD
+// the configure wrote before the task ever launches.
+module @first_start_after_copy_named {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrl(%shim, MM2S, 0)
+    aie.shim_dma_allocation @in(%shim, MM2S, 1)
+    aie.runtime_sequence @run(%x : memref<16xi32>, %pkts : memref<?xi32>) {
+      // expected-error@+1 {{Specified buffer descriptor ID 0 is the one an aiex.npu.dma_memcpy_nd on this tile programs after this task's own configure wrote it, so starting the task would launch the copy's descriptor instead of its own. Give the task another ID, or start it before the copy.}}
+      %t = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32}
+        aie.end
+      } {issue_token = true}
+      // expected-note@+1 {{the copy is here}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrl} : memref<?xi32>
+      %c0 = arith.constant 0 : i32
+      %c1 = arith.constant 1 : i32
+      aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+      // expected-note@+1 {{the task starts here, after the copy}}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
 // %t is done before the copy; its restart after it is the clash.
 module @restart_after_copy_named {
   aie.device(npu2_1col) {
