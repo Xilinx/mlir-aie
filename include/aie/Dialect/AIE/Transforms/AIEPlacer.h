@@ -250,13 +250,17 @@ public:
   class PinnedChannels {
   public:
     // The end of `fifo` (its producer's when `consumer` is empty) on `tile`
-    // pinning `channel`.
+    // pinning `channel`. `movesByDma`: the fifo moves by DMA wherever its
+    // ends are placed (dmaReason(), or an end off a core tile); otherwise
+    // neighbouring cores' shared memory may carry it, and its pin holds only
+    // where it does not.
     struct End {
       ObjectFifoCreateOp fifo;
       std::optional<unsigned> consumer;
       mlir::Operation *tile;
       bool sends;
       int channel;
+      bool movesByDma;
     };
     // With `packetSwitched`, an end asking for no packet header gets one.
     PinnedChannels(const AIETargetModel &targetModel, bool packetSwitched)
@@ -268,8 +272,9 @@ public:
     // nothing when they can.
     std::optional<std::string> whyApart(End a, End b) const;
     // The channel `end` shares with the ends of its own tile op that took it
-    // before, numbered by the first. An end that cannot share it is
-    // diagnosed: its tile holds both wherever it goes.
+    // before, numbered by the first. An end that cannot share it with one
+    // that, like it, moves by DMA wherever placed is diagnosed: its tile
+    // holds both wherever it goes.
     unsigned share(End end);
     // Whether share() diagnosed an end, which fails the placement.
     bool failed() const { return diagnosed; }
@@ -279,14 +284,15 @@ public:
     bool packetSwitched;
     bool diagnosed = false;
     llvm::DenseMap<std::tuple<mlir::Operation *, int, int>,
-                   std::pair<End, unsigned>>
+                   std::pair<llvm::SmallVector<End, 2>, unsigned>>
         taken;
   };
 
   // The pinned ends at each position, where the ends of tiles placed together
   // meet: one channel serves those that may share it, and two of different
   // tile ops that may not clash there. Two of one tile op clash wherever it
-  // goes, which PinnedChannels::share reports.
+  // goes when both move by DMA wherever placed, which PinnedChannels::share
+  // reports; otherwise they clash only where both are placed.
   class PinnedChannelUse {
   public:
     explicit PinnedChannelUse(const PinnedChannels &rule) : rule(&rule) {}

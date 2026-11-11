@@ -1579,7 +1579,13 @@ Placer::PinnedChannels::endOf(ObjectFifoCreateOp fifo,
     return std::nullopt;
   Value tile =
       consumer ? fifo.getConsumerTiles()[*consumer] : fifo.getProducerTile();
-  return End{fifo, consumer, tile.getDefiningOp(), !consumer, *pin};
+  auto offCore = [](Value end) {
+    return cast<TileLike>(end.getDefiningOp()).getTileType() !=
+           AIETileType::CoreTile;
+  };
+  bool movesByDma = fifo.dmaReason() || offCore(fifo.getProducerTile()) ||
+                    llvm::any_of(fifo.getConsumerTiles(), offCore);
+  return End{fifo, consumer, tile.getDefiningOp(), !consumer, *pin, movesByDma};
 }
 
 std::optional<std::string> Placer::PinnedChannels::whyApart(End a,
@@ -1615,18 +1621,23 @@ std::optional<std::string> Placer::PinnedChannels::whyApart(End a,
 unsigned Placer::PinnedChannels::share(End end) {
   auto key =
       std::make_tuple(end.tile, end.channel, static_cast<int>(end.sends));
-  auto [it, fresh] =
-      taken.try_emplace(key, end, static_cast<unsigned>(taken.size()));
-  if (fresh)
-    return it->second.second;
-  End other = it->second.first;
-  if (std::optional<std::string> why = whyApart(end, other)) {
-    end.fifo.emitError() << "shares " << (end.sends ? "MM2S" : "S2MM")
-                         << " channel " << end.channel << " with @"
-                         << other.fifo.getSymName() << ", but " << *why;
-    diagnosed = true;
+  auto &[before, number] = taken
+                               .try_emplace(key, SmallVector<End, 2>{},
+                                            static_cast<unsigned>(taken.size()))
+                               .first->second;
+  for (End other : before) {
+    if (!end.movesByDma || !other.movesByDma)
+      continue;
+    if (std::optional<std::string> why = whyApart(end, other)) {
+      end.fifo.emitError() << "shares " << (end.sends ? "MM2S" : "S2MM")
+                           << " channel " << end.channel << " with @"
+                           << other.fifo.getSymName() << ", but " << *why;
+      diagnosed = true;
+      break;
+    }
   }
-  return it->second.second;
+  before.push_back(end);
+  return number;
 }
 
 int Placer::PinnedChannelUse::place(TileID at, const PinnedChannels::End &end,
@@ -1662,7 +1673,8 @@ int Placer::PinnedChannelUse::clashes(TileID at) const {
     bool clash = false;
     for (size_t i = 0; i < ends.size() && !clash; ++i)
       for (size_t j = i + 1; j < ends.size() && !clash; ++j)
-        clash = ends[i].tile != ends[j].tile &&
+        clash = (ends[i].tile != ends[j].tile || !ends[i].movesByDma ||
+                 !ends[j].movesByDma) &&
                 rule->whyApart(ends[i], ends[j]).has_value();
     count += clash;
   }
