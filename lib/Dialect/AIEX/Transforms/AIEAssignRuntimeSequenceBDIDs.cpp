@@ -458,7 +458,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                  "(see programming_guide/section-2/section-2d/DMATasks.md).";
           return WalkResult::interrupt();
         }
-        checkReallocation(tile, bd_op.getBdId().value(), bd_op);
+        checkReallocation(tile, bd_op.getBdId().value(), bd_op.getLoc());
         gen.assignBdId(bd_op.getBdId().value());
       }
       return WalkResult::advance();
@@ -568,7 +568,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                               : " until it is retired");
         return WalkResult::interrupt();
       }
-      checkReallocation(tile, *next_id, bd_op);
+      checkReallocation(tile, *next_id, bd_op.getLoc());
       bd_op.setBdId(next_id);
       assignedHere.push_back(bd_op);
       return WalkResult::advance();
@@ -729,6 +729,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     holdsByChannel[key].push_back({order, tile, id});
     holdsOn[{tile, id}][order] = copy;
     if (!gen.bdIdAlreadyAssigned(id)) {
+      checkReallocation(tile, id, copy.getLoc());
       gen.assignBdId(id);
       copyOwned.insert({tile, id});
       return success();
@@ -1545,7 +1546,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   // Warn where the hazard actually bites: reusing the id, not releasing it.
-  void checkReallocation(AIE::TileOp tile, uint32_t id, AIE::DMABDOp bd) {
+  void checkReallocation(AIE::TileOp tile, uint32_t id, Location at) {
     if (!warnUnsafeBdReuse)
       return;
     auto tileIt = freedInFlight.find({tile.getCol(), tile.getRow()});
@@ -1560,8 +1561,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         provenFinished.contains(released.configure))
       return;
     auto [entry, inserted] = unsafeReuses.try_emplace(
-        bd.getLoc(), UnsafeReuse{id, tile.getCol(), tile.getRow(),
-                                 released.freeOp->getLoc()});
+        at, UnsafeReuse{id, tile.getCol(), tile.getRow(),
+                        released.freeOp->getLoc()});
     UnsafeReuse &reuse = entry->second;
     if (inserted) {
       llvm::raw_string_ostream os(reuse.why);
