@@ -434,8 +434,12 @@ protected:
                        llvm::ArrayRef<mlir::Operation *> tilesHere,
                        const ShimTransferSpans *spans) const;
   // The shim MM2S channels each tile op's ends name, as the overlay's pass
-  // weighs them.
+  // weighs them: `device`'s, and those of the other devices the overlay
+  // serves (its target's), at the tiles they sit on now.
   ShimMM2SUses overlayUses;
+  void collectOverlayUses(DeviceOp device);
+  // The tile ops overlayUses names.
+  llvm::SmallVector<mlir::Operation *> overlayTileOps() const;
 
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;

@@ -10,7 +10,6 @@
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
@@ -2138,16 +2137,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
        channelAnalysis->getChannelClaims())
     claimsOf[claim.tile.getDefiningOp()].push_back(claim);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
-  overlayUses = shimMM2SUses(device, packetSwitched);
-  overlayTiles.clear();
-  llvm::SetVector<Operation *> named;
-  for (auto &[tile, channels] : overlayUses.circuits)
-    named.insert(tile);
-  for (auto &[key, ends] : overlayUses.packetEnds)
-    named.insert(key.first);
-  for (auto &[key, flows] : overlayUses.packetFlows)
-    named.insert(key.first);
-  overlayTiles.assign(named.begin(), named.end());
+  collectOverlayUses(device);
+  overlayTiles = overlayTileOps();
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device), controlOverlay);

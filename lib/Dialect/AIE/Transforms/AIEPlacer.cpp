@@ -19,6 +19,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 
@@ -259,7 +260,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       provenShimGates(device), controlOverlay);
   shimTilesAt.clear();
   overlayTilesAt.clear();
-  overlayUses = shimMM2SUses(device, packetSwitched);
+  collectOverlayUses(device);
   // A physical tile's fifo ends, flows and claims hold channels at its
   // position, which logical tiles placed there share.
   for (TileOp placed : device.getOps<TileOp>()) {
@@ -279,6 +280,11 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       pinsAt->claim(at, claim, 1);
     recordShimEnds(at, placed);
   }
+  // Other devices of the overlay's target count where they sit.
+  for (Operation *tile : overlayTileOps())
+    if (auto placed = dyn_cast<TileOp>(tile);
+        placed && placed->getParentOfType<DeviceOp>() != device)
+      overlayTilesAt[placed.getTileID()].push_back(placed);
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
@@ -1817,6 +1823,50 @@ Placer::PinnedChannelUse::sendingAt(TileID at) const {
     if (std::get<3>(it->first))
       llvm::append_range(sending[std::get<2>(it->first)], it->second);
   return sending;
+}
+
+void Placer::collectOverlayUses(DeviceOp device) {
+  overlayUses = shimMM2SUses(device, packetSwitched);
+  auto module = device->getParentOfType<ModuleOp>();
+  if (!controlOverlay || !module)
+    return;
+  for (DeviceOp other : module.getOps<DeviceOp>()) {
+    if (other == device || other.getDevice() != device.getDevice() ||
+        !getsColumnControlOverlay(other, true))
+      continue;
+    ShimMM2SUses uses = shimMM2SUses(other, packetSwitched);
+    for (auto fifo : other.getOps<ObjectFifoCreateOp>()) {
+      std::optional<PinnedChannels::End> end =
+          PinnedChannels::endOf(fifo, std::nullopt);
+      auto tile = dyn_cast_or_null<TileOp>(end ? end->tile : nullptr);
+      if (!tile || !tile.isShimNOCorPLTile())
+        continue;
+      if (isPacketSwitched(fifo.packetHeader(), packetSwitched))
+        uses.packetEnds[{tile, end->channel}].push_back(fifo.getSymNameAttr());
+      else
+        uses.circuits[tile].insert(end->channel);
+    }
+    for (auto &[tile, channels] : uses.circuits)
+      if (isa<TileOp>(tile))
+        overlayUses.circuits[tile].insert(channels.begin(), channels.end());
+    for (auto &[key, ends] : uses.packetEnds)
+      if (isa<TileOp>(key.first))
+        llvm::append_range(overlayUses.packetEnds[key], ends);
+    for (auto &[key, flows] : uses.packetFlows)
+      if (isa<TileOp>(key.first))
+        overlayUses.packetFlows[key] += flows;
+  }
+}
+
+SmallVector<Operation *> Placer::overlayTileOps() const {
+  llvm::SetVector<Operation *> tiles;
+  for (auto &[tile, channels] : overlayUses.circuits)
+    tiles.insert(tile);
+  for (auto &[key, ends] : overlayUses.packetEnds)
+    tiles.insert(key.first);
+  for (auto &[key, flows] : overlayUses.packetFlows)
+    tiles.insert(key.first);
+  return tiles.takeVector();
 }
 
 Placer::OverlayFit Placer::overlayAt(TileID at, const PinnedChannelUse &pins,
