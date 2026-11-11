@@ -458,9 +458,9 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
         return module.emitOpError("Device Not found!");
       }
       const auto &targetModel = device.getTargetModel();
-      // A lock in a core or in a function a core calls needs an intrinsic.
-      // Any other lock (DMA regions, runtime sequences) is erased with its
-      // parent.
+      // A lock in a core or in any function needs an intrinsic, whether or
+      // not an exported core calls the function. Any other lock (DMA
+      // regions, runtime sequences) is erased with its parent.
       if (isa<AIE2PSTargetModel>(targetModel)) {
         if (useLock->getParentOfType<CoreOp>() ||
             useLock->getParentOfType<func::FuncOp>())
@@ -753,7 +753,7 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
           rewriter.getI32IntegerAttr(op.getVal())));
       break;
     case AIEArch::AIE2ps:
-      return checkCoreIntrinsics(op);
+      return op.emitOpError("has no core lowering for AIE2ps");
     }
     auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!eventFunc)

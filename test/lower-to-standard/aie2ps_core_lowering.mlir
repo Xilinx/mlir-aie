@@ -11,13 +11,14 @@
 // RUN: aie-opt --aie-standard-lowering --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // CHECK: module @no_intrinsics attributes {llvm.target_triple = "aie2ps"}
-// CHECK-NOT: func.func private
 // CHECK: memref.global "public" @buf : memref<16xi32>
+// CHECK-NOT: func.func private
 // CHECK-LABEL: func.func @core_2_3()
 // CHECK: memref.get_global @buf
 // CHECK: memref.store
 // CHECK: return
 // CHECK-NOT: aie.
+// CHECK-NOT: func.func private
 module @no_intrinsics {
   aie.device(xcve3858) {
     %t = aie.tile(2, 3)
