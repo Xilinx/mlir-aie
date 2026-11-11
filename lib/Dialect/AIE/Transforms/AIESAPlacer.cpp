@@ -847,7 +847,8 @@ int SAPlacer::computeMemSpilloverPenalty() {
     return llvm::to_vector(llvm::seq<unsigned>(0, size));
   };
   // A component's outcome depends only on its tiles' contents and its walk
-  // sets, so it is cached.
+  // sets, so it is cached. bdShortfall's sets also depend on every tile at a
+  // position whose programs hold channels or BD ids there.
   DenseMap<TileID, std::vector<Operation *>> opsAt;
   for (auto &[op, _] : memTileEnds)
     if (std::optional<TileID> at = positionOf(op))
@@ -855,6 +856,11 @@ int SAPlacer::computeMemSpilloverPenalty() {
   for (auto &[op, _] : memTileFixed)
     if (std::optional<TileID> at = positionOf(op))
       opsAt[*at].push_back(op);
+  for (Operation *tile : logicalMemTiles)
+    if (std::optional<TileID> at = positionOf(tile))
+      opsAt[*at].push_back(tile);
+  for (auto &[at, tiles] : physicalTiles)
+    llvm::append_range(opsAt[at], tiles);
   for (auto &[_, ops] : opsAt) {
     llvm::sort(ops);
     ops.erase(llvm::unique(ops), ops.end());
