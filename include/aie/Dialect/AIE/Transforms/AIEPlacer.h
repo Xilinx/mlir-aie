@@ -262,6 +262,7 @@ public:
       int channel;
       bool movesByDma;
     };
+    PinnedChannels() = default;
     // With `packetSwitched`, an end asking for no packet header gets one.
     PinnedChannels(const AIETargetModel &targetModel, bool packetSwitched)
         : targetModel(&targetModel), packetSwitched(packetSwitched) {}
@@ -285,8 +286,8 @@ public:
                      const DMAChannelAnalysis::ChannelClaim &claim) const;
 
   private:
-    const AIETargetModel *targetModel;
-    bool packetSwitched;
+    const AIETargetModel *targetModel = nullptr;
+    bool packetSwitched = false;
     bool diagnosed = false;
     llvm::DenseMap<std::tuple<mlir::Operation *, int, int>,
                    std::pair<llvm::SmallVector<End, 2>, unsigned>>
@@ -300,6 +301,7 @@ public:
   // reports; otherwise they clash only where both are placed.
   class PinnedChannelUse {
   public:
+    PinnedChannelUse() = default;
     explicit PinnedChannelUse(const PinnedChannels &rule) : rule(&rule) {}
     // Adds (`sign` 1) or removes (-1) `end` at `at`. Returns `sign` when the
     // end takes or frees its channel there, 0 when other ends hold it too.
@@ -327,7 +329,7 @@ public:
     llvm::SmallVector<int> channelsAt(TileID at, bool sends) const;
 
   private:
-    const PinnedChannels *rule;
+    const PinnedChannels *rule = nullptr;
     std::map<std::tuple<int, int, int, int>,
              llvm::SmallVector<PinnedChannels::End, 2>>
         placed;
@@ -658,8 +660,8 @@ private:
 
   // The objectFIFO ends of each tile op that pin a DMA channel, the rule they
   // share channels by, and where those of placed tiles meet.
-  std::optional<PinnedChannels> pinnedRule;
-  std::optional<PinnedChannelUse> pinsAt;
+  PinnedChannels pinnedRule;
+  PinnedChannelUse pinsAt;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<PinnedChannels::End>>
       pinnedEnds;
   // The channels each tile op's claims (DMAChannelAnalysis) take by index,
@@ -1181,8 +1183,8 @@ private:
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
   // The rule pinned ends share channels by, and the pinned ends at each
   // position, whose channels count in currentDMAUsage once each.
-  std::optional<PinnedChannels> pinnedRule;
-  std::optional<PinnedChannelUse> pinUse;
+  PinnedChannels pinnedRule;
+  PinnedChannelUse pinUse;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
   // The resource terms that read only some tiles' positions, kept so a move

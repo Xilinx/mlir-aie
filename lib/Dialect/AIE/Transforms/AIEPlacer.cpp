@@ -236,7 +236,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // and cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
-  if (pinnedRule->failed())
+  if (pinnedRule.failed())
     return failure();
   namedChannels.clear();
   llvm::DenseMap<Operation *, Operation *> demandKeys;
@@ -274,10 +274,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       availability.namedChannelsUsed[at].insert(named);
     overlayTilesAt[at].push_back(placed);
     for (const PinnedChannels::End &end : pinnedEnds.lookup(placed))
-      pinsAt->place(at, end, 1);
+      pinsAt.place(at, end, 1);
     for (const DMAChannelAnalysis::ChannelClaim &claim :
          claimsOf.lookup(placed))
-      pinsAt->claim(at, claim, 1);
+      pinsAt.claim(at, claim, 1);
     recordShimEnds(at, placed);
   }
   // Other devices of the overlay's target count where they sit.
@@ -939,18 +939,18 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
       channelRequirements.lookup(logicalTile.getOperation());
   SmallVector<PinnedChannels::End> pins =
       pinnedEnds.lookup(logicalTile.getOperation());
-  std::optional<std::pair<int, int>> held = pinsAt->heldAt(tile, pins);
+  std::optional<std::pair<int, int>> held = pinsAt.heldAt(tile, pins);
   if (!held) {
     for (PinnedChannels::End end : pins) {
       if (std::optional<PinnedChannels::End> other =
-              pinsAt->clashWith(tile, end))
+              pinsAt.clashWith(tile, end))
         return end.fifo.emitError()
                << "pins " << (end.sends ? "MM2S" : "S2MM") << " channel "
                << end.channel << " of tile (" << tile.col << ", " << tile.row
                << "), which @" << other->fifo.getSymName()
-               << " pins there too, but " << *pinnedRule->whyApart(end, *other);
+               << " pins there too, but " << *pinnedRule.whyApart(end, *other);
       if (std::optional<DMAChannelAnalysis::ChannelClaim> claim =
-              pinsAt->claimWith(tile, end)) {
+              pinsAt.claimWith(tile, end)) {
         auto diag = end.fifo.emitError()
                     << "pins " << (end.sends ? "MM2S" : "S2MM") << " channel "
                     << end.channel << " of tile (" << tile.col << ", "
@@ -1045,8 +1045,8 @@ SequentialPlacer::buildChannelRequirements(
 
   // A tile op's ends that pin one channel pay for it once; those of tile ops
   // placed together meet in pinsAt.
-  pinnedRule.emplace(*targetModel, packetSwitched);
-  pinsAt.emplace(*pinnedRule);
+  pinnedRule = PinnedChannels(*targetModel, packetSwitched);
+  pinsAt = PinnedChannelUse(pinnedRule);
   pinnedEnds.clear();
   llvm::DenseSet<unsigned> counted;
   auto drawsChannel = [&](ObjectFifoCreateOp fifo,
@@ -1056,7 +1056,7 @@ SequentialPlacer::buildChannelRequirements(
     if (!end)
       return true;
     pinnedEnds[tile].push_back(*end);
-    return counted.insert(pinnedRule->share(*end)).second;
+    return counted.insert(pinnedRule.share(*end)).second;
   };
 
   // Count channels for every ObjectFifo, omitting only the link-tile side of
@@ -2357,7 +2357,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     for (int col = 0, numCols = targetModel->columns(); col < numCols; ++col) {
       TileID tile{col, 0};
       std::optional<std::pair<int, int>> held =
-          pinsAt->heldAt(tile, pinnedEnds.lookup(logicalTile));
+          pinsAt.heldAt(tile, pinnedEnds.lookup(logicalTile));
       if ((colConstraint && col != *colConstraint) || !held ||
           !fitsSharingShim(tile, logicalTile,
                            {numInputChannels - held->first,
@@ -2384,7 +2384,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
                         << (end.sends ? "MM2S" : "S2MM") << " channel "
                         << end.channel << ", which @" << other.fifo.getSymName()
                         << " pins on (" << at.col << ", " << at.row
-                        << ") too, but " << *pinnedRule->whyApart(end, other)
+                        << ") too, but " << *pinnedRule.whyApart(end, other)
                         << "; " << diagnosis.clashTiles << " " << tileTypeName
                         << "(s) hold such a pin";
     };
@@ -2466,7 +2466,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   if (!mergeLogicalTiles)
     assignedNonCoreTiles.insert(*maybeTile);
   auto [heldIn, heldOut] =
-      *pinsAt->heldAt(*maybeTile, pinnedEnds.lookup(logicalTile));
+      *pinsAt.heldAt(*maybeTile, pinnedEnds.lookup(logicalTile));
   recordStreamAndBdUsage(logicalTile, *maybeTile);
   if (numInputChannels > heldIn)
     updateChannelUsage(*maybeTile, DmaDir::In, numInputChannels - heldIn);
@@ -2502,7 +2502,7 @@ bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
     SmallVector<StringAttr> extra;
     if (dir == 1 && overlay.own)
       extra.push_back(shimSpans->overlayEnd(tile.col));
-    SmallVector<int> pinnedHere = pinsAt->channelsAt(tile, dir == 1);
+    SmallVector<int> pinnedHere = pinsAt.channelsAt(tile, dir == 1);
     for (const PinnedChannels::End &end : pinnedEnds.lookup(logicalTile))
       if (end.sends == (dir == 1))
         pinnedHere.push_back(end.channel);
@@ -2542,7 +2542,7 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
   for (auto &tile : tiles) {
     if (targetModel->getTileType(tile.col, tile.row) != requestedType)
       continue;
-    std::optional<std::pair<int, int>> held = pinsAt->heldAt(tile, pins);
+    std::optional<std::pair<int, int>> held = pinsAt.heldAt(tile, pins);
     if (!held || !hasAvailableChannels(
                      tile, requiredInputChannels - held->first,
                      requiredOutputChannels - held->second, logicalTile))
@@ -2620,12 +2620,12 @@ SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
         diagnosis.closestShortOut = shortOut;
       }
       SmallVector<PinnedChannels::End> pins = pinnedEnds.lookup(joining);
-      std::optional<std::pair<int, int>> held = pinsAt->heldAt(tile, pins);
+      std::optional<std::pair<int, int>> held = pinsAt.heldAt(tile, pins);
       if (!held) {
         ++diagnosis.clashTiles;
         for (const PinnedChannels::End &end : pins)
           if (std::optional<PinnedChannels::End> other =
-                  pinsAt->clashWith(tile, end);
+                  pinsAt.clashWith(tile, end);
               other && !diagnosis.clash)
             diagnosis.clash = std::make_tuple(tile, end, *other);
         continue;
@@ -2674,7 +2674,7 @@ Placer::OverlayFit SequentialPlacer::overlayWith(TileID tile,
     tilesHere.push_back(joining);
     pins = pinnedEnds.lookup(joining);
   }
-  return overlayAt(tile, *pinsAt, pins, tilesHere,
+  return overlayAt(tile, pinsAt, pins, tilesHere,
                    shimSpans ? &*shimSpans : nullptr);
 }
 
@@ -2983,10 +2983,10 @@ void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
     availability.namedChannelsUsed[tile].insert(named);
   overlayTilesAt[tile].push_back(logicalTile);
   for (const PinnedChannels::End &end : pinnedEnds.lookup(logicalTile))
-    pinsAt->place(tile, end, 1);
+    pinsAt.place(tile, end, 1);
   for (const DMAChannelAnalysis::ChannelClaim &claim :
        claimsOf.lookup(logicalTile))
-    pinsAt->claim(tile, claim, 1);
+    pinsAt.claim(tile, claim, 1);
   if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())
     availability.streamsUsed[tile] += it->second;
   if (runtimeBdIds.uses(logicalTile))
