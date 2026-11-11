@@ -1341,7 +1341,10 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
         locks, records.empty() ? ranked.front() : records[0].tile,
         /*local=*/false, {}, records, ranked));
   }
-  LockPlan::Assignment assignment = plan.assign(planned, &lockMemo);
+  // Allocation places in its own order first, which the SA cannot know; the
+  // canonical order alone fits only where allocation fits too.
+  LockPlan::Assignment assignment =
+      plan.assign(planned, &lockMemo, /*callerOrder=*/false);
   if (stopped)
     *stopped = assignment.stopped;
   for (auto [group, tile] : llvm::zip(planned, assignment.tiles))
