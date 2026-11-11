@@ -11520,6 +11520,10 @@ list names other objectFIFOs and applies to its shim DMA endpoint; splitting
 transfers the permissions to route endpoints and rewrites the references.</p>
 <p>On a device, <code>aie.reserve_controller_packet_ids</code> reserves controller IDs
 when assigning packet IDs.</p>
+<p><code>aie.generated_configure</code> marks the runtime sequence that
+convert-aie-to-transaction generated to hold its device's configuration.
+That sequence is named <code>configure</code> unless a user sequence already has the
+name, so consumers key on the attribute, not the name.</p>
 <div class="toc">
 <ul>
 <li><a href="#aie-dialect">'aie' Dialect</a><ul>
