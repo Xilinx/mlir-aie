@@ -158,10 +158,15 @@ struct MergeSingleColumnI16FMAOpPattern
         rewriter, fmaOp.getLoc(), adaptor.getLhs().getType(),
         SmallVector<Value, 2>({lowV, hiV}));
     auto newFmaOpAttr = buildFMAOpSplatAttrForElemTy(fmaOp, start, step);
+    aievec::aie1::FMAOp::Properties fmaProps;
+    if (failed(aievec::aie1::FMAOp::setPropertiesFromAttr(
+            fmaProps, rewriter.getDictionaryAttr(newFmaOpAttr),
+            [&]() { return fmaOp.emitError(); })))
+      return failure();
     rewriter.replaceOpWithNewOp<aievec::aie1::FMAOp>(
         fmaOp, TypeRange({fmaOp.getResult().getType()}),
         ValueRange({newConcatOp, adaptor.getRhs(), accFmaOp.getAcc()}),
-        newFmaOpAttr);
+        fmaProps);
     return success();
   }
 };
