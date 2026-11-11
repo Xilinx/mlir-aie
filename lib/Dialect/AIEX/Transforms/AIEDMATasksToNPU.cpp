@@ -489,12 +489,16 @@ struct AIEDMATasksToNPUPass
                          std::optional<xilinx::AIE::PacketInfoAttr> packet,
                          bool outOfOrder = false) {
     BdTemplateFields f;
-    if (std::optional<uint32_t> nextBdId = bd_op.getNextBdId()) {
-      f.next_bd_id = *nextBdId;
-      f.use_next_bd = 1;
-    } else if (Value nextBdIdVal = runtimeNextBdId.lookup(bd_op)) {
-      f.next_bd_id_val = nextBdIdVal;
-      f.use_next_bd = 1;
+    // Out-of-order S2MM ignores Next_BD; the IR chain only lists the receive
+    // BDs. Leave the BDs unchained, as the static AIE-RT lowering does.
+    if (!outOfOrder) {
+      if (std::optional<uint32_t> nextBdId = bd_op.getNextBdId()) {
+        f.next_bd_id = *nextBdId;
+        f.use_next_bd = 1;
+      } else if (Value nextBdIdVal = runtimeNextBdId.lookup(bd_op)) {
+        f.next_bd_id_val = nextBdIdVal;
+        f.use_next_bd = 1;
+      }
     }
 
     auto info = bd_op.getPacket().value_or(packet.value_or(nullptr));
