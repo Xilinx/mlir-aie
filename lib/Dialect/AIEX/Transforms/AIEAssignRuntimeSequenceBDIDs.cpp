@@ -1592,23 +1592,27 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         provenFinished.contains(released.configure))
       return;
     auto [entry, inserted] = unsafeReuses.try_emplace(
-        at, UnsafeReuse{id, tile.getCol(), tile.getRow(),
-                        released.freeOp->getLoc()});
+        at, UnsafeReuse{id, tile.getCol(), tile.getRow(), {}});
     UnsafeReuse &reuse = entry->second;
     if (inserted) {
       llvm::raw_string_ostream os(reuse.why);
       explainUnproven(released.configure, os, reuse.notes);
     }
+    if (!llvm::is_contained(reuse.freeLocs, released.freeOp->getLoc()))
+      reuse.freeLocs.push_back(released.freeOp->getLoc());
     reuse.tiles.insert({tile.getCol(), tile.getRow()});
     reuse.count++;
   }
 
   // A full ELF inlines a sequence at every call, so one source transfer can
-  // reuse an id once per call; it is reported once, with how often.
+  // reuse an id once per call; it is reported once, with how often. Several
+  // distinct frees can still merge here -- a generated control-packet copy
+  // and a user task both reusing the id this allocation pass's own location
+  // names -- so every free actually seen is kept, not just the first.
   struct UnsafeReuse {
     uint32_t id;
     int col, row;
-    Location freeLoc;
+    SmallVector<Location> freeLocs;
     std::set<std::pair<int, int>> tiles = {};
     int64_t count = 0;
     std::string why = {};
@@ -1643,7 +1647,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
              "consumes the oldest token, regardless of the task it names. "
              "The compiler cannot prove that transfer finished: "
           << reuse.why;
-      diag.attachNote(reuse.freeLoc) << "released here";
+      for (Location freeLoc : reuse.freeLocs)
+        diag.attachNote(freeLoc) << "released here";
       for (auto &[noteLoc, text] : reuse.notes)
         diag.attachNote(noteLoc) << text;
       if (reuse.count > 1) {
