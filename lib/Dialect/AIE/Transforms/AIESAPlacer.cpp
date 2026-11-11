@@ -1815,7 +1815,15 @@ bool SAPlacer::generateMove(
       }
     }
 
-    if (occupant) {
+    // Tiles of a type several may share a physical tile of also move onto an
+    // occupied one, or how many sit on each could never change.
+    if (occupant && type != AIETileType::CoreTile &&
+        drawBoundedIndex(rng, 2) == 0) {
+      if (!isLegalPosition(tile, targetPos))
+        continue;
+      moves.clear();
+      moves.push_back({tile, targetPos});
+    } else if (occupant) {
       // Swap: both tiles must accept each other's position.
       if (tileTypes[occupant] != type)
         continue;
