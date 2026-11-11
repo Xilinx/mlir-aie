@@ -824,7 +824,17 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       reallocate = true;
       return success();
     }
-    return success();
+    // The id was already taken in the generator, owned by neither a copy
+    // nor a live task: only a static DMA program claims an id that way.
+    copy.emitOpError("Specified buffer descriptor ID ")
+        << id
+        << " is already in use. Release the earlier task first: "
+           "aiex.dma_await_task waits for hardware completion before its "
+           "BDs are reusable. aiex.dma_free_task also releases them but "
+           "does NOT wait, so it is only safe when some other "
+           "synchronization already guarantees that task has finished "
+           "(see programming_guide/section-2/section-2d/DMATasks.md).";
+    return failure();
   }
 
   void releaseRetiredCopies(const DmaQueueModel::ChannelKey &key) {
