@@ -51,11 +51,15 @@ class DMAChannelAnalysis {
 
 public:
   /// A channel claimed by index: by a DMA program start, a runtime task or a
-  /// shim allocation, on `tile`.
+  /// shim allocation (`owner`), on `tile`.
   struct ChannelClaim {
+    ChannelClaim(mlir::Value tile, DMAChannelDir dir, int channel,
+                 mlir::Operation *owner)
+        : tile(tile), dir(dir), channel(channel), owner(owner) {}
     mlir::Value tile;
     DMAChannelDir dir;
     int channel;
+    mlir::Operation *owner;
   };
 
 private:

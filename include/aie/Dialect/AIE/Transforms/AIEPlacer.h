@@ -121,7 +121,8 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(DeviceOp device, bool controlOverlay);
+  virtual void initialize(DeviceOp device, bool controlOverlay,
+                          bool adaptiveOverlay, bool packetSwitched);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -217,42 +218,126 @@ public:
   static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
                                       llvm::ArrayRef<PacketFlowOp> pktFlows);
 
-  // The objectFIFO ends each shim LTO hosts that may take turns on a channel
-  // with ends never in flight with them (ShimTransferSpans): DMA ends naming
-  // no channel, [0] receiving and [1] sending, as objectFIFO allocation sees
-  // them.
+  // One shim tile op's channel-sharing data for one direction, mirroring
+  // ShimTransferSpans::Plan (AIEShimSharing.h): `ends` are its DMA ends
+  // naming no channel, `shared` each shareable allocation's channel with its
+  // list, `pinned` the channels its route ends pin.
+  struct ShimSide {
+    llvm::SmallVector<mlir::StringAttr> ends;
+    llvm::SmallVector<std::pair<int, llvm::SmallVector<mlir::StringAttr>>>
+        shared;
+    llvm::SmallVector<int> pinned;
+  };
+  // Each shim tile op's sides, [0] receiving and [1] sending.
   using ShareableShimEnds =
-      llvm::DenseMap<mlir::Operation *,
-                     std::array<llvm::SmallVector<mlir::StringAttr>, 2>>;
+      llvm::DenseMap<mlir::Operation *, std::array<ShimSide, 2>>;
   // With `routeKeys` (flowChannelDemand's `keys`), a route endpoint's end
   // goes to the tile its channel demand is keyed by.
   static ShareableShimEnds collectShareableShimEnds(
       DeviceOp device, llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
       const llvm::DenseMap<mlir::Operation *, mlir::Operation *> &routeKeys =
           {});
+  // The channels `sides` save in one direction below one per end, per
+  // ShimTransferSpans::plan, with `extra` ends joining and objectFIFO ends
+  // pinning `pinnedHere` there.
+  static int shimChannelsSaved(const ShimTransferSpans &spans,
+                               llvm::ArrayRef<const ShimSide *> sides,
+                               llvm::ArrayRef<mlir::StringAttr> extra,
+                               llvm::ArrayRef<int> pinnedHere);
 
   // The objectFIFO ends that pin one DMA channel of one tile share it, as
   // objectFIFO allocation lets them: sending ends off a shim or off a core
   // that pushes its tasks, told apart by packet id, and receiving ends that
-  // take objects out of order. Tiles at the same coordinates, physical or
-  // fully pinned logical, are one tile; otherwise only the very same logical
-  // tile is, since that identity places them together.
+  // take objects out of order.
   class PinnedChannels {
   public:
-    explicit PinnedChannels(const AIETargetModel &targetModel)
-        : targetModel(&targetModel) {}
-    // The channel the end of `fifo` (its producer's when `consumer` is empty)
-    // shares with the ends that took it before, numbered by the first; none
-    // when it pins no channel it may share. An end that pins a taken channel
-    // but cannot share it is diagnosed.
-    std::optional<unsigned> share(ObjectFifoCreateOp fifo,
-                                  std::optional<unsigned> consumer);
+    // The end of `fifo` (its producer's when `consumer` is empty) on `tile`
+    // pinning `channel`. `movesByDma`: the fifo moves by DMA wherever its
+    // ends are placed (dmaReason(), or an end off a core tile); otherwise
+    // neighbouring cores' shared memory may carry it, and its pin holds only
+    // where it does not.
+    struct End {
+      ObjectFifoCreateOp fifo;
+      std::optional<unsigned> consumer;
+      mlir::Operation *tile;
+      bool sends;
+      int channel;
+      bool movesByDma;
+    };
+    PinnedChannels() = default;
+    // With `packetSwitched`, an end asking for no packet header gets one.
+    PinnedChannels(const AIETargetModel &targetModel, bool packetSwitched)
+        : targetModel(&targetModel), packetSwitched(packetSwitched) {}
+    // The end of `fifo` that pins a DMA channel, if it does.
+    static std::optional<End> endOf(ObjectFifoCreateOp fifo,
+                                    std::optional<unsigned> consumer);
+    // Why `a` and `b`, pinning one channel of one tile, cannot share it;
+    // nothing when they can.
+    std::optional<std::string> whyApart(End a, End b) const;
+    // The channel `end` shares with the ends of its own tile op that took it
+    // before, numbered by the first. An end that cannot share it with one
+    // that, like it, moves by DMA wherever placed is diagnosed: its tile
+    // holds both wherever it goes.
+    unsigned share(End end);
+    // Whether share() diagnosed an end, which fails the placement.
+    bool failed() const { return diagnosed; }
+    // Whether `end` may take turns on the channel of `claim`, as allocation
+    // lets a pinned end: a shim allocation whose aie.shareable_with names it,
+    // when it sends packet-switched or receives out of order.
+    bool sharesClaim(End end,
+                     const DMAChannelAnalysis::ChannelClaim &claim) const;
 
   private:
-    const AIETargetModel *targetModel;
-    llvm::DenseMap<std::tuple<mlir::Operation *, int, int, int, int>,
-                   std::pair<ObjectFifoCreateOp, unsigned>>
+    const AIETargetModel *targetModel = nullptr;
+    bool packetSwitched = false;
+    bool diagnosed = false;
+    llvm::DenseMap<std::tuple<mlir::Operation *, int, int>,
+                   std::pair<llvm::SmallVector<End, 2>, unsigned>>
         taken;
+  };
+
+  // The pinned ends at each position, where the ends of tiles placed together
+  // meet: one channel serves those that may share it, and two of different
+  // tile ops that may not clash there. Two of one tile op clash wherever it
+  // goes when both move by DMA wherever placed, which PinnedChannels::share
+  // reports; otherwise they clash only where both are placed.
+  class PinnedChannelUse {
+  public:
+    PinnedChannelUse() = default;
+    explicit PinnedChannelUse(const PinnedChannels &rule) : rule(&rule) {}
+    // Adds (`sign` 1) or removes (-1) `end` at `at`. Returns `sign` when the
+    // end takes or frees its channel there, 0 when other ends hold it too.
+    int place(TileID at, const PinnedChannels::End &end, int sign);
+    // The channels at `at` holding two ends that cannot share them.
+    int clashes(TileID at) const;
+    // The (input, output) channels `ends`, one tile op's, pin that `at`
+    // holds already; nothing when one of them clashes there.
+    std::optional<std::pair<int, int>>
+    heldAt(TileID at, llvm::ArrayRef<PinnedChannels::End> ends) const;
+    // An end at `at` that `end` cannot share its channel with, if any.
+    std::optional<PinnedChannels::End>
+    clashWith(TileID at, const PinnedChannels::End &end) const;
+    // The sending ends at `at`, by the MM2S channel they pin.
+    llvm::DenseMap<int, llvm::SmallVector<PinnedChannels::End, 2>>
+    sendingAt(TileID at) const;
+    // Adds (`sign` 1) or removes (-1) `claim` at `at`. A claimed channel is
+    // held from every pinned end there but those sharesClaim() lets share it.
+    void claim(TileID at, const DMAChannelAnalysis::ChannelClaim &claim,
+               int sign);
+    // The claim at `at` that holds `end`'s channel from it, if any.
+    std::optional<DMAChannelAnalysis::ChannelClaim>
+    claimWith(TileID at, const PinnedChannels::End &end) const;
+    // The channels ends at `at` pin in one direction.
+    llvm::SmallVector<int> channelsAt(TileID at, bool sends) const;
+
+  private:
+    const PinnedChannels *rule = nullptr;
+    std::map<std::tuple<int, int, int, int>,
+             llvm::SmallVector<PinnedChannels::End, 2>>
+        placed;
+    std::map<std::tuple<int, int, int, int>,
+             llvm::SmallVector<DMAChannelAnalysis::ChannelClaim, 1>>
+        claimed;
   };
 
   // The objectFIFO end a runtime sequence names `symbol` for, before split:
@@ -327,17 +412,46 @@ public:
   };
 
 protected:
-  // ShimTransferSpans::overlayEnd's channel, on each shim tile.
+  // Whether the control overlay takes an MM2S channel on `tile`.
   int overlayChannels(TileID tile) const {
     return controlOverlay && tile.row == 0 &&
            targetModel->getTileType(tile.col, tile.row) ==
                AIETileType::ShimNOCTile;
   }
+  // The control overlay's MM2S channel on shim tile `at`, where
+  // aie-generate-column-control-overlay puts it: channel 0, or with
+  // `adaptiveOverlay` any one, that no circuit-switched end pins and that
+  // overlayUses of the tile ops at `at` (`tilesHere`) finds no circuit on,
+  // fewest packet-switched ends first. The pinned ends there share it when
+  // ShimTransferSpans finds each apart from the overlay; otherwise allocation
+  // refuses them, and the overlay does not `fit`. `extra` are a tile op's
+  // pinned ends about to join `pins`'.
+  struct OverlayFit {
+    bool fits = true;
+    // The MM2S channels it adds: none on a pinned channel it shares.
+    int channels = 0;
+    // Whether it holds a channel of its own, which unpinned ends may share.
+    bool own = false;
+  };
+  OverlayFit overlayAt(TileID at, const PinnedChannelUse &pins,
+                       llvm::ArrayRef<PinnedChannels::End> extra,
+                       llvm::ArrayRef<mlir::Operation *> tilesHere,
+                       const ShimTransferSpans *spans) const;
+  // The shim MM2S channels each tile op's ends name, as the overlay's pass
+  // weighs them: `device`'s, and those of the other devices the overlay
+  // serves (its target's), at the tiles they sit on now.
+  ShimMM2SUses overlayUses;
+  void collectOverlayUses(DeviceOp device);
+  // The tile ops overlayUses names.
+  llvm::SmallVector<mlir::Operation *> overlayTileOps() const;
 
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
   const AIETargetModel *targetModel = nullptr;
   bool controlOverlay = false;
+  bool adaptiveOverlay = true;
+  // Routes asking for no packet header carry one (packet-sw-objFifos).
+  bool packetSwitched = false;
   TileAvailability availability;
 };
 
@@ -437,7 +551,8 @@ public:
       : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles),
         spreadUnanchoredTiles(spreadUnanchoredTiles) {}
 
-  void initialize(DeviceOp device, bool controlOverlay) override;
+  void initialize(DeviceOp device, bool controlOverlay, bool adaptiveOverlay,
+                  bool packetSwitched) override;
 
   mlir::LogicalResult place(DeviceOp device) override;
 
@@ -461,8 +576,9 @@ private:
   // ends never in flight together count once, as allocation will share them.
   std::optional<ShimTransferSpans> shimSpans;
   ShareableShimEnds shareableShimEnds;
-  llvm::DenseMap<TileID, std::array<llvm::SmallVector<mlir::StringAttr>, 2>>
-      shimEndsAt;
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> shimTilesAt;
+  // The tile ops placed at each position, whose overlayUses count there.
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> overlayTilesAt;
   bool fitsSharingShim(TileID tile, mlir::Operation *logicalTile,
                        std::pair<int, int> required);
   void recordShimEnds(TileID tile, mlir::Operation *logicalTile);
@@ -509,10 +625,21 @@ private:
     int inUsed = 0, inMax = 0, outUsed = 0, outMax = 0;
     // Both shortfalls belong to one tile, minimizing their sum.
     int closestShortIn = 0, closestShortOut = 0;
+    // Of outUsed, the control overlay's channels; and the tiles where it has
+    // none it can take.
+    int overlayOut = 0, overlayUnfit = 0;
+    // The tiles where a pinned end of the joining tile clashes with one
+    // already there, and the first such pair.
+    int clashTiles = 0;
+    std::optional<std::tuple<TileID, PinnedChannels::End, PinnedChannels::End>>
+        clash;
   };
+  // `joining` is the logical tile that found no tile, whose pinned ends move
+  // the control overlay.
   CapacityDiagnosis diagnoseCapacityExhaustion(AIETileType requestedType,
                                                int requiredInputChannels,
-                                               int requiredOutputChannels);
+                                               int requiredOutputChannels,
+                                               mlir::Operation *joining);
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
@@ -533,6 +660,18 @@ private:
 
   RuntimeBdIds runtimeBdIds;
 
+  // The objectFIFO ends of each tile op that pin a DMA channel, the rule they
+  // share channels by, and where those of placed tiles meet.
+  PinnedChannels pinnedRule;
+  PinnedChannelUse pinsAt;
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<PinnedChannels::End>>
+      pinnedEnds;
+  // The channels each tile op's claims (DMAChannelAnalysis) take by index,
+  // which hold them from pinned ends placed with it.
+  llvm::DenseMap<mlir::Operation *,
+                 llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
+      claimsOf;
+
   // DMA channels, as (output, index), that each logical tile's flows name by
   // index. Two logical tiles naming the same one cannot share a physical tile.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
@@ -545,7 +684,10 @@ private:
   // `tile`.
   void recordStreamAndBdUsage(mlir::Operation *logicalTile, TileID tile);
 
-  bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels);
+  // `joining`: see diagnoseCapacityExhaustion.
+  bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels,
+                            mlir::Operation *joining = nullptr);
+  OverlayFit overlayWith(TileID tile, mlir::Operation *joining);
 
   mlir::LogicalResult validateAndUpdateChannelUsage(
       LogicalTileOp logicalTile, TileID tile,
@@ -969,9 +1111,9 @@ private:
     llvm::SmallVector<LinkPool> consumerLinkPools;
     std::optional<PlannedDmaEnd> producerLinkPlan;
     llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerLinkPlans;
-    // PinnedChannels::share of each end that draws a channel.
-    std::optional<unsigned> producerChannel;
-    llvm::SmallVector<std::optional<unsigned>> consumerChannels;
+    // The channel each end that draws one pins, if it pins one.
+    std::optional<PinnedChannels::End> producerPin;
+    llvm::SmallVector<std::optional<PinnedChannels::End>> consumerPins;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
     // The tile of the link naming the fifo, if any.
@@ -1010,6 +1152,10 @@ private:
     bool output;
   };
   llvm::SmallVector<RouteEndInfo> routeEnds;
+  // DMA channels, as (output, index), that each tile's flows and claims name
+  // by index.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+      namedChannels;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
   // The DMA ends of each mem tile, logical or physical, and the BD ids each
   // takes, as the split will make them.
@@ -1070,9 +1216,10 @@ private:
   llvm::DenseMap<TileID, int> currentLockDemand;
   llvm::SmallVector<std::pair<TileID, int>> lockUndo;
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
-  // The ends drawing each shared pinned channel, which counts in
-  // currentDMAUsage while any does.
-  llvm::DenseMap<unsigned, int> pinnedChannelUsers;
+  // The rule pinned ends share channels by, and the pinned ends at each
+  // position, whose channels count in currentDMAUsage once each.
+  PinnedChannels pinnedRule;
+  PinnedChannelUse pinUse;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
   // The resource terms that read only some tiles' positions, kept so a move
@@ -1158,6 +1305,11 @@ private:
   // What aie-objectfifo-allocate plans a tile's BD ids around: the channels
   // and ids its own programs and pinned runtime ids already hold.
   std::optional<DMAChannelAnalysis> channelAnalysis;
+  // The channels each tile op's claims take by index, which hold them from
+  // pinned ends placed with it.
+  llvm::DenseMap<mlir::Operation *,
+                 llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
+      claimsOf;
   DMAChannelAnalysis::TakenBDs takenBDs;
   llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> physicalTiles;
   // Every logical mem tile, objectFIFO ends or not: its programs hold BD ids
@@ -1172,6 +1324,9 @@ private:
   // still needs once ends never in flight together share them.
   std::optional<ShimTransferSpans> shimSpans;
   ShareableShimEnds shareableShimEnds;
+  // The tile ops overlayUses names, which the overlay's channel weighs where
+  // they are.
+  llvm::SmallVector<mlir::Operation *> overlayTiles;
   // A shim tile is also charged for the runtime BD ids its LTOs' tasks lack.
   RuntimeBdIds runtimeBdIds;
 
@@ -1203,8 +1358,8 @@ private:
   void initResourceTracking();
   void addFifoContribution(size_t fifoIdx, int sign);
   void addRouteEndContribution(size_t endIdx, int sign);
-  void drawChannel(TileID position, bool output, std::optional<unsigned> pinned,
-                   int sign);
+  void drawChannel(TileID position, bool output,
+                   const std::optional<PinnedChannels::End> &pin, int sign);
   int updateResourcePenalty(
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);

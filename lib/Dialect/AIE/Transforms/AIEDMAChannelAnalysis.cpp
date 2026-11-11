@@ -34,7 +34,7 @@ Value DMAChannelAnalysis::getTileKey(Value tile) {
 void DMAChannelAnalysis::claim(Value tile, DMAChannelDir dir, int channel,
                                Operation *owner) {
   if (usedChannels.try_emplace({getTileKey(tile), dir, channel}, owner).second)
-    claims.push_back({tile, dir, channel});
+    claims.emplace_back(tile, dir, channel, owner);
 }
 
 DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
@@ -109,18 +109,24 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
                                 StreamClaim{dest, true});
   }
 
-  // Shim allocations reserve channels outside the DMA bodies above.
+  // Shim allocations reserve channels outside the DMA bodies above. One the
+  // ends its aie.shareable_with names may share holds its channel from the
+  // rest, so the placers count it too; the control overlay's they count as
+  // its planned channel.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    if (AIEDialect::ShareableWithAttrHelper(allocOp->getContext())
-            .isAttrPresent(allocOp))
-      shareableChannels.try_emplace(
-          std::make_tuple(getTileKey(allocOp.getTile()),
-                          allocOp.getChannelDir(),
-                          (int)allocOp.getChannelIndex()),
-          allocOp.getOperation());
-    else
+    MLIRContext *context = allocOp->getContext();
+    if (!AIEDialect::ShareableWithAttrHelper(context).isAttrPresent(allocOp)) {
       claim(allocOp.getTile(), allocOp.getChannelDir(),
             (int)allocOp.getChannelIndex(), allocOp);
+      continue;
+    }
+    shareableChannels.try_emplace(
+        std::make_tuple(getTileKey(allocOp.getTile()), allocOp.getChannelDir(),
+                        (int)allocOp.getChannelIndex()),
+        allocOp.getOperation());
+    if (!AIEDialect::IsCtrlPktOverlayAttrHelper(context).isAttrPresent(allocOp))
+      claims.emplace_back(allocOp.getTile(), allocOp.getChannelDir(),
+                          (int)allocOp.getChannelIndex(), allocOp);
   }
 }
 

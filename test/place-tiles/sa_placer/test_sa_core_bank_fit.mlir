@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
-// RUN: aie-opt --pass-pipeline='builtin.module(aie.device(aie-place-tiles{placer=sa_placer sa-seed=1},aie-objectFifo-stateful-transform,aie-assign-buffer-addresses))' %s -o /dev/null
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform,aie-assign-buffer-addresses))' %s -o /dev/null
 
 // The SA fits a core's buffers by aie-assign-buffer-addresses' own search.
 // Four buffers pinned one per bank leave 58 KB of room by bytes, but no

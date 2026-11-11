@@ -507,6 +507,13 @@ int64_t turnPasses(llvm::ArrayRef<std::pair<int64_t, int64_t>> ends);
 // nor down the shim's South to one, unless `keep` says.
 bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep);
 
+// Whether a route asking for `header`, null for no preference, carries
+// packet headers: aie-assign-packet-ids gives one to every route asking for
+// none when `packetSwDefault` (its packet-sw-objFifos) is set.
+inline bool isPacketSwitched(PacketInfoAttr header, bool packetSwDefault) {
+  return header || packetSwDefault;
+}
+
 // Whether `bundle` links a switchbox to a neighbouring one.
 inline bool isDirectional(WireBundle bundle) {
   return bundle == WireBundle::North || bundle == WireBundle::South ||

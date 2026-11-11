@@ -186,8 +186,9 @@ void SAPlacer::buildRouteModel(
     ArrayRef<RouteOp> routes,
     ArrayRef<DMAChannelAnalysis::ChannelClaim> claims) {
   routeEnds.clear();
+  namedChannels.clear();
   for (auto &[tile, inOut] :
-       flowChannelDemand(flows, pktFlows, routes, claims)) {
+       flowChannelDemand(flows, pktFlows, routes, claims, &namedChannels)) {
     for (int i = 0; i < inOut.first; ++i)
       routeEnds.push_back({tile, /*output=*/false});
     for (int i = 0; i < inOut.second; ++i)
@@ -568,25 +569,21 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     if (!isSharedMem) {
       bool plio = cast<ObjectFifoCreateOp>(fb.fifoOp).getPlio();
       if (consIsShim ? !plio : fb.consumerEnds[ci].has_value())
-        drawChannel(consPos, false, fb.consumerChannels[ci], sign);
+        drawChannel(consPos, false, fb.consumerPins[ci], sign);
       prodNeedsDMA = prodIsShim ? !plio : fb.producerEnd.has_value();
     }
   }
 
   if (prodNeedsDMA)
-    drawChannel(prodPos, true, fb.producerChannel, sign);
+    drawChannel(prodPos, true, fb.producerPin, sign);
 }
 
 void SAPlacer::drawChannel(TileID position, bool output,
-                           std::optional<unsigned> pinned, int sign) {
-  if (pinned) {
-    int &users = pinnedChannelUsers[*pinned];
-    users += sign;
-    if (users != (sign > 0 ? 1 : 0))
-      return;
-  }
+                           const std::optional<PinnedChannels::End> &pin,
+                           int sign) {
+  int taken = pin ? pinUse.place(position, *pin, sign) : sign;
   auto &[in, out] = currentDMAUsage[position];
-  (output ? out : in) += sign;
+  (output ? out : in) += taken;
 }
 
 void SAPlacer::initResourceTracking() {
@@ -598,7 +595,7 @@ void SAPlacer::initResourceTracking() {
     depths.push_back({index, variable.plan.depthAt(*targetModel, at)});
   replanLinks(depths);
   currentDMAUsage.clear();
-  pinnedChannelUsers.clear();
+  pinUse = PinnedChannelUse(pinnedRule);
   sharedMemDestination.clear();
   coreFifoBuffers.clear();
 
@@ -654,6 +651,10 @@ void SAPlacer::initResourceTracking() {
     tileToRouteEnds[routeEnds[i].tile].push_back(i);
     addRouteEndContribution(i, +1);
   }
+  for (auto &[tile, claims] : claimsOf)
+    if (std::optional<TileID> pos = positionOf(tile))
+      for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
+        pinUse.claim(*pos, claim, 1);
 
   spillTiles.clear();
   for (auto &[op, _] : memTileEnds)
@@ -1549,23 +1550,34 @@ void SAPlacer::replanLinks(ArrayRef<std::pair<unsigned, int64_t>> depths) {
 int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
   auto usage = currentDMAUsage.lookup(tilePos);
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
-  int used[2] = {usage.first, usage.second + overlayChannels(tilePos)};
+  SmallVector<Operation *> tilesHere;
+  if (overlayChannels(tilePos))
+    for (Operation *tile : overlayTiles)
+      if (positionOf(tile) == tilePos)
+        tilesHere.push_back(tile);
+  OverlayFit overlay = overlayAt(tilePos, pinUse, {}, tilesHere,
+                                 shimSpans ? &*shimSpans : nullptr);
+  int used[2] = {usage.first, usage.second + overlay.channels};
   int max[2] = {maxIn, maxOut};
-  int penalty = 0;
+  // Two ends that cannot share a channel they both pin clash here wherever
+  // the rest goes, and so does an overlay with nowhere to sit.
+  int penalty =
+      (pinUse.clashes(tilePos) + !overlay.fits) * config.dmaPenaltyPerChannel;
   for (int dir : {0, 1}) {
     if (used[dir] <= max[dir])
       continue;
     if (shimSpans && targetModel->getTileType(tilePos.col, tilePos.row) ==
                          AIETileType::ShimNOCTile) {
-      SmallVector<StringAttr> ends;
+      SmallVector<const ShimSide *> sides;
       for (auto &[lt, own] : shareableShimEnds) {
         if (positionOf(lt) == tilePos)
-          llvm::append_range(ends, own[dir]);
+          sides.push_back(&own[dir]);
       }
-      if (dir == 1 && overlayChannels(tilePos))
-        ends.push_back(shimSpans->overlayEnd(tilePos.col));
-      used[dir] += static_cast<int>(shimSpans->groups(ends).size()) -
-                   static_cast<int>(ends.size());
+      SmallVector<StringAttr> extra;
+      if (dir == 1 && overlay.own)
+        extra.push_back(shimSpans->overlayEnd(tilePos.col));
+      used[dir] -= shimChannelsSaved(*shimSpans, sides, extra,
+                                     pinUse.channelsAt(tilePos, dir == 1));
     }
     penalty += std::max(0, used[dir] - max[dir]) * config.dmaPenaltyPerChannel;
   }
@@ -1868,9 +1880,12 @@ int SAPlacer::updateResourcePenalty(
   }
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, -1);
-  for (auto &[op, _] : oldPlacements)
+  for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, -1);
+    for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op))
+      pinUse.claim(currentPlacement[op], claim, -1);
+  }
 
   // Restore new positions and add new contributions
   for (auto &[op, newPos] : savedPositions)
@@ -1880,9 +1895,12 @@ int SAPlacer::updateResourcePenalty(
   }));
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, +1);
-  for (auto &[op, _] : oldPlacements)
+  for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, +1);
+    for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op))
+      pinUse.claim(currentPlacement[op], claim, 1);
+  }
 
   // Add new static buffer and stack contributions
   for (auto &[op, _] : oldPlacements) {
@@ -2018,7 +2036,15 @@ bool SAPlacer::generateMove(
       }
     }
 
-    if (occupant) {
+    // Tiles of a type several may share a physical tile of also move onto an
+    // occupied one, or how many sit on each could never change.
+    if (occupant && type != AIETileType::CoreTile &&
+        drawBoundedIndex(rng, 2) == 0) {
+      if (!isLegalPosition(tile, targetPos))
+        continue;
+      moves.clear();
+      moves.push_back({tile, targetPos});
+    } else if (occupant) {
       // Swap: both tiles must accept each other's position.
       if (tileTypes[occupant] != type)
         continue;
@@ -2184,6 +2210,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   auto &logicalTiles = collected.logicalTiles;
   auto &objectFifos = collected.objectFifos;
   auto &objectFifoLinks = collected.objectFifoLinks;
+  pinnedRule = PinnedChannels(*targetModel, packetSwitched);
 
   if (logicalTiles.empty())
     return success();
@@ -2325,9 +2352,17 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
+  if (pinnedRule.failed())
+    return failure();
   buildRouteModel(device, collected.flows, collected.pktFlows, collected.routes,
                   channelAnalysis.emplace(device).getChannelClaims());
+  claimsOf.clear();
+  for (const DMAChannelAnalysis::ChannelClaim &claim :
+       channelAnalysis->getChannelClaims())
+    claimsOf[claim.tile.getDefiningOp()].push_back(claim);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
+  collectOverlayUses(device);
+  overlayTiles = overlayTileOps();
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device), controlOverlay);
@@ -2374,7 +2409,6 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
 
   memTileEnds.clear();
   PoolLocks poolLocks(device);
-  PinnedChannels pinned(*targetModel);
   llvm::StringMap<Operation *> delegates;
   for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
     delegates[alloc.getObjFifoName()] = alloc.getDelegateTile().getDefiningOp();
@@ -2454,12 +2488,17 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
                  : planned;
     };
     if (drawsChannel(fb.producerTile, fb.producerEnd.has_value()))
-      fb.producerChannel = pinned.share(ofOp, std::nullopt);
-    for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
-      fb.consumerChannels.push_back(
-          drawsChannel(fb.consumerTiles[ci], fb.consumerEnds[ci].has_value())
-              ? pinned.share(ofOp, ci)
-              : std::nullopt);
+      fb.producerPin = PinnedChannels::endOf(ofOp, std::nullopt);
+    if (fb.producerPin)
+      pinnedRule.share(*fb.producerPin);
+    for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci) {
+      std::optional<PinnedChannels::End> pin;
+      if (drawsChannel(fb.consumerTiles[ci], fb.consumerEnds[ci].has_value()))
+        pin = PinnedChannels::endOf(ofOp, ci);
+      if (pin)
+        pinnedRule.share(*pin);
+      fb.consumerPins.push_back(pin);
+    }
     if (fb.producerEnd && onMemTile(fb.producerTile)) {
       SmallVector<MemTileEnd> &ends = memTileEnds[fb.producerTile];
       fb.producerMemTileEntry = ends.size();
@@ -2873,7 +2912,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       oldDelegate = delegatePenalty, oldDMA = dmaPenalty;
   auto savedMemUsage = currentMemUsage;
   auto savedDMAUsage = currentDMAUsage;
-  auto savedPinnedUsers = pinnedChannelUsers;
+  PinnedChannelUse savedPins = pinUse;
   auto savedSharedMemDest = sharedMemDestination;
   coreFifoLog.clear();
   lockUndo.clear();
@@ -2954,7 +2993,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
         }));
     currentMemUsage = savedMemUsage;
     currentDMAUsage = savedDMAUsage;
-    pinnedChannelUsers = savedPinnedUsers;
+    pinUse = savedPins;
     sharedMemDestination = savedSharedMemDest;
     for (auto &[pos, delta] : lockUndo)
       currentLockDemand[pos] -= delta;

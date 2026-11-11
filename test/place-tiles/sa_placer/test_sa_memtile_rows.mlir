@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles{placer=sa_placer sa-seed=1},aie-objectFifo-stateful-transform,aie-assign-buffer-addresses))' %s -o /dev/null
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform,aie-assign-buffer-addresses))' %s -o /dev/null
 
 // VE2802 has mem tiles in rows 1 and 2. The SA keeps each mem tile LTO where
 // it put it and budgets every mem tile on its own, spilling as objectFIFO

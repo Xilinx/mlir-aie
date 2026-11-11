@@ -99,8 +99,16 @@ struct AIEPlaceTilesPass
     return success();
   }
 
+  // One device after another, in module order: a device's placement may
+  // read the devices placed before it.
   void runOnOperation() override {
-    DeviceOp device = getOperation();
+    for (DeviceOp device :
+         llvm::make_early_inc_range(getOperation().getOps<DeviceOp>()))
+      if (failed(placeDevice(device)))
+        return signalPassFailure();
+  }
+
+  LogicalResult placeDevice(DeviceOp device) {
 
     // Create placer
     std::shared_ptr<Placer> placer;
@@ -119,12 +127,12 @@ struct AIEPlaceTilesPass
       if (!std::isfinite(effort) || effort <= 0) {
         device.emitError("sa-effort must be positive and finite, got ")
             << effort;
-        return signalPassFailure();
+        return failure();
       }
       int64_t budget = clPlacementBudget;
       if (budget <= 0) {
         device.emitError("placement-budget must be positive, got ") << budget;
-        return signalPassFailure();
+        return failure();
       }
       SAConfig config;
       config.effort = effort;
@@ -144,7 +152,7 @@ struct AIEPlaceTilesPass
         for (StringRef name : named)
           if (!devices.contains(name)) {
             device.emitError("SA placer charges name no device @") << name;
-            return signalPassFailure();
+            return failure();
           }
       }
       for (auto &[name, fifo] : walked) {
@@ -154,7 +162,7 @@ struct AIEPlaceTilesPass
                 SymbolTable::lookupSymbolIn(device, fifo))) {
           device.emitError("sa-walked-fifos names no objectFIFO @")
               << fifo << " in @" << name;
-          return signalPassFailure();
+          return failure();
         }
         config.walkedFifos.push_back(fifo);
       }
@@ -166,7 +174,7 @@ struct AIEPlaceTilesPass
           device.emitError("sa-core-data-sizes names core ")
               << index << " of @" << name << ", which has " << cores
               << " cores";
-          return signalPassFailure();
+          return failure();
         }
         config.coreDataCharges.insert_or_assign(
             index, SAConfig::CoreDataCharge(size, align));
@@ -176,10 +184,11 @@ struct AIEPlaceTilesPass
     }
     }
 
-    placer->initialize(device, clCtrlPktOverlay &&
-                                   getsColumnControlOverlay(device, true));
+    placer->initialize(
+        device, clCtrlPktOverlay && getsColumnControlOverlay(device, true),
+        clCtrlPktOverlayAdaptive, clPacketSwObjectFifos);
     if (failed(placer->place(device)))
-      return signalPassFailure();
+      return failure();
     if (saPlacer) {
       saFinalCost += saPlacer->getFinalCost();
       saLockGroups += saPlacer->getFinalLockGroups();
@@ -197,7 +206,7 @@ struct AIEPlaceTilesPass
                                            *placer);
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
-      return signalPassFailure();
+      return failure();
 
     // Generate objectfifo.allocate ops right after their respective objectfifo
     auto &allocs = placer->getAllocates();
@@ -226,6 +235,7 @@ struct AIEPlaceTilesPass
             delegateTile.getResult());
       }
     }
+    return success();
   }
 
 private:
@@ -238,11 +248,11 @@ private:
 
 } // namespace
 
-std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEPlaceTilesPass() {
+std::unique_ptr<OperationPass<ModuleOp>> AIE::createAIEPlaceTilesPass() {
   return std::make_unique<AIEPlaceTilesPass>();
 }
 
-std::unique_ptr<OperationPass<DeviceOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 AIE::createAIEPlaceTilesPass(const AIEPlaceTilesOptions &options) {
   return std::make_unique<AIEPlaceTilesPass>(options);
 }

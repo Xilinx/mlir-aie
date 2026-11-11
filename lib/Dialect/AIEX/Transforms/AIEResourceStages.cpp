@@ -18,7 +18,7 @@ using namespace xilinx::AIE;
 
 void AIEX::addPlacementStage(OpPassManager &pm,
                              const AIEPlaceTilesOptions &options) {
-  pm.nest<DeviceOp>().addPass(createAIEPlaceTilesPass(options));
+  pm.addPass(createAIEPlaceTilesPass(options));
 }
 
 void AIEX::addTraceStage(OpPassManager &pm) {
@@ -111,6 +111,8 @@ void AIEX::registerAIEResourceStagesPipeline() {
         place.clPlacementBudget = options.placementBudget;
         place.clCtrlPktOverlay =
             options.ctrlPktOverlay || options.loadPdiToCtrlPkt;
+        place.clCtrlPktOverlayAdaptive = options.adaptiveOverlay;
+        place.clPacketSwObjectFifos = options.packetSwObjFifos;
         addPlacementStage(pm, place);
         addTraceStage(pm);
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,

@@ -18,8 +18,8 @@
 // the BD-id pass does and keeps the shims apart.
 
 // RUN: aie-opt --split-input-file --aie-place-tiles %s | FileCheck %s
-// RUN: not aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles,aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s | FileCheck %s --check-prefix=LOWER
-// RUN: not aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles,aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=BDERR
+// RUN: not aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s | FileCheck %s --check-prefix=LOWER
+// RUN: not aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=BDERR
 
 // CHECK-LABEL: @split_shims
 // CHECK-DAG:   %[[S0:.*]] = aie.tile(0, 0)

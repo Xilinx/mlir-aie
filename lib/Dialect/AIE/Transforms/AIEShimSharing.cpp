@@ -539,6 +539,40 @@ ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
   return result;
 }
 
+ShimTransferSpans::Plan
+ShimTransferSpans::plan(ArrayRef<StringAttr> ends, ArrayRef<StringAttr> names,
+                        ArrayRef<SharedChannel> shared) const {
+  Plan result;
+  result.sharedChannel.assign(ends.size(), std::nullopt);
+  for (auto [index, channel] : llvm::enumerate(shared)) {
+    if (channel.pinned)
+      continue;
+    SmallVector<unsigned> taken;
+    for (unsigned end : llvm::seq<unsigned>(0, ends.size()))
+      if (!result.sharedChannel[end] &&
+          llvm::is_contained(channel.listed, names[end]) &&
+          llvm::all_of(taken, [&](unsigned other) {
+            return apart(ends[end], ends[other]);
+          })) {
+        result.sharedChannel[end] = index;
+        taken.push_back(end);
+      }
+  }
+  SmallVector<unsigned> rest;
+  SmallVector<StringAttr> restEnds;
+  for (unsigned end : llvm::seq<unsigned>(0, ends.size()))
+    if (!result.sharedChannel[end]) {
+      rest.push_back(end);
+      restEnds.push_back(ends[end]);
+    }
+  for (auto &group : groups(restEnds)) {
+    auto &members = result.groups.emplace_back();
+    for (unsigned member : group)
+      members.push_back(rest[member]);
+  }
+  return result;
+}
+
 namespace {
 struct AIEAnnotateShimSharingPass
     : xilinx::AIE::impl::AIEAnnotateShimSharingBase<

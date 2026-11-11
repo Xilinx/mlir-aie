@@ -13,6 +13,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <optional>
@@ -27,6 +28,20 @@ namespace xilinx::AIE {
 /// cannot send its words outside its turn: its senders wait on a gate the host
 /// fills only after the end before it is awaited, and each sequence drains all
 /// that gate lets them send.
+// The shim MM2S channels the ends of `device` name, by tile op, as
+// aie-generate-column-control-overlay weighs them for its overlay's channel:
+// those a circuit-switched route end, flow, allocation or shim mux holds, and
+// on each the packet-switched route ends, by name, and packet flows. A route
+// asking for no packet header is packet switched with `packetSwitched`.
+struct ShimMM2SUses {
+  llvm::DenseMap<mlir::Operation *, llvm::SmallSet<int, 2>> circuits;
+  llvm::DenseMap<std::pair<mlir::Operation *, int>,
+                 llvm::SmallVector<mlir::StringAttr>>
+      packetEnds;
+  llvm::DenseMap<std::pair<mlir::Operation *, int>, unsigned> packetFlows;
+};
+ShimMM2SUses shimMM2SUses(DeviceOp device, bool packetSwitched);
+
 class ShimTransferSpans {
 public:
   /// A shim end a runtime sequence transfers through.
@@ -95,6 +110,33 @@ public:
   /// Returns indices into `ends`.
   llvm::SmallVector<llvm::SmallVector<unsigned>>
   groups(llvm::ArrayRef<mlir::StringAttr> ends) const;
+
+  /// A shim allocation's channel the ends its `aie.shareable_with` lists may
+  /// take turns on.
+  struct SharedChannel {
+    SharedChannel(llvm::SmallVector<mlir::StringAttr> listed, bool pinned)
+        : listed(std::move(listed)), pinned(pinned) {}
+    llvm::SmallVector<mlir::StringAttr> listed;
+    /// Whether a route end pins the channel, which then takes no other end.
+    bool pinned;
+  };
+
+  /// How one shim tile's unpinned ends in one direction share channels, as
+  /// objectFIFO allocation shares them.
+  struct Plan {
+    /// Per end, the index of the shared channel it takes, if any.
+    llvm::SmallVector<std::optional<unsigned>> sharedChannel;
+    /// The other ends, in groups taking one channel each.
+    llvm::SmallVector<llvm::SmallVector<unsigned>> groups;
+  };
+
+  /// Plans `ends` (keys as apart() takes them), named `names` as the
+  /// channels in `shared` list them: each channel in order takes, in order,
+  /// the ends its list names that are apart from those it took before; the
+  /// rest group as groups() groups them. Indices are into `ends`.
+  Plan plan(llvm::ArrayRef<mlir::StringAttr> ends,
+            llvm::ArrayRef<mlir::StringAttr> names,
+            llvm::ArrayRef<SharedChannel> shared) const;
 
 private:
   /// An end's transfers in one runtime sequence, as the gates are checked.

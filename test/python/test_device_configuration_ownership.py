@@ -509,7 +509,7 @@ def program(*runtimes):
 def compile_tasks(module):
     """Place, give channels and assign runtime BD ids, as aiecc does."""
     PassManager.parse(
-        "builtin.module(aie.device(aie-place-tiles,aie-objectfifo-allocate,"
+        "builtin.module(aie-place-tiles,aie.device(aie-objectfifo-allocate,"
         "aie-assign-runtime-sequence-bd-ids))",
         context=module.context,
     ).run(module.operation)
