@@ -761,6 +761,27 @@ LogicalResult ObjectFifoCreateOp::verify() {
     }
   }
 
+  // A core takes its consumer accesses from the first of its tile's ends
+  // a link does not already claim; a link on the tile reads one end each
+  // (getConsumerLink), in the order its own aie.objectfifo.link ops appear.
+  for (auto [index, consumer] : llvm::enumerate(getConsumerTiles())) {
+    size_t first =
+        llvm::find(getConsumerTiles(), consumer) - getConsumerTiles().begin();
+    TileLike tile = getTileLikeFromValue(consumer);
+    if (first == index || tile.getTileType() != AIETileType::CoreTile ||
+        getConsumerLink(index))
+      continue;
+    InFlightDiagnostic diag = emitOpError("lists core tile ");
+    if (std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+        col && row)
+      diag << "(" << *col << ", " << *row << ") ";
+    diag << "as consumers " << first << " and " << index
+         << "; its core reads only the first of those ends, so the other "
+            "would never be drained";
+    diag.attachNote(consumer.getLoc()) << "the tile";
+    return diag;
+  }
+
   if (getRepeatCount().has_value()) {
     if (producerTile.isShimTile())
       return emitError("`repeat_count` unavailable for shim tiles");
