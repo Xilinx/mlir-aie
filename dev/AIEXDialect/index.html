@@ -11992,13 +11992,13 @@ integer ID.</p>
 </code></pre></div>
 <p>This operation starts a job identified by the given job ID.</p>
 <p>The job ID is a <em>label</em>, not an execution or emission order: it must be
-unique among jobs on the same page, and the CERT firmware uses it as a
-job-table key (and as the handle referenced by deferred/launch jobs). It is
-NOT a priority. Emission order and execution order are both determined by
-textual (IR) order: within a page the firmware starts jobs in textual order
-(running each until it blocks or ends), and between pages on one uC
-execution is strictly sequential. Emitters must therefore preserve IR order
-and must not sort jobs by job_id.</p>
+unique modulo 64 among jobs on the same page, because the CERT firmware
+indexes its 64 job contexts by job_id % 64. <code>cert-legalize-pages</code> may
+reassign IDs to meet this. It is NOT a priority. Emission order and
+execution order are both determined by textual (IR) order: within a page
+the firmware starts jobs in textual order (running each until it blocks or
+ends), and between pages on one uC execution is strictly sequential.
+Emitters must therefore preserve IR order and must not sort jobs by job_id.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>  cert.job(42) {
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    ...

@@ -5048,7 +5048,9 @@ dynamic EmitC lowering path.</p>
 <p><em>Split cert jobs to fit into 8k pages</em></p>
 <p>This pass splits cert jobs into smaller jobs that fit into 8k pages.
 It is used to ensure that the generated code does not exceed the page size
-limit of the aiebu tools and cert firmware.</p>
+limit of the aiebu tools and cert firmware. After splitting, it moves job
+IDs that collide modulo 64 on a page to unused slots. A page with more
+than 64 jobs is an error.</p>
 
 
 

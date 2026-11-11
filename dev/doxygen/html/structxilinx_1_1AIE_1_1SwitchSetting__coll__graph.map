@@ -1,5 +1,0 @@
-<map id="xilinx::AIE::SwitchSetting" name="xilinx::AIE::SwitchSetting">
-<area shape="rect" id="Node000001" title=" " alt="" coords="5,128,189,156"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="38,5,156,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="99,47,100,128,94,127,95,50"/>
-</map>
