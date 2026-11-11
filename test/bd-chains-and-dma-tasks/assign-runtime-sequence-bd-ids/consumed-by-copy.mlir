@@ -96,3 +96,58 @@ module @copy_over_copy_not_yet_proven {
     }
   }
 }
+
+// -----
+
+// The proof's output side can be a copy too: once its own sync proves it
+// taken, a task reusing the input copy's id is safe, the same as when the
+// output is a task.
+module @task_over_copy_proven_by_copy_output {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {
+      %c0 = arith.constant 0 : i32
+      %c1 = arith.constant 1 : i32
+      aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 1 : i64, metadata = @in} : memref<512xi32>
+      aiex.npu.dma_memcpy_nd(%c[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @out, issue_token = true} : memref<512xi32>
+      aiex.npu.sync(%c0, %c0, %c0, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64) {bd_id = 1 : i32}
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in1)
+      aiex.npu.dma_memcpy_nd(%c[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @out, issue_token = true} : memref<512xi32>
+      aiex.npu.sync(%c0, %c0, %c0, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+      aiex.dma_free_task(%in1)
+    }
+  }
+}
+
+// -----
+
+// Same shape, but the task reuses the input copy's id before the output
+// copy's sync retires it: no proof has fired yet, so this is a genuine
+// overlap and still errors.
+module @task_over_copy_before_copy_output_proven {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {
+      %c0 = arith.constant 0 : i32
+      %c1 = arith.constant 1 : i32
+      // expected-note@+1 {{the copy is here}}
+      aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 1 : i64, metadata = @in} : memref<512xi32>
+      aiex.npu.dma_memcpy_nd(%c[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @out, issue_token = true} : memref<512xi32>
+      // expected-error@+1 {{Specified buffer descriptor ID 1 is the one an aiex.npu.dma_memcpy_nd on this tile programs}}
+      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64) {bd_id = 1 : i32}
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in1)
+      aiex.npu.sync(%c0, %c0, %c0, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    }
+  }
+}

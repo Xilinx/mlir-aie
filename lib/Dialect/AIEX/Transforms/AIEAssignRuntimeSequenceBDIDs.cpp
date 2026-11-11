@@ -754,10 +754,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   LogicalResult holdCopy(NpuDmaMemcpyNdOp copy,
                          const DmaQueueModel::ChannelKey &key, uint64_t order,
                          bool issuesToken) {
-    AIE::TileOp tile =
-        AIE::ShimDMAAllocationOp::getForSymbol(
-            getOperation(), copy.getMetadata().getRootReference())
-            .getTileOp();
+    AIE::TileOp tile = allocationOf(copy).getTileOp();
     AIE::TileID tileId = tile.getTileID();
     auto id = static_cast<int32_t>(copy.getId());
     if (auto held = holdsOn.find({tileId, id});
@@ -905,7 +902,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     for (const StartedTask &push :
          llvm::reverse(llvm::make_range(started.begin(), std::next(it))))
       if (AIE::ShimDMAAllocationOp output =
-              push.task ? allocationOf(push.task) : nullptr)
+              push.task ? allocationOf(push.task)
+                        : allocationOf(dyn_cast<NpuDmaMemcpyNdOp>(push.origin)))
         if (llvm::none_of(newest,
                           [&](auto &seen) { return seen.first == output; }))
           newest.push_back({output, push.order});
@@ -1069,6 +1067,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return alloc ? allocationsByName.lookup(alloc.getAttr()) : nullptr;
   }
 
+  // The shim allocation `copy` moves through.
+  AIE::ShimDMAAllocationOp allocationOf(NpuDmaMemcpyNdOp copy) {
+    if (!copy)
+      return nullptr;
+    return AIE::ShimDMAAllocationOp::getForSymbol(
+        getOperation(), copy.getMetadata().getRootReference());
+  }
+
   // A shim allocation's pushes since the latest load, in program order, with
   // the bytes it has moved through each: nullopt from the first whose bytes
   // are unknown.
@@ -1210,10 +1216,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       DMAConfigureTaskOp cfg = start ? start.getTaskOp() : nullptr;
       auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
       AIE::ShimDMAAllocationOp allocation =
-          cfg    ? allocationOf(cfg)
-          : copy ? AIE::ShimDMAAllocationOp::getForSymbol(
-                       getOperation(), copy.getMetadata().getRootReference())
-                 : nullptr;
+          cfg ? allocationOf(cfg) : allocationOf(copy);
       std::optional<DmaQueueModel::ChannelKey> channel =
           cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
       bool circuit = byChannel && allocation && !allocation.getPacket();
@@ -2155,10 +2158,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           frees.push_back(freeOp);
         } else if (auto push = otherPush(op)) {
           auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
-          AIE::ShimDMAAllocationOp allocation =
-              copy ? AIE::ShimDMAAllocationOp::getForSymbol(
-                         getOperation(), copy.getMetadata().getRootReference())
-                   : nullptr;
+          AIE::ShimDMAAllocationOp allocation = allocationOf(copy);
           notePush(push->first, DMAConfigureTaskOp{}, push->second, op,
                    allocation, copy ? copyVolume(copy) : std::nullopt);
           if (copy) {
