@@ -79,7 +79,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       const AIEAssignRuntimeSequenceBDIDsOptions &options)
       : Base(options) {}
 
-  llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
+  llvm::DenseMap<AIE::TileID, BdIdGenerator> gens;
 
   // Bytes as a linear form in the sequence's scratchpad parameters: the
   // constant at key -1, each parameter's coefficient at its state-table index.
@@ -199,12 +199,16 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         gen.assignBdId(id);
   }
 
+  // Keyed by (col, row), not the aie.tile op's own identity: two tile ops
+  // for one coordinate (accepted elsewhere, see runtime_vs_static_multi_
+  // tile.mlir) must share one generator, not bypass each other's claims.
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
-    auto it = gens.find(tile);
+    AIE::TileID id = tile.getTileID();
+    auto it = gens.find(id);
     if (it == gens.end()) {
       AIE::DeviceOp device = tile->getParentOfType<AIE::DeviceOp>();
-      it = gens.insert({tile, BdIdGenerator(tile.getCol(), tile.getRow(),
-                                            device.getTargetModel())})
+      it = gens.insert({id, BdIdGenerator(tile.getCol(), tile.getRow(),
+                                          device.getTargetModel())})
                .first;
       seedFromStaticBds(device, tile, it->second);
       if (loadedDevice && loadedDevice != device)
@@ -432,7 +436,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                  "ids and an odd channel only the high half.";
           return WalkResult::interrupt();
         }
-        if (const HeldBy *held = copyHolding(tile, bd_op.getBdId().value())) {
+        if (const HeldBy *held =
+                copyHolding(tile.getTileID(), bd_op.getBdId().value())) {
           InFlightDiagnostic diag =
               op.emitOpError("Specified buffer descriptor ID ")
               << bd_op.getBdId().value()
@@ -529,10 +534,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             if (llvm::is_contained(blocked, id))
               copied.push_back({id, copy, true});
         for (auto [owner, id] : copyOwned)
-          if (owner == tile.getOperation() &&
+          if (owner == tile.getTileID() &&
               targetModel.isBdChannelAccessible(tile.getCol(), tile.getRow(),
                                                 id, op.getChannel()))
-            copied.push_back({id, copyHolding(tile, id)->copy, false});
+            copied.push_back(
+                {id, copyHolding(tile.getTileID(), id)->copy, false});
         llvm::sort(copied);
         if (!copied.empty()) {
           diag << " Of those, aiex.npu.dma_memcpy_nd ops program "
@@ -544,10 +550,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         // reclaimFor only ever considers a liveByTile task, never a copy, so
         // its advice -- and the task-shaped reasons it failed -- apply only
         // where some other task actually lives on this tile to reclaim from.
-        bool otherLiveTask =
-            llvm::any_of(liveByTile[tile], [&](DMAConfigureTaskOp t) {
-              return !releasedTasks.contains(t);
-            });
+        bool otherLiveTask = llvm::any_of(
+            liveByTile[tile.getTileID()],
+            [&](DMAConfigureTaskOp t) { return !releasedTasks.contains(t); });
         if (otherLiveTask) {
           diag << " Emit an aiex.dma_await_task to free BDs for reuse; it "
                   "waits for hardware completion, so the recycled ids are no "
@@ -604,7 +609,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (result.wasInterrupted())
       return failure();
 
-    liveByTile[tile].push_back(op);
+    liveByTile[tile.getTileID()].push_back(op);
     return success();
   }
 
@@ -689,7 +694,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   // Configures allocated on each tile, in program order.
-  llvm::DenseMap<AIE::TileOp, SmallVector<DMAConfigureTaskOp, 16>> liveByTile;
+  llvm::DenseMap<AIE::TileID, SmallVector<DMAConfigureTaskOp, 16>> liveByTile;
 
   // An aiex.npu.dma_memcpy_nd's BD id is held on its tile from its push until
   // the queue model counts that push finished. Holds are kept per channel in
@@ -697,11 +702,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // holding it by push order, and whether they took it in the generator.
   struct CopyHold {
     uint64_t order;
-    AIE::TileOp tile;
+    AIE::TileID tile;
     int32_t id;
   };
   std::map<DmaQueueModel::ChannelKey, std::deque<CopyHold>> holdsByChannel;
-  using TileBdId = std::pair<Operation *, int32_t>;
+  using TileBdId = std::pair<AIE::TileID, int32_t>;
   struct HeldBy {
     NpuDmaMemcpyNdOp copy;
     bool issuesToken;
@@ -718,14 +723,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   SmallVector<Operation *> insertedHere;
 
   // The oldest copy still holding `id` on `tile`, if copies hold it.
-  const HeldBy *copyHolding(AIE::TileOp tile, int32_t id) const {
+  const HeldBy *copyHolding(AIE::TileID tile, int32_t id) const {
     if (!copyOwned.contains({tile, id}))
       return nullptr;
     return &holdsOn.find({tile, id})->second.begin()->second;
   }
 
   // Return a task's id to the pool; a copy waiting for it takes it at once.
-  void releaseTaskBdId(AIE::TileOp tile, BdIdGenerator &gen, int32_t id) {
+  void releaseTaskBdId(AIE::TileID tile, BdIdGenerator &gen, int32_t id) {
     gen.freeBdId(id);
     if (!holdsOn.contains({tile, id}))
       return;
@@ -753,8 +758,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         AIE::ShimDMAAllocationOp::getForSymbol(
             getOperation(), copy.getMetadata().getRootReference())
             .getTileOp();
+    AIE::TileID tileId = tile.getTileID();
     auto id = static_cast<int32_t>(copy.getId());
-    if (auto held = holdsOn.find({tile, id});
+    if (auto held = holdsOn.find({tileId, id});
         held != holdsOn.end() && warnUnsafeBdReuse) {
       const HeldBy &earlier = held->second.begin()->second;
       auto [entry, inserted] = copiesOverCopies.try_emplace(
@@ -765,17 +771,17 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       entry->second.count++;
     }
     BdIdGenerator &gen = getGeneratorForTile(tile);
-    holdsByChannel[key].push_back({order, tile, id});
-    holdsOn[{tile, id}][order] = {copy, issuesToken};
+    holdsByChannel[key].push_back({order, tileId, id});
+    holdsOn[{tileId, id}][order] = {copy, issuesToken};
     if (!gen.bdIdAlreadyAssigned(id)) {
       checkReallocation(tile, id, copy.getLoc());
       gen.assignBdId(id);
-      copyOwned.insert({tile, id});
+      copyOwned.insert({tileId, id});
       return success();
     }
-    if (copyOwned.contains({tile, id}))
+    if (copyOwned.contains({tileId, id}))
       return success();
-    for (DMAConfigureTaskOp task : liveByTile[tile]) {
+    for (DMAConfigureTaskOp task : liveByTile[tileId]) {
       if (releasedTasks.contains(task) || unloaded.contains(task))
         continue;
       AIE::DMABDOp held;
@@ -1763,8 +1769,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return WalkResult::interrupt();
       }
       if (gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
-          !copyOwned.contains({task_op.getTileOp(), bd.getBdId().value()})) {
-        releaseTaskBdId(task_op.getTileOp(), gen, bd.getBdId().value());
+          !copyOwned.contains(
+              {task_op.getTileOp().getTileID(), bd.getBdId().value()})) {
+        releaseTaskBdId(task_op.getTileOp().getTileID(), gen,
+                        bd.getBdId().value());
       } else {
         freeOp->emitOpError("frees buffer descriptor ID ")
             << bd.getBdId().value()
@@ -1868,14 +1876,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     };
     auto take = [&](DMAConfigureTaskOp task) {
       BdIdGenerator &gen = getGeneratorForTile(tile);
-      task.walk(
-          [&](AIE::DMABDOp bd) { releaseTaskBdId(tile, gen, *bd.getBdId()); });
+      task.walk([&](AIE::DMABDOp bd) {
+        releaseTaskBdId(tile.getTileID(), gen, *bd.getBdId());
+      });
       reclaimed.insert(task);
       releasedTasks.insert(task);
       pendingAwaitReleases.erase(task);
     };
 
-    ArrayRef<DMAConfigureTaskOp> live = liveByTile[tile];
+    ArrayRef<DMAConfigureTaskOp> live = liveByTile[tile.getTileID()];
     for (DMAConfigureTaskOp task : live)
       if ((knownComplete.contains(task) || provenFinished.contains(task)) &&
           isCandidate(task)) {
