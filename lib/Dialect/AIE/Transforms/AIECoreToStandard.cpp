@@ -39,7 +39,7 @@ using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-static StringRef getArchIntrinsicString(AIEArch arch) {
+static StringRef getArchTargetTriple(AIEArch arch) {
   switch (arch) {
   case AIEArch::AIE1:
     return "aie";
@@ -48,11 +48,17 @@ static StringRef getArchIntrinsicString(AIEArch arch) {
   case AIEArch::AIE2p:
     return "aie2p";
   case AIEArch::AIE2ps:
-    // This arch has no core intrinsic set. The switch lists every AIEArch
-    // value, so a new value raises a -Wswitch warning here.
-    break;
+    return "aie2ps";
   }
   llvm::report_fatal_error("unsupported arch");
+}
+
+// AIE2PS has no core intrinsic set (see declareAIEIntrinsics), so an op that
+// lowers to an intrinsic call is diagnosed rather than left behind.
+static LogicalResult checkCoreIntrinsics(Operation *op) {
+  if (!isa<AIE2PSTargetModel>(op->getParentOfType<DeviceOp>().getTargetModel()))
+    return success();
+  return op->emitOpError("has no core lowering for AIE2ps");
 }
 
 using IntrinsicDecl =
@@ -176,8 +182,8 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
     registerIntrinsics(getAIE2pIntrinsics(builder));
     return;
   case AIEArch::AIE2ps:
-    // See getArchIntrinsicString: this arch has no intrinsic set.
-    break;
+    // No intrinsic set: checkCoreIntrinsics rejects ops that need one.
+    return;
   }
   llvm::report_fatal_error("unsupported arch");
 }
@@ -222,6 +228,8 @@ struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
   LogicalResult
   matchAndRewrite(DebugOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (failed(checkCoreIntrinsics(op)))
+      return failure();
     std::string funcName = "debug_i32";
     auto func = module.lookupSymbol<func::FuncOp>(funcName);
     if (!func)
@@ -246,6 +254,8 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
   LogicalResult
   matchAndRewrite(PutStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (failed(checkCoreIntrinsics(op)))
+      return failure();
     auto device = op->getParentOfType<DeviceOp>();
     const auto &targetModel = device.getTargetModel();
     std::string funcName;
@@ -294,6 +304,8 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
   LogicalResult
   matchAndRewrite(GetStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (failed(checkCoreIntrinsics(op)))
+      return failure();
     auto device = op->getParentOfType<DeviceOp>();
     const auto &targetModel = device.getTargetModel();
     std::string funcName;
@@ -337,6 +349,8 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
   LogicalResult
   matchAndRewrite(PutCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (failed(checkCoreIntrinsics(op)))
+      return failure();
     auto device = op->getParentOfType<DeviceOp>();
     const auto &targetModel = device.getTargetModel();
     std::string funcName;
@@ -387,6 +401,8 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
   LogicalResult
   matchAndRewrite(GetCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (failed(checkCoreIntrinsics(op)))
+      return failure();
     auto device = op->getParentOfType<DeviceOp>();
     const auto &targetModel = device.getTargetModel();
     std::string funcName;
@@ -442,6 +458,16 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
         return module.emitOpError("Device Not found!");
       }
       const auto &targetModel = device.getTargetModel();
+      // A lock in a core or in any function needs an intrinsic, whether or
+      // not an exported core calls the function. Any other lock (DMA
+      // regions, runtime sequences) is erased with its parent.
+      if (isa<AIE2PSTargetModel>(targetModel)) {
+        if (useLock->getParentOfType<CoreOp>() ||
+            useLock->getParentOfType<func::FuncOp>())
+          return checkCoreIntrinsics(useLock);
+        rewriter.eraseOp(useLock);
+        return success();
+      }
 
       // Generate the intrinsic name
       std::string funcName;
@@ -577,7 +603,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     bool hasSRS = false;
     bool hasIntegerSRS = false;
     bool hasBF16Matmul = false;
-    coreFunc.walk([&](Operation *childOp) {
+    auto scan = [&](Operation *childOp) {
       StringRef opName = childOp->getName().getStringRef();
       if (opName == "aievec.srs") {
         hasSRS = true;
@@ -602,10 +628,35 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
               hasBF16Matmul = true;
         }
       }
-    });
+    };
+    coreFunc.walk(scan);
+    auto device = op->getParentOfType<DeviceOp>();
+    // AIE2ps cannot set the modes anywhere, so the functions the core calls
+    // must be free of these ops too.
+    if (device && isa<AIE2PSTargetModel>(device.getTargetModel())) {
+      SmallVector<func::FuncOp> worklist;
+      DenseSet<Operation *> visited;
+      auto addCallees = [&](Operation *root) {
+        root->walk([&](func::CallOp call) {
+          auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+              device, call.getCalleeAttr());
+          if (callee && visited.insert(callee).second)
+            worklist.push_back(callee);
+        });
+      };
+      addCallees(coreFunc);
+      while (!worklist.empty()) {
+        func::FuncOp callee = worklist.pop_back_val();
+        callee.walk(scan);
+        addCallees(callee);
+      }
+    }
     if (hasSRS || hasBF16Matmul) {
-      auto device = op->getParentOfType<DeviceOp>();
       if (device) {
+        if (isa<AIE2PSTargetModel>(device.getTargetModel()))
+          return op.emitOpError("needs the rounding and saturation modes set "
+                                "for aievec.srs or bf16 matmul, which has no "
+                                "lowering for AIE2ps");
         AIEArch arch = device.getTargetModel().getTargetArch();
         if (arch == AIEArch::AIE2 || arch == AIEArch::AIE2p) {
           std::string ctrlRegFuncName = (arch == AIEArch::AIE2p)
@@ -702,11 +753,7 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
           rewriter.getI32IntegerAttr(op.getVal())));
       break;
     case AIEArch::AIE2ps:
-      // This arch has no event intrinsic. User IR reaches this case, through
-      // an aie.event op on a VE3858 device, so the pattern reports a rewrite
-      // failure.
-      return op.emitOpError(
-          "aie.event is not supported on this device's architecture");
+      return op.emitOpError("has no core lowering for AIE2ps");
     }
     auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!eventFunc)
@@ -747,7 +794,7 @@ struct AIECoreToStandardPass
     // some bogus target triple in the original mlir.
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
                builder.getStringAttr(
-                   getArchIntrinsicString(targetModel.getTargetArch())));
+                   getArchTargetTriple(targetModel.getTargetArch())));
 
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
 
@@ -774,6 +821,18 @@ struct AIECoreToStandardPass
     // stores that push a task before the body is outlined.
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp, UnrealizedConversionCastOp>();
+    // Ops this pass lowers must be illegal: a failed rewrite of an op with
+    // unknown legality is silently left in place.
+    // A core that is not exported is erased, so its ops are left alone.
+    target.addIllegalOp<BufferOp>();
+    target.addDynamicallyLegalOp<PutStreamOp, GetStreamOp, PutCascadeOp,
+                                 GetCascadeOp, DebugOp, UseLockOp, EventOp>(
+        [col = static_cast<int>(tileCol),
+         row = static_cast<int>(tileRow)](Operation *op) {
+          auto core = op->getParentOfType<CoreOp>();
+          return core && ((row != core.rowIndex() && row != -1) ||
+                          (col != core.colIndex() && col != -1));
+        });
 
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
@@ -789,6 +848,8 @@ struct AIECoreToStandardPass
     outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                                tileToBuffers, /*benefit*/ 1,
                                                tileCol, tileRow);
+    // Otherwise a core whose outlined body does not legalize is dropped.
+    target.addIllegalOp<CoreOp>();
     if (failed(applyPartialConversion(deviceOp, target,
                                       std::move(outlinePatterns))))
       return signalPassFailure();
