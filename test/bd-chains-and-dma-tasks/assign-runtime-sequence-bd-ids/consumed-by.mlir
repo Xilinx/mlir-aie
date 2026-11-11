@@ -461,15 +461,16 @@ module {
 
 // -----
 
-// A raw push without a token shares the input's channel, so the bytes the
-// output proves taken may be the raw push's: nothing is credited.
+// A copy on the input's own channel is now counted as the input's own bytes
+// (see consumed-by-copy.mlir), so it moves more through @in than @out proves
+// taken by the time the sequence ends: nothing is credited.
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%t, S2MM, 0)
+    // expected-note@+1 {{the stretch ends here}}
     aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {
-      // expected-note@+1 {{the other transfer}}
       aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 15 : i64, metadata = @in} : memref<512xi32>
       %in0 = aiex.dma_configure_task(%t, MM2S, 0) {
         aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
@@ -502,15 +503,17 @@ module {
 
 // -----
 
-// The raw push sits in another sequence and leaves its bytes in the array
-// for the next dispatch: nothing is credited here either.
+// The copy sits in another sequence by itself, so that sequence's own
+// stretch ends having moved bytes through @in that no output proof in it
+// covers, and leaves them in the array for the next dispatch: nothing is
+// credited here either.
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%t, S2MM, 0)
+    // expected-note@+1 {{the stretch ends here}}
     aie.runtime_sequence @pre(%a: memref<512xi32>, %c: memref<512xi32>) {
-      // expected-note@+1 {{the other transfer}}
       aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 15 : i64, metadata = @in} : memref<512xi32>
     }
     aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {

@@ -330,6 +330,15 @@ private:
               ValueRange{a.getArg()});
         })
         .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
+          if (std::optional<uint32_t> id = pop.getId()) {
+            emitc::VerbatimOp::create(b, loc,
+                                      "aie_runtime::bd_pool_reserve(" +
+                                          bdPoolName(pop) + ", " +
+                                          std::to_string(*id) + ");");
+            pop.getBdId().replaceAllUsesWith(emitc::LiteralOp::create(
+                b, loc, pop.getBdId().getType(), std::to_string(*id)));
+            return;
+          }
           // Draw a BD id from the tile's runtime pool (declared in the
           // prologue) into a fresh C++ variable; nullopt if the pool is empty.
           // Downstream ops consume the id, so replace the SSA result with a

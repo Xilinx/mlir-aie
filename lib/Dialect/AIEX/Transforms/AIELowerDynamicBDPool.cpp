@@ -35,6 +35,8 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 
+#include <set>
+
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIELOWERDYNAMICBDPOOL
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -215,7 +217,7 @@ struct AIELowerDynamicBDPoolPass
     for (AIE::DMABDOp bd : bds) {
       Value bdId =
           DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(), tile.getCol(),
-                                 tile.getRow(), begin, end)
+                                 tile.getRow(), begin, end, /*id=*/nullptr)
               .getBdId();
       bd.getBdIdValMutable().assign(bdId);
       ids.push_back(bdId);
@@ -701,10 +703,44 @@ struct AIELowerDynamicBDPoolPass
                             warnUnsafeBdReuse, effectOf);
   }
 
+  // An aiex.npu.dma_memcpy_nd programs its BD id on its tile outside the pool,
+  // so every pool of that tile holding the id gives it up for the sequence.
+  void reserveCopyIds(AIE::RuntimeSequenceOp seq) {
+    std::set<std::tuple<int, int, uint32_t, uint32_t>> pools;
+    std::set<std::tuple<int, int, uint32_t>> reserved;
+    seq.walk([&](DMABdPoolPopOp pop) {
+      pools.insert(
+          {pop.getColumn(), pop.getRow(), pop.getBdBegin(), pop.getBdEnd()});
+      if (std::optional<uint32_t> id = pop.getId())
+        reserved.insert({pop.getColumn(), pop.getRow(), *id});
+    });
+    std::set<std::tuple<int, int, uint32_t>> copies;
+    seq.walk([&](NpuDmaMemcpyNdOp copy) {
+      auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
+          getOperation(), copy.getMetadata().getRootReference());
+      if (AIE::TileOp tile = allocation ? allocation.getTileOp() : nullptr)
+        copies.insert({tile.getCol(), tile.getRow(),
+                       static_cast<uint32_t>(copy.getId())});
+    });
+    OpBuilder b = OpBuilder::atBlockBegin(&seq.getBody().front());
+    for (auto [col, row, begin, end] : pools)
+      for (auto [copyCol, copyRow, id] : copies)
+        if (copyCol == col && copyRow == row && id >= begin && id < end &&
+            !reserved.count({col, row, id}))
+          DMABdPoolPopOp::create(b, seq.getLoc(), b.getI32Type(), col, row,
+                                 begin, end, b.getI32IntegerAttr(id));
+  }
+
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
+      // A copy's id is withheld from every pool this sequence draws from
+      // whether or not THIS pass does any lowering here: a hand-written pop
+      // reaches neither early return below, and bd_pool_reserve is a no-op
+      // where no pool, or no colliding copy, exists.
+      reserveCopyIds(seq);
+
       bool hasRuntimeCF = false;
       seq.walk([&](Operation *op) {
         if (isa<scf::ForOp, scf::IfOp, scf::WhileOp>(op))
@@ -815,6 +851,7 @@ struct AIELowerDynamicBDPoolPass
       guardQueueDepth(seq);
       for (Operation *op : toErase)
         op->erase();
+      reserveCopyIds(seq);
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())

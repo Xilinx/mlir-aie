@@ -366,3 +366,29 @@ module {
     }
   }
 }
+
+// -----
+
+// A copy that reprograms a freed task's BD is a reuse like a task's.
+module {
+  aie.device(npu2) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrl(%t, MM2S, 0)
+    aie.shim_dma_allocation @in(%t, MM2S, 1)
+    aie.runtime_sequence @s(%a: memref<512xi32>, %pkts: memref<?xi32>) {
+      %in0 = aiex.dma_configure_task(%t, MM2S, 1) {
+        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @in, issue_token = true}
+      aiex.dma_start_task(%in0)
+      // expected-note@+1 {{released here}}
+      aiex.dma_free_task(%in0)
+      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+      aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrl} : memref<?xi32>
+      %c0 = arith.constant 0 : i32
+      %c1 = arith.constant 1 : i32
+      aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+      aiex.npu.sync(%c0, %c0, %c1, %c1, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    }
+  }
+}

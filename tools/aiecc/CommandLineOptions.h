@@ -89,7 +89,9 @@ inline cl::opt<bool> reclaimRuntimeBds(
 inline cl::opt<bool> warnUnsafeBdReuse(
     "warn-unsafe-bd-reuse",
     cl::desc("Warn when a BD id a dma_free_task released with no completion "
-             "guarantee is later reused on the same tile (enabled by default)"),
+             "guarantee is later reused on the same tile, or a dma_memcpy_nd "
+             "reprograms an id an earlier copy may still have in flight "
+             "(enabled by default)"),
     cl::init(true));
 
 inline cl::opt<bool> warnUnreleasedTransfers(

@@ -362,7 +362,9 @@ def AIEAssignRuntimeSequenceBDIDs
     takes the oldest completion token on its channel, which proves that push
     and every push queued ahead of it finished. `aiex.dma_free_task` releases
     a task's ids without waiting; reusing ids a free released with nothing
-    proving the task finished is a warning (`warn-unsafe-bd-reuse`).
+    proving the task finished is a warning (`warn-unsafe-bd-reuse`), as is an
+    `aiex.npu.dma_memcpy_nd` that reprograms an id an earlier copy on the tile
+    may still have in flight.
 
     An await on an output also finishes inputs, through the
     `#aie.consumed_by` proofs `aie-objectfifo-verify` records on the inputs'
@@ -398,9 +400,11 @@ def AIEAssignRuntimeSequenceBDIDs
            "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
            /*default=*/"true",
            "Warn when a BD id released by aiex.dma_free_task without any "
-           "completion guarantee is later reused on the same tile. On by "
-           "default; disable when completion is guaranteed through the compute "
-           "core or another tile, which the runtime sequence cannot see.">,
+           "completion guarantee is later reused on the same tile, or an "
+           "aiex.npu.dma_memcpy_nd reprograms an id an earlier copy may still "
+           "have in flight. On by default; disable when completion is "
+           "guaranteed through the compute core or another tile, which the "
+           "runtime sequence cannot see.">,
        Option<"warnUnreleasedTransfers", "warn-unreleased-transfers", "bool",
               /*default=*/"true",
               "Warn when a straight-line runtime sequence leaves DMA transfers "

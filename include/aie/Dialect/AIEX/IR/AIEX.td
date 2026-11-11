@@ -1755,14 +1755,18 @@ def AIE_DMABdPoolPopOp
     this op in place of the implicit allocation a `dma_configure_task` performs.
     If the pool is empty at runtime, the generated builder yields no stream
     (`std::nullopt`).
+
+    With `id`, it takes that ID out of the pool for the rest of the sequence
+    and returns it: something outside the pool programs that ID, such as an
+    `aiex.npu.dma_memcpy_nd`, so the pool must never hand it out.
   }];
 
   let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,
-      I32Attr:$bd_end);
+      I32Attr:$bd_end, OptionalAttr<I32Attr>:$id);
 
   let assemblyFormat = [{
     `(` $column `,` $row `)` `partition` ` ` `[` $bd_begin `,` $bd_end `)`
-    attr-dict `:` type($bd_id)
+    (`id` $id^)? attr-dict `:` type($bd_id)
   }];
 
   let hasVerifier = 1;

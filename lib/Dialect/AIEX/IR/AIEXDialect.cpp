@@ -759,6 +759,13 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       return failure();
   auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
+  if (AIE::TileOp tile = allocOp ? allocOp.getTileOp() : nullptr) {
+    uint32_t numBds = targetModel.getNumBDs(tile.getCol(), tile.getRow());
+    if (getId() >= numBds)
+      return emitOpError("programs buffer descriptor ID ")
+             << getId() << ", but tile (" << tile.getCol() << ", "
+             << tile.getRow() << ") has " << numBds << " buffer descriptors";
+  }
   if (isDynamic)
     return verifyDynamicSizesStrides(targetModel, buffer, allocOp);
 
@@ -2153,8 +2160,15 @@ static LogicalResult verifyBdPoolPartition(Operation *op, int col, int row,
 }
 
 LogicalResult AIEX::DMABdPoolPopOp::verify() {
-  return verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
-                               getBdEnd());
+  if (failed(verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
+                                   getBdEnd())))
+    return failure();
+  std::optional<uint32_t> id = getId();
+  if (id && (*id < getBdBegin() || *id >= getBdEnd()))
+    return emitOpError() << "takes buffer descriptor ID " << *id
+                         << ", which is outside its partition [" << getBdBegin()
+                         << ", " << getBdEnd() << ")";
+  return success();
 }
 
 LogicalResult AIEX::DMABdPoolPushOp::verify() {
