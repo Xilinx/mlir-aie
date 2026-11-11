@@ -1467,14 +1467,22 @@ struct AIEObjectFifoAllocatePass
       unsigned applied = 0;
     };
     SmallVector<Tile, 0> tiles;
+    // The tile's own programs and runtime tasks keep their channels and BD
+    // ids, as the SA placer's plan of the tile does.
+    DMAChannelAnalysis channels(device);
     for (auto &[at, dmas] : ends) {
       HomeBDPlan home = homeBDPlan(dmas);
+      TileLike tile = tileOf(cast<RouteEndpoint>(dmas.front().getOperation()));
+      DenseMap<int, int64_t> taken =
+          takenBDs.at(device.getTargetModel(), at.first, at.second);
       DMAChannelAnalysis::BDWalkSets found =
           DMAChannelAnalysis::walkSetsThatFit(
               device.getTargetModel(), at.first, at.second, home.ends,
               home.poolOf, home.walkable,
-              [](DMAChannelDir, int) { return true; },
-              [](int) -> int64_t { return 0; });
+              [&](DMAChannelDir dir, int channel) {
+                return channels.isChannelFree(tile, dir, channel);
+              },
+              [&](int channel) { return taken.lookup(channel); });
       if (found.sets.empty() && !found.fits && !found.channelShort) {
         found.sets.emplace_back();
         found.bytes.push_back(0);
