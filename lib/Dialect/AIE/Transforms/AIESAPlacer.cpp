@@ -1981,6 +1981,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   auto &logicalTiles = collected.logicalTiles;
   auto &objectFifos = collected.objectFifos;
   auto &objectFifoLinks = collected.objectFifoLinks;
+  pinnedRule.emplace(*targetModel);
 
   if (logicalTiles.empty())
     return success();
@@ -2159,7 +2160,6 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
 
   memTileEnds.clear();
   PoolLocks poolLocks(device);
-  pinnedRule.emplace(*targetModel);
   llvm::StringMap<Operation *> delegates;
   for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
     delegates[alloc.getObjFifoName()] = alloc.getDelegateTile().getDefiningOp();
