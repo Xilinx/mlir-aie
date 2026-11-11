@@ -1075,6 +1075,15 @@ private:
   };
   mutable std::unordered_map<std::vector<int64_t>, int64_t, KeyHash>
       coreUnplacedOf, coreUnplacedByTile;
+  // computeLockPenalty's penalty, and whether its packing stopped, by all it
+  // reads; a result equals a fresh one.
+  mutable std::unordered_map<std::vector<int64_t>, std::pair<int, bool>,
+                             KeyHash>
+      lockVerdicts;
+  static constexpr size_t kLockVerdictBytes = 1 << 20;
+  static constexpr unsigned kLockVerdictMissRun = 4096;
+  mutable size_t lockVerdictBytes = 0;
+  mutable unsigned lockVerdictMissRun = 0;
   llvm::DenseSet<mlir::Operation *> spillTiles, delegateTermTiles, pairedTiles;
   // The buffers each mem tile, logical or physical, already holds, as the
   // allocator lays them out.

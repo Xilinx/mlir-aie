@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/Support/Debug.h"
 
@@ -1321,6 +1322,56 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
   });
   positions.erase(llvm::unique(positions), positions.end());
 
+  // The verdict reads the groups, the locks logical tiles hold and the
+  // occupied positions a group may take: those its first user reaches, or
+  // every one for a group without users. Placed tiles' locks never move.
+  // Recording stops after a long run of misses, where moves seldom revisit.
+  bool recording = lockVerdictMissRun < kLockVerdictMissRun;
+  std::vector<int64_t> key;
+  auto known = lockVerdicts.end();
+  if (recording) {
+    bool unanchored = false;
+    int rows = targetModel->rows();
+    BitVector reached(targetModel->columns() * rows);
+    BitVector anchored(reached.size());
+    SmallVector<TileID> anchors;
+    for (auto &[locks, users] : groups) {
+      llvm::append_values(key, locks, static_cast<int64_t>(users.size()));
+      for (auto [at, localOnly] : users)
+        llvm::append_values(key, at.col, at.row,
+                            static_cast<int64_t>(localOnly));
+      if (users.empty())
+        unanchored = true;
+      else if (auto [first, localOnly] = users.front(); localOnly)
+        reached.set(first.col * rows + first.row);
+      else if (!anchored.test(first.col * rows + first.row)) {
+        anchored.set(first.col * rows + first.row);
+        anchors.push_back(first);
+      }
+    }
+    for (TileID anchor : anchors)
+      for (TileID at : lockReach.find(anchor)->second)
+        reached.set(at.col * rows + at.row);
+    key.push_back(-1);
+    for (auto &[tile, locks] : fixedLocks) {
+      std::optional<TileID> at = positionOf(tile);
+      llvm::append_values(key, at ? at->col : -1, at ? at->row : -1, locks);
+    }
+    llvm::append_values(key, -1, static_cast<int64_t>(positions.empty()));
+    for (TileID at : positions)
+      if (unanchored || reached.test(at.col * rows + at.row))
+        llvm::append_values(key, at.col, at.row);
+    known = lockVerdicts.find(key);
+    if (known != lockVerdicts.end()) {
+      lockVerdictMissRun = 0;
+#ifndef EXPENSIVE_CHECKS
+      if (stopped)
+        *stopped = known->second.second;
+      return known->second.first;
+#endif
+    }
+  }
+
   LockPlan plan(*targetModel);
   DenseMap<TileID, unsigned> index;
   auto tileAt = [&](TileID at) {
@@ -1385,6 +1436,28 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
   for (auto [group, tile] : llvm::zip(planned, assignment.tiles))
     if (!tile)
       penalty += group.count * config.dmaPenaltyPerChannel;
+#ifdef EXPENSIVE_CHECKS
+  assert((known == lockVerdicts.end() ||
+          known->second == std::pair(penalty, assignment.stopped)) &&
+         "a recorded lock verdict differs from a fresh one");
+#endif
+  if (recording && known == lockVerdicts.end()) {
+    if (++lockVerdictMissRun == kLockVerdictMissRun) {
+      decltype(lockVerdicts)().swap(lockVerdicts);
+      lockVerdictBytes = 0;
+      return penalty;
+    }
+    // Bounded by bytes, since moves reach more lock states than they revisit.
+    key.shrink_to_fit();
+    size_t bytes = key.capacity() * sizeof(int64_t);
+    if (lockVerdictBytes + bytes > kLockVerdictBytes) {
+      lockVerdicts.clear();
+      lockVerdictBytes = 0;
+    }
+    lockVerdictBytes += bytes;
+    lockVerdicts.emplace(std::move(key),
+                         std::pair(penalty, assignment.stopped));
+  }
   return penalty;
 }
 
