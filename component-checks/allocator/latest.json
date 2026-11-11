@@ -1,21 +1,21 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "42748831939",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42748831939",
- "date": "2026-11-10T03:20:48+00:00",
+ "id": "42952186365",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42952186365",
+ "date": "2026-11-11T03:21:14+00:00",
  "commit": {
-  "id": "cbfc9921dab673d58409a542c08d14c30042b683",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/cbfc9921dab673d58409a542c08d14c30042b683",
-  "message": "[AIEX] Verify buffer-relative runtime write bounds [MED] (#3766)",
-  "timestamp": "2026-11-09T17:06:02Z"
+  "id": "97edc63ef0c107fb431545822730ec1908b86e1c",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/97edc63ef0c107fb431545822730ec1908b86e1c",
+  "message": "[AIEX] Verify aiex.control_packet header fields (#4040)",
+  "timestamp": "2026-11-10T20:50:02Z"
  },
  "event": "schedule",
  "pmode": null,
  "device": "AMD EPYC 7763 64-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "cbfc9921da",
+  "commit": "97edc63ef0",
   "cpu": "AMD EPYC 7763 64-Core Processor"
  },
  "sane": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 177.7,
+    "value": 173.6,
     "unit": "s"
    }
   }
@@ -102,7 +102,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.1s (max 30s)"
+   "detail": "300/300 placed in 0.0s (max 30s)"
   }
  ]
 }

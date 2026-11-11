@@ -729,6 +729,33 @@
     "xcvc1902/hops-off/seed=207670061+1/mutator priority crash"
    ],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "42952186365",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42952186365",
+   "date": "2026-11-11T03:21:14+00:00",
+   "commit": {
+    "id": "97edc63ef0c107fb431545822730ec1908b86e1c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/97edc63ef0c107fb431545822730ec1908b86e1c",
+    "message": "[AIEX] Verify aiex.control_packet header fields (#4040)",
+    "timestamp": "2026-11-10T20:50:02Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "97edc63ef0",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
