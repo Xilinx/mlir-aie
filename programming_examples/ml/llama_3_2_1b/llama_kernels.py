@@ -66,6 +66,7 @@ def attn_block(*, tb=KV_TB):
     return KernelSource(
         "llama_attn_block.cc",
         [
+            "-O1",
             "-ffp-contract=off",
             f"-DLLAMA_ATTN_HEAD_DIM={HEAD_D}",
             f"-DLLAMA_ATTN_TB={tb}",
