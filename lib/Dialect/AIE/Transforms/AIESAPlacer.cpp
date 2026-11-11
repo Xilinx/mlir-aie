@@ -591,6 +591,11 @@ void SAPlacer::drawChannel(TileID position, bool output,
 void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentLockDemand.clear();
+  SmallVector<std::pair<unsigned, int64_t>> depths;
+  auto at = [this](Value tile) { return positionOf(tile.getDefiningOp()); };
+  for (auto [index, variable] : llvm::enumerate(variableLinks))
+    depths.push_back({index, variable.plan.depthAt(*targetModel, at)});
+  replanLinks(depths);
   currentDMAUsage.clear();
   pinnedChannelUsers.clear();
   sharedMemDestination.clear();
@@ -747,6 +752,23 @@ int SAPlacer::computeDelegatePenalty() const {
 // Charges by the KB what MemTileSpillSearch, in the allocator's attempt order,
 // cannot place.
 int SAPlacer::computeMemSpilloverPenalty() {
+  std::vector<int64_t> key;
+  auto keyPosition = [&](Operation *op) {
+    std::optional<TileID> at = positionOf(op);
+    key.push_back(at ? at->col : -1);
+    key.push_back(at ? at->row : -1);
+  };
+  for (auto &[op, _] : memTileEnds)
+    keyPosition(op);
+  for (auto &[op, _] : memTileFixed)
+    keyPosition(op);
+  for (Operation *tile : logicalMemTiles)
+    keyPosition(tile);
+  for (const VariableLink &variable : variableLinks)
+    key.push_back(variable.depth);
+  if (const int *known = spillPenaltyOf.find(key))
+    return *known;
+
   SmallVector<MemTileSpillSearch::Tile> tiles;
   DenseMap<TileID, unsigned> index;
   for (int col = 0; col < targetModel->columns(); ++col)
@@ -895,6 +917,8 @@ int SAPlacer::computeMemSpilloverPenalty() {
       for (Operation *op : ops)
         tilesKey.push_back(reinterpret_cast<uintptr_t>(op));
     }
+    for (const VariableLink &variable : variableLinks)
+      tilesKey.push_back(static_cast<uintptr_t>(variable.depth));
     SmallVector<SmallVector<int64_t>> bytes;
     for (unsigned member : members)
       bytes.push_back(positions[member].sets.empty() ? SmallVector<int64_t>{0}
@@ -949,7 +973,9 @@ int SAPlacer::computeMemSpilloverPenalty() {
     if (!attempt(split, demandFirstOrder(records)))
       unplaced = 0;
   }
-  return ((unplaced + 1023) / 1024) * config.memPenaltyPerKB;
+  int penalty = ((unplaced + 1023) / 1024) * config.memPenaltyPerKB;
+  spillPenaltyOf.insert(key, penalty);
+  return penalty;
 }
 
 // In position order: room one tile is lent is gone for the next, so the
@@ -1363,6 +1389,65 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
   return penalty;
 }
 
+void SAPlacer::replanLinks(ArrayRef<std::pair<unsigned, int64_t>> depths) {
+  auto at = [this](Value tile) { return positionOf(tile.getDefiningOp()); };
+  SmallVector<unsigned> changed;
+  for (auto [index, depth] : depths) {
+    VariableLink &variable = variableLinks[index];
+    if (depth == variable.depth)
+      continue;
+    variable.depth = depth;
+    changed.push_back(index);
+  }
+  if (changed.empty())
+    return;
+  // A link whose tiles stayed keeps its depth, so these are every link's.
+  std::vector<int64_t> all;
+  for (const VariableLink &variable : variableLinks)
+    all.push_back(variable.depth);
+  for (unsigned index : changed) {
+    VariableLink &variable = variableLinks[index];
+    auto [replan, added] = variable.replans.try_emplace(all);
+    if (added) {
+      // The pool's plan is the first end's that names it, in fifo order, as
+      // buildFifoBufferInfo took it.
+      for (size_t fifoIndex : variable.fifos) {
+        FifoBufferInfo &fb = fifoBuffers[fifoIndex];
+        auto fifo = cast<ObjectFifoCreateOp>(fb.fifoOp);
+        auto &ends = replan->second.ends.emplace_back();
+        for (unsigned ci = 0, e = fb.consumerEnds.size(); ci < e; ++ci)
+          ends.push_back(fifo.plannedDmaEnd(ci, at));
+        ends.push_back(fifo.plannedDmaEnd(std::nullopt, at));
+        for (const std::optional<PlannedDmaEnd> &end : ends)
+          if (!replan->second.held && end &&
+              end->pool == variable.link.getOperation())
+            replan->second.held = end;
+      }
+    }
+    for (auto [fifoIndex, ends] :
+         llvm::zip_equal(variable.fifos, replan->second.ends)) {
+      FifoBufferInfo &fb = fifoBuffers[fifoIndex];
+      auto install = [&](std::optional<PlannedDmaEnd> &end,
+                         const std::optional<PlannedDmaEnd> &plan,
+                         std::optional<unsigned> entry, Operation *tile) {
+        end = plan;
+        if (entry)
+          memTileEnds.find(tile)->second[*entry].end = *end;
+      };
+      for (unsigned ci = 0, e = fb.consumerEnds.size(); ci < e; ++ci)
+        install(fb.consumerEnds[ci], ends[ci], fb.consumerMemTileEntries[ci],
+                fb.consumerTiles[ci]);
+      install(fb.producerEnd, ends.back(), fb.producerMemTileEntry,
+              fb.producerTile);
+    }
+    for (auto [fifoIndex, consumer] : variable.holds) {
+      FifoBufferInfo &fb = fifoBuffers[fifoIndex];
+      (consumer ? fb.consumerLinkPlans[*consumer] : fb.producerLinkPlan) =
+          replan->second.held;
+    }
+  }
+}
+
 int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
   auto usage = currentDMAUsage.lookup(tilePos);
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
@@ -1453,8 +1538,12 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
   for (Operation *tile : physicalTiles.lookup(position))
     if (!llvm::is_contained(holders, tile))
       holders.push_back(tile);
-  std::pair<TileID, std::vector<Operation *>> key{
-      layout->second, std::vector<Operation *>(holders.begin(), holders.end())};
+  std::vector<int64_t> depths;
+  for (const VariableLink &variable : variableLinks)
+    depths.push_back(variable.depth);
+  std::tuple<TileID, std::vector<Operation *>, std::vector<int64_t>> key{
+      layout->second, std::vector<Operation *>(holders.begin(), holders.end()),
+      std::move(depths)};
   if (const BDShortfall *cached = bdShortfallOf.find(key)) {
     if (walkSets)
       *walkSets = cached->sets;
@@ -1643,6 +1732,22 @@ int SAPlacer::updateResourcePenalty(
       for (size_t idx : it->second)
         affectedFifos.insert(idx);
   }
+  // A move that changes where a variable link's pool is shared changes its
+  // depth: its participants come off with the old plans, on with the new.
+  replannedLinks.clear();
+  auto at = [this](Value tile) { return positionOf(tile.getDefiningOp()); };
+  for (unsigned index = 0, e = variableLinks.size(); index < e; ++index) {
+    const VariableLink &variable = variableLinks[index];
+    if (llvm::none_of(oldPlacements, [&](const auto &moved) {
+          return llvm::is_contained(variable.tiles, moved.first);
+        }))
+      continue;
+    int64_t depth = variable.plan.depthAt(*targetModel, at);
+    if (depth == variable.depth)
+      continue;
+    replannedLinks.push_back({index, variable.depth, depth});
+    affectedFifos.insert(variable.fifos.begin(), variable.fifos.end());
+  }
 
   // Update static buffer and stack contributions for moved tiles
   for (auto &[op, oldPos] : oldPlacements) {
@@ -1672,6 +1777,9 @@ int SAPlacer::updateResourcePenalty(
   // Restore new positions and add new contributions
   for (auto &[op, newPos] : savedPositions)
     currentPlacement[op] = newPos;
+  replanLinks(llvm::map_to_vector(replannedLinks, [](ReplannedLink replanned) {
+    return std::make_pair(replanned.index, replanned.to);
+  }));
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, +1);
   for (auto &[op, _] : oldPlacements)
@@ -1709,10 +1817,16 @@ int SAPlacer::updateResourcePenalty(
       return tiles.contains(moved.first);
     });
   };
-  if (reads(spillTiles))
+  if (reads(spillTiles) || !replannedLinks.empty())
     memSpilloverPenalty = computeMemSpilloverPenalty();
   bdUndo.clear();
   SmallVector<TileID> bdTouched;
+  for (ReplannedLink replanned : replannedLinks)
+    if (std::optional<TileID> pos =
+            positionOf(variableLinks[replanned.index].tiles.front());
+        pos &&
+        targetModel->getTileType(pos->col, pos->row) == AIETileType::MemTile)
+      bdTouched.push_back(*pos);
   for (auto &[op, oldPos] : oldPlacements)
     if (memTileEnds.count(op) || llvm::is_contained(logicalMemTiles, op))
       for (TileID pos : {oldPos, currentPlacement[op]})
@@ -2212,9 +2326,10 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
       fb.consumerDepths.push_back(ofOp.dmaDepth(ci));
 
-    fb.producerEnd = ofOp.plannedDmaEnd(std::nullopt);
+    auto at = [this](Value tile) { return positionOf(tile.getDefiningOp()); };
+    fb.producerEnd = ofOp.plannedDmaEnd(std::nullopt, at);
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
-      fb.consumerEnds.push_back(ofOp.plannedDmaEnd(ci));
+      fb.consumerEnds.push_back(ofOp.plannedDmaEnd(ci, at));
     auto onMemTile = [&](Operation *tile) {
       auto like = dyn_cast_or_null<TileLike>(tile);
       return like && like.getTileType() == AIETileType::MemTile;
@@ -2235,14 +2350,20 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
           drawsChannel(fb.consumerTiles[ci], fb.consumerEnds[ci].has_value())
               ? pinned.share(ofOp, ci)
               : std::nullopt);
-    if (fb.producerEnd && onMemTile(fb.producerTile))
-      memTileEnds[fb.producerTile].push_back(
-          {DMAChannelDir::MM2S, *fb.producerEnd});
-    for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
+    if (fb.producerEnd && onMemTile(fb.producerTile)) {
+      SmallVector<MemTileEnd> &ends = memTileEnds[fb.producerTile];
+      fb.producerMemTileEntry = ends.size();
+      ends.push_back({DMAChannelDir::MM2S, *fb.producerEnd});
+    }
+    for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci) {
+      std::optional<unsigned> &entry = fb.consumerMemTileEntries.emplace_back();
       if (const std::optional<PlannedDmaEnd> &end = fb.consumerEnds[ci];
-          end && onMemTile(fb.consumerTiles[ci]))
-        memTileEnds[fb.consumerTiles[ci]].push_back(
-            {DMAChannelDir::S2MM, *end});
+          end && onMemTile(fb.consumerTiles[ci])) {
+        SmallVector<MemTileEnd> &ends = memTileEnds[fb.consumerTiles[ci]];
+        entry = ends.size();
+        ends.push_back({DMAChannelDir::S2MM, *end});
+      }
+    }
 
     std::optional<ObjectFifoLinkOp> link = ofOp.getLink();
     fb.forcesDMA = ofOp.dmaReason().has_value();
@@ -2317,6 +2438,45 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     for (const std::optional<PlannedDmaEnd> &plan : fb.consumerLinkPlans)
       fb.consumerLinkSegments.push_back(linkSegments(plan));
     fb.producerLinkSegments = linkSegments(fb.producerLinkPlan);
+  }
+
+  variableLinks.clear();
+  DenseMap<Operation *, size_t> fifoIndex;
+  for (auto [index, fb] : llvm::enumerate(fifoBuffers))
+    fifoIndex[fb.fifoOp] = index;
+  auto at = [this](Value tile) { return positionOf(tile.getDefiningOp()); };
+  for (ObjectFifoLinkOp link : objectFifoLinks) {
+    LinkPoolPlan plan = link.getPoolPlan();
+    if (plan.sharers.empty())
+      continue;
+    Operation *point = plan.linkTile.getDefiningOp();
+    VariableLink variable{link, std::move(plan), 0, {point}, {}, {}, {}};
+    for (const LinkPoolSharer &sharer : variable.plan.sharers)
+      variable.tiles.append({sharer.producer.getDefiningOp(),
+                             sharer.consumer.getDefiningOp(),
+                             sharer.delegate.getDefiningOp()});
+    std::vector<ObjectFifoCreateOp> ins = link.getInputObjectFifos();
+    std::vector<ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
+    for (ObjectFifoCreateOp fifo : llvm::concat<ObjectFifoCreateOp>(ins, outs))
+      if (auto index = fifoIndex.find(fifo.getOperation());
+          index != fifoIndex.end())
+        variable.fifos.push_back(index->second);
+    llvm::sort(variable.fifos);
+    variable.fifos.erase(llvm::unique(variable.fifos), variable.fifos.end());
+    using LinkPool = FifoBufferInfo::LinkPool;
+    for (size_t index : variable.fifos) {
+      FifoBufferInfo &fb = fifoBuffers[index];
+      auto fifo = cast<ObjectFifoCreateOp>(fb.fifoOp);
+      for (unsigned ci = 0, e = fb.consumerLinkPools.size(); ci < e; ++ci)
+        if (fb.consumerLinkPools[ci] == LinkPool::Holds &&
+            fifo.getConsumerLink(ci) == link)
+          variable.holds.push_back({index, ci});
+      if (fb.producerLinkPool == LinkPool::Holds &&
+          fifo.getProducerLink() == link)
+        variable.holds.push_back({index, std::nullopt});
+    }
+    variable.depth = variable.plan.depthAt(*targetModel, at);
+    variableLinks.push_back(std::move(variable));
   }
 
   LLVM_DEBUG(llvm::dbgs() << "[SA] seed=" << rngSeed << "\n");
@@ -2678,6 +2838,10 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     }
     for (auto &[op, oldPos] : oldPlacements)
       physToLogical[oldPos] = op;
+    replanLinks(
+        llvm::map_to_vector(replannedLinks, [](ReplannedLink replanned) {
+          return std::make_pair(replanned.index, replanned.from);
+        }));
     currentMemUsage = savedMemUsage;
     currentDMAUsage = savedDMAUsage;
     pinnedChannelUsers = savedPinnedUsers;

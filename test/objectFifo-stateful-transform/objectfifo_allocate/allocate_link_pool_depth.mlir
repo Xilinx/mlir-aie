@@ -9,7 +9,8 @@
 
 // A link pool that participants share through their allocates holds as many
 // objects as the deepest of their ends uses, as the participants' ends would
-// without the allocates: each end keeps enough for its largest acquire plus
+// without the allocates (another participant than the owner shares it only
+// where its allocate is honoured): each end keeps enough for its largest acquire plus
 // one, or its declared depth when no core acquires there. A declared depth no
 // end uses would make the pool's DMA walk more BDs than a tile has, or fill its
 // memory.
@@ -84,6 +85,32 @@ module @owner_declared_6_large {
     aie.core(%a) {
       %0 = aie.objectfifo.acquire @in0(Produce, 1) : memref<2048xi32>
       aie.objectfifo.release @in0(Produce, 1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// out's allocate names (0, 3), but the link's tile (0, 2) and out's consumer
+// (0, 4) share no memory, so out falls back to DMA and its ends are not the
+// pool's: the pool keeps in0's two, as without the allocate, not out's 16.
+// CHECK-LABEL: module @sharer_falls_back
+// CHECK: aie.lock({{.*}}) {init = 2 : i32, sym_name = "in0__cons__prodlock0"}
+// CHECK-NOT: in0__cons__buf2
+module @sharer_falls_back {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %l = aie.tile(0, 2)
+    %d = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    aie.objectfifo @in0(%s, {%l}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%l, {%c}, 16 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@in0] -> [@out] ([] [])
+    aie.objectfifo.allocate @out (%d)
+    aie.core(%c) {
+      %0 = aie.objectfifo.acquire @out(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @out(Consume, 1)
       aie.end
     }
   }

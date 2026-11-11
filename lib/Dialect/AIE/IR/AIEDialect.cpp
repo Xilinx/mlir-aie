@@ -2193,6 +2193,12 @@ ObjectFifoLinkOp ObjectFifoCreateOp::getConsumerLink(unsigned consumer) {
 
 std::optional<PlannedDmaEnd>
 ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
+  return plannedDmaEnd(consumer, placedAt);
+}
+
+std::optional<PlannedDmaEnd>
+ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
+                                  TilePositions positions) {
   bool drains = !consumer;
   Value tile = drains ? getProducerTile() : getConsumerTiles()[*consumer];
   auto tileLike = cast<TileLike>(tile.getDefiningOp());
@@ -2256,7 +2262,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
         break;
       }
   }
-  int64_t depth = link.getPoolDepth();
+  int64_t depth = link.getPoolDepth(positions);
   int64_t segments = link.getPoolSegments().size();
   int64_t selected =
       (drains ? link.isDistribute() : link.isJoin()) ? 1 : segments;
@@ -2842,15 +2848,23 @@ std::optional<unsigned> ObjectFifoLinkOp::getOwnerConsumerIndex() {
   return std::nullopt;
 }
 
-int64_t ObjectFifoLinkOp::getPoolDepth() {
+int64_t ObjectFifoLinkOp::getPoolDepth() { return getPoolDepth(placedAt); }
+
+int64_t ObjectFifoLinkOp::getPoolDepth(TilePositions positions) {
+  return getPoolPlan().depthAt(getTargetModel(*this), positions);
+}
+
+LinkPoolPlan ObjectFifoLinkOp::getPoolPlan() {
+  LinkPoolPlan plan{getOptionalSharedTile().value_or(Value()), 0, {}};
   StreamWindow window;
-  if (walksStream())
-    return succeeded(getStreamWindow(window)) ? window.objects : 0;
+  if (walksStream()) {
+    plan.depth = succeeded(getStreamWindow(window)) ? window.objects : 0;
+    return plan;
+  }
   ObjectFifoCreateOp owner = getPoolOwner();
-  int64_t depth = 0;
   if (!owner.getAllocate()) {
     std::optional<unsigned> index = getOwnerConsumerIndex();
-    depth = index ? owner.dmaDepth(index) : owner.size();
+    plan.depth = index ? owner.dmaDepth(index) : owner.size();
   }
   // The owner's allocate puts both its ends in the pool; another
   // participant's puts there only its end off the link's tile, the one its
@@ -2859,17 +2873,38 @@ int64_t ObjectFifoLinkOp::getPoolDepth() {
   std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
   std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
   for (ObjectFifoCreateOp fifo : llvm::concat<ObjectFifoCreateOp>(ins, outs)) {
-    if (!fifo.getAllocate())
+    std::optional<ObjectFifoAllocateOp> alloc = fifo.getAllocate();
+    if (!alloc)
       continue;
     if (fifo == owner)
-      depth = std::max<int64_t>(
-          {depth, fifo.dmaDepth(std::nullopt), fifo.dmaDepth(0)});
-    else if (fifo.linkPoolMisfit() == LinkPoolMisfit::None)
-      depth = std::max<int64_t>(depth, llvm::is_contained(outs, fifo)
-                                           ? fifo.dmaDepth(0)
-                                           : fifo.dmaDepth(std::nullopt));
+      plan.depth = std::max<int64_t>(
+          {plan.depth, fifo.dmaDepth(std::nullopt), fifo.dmaDepth(0)});
+    else if (plan.linkTile && fifo.getConsumerTiles().size() == 1 &&
+             fifo.linkPoolMisfit() == LinkPoolMisfit::None)
+      plan.sharers.push_back(
+          {fifo.getProducerTile(), fifo.getConsumerTiles()[0],
+           alloc->getDelegateTile(),
+           llvm::is_contained(outs, fifo) ? fifo.dmaDepth(0)
+                                          : fifo.dmaDepth(std::nullopt)});
   }
-  return depth;
+  return plan;
+}
+
+int64_t LinkPoolPlan::depthAt(const AIETargetModel &target,
+                              TilePositions positions) const {
+  int64_t result = depth;
+  std::optional<TileID> link =
+      sharers.empty() ? std::nullopt : positions(linkTile);
+  for (const LinkPoolSharer &sharer : sharers) {
+    std::optional<TileID> producer = positions(sharer.producer);
+    std::optional<TileID> consumer = positions(sharer.consumer);
+    std::optional<TileID> delegate = positions(sharer.delegate);
+    if (link && producer && consumer && delegate &&
+        ObjectFifoCreateOp::allocatedHome(target, *producer, *consumer,
+                                          *delegate, link))
+      result = std::max(result, sharer.depth);
+  }
+  return result;
 }
 
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
