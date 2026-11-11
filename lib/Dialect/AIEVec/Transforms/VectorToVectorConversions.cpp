@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
@@ -41,16 +42,6 @@ using namespace xilinx::aievec;
 //============================================================================//
 //================== Common AIE canonicalization analysis ====================//
 //============================================================================//
-
-static AIEArch decodeAIETarget(const std::string &target) {
-  if (!target.empty()) {
-    if (target == "aieml" || target == "aie2" || target == "aie2p")
-      return AIEArch::AIE2;
-    if (target != "aie")
-      return AIEArch::UNKNOWN;
-  }
-  return AIEArch::AIE;
-}
 
 //============================================================================//
 //============ Common AIE canonicalization conversion patterns ===============//
@@ -1106,16 +1097,16 @@ struct CanonicalizeVectorForAIEVecPass
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
 
-    AIEArch aieVersion = decodeAIETarget(aieTarget);
-    if (aieVersion == AIEArch::UNKNOWN) {
-      op->emitError() << "unknown AIE target '" << aieTarget << "'";
+    std::optional<AIEVecTargetInfo> targetInfo =
+        parseAIEVecLoweringTarget(aieTarget, op);
+    if (!targetInfo) {
       signalPassFailure();
       return;
     }
 
     populateCommonAIECanonicalizeConversionPatterns(patterns);
     configureCommonAIECanonicalizeLegalizations(target);
-    if (aieVersion == AIEArch::AIE) {
+    if (targetInfo->isAIE1()) {
       populateAIEv1CanonicalizeConversionPatterns(patterns);
       configureAIEv1CanonicalizeLegalizations(target);
     } else {
@@ -1127,7 +1118,7 @@ struct CanonicalizeVectorForAIEVecPass
       RewritePatternSet patterns(context);
       patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
-      if (aieTarget == "aie2p")
+      if (targetInfo->isAIE2P())
         patterns.add<FlattenVectorIterArgsPattern>(context);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
@@ -1186,6 +1177,9 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
 
   pm.addPass(createReorderOperationsPass());
   pm.addPass(createCopyRemovalPass());
-  pm.addPass(createVectorBroadcastLoweringPass(options.aieTarget == "aie2p"));
+  std::optional<AIEVecTargetInfo> targetInfo =
+      parseAIEVecTarget(options.aieTarget);
+  pm.addPass(
+      createVectorBroadcastLoweringPass(targetInfo && targetInfo->isAIE2P()));
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
 }

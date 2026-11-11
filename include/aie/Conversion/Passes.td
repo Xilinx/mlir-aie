@@ -37,7 +37,7 @@ def ConvertAIEVecToLLVM : Pass<"convert-aievec-to-llvm", "mlir::ModuleOp"> {
   let options = [
       Option<"aieTarget", "aie-target", "std::string",
              /*default=*/"\"aie2\"",
-             "Select AIE version: \\\"aie\\\", \\\"aie2\\\", or \\\"aie2p\\\". This will determine which XLLVM intrinsics to use.">,
+             "Select AIE version: \\\"aie\\\", \\\"aie2\\\", \\\"aie2p\\\", or \\\"aie2ps\\\". This will determine which XLLVM intrinsics to use. \\\"aie2ps\\\" has no AIEVec lowering: the pass rejects any AIEVec op.">,
       Option<"aie2Fp32Emulation", "aie2-fp32-emulation-strategy", "xilinx::aievec::Aie2Fp32Emulation",
              /*default=*/"xilinx::aievec::Aie2Fp32Emulation::AccuracySafe",
              "Set the AIE2 FP32 emulation strategy. Elementwise multiplication and matrix multiplication intrinsics for FP32 input type are emulated using bfloat16 data-path.",

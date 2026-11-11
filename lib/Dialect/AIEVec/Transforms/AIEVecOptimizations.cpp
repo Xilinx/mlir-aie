@@ -15,6 +15,7 @@
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -259,8 +260,9 @@ struct AIEVecTransformationPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
   void runOnOperation() override {
@@ -268,19 +270,15 @@ struct AIEVecTransformationPass
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-    AIEArch aieVersion = AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string target = aieTarget;
-      if (target == "aieml" || target == "aie2" || target == "aie2p") {
-        aieVersion = AIEArch::AIE2;
-      } else if (target != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        signalPassFailure();
-        return;
-      }
+    std::optional<AIEVecTargetInfo> targetInfo =
+        parseAIEVecLoweringTarget(aieTarget, op);
+    if (!targetInfo) {
+      signalPassFailure();
+      return;
     }
 
-    if (aieVersion == AIEArch::AIE) {
+    // AIE2P uses the AIE2 transformations.
+    if (targetInfo->isAIE1()) {
       populateAIEVecV1TransformationPatterns(patterns);
       configureAIEVecV1TransformationLegalizations(target);
     } else {
@@ -331,8 +329,9 @@ struct AIEVecConvOpTransformationPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
   Option<unsigned> shiftParam{
@@ -345,20 +344,15 @@ struct AIEVecConvOpTransformationPass
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-    AIEArch aieVersion = AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string target = aieTarget;
-      if (target == "aieml" || target == "aie2" || target == "aie2p") {
-        aieVersion = AIEArch::AIE2;
-      } else if (target != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        signalPassFailure();
-        return;
-      }
+    std::optional<AIEVecTargetInfo> targetInfo =
+        parseAIEVecLoweringTarget(aieTarget, op);
+    if (!targetInfo) {
+      signalPassFailure();
+      return;
     }
 
     AnalysisManager am = getAnalysisManager();
-    if (aieVersion == AIEArch::AIE2) {
+    if (targetInfo->isAIE2() || targetInfo->isAIE2P()) {
       populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam);
       configureAIEVecConvOpTransformationLegalizations(target, am);
     }
@@ -387,8 +381,9 @@ void xilinx::aievec::buildOptimizeAIEVec(OpPassManager &pm,
   pm.addPass(createCanonicalizerPass());
 
   // Add generating aievec convolution ops pass
-  if (options.aieTarget == "aieml" || options.aieTarget == "aie2" ||
-      options.aieTarget == "aie2p") {
+  std::optional<AIEVecTargetInfo> targetInfo =
+      parseAIEVecTarget(options.aieTarget);
+  if (targetInfo && (targetInfo->isAIE2() || targetInfo->isAIE2P())) {
     pm.addPass(createAIEVecConvolutionAnalysisPass());
     pm.addPass(createAIEVecConvOpTransformationPass(options));
   }
