@@ -1108,10 +1108,31 @@ SequentialPlacer::buildChannelRequirements(
       continue;
 
     // Link tile needs one input channel per source ObjectFifo and one output
-    // channel per dest ObjectFifo, except that a time link's turns share one.
-    int numInputChannels = linkOp.isMerge() ? 1 : linkOp.getFifoIns().size();
-    int numOutputChannels =
-        linkOp.isDispatch() ? 1 : linkOp.getFifoOuts().size();
+    // channel per dest ObjectFifo, except that a time link's turns share one,
+    // and so do ends pinning one channel; their pins hold it there.
+    int numInputChannels = 0, numOutputChannels = 0;
+    for (auto [sources, input] : {std::make_pair(linkOp.getFifoIns(), true),
+                                  std::make_pair(linkOp.getFifoOuts(), false)})
+      for (Attribute attr : sources) {
+        auto sym = dyn_cast<FlatSymbolRefAttr>(attr);
+        ObjectFifoCreateOp fifo =
+            sym ? fifoNameToOp.lookup(sym.getValue()) : ObjectFifoCreateOp();
+        if (!fifo) {
+          ++(input ? numInputChannels : numOutputChannels);
+          continue;
+        }
+        if (!input) {
+          numOutputChannels += drawsChannel(fifo, std::nullopt, linkTileOp);
+          continue;
+        }
+        for (auto [index, consumer] : llvm::enumerate(fifo.getConsumerTiles()))
+          if (consumer.getDefiningOp() == linkTileOp)
+            numInputChannels += drawsChannel(fifo, index, linkTileOp);
+      }
+    if (linkOp.isMerge())
+      numInputChannels = 1;
+    if (linkOp.isDispatch())
+      numOutputChannels = 1;
 
     channelRequirements[linkTileOp].first += numInputChannels;
     channelRequirements[linkTileOp].second += numOutputChannels;
