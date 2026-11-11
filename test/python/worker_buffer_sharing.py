@@ -105,9 +105,7 @@ def test_unpinned_consumer_is_steered_to_owner_neighbor():
 
     rt = Runtime(sequence, [buf_ty, of_out.cons()])
     module = Program(NPU2Col1(), rt, workers=[producer, consumer]).resolve_program()
-    pm = PassManager.parse(
-        "builtin.module(aie.device(aie-place-tiles))", context=module.context
-    )
+    pm = PassManager.parse("builtin.module(aie-place-tiles)", context=module.context)
     pm.run(module.operation)
     print(module)
 

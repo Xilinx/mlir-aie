@@ -1373,7 +1373,8 @@ inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
 // (e.g. `parsePassPipeline` rejected an option string).
 //===----------------------------------------------------------------------===//
 
-// Tile placement (`aie-place-tiles`), nested under DeviceOp.
+// Tile placement (`aie-place-tiles`), at module scope: it places every
+// `aie.device` in order so a later one sees earlier ones' placements.
 inline std::unique_ptr<mlir::PassManager> getPlacementPipeline(
     mlir::MLIRContext *ctx, int coresPerCol, xilinx::AIE::PlacerType placerType,
     int saSeed, double saEffort, int64_t placementBudget,

@@ -52,7 +52,7 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
   ];
 }
 
-def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
+def AIEPlaceTiles : Pass<"aie-place-tiles", "mlir::ModuleOp"> {
   let summary = "Place logical tiles onto physical AIE tiles";
   let description = [{
     The sequential placer maps cores column-major and FIFO-connected Shim/Mem
@@ -72,6 +72,9 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     declared in another order or under other names is placed alike. Logical
     tiles whose flows name the same DMA channel by index never share a
     physical tile.
+
+    The pass places a module's devices one after another, in module order, so
+    a device's placement may read the devices placed before it.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";

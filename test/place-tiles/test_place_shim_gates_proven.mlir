@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles,aie-objectFifo-stateful-transform))' %s | FileCheck %s
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles{placer=sa_placer sa-seed=1},aie-objectFifo-stateful-transform))' %s | FileCheck %s
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform))' %s | FileCheck %s
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform))' %s | FileCheck %s
 
 // Each core relays its own shim input to its output, and each core's
 // transfers run in a sequence of their own, so aie-objectfifo-verify proves

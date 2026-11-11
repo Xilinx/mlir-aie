@@ -18,7 +18,7 @@ using namespace xilinx::AIE;
 
 void AIEX::addPlacementStage(OpPassManager &pm,
                              const AIEPlaceTilesOptions &options) {
-  pm.nest<DeviceOp>().addPass(createAIEPlaceTilesPass(options));
+  pm.addPass(createAIEPlaceTilesPass(options));
 }
 
 void AIEX::addTraceStage(OpPassManager &pm) {

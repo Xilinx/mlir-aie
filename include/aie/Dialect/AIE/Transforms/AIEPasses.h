@@ -79,8 +79,8 @@ mlir::Operation *getObjectFifoLoopParent(mlir::Operation *op);
 #define GEN_PASS_DECL
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
-std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
-std::unique_ptr<mlir::OperationPass<DeviceOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEPlaceTilesPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEPlaceTilesPass(const AIEPlaceTilesOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPrepareBuffersPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>

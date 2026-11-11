@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles{placer=sa_placer sa-seed=1},aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
 
 // (0, 1) holds 60 BD ids' worth of ends, so one of @y (one end) and @x (a
 // link, two ends), equally deep, is walked whole. The SA and allocation pick

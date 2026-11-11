@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles{placer=sa_placer sa-seed=1},aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
 
 // (0, 1)'s pools are walked whole by search: of the sets whose walk fits its
 // BD ids, the one walking the fewest bytes whose buffers then fit, however the

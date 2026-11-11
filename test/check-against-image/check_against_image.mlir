@@ -1,5 +1,5 @@
-// RUN: aie-opt --pass-pipeline='builtin.module(aie.device(aie-place-tiles,aie-objectFifo-stateful-transform,aie-create-pathfinder-flows,aie-assign-lock-ids,aie-assign-bd-ids,aie-assign-buffer-addresses))' %S/Inputs/light.mlir -o %t.image.mlir
-// RUN: aie-opt --pass-pipeline='builtin.module(aie.device(aie-place-tiles,aie-objectFifo-stateful-transform,aie-create-pathfinder-flows,aie-assign-lock-ids,aie-assign-bd-ids,aie-assign-buffer-addresses))' %S/Inputs/heavy.mlir -o %t.stream.mlir
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform,aie-create-pathfinder-flows,aie-assign-lock-ids,aie-assign-bd-ids,aie-assign-buffer-addresses))' %S/Inputs/light.mlir -o %t.image.mlir
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform,aie-create-pathfinder-flows,aie-assign-lock-ids,aie-assign-bd-ids,aie-assign-buffer-addresses))' %S/Inputs/heavy.mlir -o %t.stream.mlir
 // RUN: not aie-opt --aie-check-against-image=image=%t.image.mlir %t.stream.mlir -o /dev/null 2>&1 | FileCheck %s
 // RUN: aie-opt --aie-check-against-image=image=%t.image.mlir %t.image.mlir -o /dev/null
 
