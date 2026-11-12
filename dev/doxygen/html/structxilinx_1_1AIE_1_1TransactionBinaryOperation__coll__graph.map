@@ -1,0 +1,13 @@
+<map id="xilinx::AIE::TransactionBinaryOperation" name="xilinx::AIE::TransactionBinaryOperation">
+<area shape="rect" id="Node000001" title=" " alt="" coords="357,152,525,196"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="33,5,187,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="186,35,215,43,276,61,334,88,379,118,418,151,413,151,376,122,331,92,274,66,214,48,187,40"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,58,215,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="230,114,333,141,363,150,358,151,332,146,230,120"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="5,143,215,205"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="230,171,358,173,354,175,231,176"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="5,228,215,290"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="229,228,332,202,362,196,357,198,333,207,231,233"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="13,315,207,342"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="186,308,214,299,274,281,331,255,376,225,412,198,417,196,379,230,334,260,276,286,215,304,187,313"/>
+</map>
