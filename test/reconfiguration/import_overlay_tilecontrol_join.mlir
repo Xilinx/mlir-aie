@@ -1,9 +1,16 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: not aie-opt --aie-import-overlay --aie-create-pathfinder-flows %s -o /dev/null 2>&1 | FileCheck %s
-// CHECK: error: Unable to find a legal routing: packet flow 0 ends at (0, 2) TileControl:0, whose output port is reserved by the control packet overlay
-// CHECK: note: output port reserved here by aie.masterset
+// RUN: aie-opt --aie-import-overlay --aie-create-pathfinder-flows %s | FileCheck %s
+
+// CHECK-LABEL: aie.device(npu2_1col) @application
+// CHECK: %[[A:.*]] = aie.amsel<5> (3) {aie.is_ctrl_pkt_overlay}
+// CHECK-NOT: aie.masterset(TileControl
+// CHECK: aie.masterset(TileControl : 0, %[[A]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-NOT: aie.masterset(TileControl
+// CHECK: aie.packet_rules(DMA : 0) {
+// CHECK-NEXT: aie.rule(31, 0, %[[A]])
+// CHECK-LABEL: aie.device(npu2_1col) @transport
 
 module {
   aie.device(npu2_1col) @application {
