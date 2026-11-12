@@ -37,9 +37,6 @@ extern "C" {
 /// representing different tradeoffs between efficiency of host data access vs.
 /// efficiency of accelerator access.
 
-// static variable for tracking current DDR physical addr during AIESIM
-static uint16_t nextAlignedAddr;
-
 /// @brief Allocate a buffer in device memory
 /// @param ctx The AIE context
 /// @param handle External memory model handle for tracking the allocation
