@@ -31,4 +31,3 @@ module @next_tile {
     }
   }
 }
-
