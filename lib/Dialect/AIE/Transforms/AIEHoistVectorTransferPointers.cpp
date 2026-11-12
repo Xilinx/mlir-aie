@@ -30,6 +30,7 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEHOISTVECTORTRANSFERPOINTERS
@@ -48,9 +49,9 @@ namespace {
 // Helper Functions
 //===----------------------------------------------------------------------===//
 
-/// The coefficient of `iv` in the linear expression `expr`, given the
-/// coefficient of each of the map's operands (dims first, then symbols).
-/// nullopt if `expr` is not linear in `iv`.
+/// How much `expr` changes each iteration, given how much each of the map's
+/// operands does (dims first, then symbols). nullopt if that is not the same
+/// every iteration.
 static std::optional<int64_t> getExprCoefficient(AffineExpr expr,
                                                  ArrayRef<int64_t> operandCoefs,
                                                  unsigned numDims) {
@@ -79,22 +80,71 @@ static std::optional<int64_t> getExprCoefficient(AffineExpr expr,
     if (auto c = dyn_cast<AffineConstantExpr>(bin.getLHS()))
       return *rhs * c.getValue();
     return (*lhs == 0 && *rhs == 0) ? std::optional<int64_t>(0) : std::nullopt;
-  default:
-    // mod, floordiv and ceildiv are linear only if neither side depends on
-    // the IV.
+  default: {
+    // x floordiv c (ceildiv c) changes by d / c where x changes by d, a
+    // multiple of c; x mod c then not at all.
+    auto c = dyn_cast<AffineConstantExpr>(bin.getRHS());
+    if (*rhs == 0 && c && c.getValue() > 0 && *lhs % c.getValue() == 0)
+      return bin.getKind() == AffineExprKind::Mod ? 0 : *lhs / c.getValue();
     return (*lhs == 0 && *rhs == 0) ? std::optional<int64_t>(0) : std::nullopt;
+  }
   }
 }
 
-/// Writes `v` as `coef * iv + inv`, where `inv` does not change across
-/// iterations of `forOp` and can be recomputed before it, and returns `coef`.
-/// nullopt when `v` is not of that form: it reads an iter_arg, loads from
-/// memory, or depends on the IV non-linearly.
+/// `map`'s result with `iv floordiv c` and `iv mod c` (iv `forOp`'s IV, an
+/// operand of the map) replaced by 0 and iv where the loop keeps iv in
+/// [0, c).
+static AffineExpr withinIVRange(AffineMap map, ValueRange operands,
+                                scf::ForOp forOp) {
+  std::optional<int64_t> lb = getConstantIntValue(forOp.getLowerBound());
+  std::optional<int64_t> ub = getConstantIntValue(forOp.getUpperBound());
+  AffineExpr e = map.getResult(0);
+  if (!lb || !ub || *lb < 0)
+    return e;
+  std::function<AffineExpr(AffineExpr)> rw = [&](AffineExpr x) -> AffineExpr {
+    auto bin = dyn_cast<AffineBinaryOpExpr>(x);
+    if (!bin)
+      return x;
+    AffineExpr l = rw(bin.getLHS()), r = rw(bin.getRHS());
+    switch (bin.getKind()) {
+    case AffineExprKind::Add:
+      return l + r;
+    case AffineExprKind::Mul:
+      return l * r;
+    case AffineExprKind::CeilDiv:
+      return l.ceilDiv(r);
+    default:
+      break;
+    }
+    // iv floordiv c, iv mod c with iv in [0, c).
+    auto c = dyn_cast<AffineConstantExpr>(r);
+    std::optional<unsigned> pos;
+    if (auto d = dyn_cast<AffineDimExpr>(l))
+      pos = d.getPosition();
+    else if (auto sy = dyn_cast<AffineSymbolExpr>(l))
+      pos = map.getNumDims() + sy.getPosition();
+    bool inRange = c && pos && operands[*pos] == forOp.getInductionVar() &&
+                   *ub <= c.getValue();
+    if (bin.getKind() == AffineExprKind::FloorDiv)
+      return inRange ? getAffineConstantExpr(0, x.getContext()) : l.floorDiv(r);
+    return inRange ? l : l % r;
+  };
+  return rw(e);
+}
+
+/// How much `v` changes each iteration of `forOp` (`coef * step` for `v` of
+/// the form `coef * iv + inv`, where `inv` does not change across iterations
+/// and can be recomputed before the loop). nullopt when that is not the same
+/// every iteration: `v` reads an iter_arg, loads from memory, or depends on
+/// the IV non-linearly, or the step is not a constant.
 static std::optional<int64_t>
 getIVCoefficient(Value v, scf::ForOp forOp,
                  DenseMap<Value, std::optional<int64_t>> &cache) {
-  if (v == forOp.getInductionVar())
-    return 1;
+  if (v == forOp.getInductionVar()) {
+    if (auto st = forOp.getConstantStep())
+      return st->getSExtValue();
+    return std::nullopt;
+  }
   if (forOp.isDefinedOutsideOfLoop(v))
     return 0;
   auto it = cache.find(v);
@@ -130,7 +180,9 @@ getIVCoefficient(Value v, scf::ForOp forOp,
           result = 0;
       } else if (auto apply = dyn_cast<affine::AffineApplyOp>(def)) {
         AffineMap map = apply.getAffineMap();
-        result = getExprCoefficient(map.getResult(0), coefs, map.getNumDims());
+        result = getExprCoefficient(
+            withinIVRange(map, apply.getMapOperands(), forOp), coefs,
+            map.getNumDims());
       } else if (invariant) {
         // Any other pure op over loop-invariant operands is loop-invariant.
         result = 0;
@@ -248,14 +300,14 @@ struct HoistVectorTransferPointersPattern
       if (!forOp.isDefinedOutsideOfLoop(base))
         continue;
 
-      // Each index must be coef * iv + (loop-invariant); the pointer then
-      // advances by sum(coef * dimStride) * step elements per iteration.
+      // Each index must change by the same amount every iteration; the
+      // pointer then advances by sum(change * dimStride) elements.
       std::optional<int64_t> step =
           forOp.getConstantStep()
               ? std::optional<int64_t>(forOp.getConstantStep()->getSExtValue())
               : std::nullopt;
       bool analyzable = true;
-      int64_t elementsPerIV = 0;
+      int64_t elementsPerIteration = 0;
       int64_t dimStride = 1;
       for (int64_t d = memRank - 1; d >= 0; --d) {
         std::optional<int64_t> coef =
@@ -264,16 +316,15 @@ struct HoistVectorTransferPointersPattern
           analyzable = false;
           break;
         }
-        elementsPerIV += *coef * dimStride;
+        elementsPerIteration += *coef * dimStride;
         dimStride *= memrefType.getDimSize(d);
       }
       if (!analyzable)
         continue;
-      bool hasIVDependentIndices = elementsPerIV != 0;
+      bool hasIVDependentIndices = elementsPerIteration != 0;
       if (hasIVDependentIndices && !step)
         continue;
-      int64_t constantStride =
-          hasIVDependentIndices ? elementsPerIV * *step : 0;
+      int64_t constantStride = hasIVDependentIndices ? elementsPerIteration : 0;
 
       transferOps.push_back({&op, base, memrefType, vectorType, indices,
                              constantStride, hasIVDependentIndices});
@@ -594,6 +645,20 @@ struct AIEHoistVectorTransferPointersPass
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
     MLIRContext *context = &getContext();
+
+    // A transfer's buffer viewed inside a loop it does not depend on (a
+    // reshape made next to the transfer): the view out of the loop first, so
+    // that the transfer's base is defined outside it.
+    moduleOp.walk([&](scf::ForOp forOp) {
+      moveLoopInvariantCode(
+          forOp.getLoopRegions(),
+          [&](Value v, Region *) { return forOp.isDefinedOutsideOfLoop(v); },
+          [&](Operation *op, Region *) {
+            return isa<memref::CollapseShapeOp, memref::ExpandShapeOp,
+                       memref::CastOp, memref::ReinterpretCastOp>(op);
+          },
+          [&](Operation *op, Region *) { forOp.moveOutOfLoop(op); });
+    });
 
     RewritePatternSet patterns(context);
     patterns.add<HoistVectorTransferPointersPattern>(context);
