@@ -3856,6 +3856,53 @@
     "offered": 100,
     "checked": 98
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "43166514990",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43166514990",
+   "date": "2026-11-12T06:12:33+00:00",
+   "commit": {
+    "id": "7221628a25ca66f5b4104b8194b8f07db4e09773",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7221628a25ca66f5b4104b8194b8f07db4e09773",
+    "message": "[cert] Find the generated configure sequence by tag, not by name (#4044)",
+    "timestamp": "2026-11-11T18:03:05Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "7221628a25",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2195,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 846,
+    "failed": 0,
+    "timed": 371,
+    "timing_failed": 0,
+    "untimed": 479,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 100,
+    "checked": 98
+   }
   }
  ]
 }
