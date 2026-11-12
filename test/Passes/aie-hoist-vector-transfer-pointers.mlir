@@ -414,3 +414,93 @@ func.func @masked_transfer_untouched(%arg0: memref<256xf32>, %mask: vector<16xi1
   }
   return
 }
+
+// -----
+
+// Indices given as floordiv / mod of the IV: an index changing by a multiple
+// of c each trip changes by that over c when divided, by nothing in its mod.
+// The loop steps 4 over tiles stored as [pair][two]: tile i at (i floordiv 2,
+// i mod 2).
+// CHECK-LABEL: func.func @floordiv_mod_index
+// CHECK: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[PTR:.*]] = %{{.*}})
+// CHECK: vector.transfer_read %{{.*}}[%[[PTR]]]
+// CHECK: arith.addi %[[PTR]], %c256
+func.func @floordiv_mod_index(%arg0: memref<8x2x64xbf16>, %out: memref<64xbf16>) {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c16 = arith.constant 16 : index
+  %cst = arith.constant 0.0 : bf16
+  scf.for %i = %c0 to %c16 step %c4 {
+    %p = affine.apply affine_map<(d0) -> (d0 floordiv 2)>(%i)
+    %t = affine.apply affine_map<(d0) -> (d0 mod 2)>(%i)
+    %v = vector.transfer_read %arg0[%p, %t, %c0], %cst {in_bounds = [true]} : memref<8x2x64xbf16>, vector<64xbf16>
+    vector.transfer_write %v, %out[%c0] {in_bounds = [true]} : vector<64xbf16>, memref<64xbf16>
+  }
+  return
+}
+
+// -----
+
+// A unit dim's index iv floordiv 16 over a loop of 16 trips is 0, its mod iv.
+// CHECK-LABEL: func.func @iv_range_index
+// CHECK: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[PTR:.*]] = %{{.*}})
+// CHECK: vector.transfer_read %{{.*}}[%[[PTR]]]
+// CHECK: arith.addi %[[PTR]], %c64
+func.func @iv_range_index(%arg0: memref<1x16x64xbf16>, %out: memref<64xbf16>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c16 = arith.constant 16 : index
+  %cst = arith.constant 0.0 : bf16
+  scf.for %i = %c0 to %c16 step %c1 {
+    %a = affine.apply affine_map<(d0) -> (d0 floordiv 16)>(%i)
+    %b = affine.apply affine_map<(d0) -> (d0 mod 16)>(%i)
+    %v = vector.transfer_read %arg0[%a, %b, %c0], %cst {in_bounds = [true]} : memref<1x16x64xbf16>, vector<64xbf16>
+    vector.transfer_write %v, %out[%c0] {in_bounds = [true]} : vector<64xbf16>, memref<64xbf16>
+  }
+  return
+}
+
+// -----
+
+// A view of the buffer made inside the loop, from values outside it: moved out
+// first, so the transfer through it is hoisted too.
+// CHECK-LABEL: func.func @view_in_loop
+// CHECK: memref.collapse_shape
+// CHECK: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[PTR:.*]] = %{{.*}})
+// CHECK-NOT: memref.collapse_shape
+// CHECK: vector.transfer_read %{{.*}}[%[[PTR]]]
+func.func @view_in_loop(%arg0: memref<16x8x8xbf16>, %out: memref<64xbf16>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c16 = arith.constant 16 : index
+  %cst = arith.constant 0.0 : bf16
+  scf.for %i = %c0 to %c16 step %c1 {
+    %f = memref.collapse_shape %arg0 [[0], [1, 2]] : memref<16x8x8xbf16> into memref<16x64xbf16>
+    %v = vector.transfer_read %f[%i, %c0], %cst {in_bounds = [true]} : memref<16x64xbf16>, vector<64xbf16>
+    vector.transfer_write %v, %out[%c0] {in_bounds = [true]} : vector<64xbf16>, memref<64xbf16>
+  }
+  return
+}
+
+// -----
+
+// An unsigned loop to -1 (2^64 - 1) does not keep iv in [0, 16): iv mod 16 is
+// not iv, and the read is not hoisted.
+// CHECK-LABEL: func.func @iv_range_unsigned
+// CHECK: scf.for unsigned
+// CHECK-NOT: iter_args
+// CHECK: affine.apply
+// CHECK: vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}]
+func.func @iv_range_unsigned(%arg0: memref<1x16x64xbf16>, %out: memref<64xbf16>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %cm1 = arith.constant -1 : index
+  %cst = arith.constant 0.0 : bf16
+  scf.for unsigned %i = %c0 to %cm1 step %c1 {
+    %a = affine.apply affine_map<(d0) -> (d0 floordiv 16)>(%i)
+    %b = affine.apply affine_map<(d0) -> (d0 mod 16)>(%i)
+    %v = vector.transfer_read %arg0[%a, %b, %c0], %cst {in_bounds = [true]} : memref<1x16x64xbf16>, vector<64xbf16>
+    vector.transfer_write %v, %out[%c0] {in_bounds = [true]} : vector<64xbf16>, memref<64xbf16>
+  }
+  return
+}
