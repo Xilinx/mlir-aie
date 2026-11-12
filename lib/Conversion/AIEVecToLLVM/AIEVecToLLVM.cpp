@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h"
+#include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
@@ -1484,12 +1485,6 @@ public:
     rewriter.replaceOp(fmaOp, resVal);
     return success();
   }
-};
-
-// Enum to represent different AIE target architectures
-enum class AIEArch {
-  AIE2,
-  AIE2p,
 };
 
 class UPSOpAIE2Conversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
@@ -5356,9 +5351,12 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
 
 void populateAIEVecToLLVMConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
-    Aie2Fp32Emulation aie2Fp32EmulationOption, StringRef aieTarget) {
+    Aie2Fp32Emulation aie2Fp32EmulationOption, AIEVecTargetInfo aieTarget) {
+  assert(aieTarget.hasAIEVecLowering() && "no AIEVec lowering for target");
   populateAIEVecToLLVMCommonConversionPatterns(converter, patterns);
-  if (aieTarget == "aie2p")
+  // AIE1 and AIE2 both use the AIE2 patterns. The common patterns cover the
+  // aievec_aie1 ops.
+  if (aieTarget.isAIE2P())
     populateAIEVecToLLVMAIE2pConversionPatterns(converter, patterns);
   else
     populateAIEVecToLLVMAIE2ConversionPatterns(converter, patterns,
@@ -5395,6 +5393,29 @@ struct ConvertAIEVecToLLVMPass
   }
 
   void runOnOperation() override {
+    ModuleOp module = getOperation();
+    std::optional<AIEVecTargetInfo> targetInfo =
+        parseAIEVecTarget(aieTarget, module);
+    if (!targetInfo)
+      return signalPassFailure();
+
+    // Without an AIEVec lowering for the target, the pass leaves the module
+    // unchanged, and fails if the module has an AIEVec op to lower.
+    if (!targetInfo->hasAIEVecLowering()) {
+      WalkResult result = module.walk([&](Operation *op) {
+        if (isa_and_present<AIEVecDialect, aie1::AIEVecAIE1Dialect>(
+                op->getDialect())) {
+          op->emitOpError() << "has no LLVM lowering for target '"
+                            << getAIEVecTargetName(*targetInfo) << "'";
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
+      if (result.wasInterrupted())
+        signalPassFailure();
+      return;
+    }
+
     RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(&getContext());
 
@@ -5404,7 +5425,7 @@ struct ConvertAIEVecToLLVMPass
         [&](VectorType type) -> std::optional<Type> { return type; });
 
     populateAIEVecToLLVMConversionPatterns(converter, patterns,
-                                           aie2Fp32Emulation, aieTarget);
+                                           aie2Fp32Emulation, *targetInfo);
 
     LLVMConversionTarget target(getContext());
     target.addIllegalDialect<xilinx::aievec::AIEVecDialect,

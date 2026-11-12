@@ -16,15 +16,6 @@
 #include "mlir/Pass/PassOptions.h"
 
 namespace xilinx {
-enum class AIEArch {
-  AIE,    // Original AIE
-  AIE2,   // AIE-ML/V2 arch version of AIE
-  AIE2P,  // AIE2P arch version of AIE
-  UNKNOWN // Unsupported/Unknown backend
-};
-} // namespace xilinx
-
-namespace xilinx {
 namespace aievec {
 
 // TODO: Create a common base class for all AIEVec pipeline options.
@@ -34,8 +25,9 @@ struct CanonicalizeVectorForAIEVecOptions
     : public mlir::PassPipelineOptions<CanonicalizeVectorForAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
   PassOptions::Option<bool> enableBF16Emulation{
       *this, "bf16-emulation",
@@ -50,8 +42,9 @@ struct LowerVectorToAIEVecOptions
     : public mlir::PassPipelineOptions<LowerVectorToAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 };
 
@@ -60,8 +53,9 @@ struct OptimizeAIEVecOptions
     : public mlir::PassPipelineOptions<OptimizeAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
   PassOptions::Option<unsigned> shiftParam{
       *this, "shift",
@@ -90,8 +84,9 @@ struct ConvertVectorToAIEVecOptions
       llvm::cl::init(2)};
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
   PassOptions::Option<bool> enableBF16Emulation{
       *this, "bf16-emulation",

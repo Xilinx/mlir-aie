@@ -17,6 +17,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
 
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -6919,28 +6920,20 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     target.addLegalOp<xilinx::AIE::RuntimeSequenceOp>();
     target.markOpRecursivelyLegal<xilinx::AIE::RuntimeSequenceOp>();
 
-    auto aieVersion = AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string targetStr = aieTarget;
-      if (targetStr == "aieml" || targetStr == "aie2")
-        aieVersion = AIEArch::AIE2;
-      else if (targetStr == "aie2p")
-        aieVersion = AIEArch::AIE2P;
-      else if (targetStr != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        return signalPassFailure();
-      }
-    }
+    std::optional<AIEVecTargetInfo> targetInfo =
+        parseAIEVecLoweringTarget(aieTarget, op);
+    if (!targetInfo)
+      return signalPassFailure();
 
     populateAIEVecCommonConversionPatterns(patterns);
     configureAIEVecCommonLegalizations(target);
-    if (aieVersion == AIEArch::AIE) {
+    if (targetInfo->isAIE1()) {
       populateAIEVecV1ConversionPatterns(patterns);
       configureAIEVecV1Legalizations(target);
-    } else if (aieVersion == AIEArch::AIE2) {
+    } else if (targetInfo->isAIE2()) {
       populateAIEVecV2ConversionPatterns(patterns);
       configureAIEVecV2Legalizations(target);
-    } else if (aieVersion == AIEArch::AIE2P) {
+    } else if (targetInfo->isAIE2P()) {
       auto planner = std::make_shared<AIE2PShufflePlanner>();
       populateAIEVecV2PConversionPatterns(patterns, planner);
       configureAIEVecV2Legalizations(target);
