@@ -297,14 +297,18 @@ struct LongestConvMACChainAnalysis {
       return nullptr;
 
     Value convMacLhs = extOp.getSource();
-    uint8_t shift = 0;
+    // The signal starts at the extracted part's first element of the source,
+    // and a shift moves it further.
+    uint8_t shift =
+        extOp.getIndex() *
+        cast<VectorType>(extOp.getResult().getType()).getNumElements();
     if (shiftOp) {
       auto shiftConstDefOp =
           shiftOp.getShift().getDefiningOp<arith::ConstantOp>();
       if (shiftConstDefOp) {
         auto shiftAttr = cast<IntegerAttr>(shiftConstDefOp.getValue());
         auto vType = cast<VectorType>(mulOp.getResult().getType());
-        shift = 8 * shiftAttr.getInt() / getElementSizeInBits(vType);
+        shift += 8 * shiftAttr.getInt() / getElementSizeInBits(vType);
       }
     }
 
