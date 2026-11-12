@@ -209,11 +209,19 @@ struct AIEGenerateColumnControlOverlayPass
     std::vector<std::pair<TileID, Port>> avoided;
     if (adaptive && failed(applicationPorts(module, avoided)))
       return failure();
-    OpPassManager routing(DeviceOp::getOperationName());
-    routing.addPass(createAIEAssignTileCtrlIDsPass());
-    routing.addPass(createAIEPathfinderPass({}, avoided));
-    if (failed(runPipeline(routing, overlay)))
+    // Detours around the application can fill a control channel's slave port
+    // with rules, leaving none for a data flow that shares the channel. Such
+    // an overlay routes again without the detours.
+    OwningOpRef<Operation *> unrouted;
+    if (!avoided.empty())
+      unrouted = overlay->clone();
+    if (failed(route(overlay, avoided)))
       return failure();
+    if (unrouted && !controlChannelsHaveRuleSlots(overlay)) {
+      overlay.getRegion().takeBody(unrouted.get()->getRegion(0));
+      if (failed(route(overlay, {})))
+        return failure();
+    }
     // Reprogramming another master set of an active arbiter can stall control
     // packets.
     for (auto box : overlay.getOps<SwitchboxOp>()) {
@@ -235,6 +243,42 @@ struct AIEGenerateColumnControlOverlayPass
     });
     return success();
   }
+
+  LogicalResult route(DeviceOp overlay,
+                      ArrayRef<std::pair<TileID, Port>> avoided) {
+    OpPassManager routing(DeviceOp::getOperationName());
+    routing.addPass(createAIEAssignTileCtrlIDsPass());
+    routing.addPass(createAIEPathfinderPass({}, avoided));
+    return runPipeline(routing, overlay);
+  }
+
+  // Whether the slave port by which each control channel enters its
+  // switchbox has a packet rule slot left.
+  static bool controlChannelsHaveRuleSlots(DeviceOp overlay) {
+    unsigned slots = overlay.getTargetModel().getNumSlaveSlots();
+    std::map<TileID, SwitchboxOp> boxes;
+    for (auto box : overlay.getOps<SwitchboxOp>())
+      boxes[box.getTileOp().getTileID()] = box;
+    std::map<std::pair<TileID, int>, Port> entries;
+    for (auto mux : overlay.getOps<ShimMuxOp>())
+      for (auto connect : mux.getConnections().getOps<ConnectOp>())
+        if (connect.getSourceBundle() == WireBundle::DMA)
+          entries[{mux.getTileOp().getTileID(), connect.sourceIndex()}] = {
+              WireBundle::South, connect.destIndex()};
+    for (auto alloc : overlay.getOps<ShimDMAAllocationOp>()) {
+      TileID tile = alloc.getTileOp().getTileID();
+      auto entry = entries.find({tile, (int)alloc.getChannelIndex()});
+      auto box = boxes.find(tile);
+      if (entry == entries.end() || box == boxes.end())
+        continue;
+      for (auto rules : box->second.getConnections().getOps<PacketRulesOp>())
+        if (rules.sourcePort() == entry->second &&
+            llvm::range_size(rules.getRules().getOps<PacketRuleOp>()) >= slots)
+          return false;
+    }
+    return true;
+  }
+
   // See the pass description's multicast-span. Every group shares one id: the
   // router keeps two trees on one id apart unless they reach the same tiles,
   // as it does the controllers' ids, which repeat in every column.
