@@ -292,6 +292,12 @@ using Port = struct Port {
   }
 };
 
+/// The switchbox input driven by an output's physical wire, with the channel
+/// preserved. Endpoint bundles have no wire and return nullopt. This describes
+/// geometry, not device bounds or port availability, which callers validate.
+std::optional<std::pair<TileID, Port>> getLinkedInput(TileID tile, Port output);
+
+/// getLinkedInput, restricted to tiles on the device.
 std::optional<std::pair<TileID, Port>>
 getConnectingWireEndpoint(const AIETargetModel &targetModel, TileID tile,
                           Port port);

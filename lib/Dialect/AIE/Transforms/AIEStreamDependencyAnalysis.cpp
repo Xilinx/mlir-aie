@@ -266,7 +266,9 @@ public:
           traceFrom({tile, p}, mux, p);
     for (auto &[tile, sb] : switchboxes)
       for (Port p : inputPorts(sb.getConnections()))
-        if (!isDirectional(p.bundle))
+        // A bundle with a wire to another switchbox carries streams both ways,
+        // so its inputs are not where streams enter the fabric.
+        if (!getLinkedInput(tile, p))
           traceFrom({tile, p}, sb, p);
     return std::move(streams);
   }
@@ -317,33 +319,12 @@ private:
           return Hop{sb->second, {WireBundle::South, out.channel}};
       return StreamEndpoint{here, out};
     }
-    if (!isDirectional(out.bundle))
-      return StreamEndpoint{here, out};
     if (out.bundle == WireBundle::South)
       if (auto mux = shimMuxes.find(here); mux != shimMuxes.end())
         return Hop{mux->second, {WireBundle::North, out.channel}};
-    TileID next = here;
-    WireBundle in = WireBundle::South;
-    switch (out.bundle) {
-    case WireBundle::North:
-      next.row++;
-      in = WireBundle::South;
-      break;
-    case WireBundle::South:
-      next.row--;
-      in = WireBundle::North;
-      break;
-    case WireBundle::East:
-      next.col++;
-      in = WireBundle::West;
-      break;
-    default:
-      next.col--;
-      in = WireBundle::East;
-      break;
-    }
-    if (auto sb = switchboxes.find(next); sb != switchboxes.end())
-      return Hop{sb->second, {in, out.channel}};
+    if (auto next = getLinkedInput(here, out))
+      if (auto sb = switchboxes.find(next->first); sb != switchboxes.end())
+        return Hop{sb->second, next->second};
     return StreamEndpoint{here, out};
   }
 
