@@ -689,6 +689,11 @@ private:
                             mlir::Operation *joining = nullptr);
   OverlayFit overlayWith(TileID tile, mlir::Operation *joining);
 
+  // Notes on `diag` the first pinned end of `logicalTile` that clashes at
+  // `at` and what it clashes with.
+  void notePinClash(mlir::InFlightDiagnostic &diag, LogicalTileOp logicalTile,
+                    TileID at);
+
   mlir::LogicalResult validateAndUpdateChannelUsage(
       LogicalTileOp logicalTile, TileID tile,
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
@@ -781,14 +786,17 @@ private:
     bool sawConstraintMatch = false;
     bool allConstraintMatchesFailedAdjacency = true;
     bool computePeerWasCause = false;
+    // The first candidate passing every other check where a pin of the LTO
+    // clashes with one placed there.
+    std::optional<TileID> pinClash;
   };
 
   // Two-pass candidate search for an unpinned (or partially-pinned)
   // CoreTile LTO. First pass prefers candidates that aren't
   // soft-reserved by an unrelated demand-bearing LTO's peers; second
   // pass falls back to reserved candidates. Each candidate is filtered
-  // by buffer adjacency, cascade adjacency, and the compute-peer DMA
-  // budget. Does not mutate placer state.
+  // by buffer adjacency, cascade adjacency, the compute-peer DMA
+  // budget and the LTO's pinned channels. Does not mutate placer state.
   UnpinnedSearchResult findUnconstrainedCoreCandidate(
       LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
       const UnpinnedPlacementInputs &inputs, llvm::ArrayRef<TileID> candidates,

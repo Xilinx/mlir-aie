@@ -577,6 +577,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
               << " compute tiles placeable and may be limiting placement; "
                  "consider raising it or reducing the design's core count";
         }
+        if (search.pinClash)
+          notePinClash(diag, logicalTile, *search.pinClash);
         if (adjacencyWasCause)
           attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (hasCascade)
@@ -924,11 +926,43 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
         result.computePeerWasCause = true;
         continue;
       }
+      if (!pinsAt.heldAt(candidate,
+                         pinnedEnds.lookup(logicalTile.getOperation()))) {
+        if (!result.pinClash)
+          result.pinClash = candidate;
+        continue;
+      }
       result.placement = candidate;
       return result;
     }
   }
   return result;
+}
+
+void SequentialPlacer::notePinClash(InFlightDiagnostic &diag,
+                                    LogicalTileOp logicalTile, TileID at) {
+  for (PinnedChannels::End end :
+       pinnedEnds.lookup(logicalTile.getOperation())) {
+    std::optional<PinnedChannels::End> other = pinsAt.clashWith(at, end);
+    std::optional<DMAChannelAnalysis::ChannelClaim> claim =
+        other ? std::nullopt : pinsAt.claimWith(at, end);
+    if (!other && !claim)
+      continue;
+    auto &note = diag.attachNote();
+    note << "on (" << at.col << ", " << at.row
+         << "), the first compute tile it fits otherwise, @"
+         << end.fifo.getSymName() << " pins " << (end.sends ? "MM2S" : "S2MM")
+         << " channel " << end.channel;
+    if (other) {
+      std::optional<std::string> why = pinnedRule.whyApart(end, *other);
+      note << ", which @" << other->fifo.getSymName() << " pins there too, but "
+           << (why ? *why : "they clash");
+    } else if (claim) {
+      note << ", which another op holds";
+      diag.attachNote(claim->owner->getLoc()) << "held here";
+    }
+    return;
+  }
 }
 
 LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
