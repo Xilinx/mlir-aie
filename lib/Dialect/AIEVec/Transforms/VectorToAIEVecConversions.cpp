@@ -3008,7 +3008,7 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
 };
 
 // Convert a `vector.extract_strided_slice` op on 1D vectors into an
-// `aievec.shift` op.
+// `aievec.shift` op (an `aievec.ext` alone for the bottom or top half).
 struct LowerVectorExtractStridedSliceOpAIE2Pattern
     : OpConversionPattern<vector::ExtractStridedSliceOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -3031,6 +3031,14 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
       return failure();
 
     auto shortVecType = cast<VectorType>(extractOp.getResult().getType());
+    int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
+    // The bottom or the top half itself: no shift.
+    if (offset == 0 || offset == size) {
+      rewriter.replaceOpWithNewOp<aievec::ExtOp>(
+          extractOp, shortVecType, adaptor.getSource(),
+          rewriter.getI8IntegerAttr(offset == 0 ? 0 : 1));
+      return success();
+    }
     auto bottomHalf =
         aievec::ExtOp::create(rewriter, extractOp.getLoc(), shortVecType,
                               adaptor.getSource(), rewriter.getI8IntegerAttr(0))
@@ -3039,7 +3047,6 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
         aievec::ExtOp::create(rewriter, extractOp.getLoc(), shortVecType,
                               adaptor.getSource(), rewriter.getI8IntegerAttr(1))
             .getResult();
-    int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
     int32_t shiftBytes = offset * getElementSizeInBits(vType) / 8;
     auto shiftBytesConstOp = arith::ConstantOp::create(
         rewriter, extractOp.getLoc(), rewriter.getIntegerType(32),
