@@ -86,6 +86,9 @@ struct SwitchboxConnect {
   llvm::BitVector packetOnlySrc;
   // dst ports packet streams may no longer take
   llvm::BitVector circuitOnlyDst;
+  // TileControl dst ports the control packet overlay drives, which packet
+  // streams may join and circuit streams cannot take
+  llvm::BitVector packetJoinDst;
 
   Cell &at(size_t i, size_t j) { return cells[i * dstPorts.size() + j]; }
   const Cell &at(size_t i, size_t j) const {
@@ -101,6 +104,7 @@ struct SwitchboxConnect {
     cells.assign(srcPorts.size() * dstPorts.size(), Cell());
     packetOnlySrc = llvm::BitVector(srcPorts.size());
     circuitOnlyDst = llvm::BitVector(dstPorts.size());
+    packetJoinDst = llvm::BitVector(dstPorts.size());
     unitPacketFlows.resize(dstPorts.size());
     resetUnits();
   }
