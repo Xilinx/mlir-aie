@@ -2384,13 +2384,13 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
       if (!diagnosis.clash)
         return;
       auto &[at, end, other] = *diagnosis.clash;
+      std::string why = pinnedRule.whyApart(end, other).value_or("they clash");
       diag.attachNote() << "@" << end.fifo.getSymName() << " pins "
                         << (end.sends ? "MM2S" : "S2MM") << " channel "
                         << end.channel << ", which @" << other.fifo.getSymName()
                         << " pins on (" << at.col << ", " << at.row
-                        << ") too, but " << *pinnedRule.whyApart(end, other)
-                        << "; " << diagnosis.clashTiles << " " << tileTypeName
-                        << "(s) hold such a pin";
+                        << ") too, but " << why << "; " << diagnosis.clashTiles
+                        << " " << tileTypeName << "(s) hold such a pin";
     };
     if (!diagnosis.capacityExistsSomewhere && diagnosis.clash) {
       diag << "no " << tileTypeName

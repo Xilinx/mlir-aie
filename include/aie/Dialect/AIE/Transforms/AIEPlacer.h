@@ -218,10 +218,10 @@ public:
   static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
                                       llvm::ArrayRef<PacketFlowOp> pktFlows);
 
-  // One shim tile op's channel-sharing data for one direction, mirroring
-  // ShimTransferSpans::Plan (AIEShimSharing.h): `ends` are its DMA ends
-  // naming no channel, `shared` each shareable allocation's channel with its
-  // list, `pinned` the channels its route ends pin.
+  // One shim tile op's share of the inputs ShimTransferSpans::plan takes, in
+  // one direction: `ends` are its DMA ends naming no channel, `shared` each
+  // shareable allocation's channel with its list, `pinned` the channels its
+  // route ends pin.
   struct ShimSide {
     llvm::SmallVector<mlir::StringAttr> ends;
     llvm::SmallVector<std::pair<int, llvm::SmallVector<mlir::StringAttr>>>
@@ -684,7 +684,8 @@ private:
   // `tile`.
   void recordStreamAndBdUsage(mlir::Operation *logicalTile, TileID tile);
 
-  // `joining`: see diagnoseCapacityExhaustion.
+  // `joining` is the logical tile being placed on `tile`: its pinned ends and
+  // named channels count there, as does its own use of the control overlay.
   bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels,
                             mlir::Operation *joining = nullptr);
   OverlayFit overlayWith(TileID tile, mlir::Operation *joining);
