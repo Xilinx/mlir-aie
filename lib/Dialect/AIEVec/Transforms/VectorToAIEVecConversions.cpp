@@ -51,53 +51,6 @@ using namespace xilinx::aievec;
 // Utility functions
 //===----------------------------------------------------------------------===//
 
-// Check if a TruncIOp is part of a shrsi+[clamp]+trunc chain that can be
-// lowered to a compound SRS pattern. Only returns true for chains that the
-// ShiftClampTruncToSRSPattern rewrite will actually match:
-// - shrsi → trunci (no clamp)
-// - shrsi → maxsi → minsi → trunci (full clamp pair)
-// - shrsi → minsi → maxsi → trunci (reversed clamp pair)
-// Does NOT return true for a single min or max without a matching pair,
-// to avoid marking trunci illegal when no rewrite can handle it.
-static bool isSRSCompoundCandidate(arith::TruncIOp trunciOp) {
-  Value source = trunciOp.getIn();
-
-  // Case 1: direct shrsi → trunci
-  if (source.getDefiningOp<arith::ShRSIOp>())
-    return true;
-
-  // Case 2: minsi(maxsi(shrsi(...))) → trunci
-  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
-    if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
-      if (maxsiOp.getLhs().getDefiningOp<arith::ShRSIOp>())
-        return true;
-    }
-  }
-
-  // Case 3: maxsi(minsi(shrsi(...))) → trunci (reversed order)
-  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
-    if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
-      if (minsiOp.getLhs().getDefiningOp<arith::ShRSIOp>())
-        return true;
-    }
-  }
-
-  // Case 4: minsi(maxsi(x)) → trunci (clamp-only, no shrsi)
-  // Used for saturating clamp after skip-add (e.g., skip_scale=0).
-  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
-    if (minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>())
-      return true;
-  }
-
-  // Case 5: maxsi(minsi(x)) → trunci (reversed clamp-only, no shrsi)
-  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
-    if (maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>())
-      return true;
-  }
-
-  return false;
-}
-
 // A scalar i32 -> i8/i16 trunci's [clamp] chain as one SRS: the value
 // before the clamp, the sign of the saturation (1 signed, 0 unsigned) and the
 // clamp's ops, if any. nullopt if the clamp is not the destination type's
@@ -154,6 +107,58 @@ matchScalarSRSChain(arith::TruncIOp truncOp) {
   if (*loVal == signedLo && *hiVal == signedHi)
     return ScalarSRSChain{source, 1, minOp, maxOp};
   return std::nullopt;
+}
+
+// Check if a TruncIOp is part of a shrsi+[clamp]+trunc chain that can be
+// lowered to a compound SRS pattern. Only returns true for chains that the
+// ShiftClampTruncToSRSPattern rewrite will actually match:
+// - shrsi → trunci (no clamp)
+// - shrsi → maxsi → minsi → trunci (full clamp pair)
+// - shrsi → minsi → maxsi → trunci (reversed clamp pair)
+// Does NOT return true for a single min or max without a matching pair,
+// to avoid marking trunci illegal when no rewrite can handle it.
+static bool isSRSCompoundCandidate(arith::TruncIOp trunciOp) {
+  // LowerScalarShiftClampTruncToSRS converts fewer scalar chains than match
+  // the shapes below.
+  if (!isa<VectorType>(trunciOp.getType()) && !matchScalarSRSChain(trunciOp))
+    return false;
+
+  Value source = trunciOp.getIn();
+
+  // Case 1: direct shrsi → trunci
+  if (source.getDefiningOp<arith::ShRSIOp>())
+    return true;
+
+  // Case 2: minsi(maxsi(shrsi(...))) → trunci
+  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+    if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
+      if (maxsiOp.getLhs().getDefiningOp<arith::ShRSIOp>())
+        return true;
+    }
+  }
+
+  // Case 3: maxsi(minsi(shrsi(...))) → trunci (reversed order)
+  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+    if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
+      if (minsiOp.getLhs().getDefiningOp<arith::ShRSIOp>())
+        return true;
+    }
+  }
+
+  // Case 4: minsi(maxsi(x)) → trunci (clamp-only, no shrsi)
+  // Used for saturating clamp after skip-add (e.g., skip_scale=0).
+  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+    if (minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>())
+      return true;
+  }
+
+  // Case 5: maxsi(minsi(x)) → trunci (reversed clamp-only, no shrsi)
+  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+    if (maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>())
+      return true;
+  }
+
+  return false;
 }
 
 // Check if a ShRSIOp's result feeds into a trunci (possibly through
@@ -5972,10 +5977,9 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
     auto srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
     auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
     if (!srcType || !dstType) {
-      // Scalar trunci: mark illegal if part of a compound SRS chain the
-      // LowerScalarShiftClampTruncToSRS pattern converts.
-      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp) &&
-               matchScalarSRSChain(trunciOp));
+      // Scalar trunci: mark illegal if part of compound SRS chain
+      // so the LowerScalarShiftClampTruncToSRS pattern can convert it.
+      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp));
     }
 
     Type srcScalarType = srcType.getElementType();
@@ -6333,10 +6337,8 @@ configureAIEVecV2PLegalizations(ConversionTarget &target,
     auto srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
     auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
     if (!srcType || !dstType) {
-      // Scalar trunci: mark illegal if part of a compound SRS chain the
-      // LowerScalarShiftClampTruncToSRS pattern converts.
-      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp) &&
-               matchScalarSRSChain(trunciOp));
+      // Scalar trunci: mark illegal if part of compound SRS chain
+      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp));
     }
     Type srcScalarType = srcType.getElementType();
     Type dstScalarType = dstType.getElementType();
@@ -6814,10 +6816,8 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     auto srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
     auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
     if (!srcType || !dstType) {
-      // Scalar trunci: mark illegal if part of a compound SRS chain the
-      // LowerScalarShiftClampTruncToSRS pattern converts.
-      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp) &&
-               matchScalarSRSChain(trunciOp));
+      // Scalar trunci: mark illegal if part of compound SRS chain
+      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp));
     }
     Type srcScalarType = srcType.getElementType();
     Type dstScalarType = dstType.getElementType();
