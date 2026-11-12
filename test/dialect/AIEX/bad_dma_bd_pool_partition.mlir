@@ -31,6 +31,6 @@ aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence() {
     // expected-error@+1 {{takes buffer descriptor ID 12, which is outside its partition [0, 8)}}
-    %bd = aiex.dma_bd_pool_pop(0, 0) partition [0, 8) id 12 : i32
+    %bd = aiex.dma_bd_pool_pop(0, 0) partition [0, 8) {id = 12 : i32} : i32
   }
 }

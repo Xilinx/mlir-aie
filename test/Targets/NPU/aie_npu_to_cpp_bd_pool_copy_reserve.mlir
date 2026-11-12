@@ -18,7 +18,7 @@
 // RUN: | aie-translate --aie-npu-to-cpp | FileCheck %s
 
 // POOL: aie.runtime_sequence @pool_over_copy
-// POOL-NEXT: aiex.dma_bd_pool_pop(0, 0) partition [0, 16) id 0 : i32
+// POOL-NEXT: aiex.dma_bd_pool_pop(0, 0) partition [0, 16) {id = 0 : i32} : i32
 
 // CHECK: aie_runtime::BdPool bd_pool_0_0_0_16 = aie_runtime::bd_pool_init_range(0, 16);
 // CHECK-NOT: bd_pool_pop(

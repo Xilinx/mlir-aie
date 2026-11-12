@@ -1758,7 +1758,10 @@ def AIE_DMABdPoolPopOp
 
     With `id`, it takes that ID out of the pool for the rest of the sequence
     and returns it: something outside the pool programs that ID, such as an
-    `aiex.npu.dma_memcpy_nd`, so the pool must never hand it out.
+    `aiex.npu.dma_memcpy_nd`, so the pool must never hand it out. `id` prints
+    through attr-dict (not a bare positional token): an IntegerAttr there
+    would otherwise consume the op's own trailing `: type($bd_id)` as its own
+    type suffix, so aie-opt's printed form would not reparse.
   }];
 
   let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,
@@ -1766,7 +1769,7 @@ def AIE_DMABdPoolPopOp
 
   let assemblyFormat = [{
     `(` $column `,` $row `)` `partition` ` ` `[` $bd_begin `,` $bd_end `)`
-    (`id` $id^)? attr-dict `:` type($bd_id)
+    attr-dict `:` type($bd_id)
   }];
 
   let hasVerifier = 1;
