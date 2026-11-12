@@ -1661,12 +1661,19 @@ struct SplitConcatStoresPass
         concat &= mask[i] == i;
       if (!concat)
         continue;
-      int64_t half =
-          vt.getNumElements() * vt.getElementType().getIntOrFloatBitWidth() / 8;
+      // Each half must occupy whole bytes to be stored on its own.
+      if (!vt.getElementType().isIntOrFloat() ||
+          vt.getElementType().getIntOrFloatBitWidth() % 8)
+        continue;
+      uint64_t elemBytes = vt.getElementType().getIntOrFloatBitWidth() / 8;
+      int64_t half = vt.getNumElements() * elemBytes;
       mlir::OpBuilder b(st);
       mlir::Location loc = st.getLoc();
-      uint64_t align = st.getAlignment().value_or(0);
-      uint64_t halfAlign = align ? std::min<uint64_t>(align, half) : 0;
+      // An alignment both halves have: dividing the original (or, without
+      // one, the element size) and the offset of the second half.
+      uint64_t align = st.getAlignment().value_or(elemBytes);
+      uint64_t halfAlign =
+          std::min<uint64_t>(align, uint64_t(half) & -uint64_t(half));
       mlir::Value lo = stripBitcasts(sh.getV1());
       mlir::Value hi = stripBitcasts(sh.getV2());
       if (lo.getType() != hi.getType()) {
