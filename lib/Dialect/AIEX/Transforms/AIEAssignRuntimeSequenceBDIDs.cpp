@@ -1039,10 +1039,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return bytes;
   }
 
-  // The bytes one push of `copy` moves, or nullopt where a size is runtime-
-  // valued: unlike a task's chain, a copy's length_parameter/state-table index
-  // is not threaded through this Volume's linear form, only its own constant
-  // sizes.
+  // The bytes one push of `copy` moves, or nullopt unless all its sizes are
+  // constants.
   static std::optional<Volume> copyVolume(NpuDmaMemcpyNdOp copy) {
     std::optional<int64_t> bytes = copy.getStaticBytesStreamed();
     if (!bytes)

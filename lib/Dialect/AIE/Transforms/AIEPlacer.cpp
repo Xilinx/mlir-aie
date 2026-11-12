@@ -261,8 +261,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   shimTilesAt.clear();
   overlayTilesAt.clear();
   collectOverlayUses(device);
-  // A physical tile's fifo ends, flows and claims hold channels at its
-  // position, which logical tiles placed there share.
+  // Seed each physical tile op's position with the ends, flows and claims it
+  // already holds.
   for (TileOp placed : device.getOps<TileOp>()) {
     TileID at = placed.getTileID();
     auto [in, out] = channelRequirements.lookup(placed);

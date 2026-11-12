@@ -218,10 +218,7 @@ public:
   static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
                                       llvm::ArrayRef<PacketFlowOp> pktFlows);
 
-  // One shim tile op's share of the inputs ShimTransferSpans::plan takes, in
-  // one direction: `ends` are its DMA ends naming no channel, `shared` each
-  // shareable allocation's channel with its list, `pinned` the channels its
-  // route ends pin.
+  // A shim tile op's ends on one side, as ShimTransferSpans::plan reads them.
   struct ShimSide {
     llvm::SmallVector<mlir::StringAttr> ends;
     llvm::SmallVector<std::pair<int, llvm::SmallVector<mlir::StringAttr>>>
@@ -660,14 +657,12 @@ private:
 
   RuntimeBdIds runtimeBdIds;
 
-  // The objectFIFO ends of each tile op that pin a DMA channel, the rule they
-  // share channels by, and where those of placed tiles meet.
+  // Pinned objectFIFO ends: the rule, their positions, and each tile op's own.
   PinnedChannels pinnedRule;
   PinnedChannelUse pinsAt;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<PinnedChannels::End>>
       pinnedEnds;
-  // The channels each tile op's claims (DMAChannelAnalysis) take by index,
-  // which hold them from pinned ends placed with it.
+  // DMAChannelAnalysis::getChannelClaims(), grouped by the tile op owning each.
   llvm::DenseMap<mlir::Operation *,
                  llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
       claimsOf;
@@ -1415,9 +1410,8 @@ private:
   /// keeps its plans. Every other variable link's tiles must not have moved
   /// since its last plan.
   void replanLinks(llvm::ArrayRef<std::pair<unsigned, int64_t>> depths);
-  /// The locks aie-objectfifo-allocate cannot place, by LockPlan on the pools
-  /// the split gives each fifo where its ends sit, charged per lock. Sets
-  /// `stopped`, when given, to whether LockPlan's packing search stopped.
+  /// Charges each lock LockPlan cannot place at the current positions (see
+  /// lockGroups). Sets `stopped`, when given, to whether its search stopped.
   int computeLockPenalty(bool *stopped = nullptr) const;
   /// The lock groups aie-objectfifo-allocate gives the pools the split makes
   /// where the tiles sit now: how many locks each takes (two a segment, or a
