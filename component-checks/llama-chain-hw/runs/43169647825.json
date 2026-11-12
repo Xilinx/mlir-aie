@@ -1,0 +1,552 @@
+{
+ "schema": 1,
+ "target": "llama-chain-hw",
+ "id": "43169647825",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43169647825",
+ "date": "2026-11-12T06:39:22+00:00",
+ "commit": {
+  "id": "7221628a25ca66f5b4104b8194b8f07db4e09773",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/7221628a25ca66f5b4104b8194b8f07db4e09773",
+  "message": "[cert] Find the generated configure sequence by tag, not by name (#4044)",
+  "timestamp": "2026-11-11T18:03:05Z"
+ },
+ "event": "schedule",
+ "pmode": "turbo",
+ "device": "Krackan",
+ "device_raw": "NPU Krackan 1",
+ "provenance": {
+  "commit": "7221628a25",
+  "peano": "22.0.0+4f5df13d",
+  "kernels": "405fdeb25f49",
+  "runtime": "CachedXRTRuntime",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie8",
+  "device": "NPU Krackan 1",
+  "pmode": "turbo"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 71,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "llama/persist_grow/N=16": {
+   "tokens_passed": {
+    "value": 36,
+    "unit": "tokens",
+    "range": "of 36"
+   },
+   "ms_per_token": {
+    "value": 30.83,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 32.44,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "ttft_ms": {
+    "value": 104.3,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "ttft_min_ms": {
+    "value": 103.5,
+    "unit": "ms",
+    "range": "fastest of 5"
+   },
+   "ttft_npu_dispatch_ms": {
+    "value": 102.1,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "ttft_host_ms": {
+    "value": 2.1,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "decode_tok_s": {
+    "value": 31.82,
+    "unit": "tok/s",
+    "range": "median of 5"
+   },
+   "greedy_agree": {
+    "value": 32,
+    "unit": "tokens",
+    "range": "of 32 vs numpy_llama_ref"
+   },
+   "kl_bf16": {
+    "value": 0.0225,
+    "unit": "nats",
+    "range": "24 tokens, teacher-forced"
+   },
+   "top1_bf16": {
+    "value": 91.7,
+    "unit": "%",
+    "range": "24 tokens, teacher-forced"
+   },
+   "elf_bytes": {
+    "value": 2633292,
+    "unit": "bytes"
+   },
+   "compile_s": {
+    "value": 54.8,
+    "unit": "s"
+   },
+   "compile_peak_mib": {
+    "value": 1368.7,
+    "unit": "MiB"
+   },
+   "compile_peak_rss_mb": {
+    "value": 345.9,
+    "unit": "MiB"
+   },
+   "compile_s_warm": {
+    "value": 51.01,
+    "unit": "s"
+   },
+   "compile_peak_mib_warm": {
+    "value": 371.1,
+    "unit": "MiB"
+   },
+   "compile_peak_rss_mb_warm": {
+    "value": 347.5,
+    "unit": "MiB"
+   },
+   "compile_place_s": {
+    "value": 41.37,
+    "unit": "s"
+   },
+   "compile_route_s": {
+    "value": 5.51,
+    "unit": "s"
+   },
+   "compile_lower_s": {
+    "value": 4.12,
+    "unit": "s"
+   },
+   "compile_kernels_s": {
+    "value": 0.0,
+    "unit": "s"
+   },
+   "compile_codegen_s": {
+    "value": 0.43,
+    "unit": "s"
+   },
+   "compile_link_s": {
+    "value": 0.41,
+    "unit": "s"
+   },
+   "compile_package_s": {
+    "value": 0.03,
+    "unit": "s"
+   },
+   "compile_other_s": {
+    "value": 0.01,
+    "unit": "s"
+   },
+   "compile_aiecc_wall_s": {
+    "value": 51.78,
+    "unit": "s"
+   },
+   "compile_outside_aiecc_s": {
+    "value": 2.99,
+    "unit": "s"
+   },
+   "compile_place_s_warm": {
+    "value": 37.85,
+    "unit": "s"
+   },
+   "compile_route_s_warm": {
+    "value": 5.46,
+    "unit": "s"
+   },
+   "compile_lower_s_warm": {
+    "value": 3.85,
+    "unit": "s"
+   },
+   "compile_kernels_s_warm": {
+    "value": 0.0,
+    "unit": "s"
+   },
+   "compile_codegen_s_warm": {
+    "value": 0.42,
+    "unit": "s"
+   },
+   "compile_link_s_warm": {
+    "value": 0.42,
+    "unit": "s"
+   },
+   "compile_package_s_warm": {
+    "value": 0.03,
+    "unit": "s"
+   },
+   "compile_other_s_warm": {
+    "value": 0.01,
+    "unit": "s"
+   },
+   "compile_aiecc_wall_s_warm": {
+    "value": 47.99,
+    "unit": "s"
+   },
+   "compile_outside_aiecc_s_warm": {
+    "value": 2.94,
+    "unit": "s"
+   },
+   "compile_aiecc_outside_graph_s": {
+    "value": 0.08,
+    "unit": "s"
+   },
+   "compile_aiecc_outside_graph_s_warm": {
+    "value": 0.08,
+    "unit": "s"
+   }
+  },
+  "llama/persist_grow/N=16/ctx=1024": {
+   "ms_per_token": {
+    "value": 32.11,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 31.15,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   }
+  },
+  "llama/persist_grow/N=16/ctx=2048": {
+   "ms_per_token": {
+    "value": 33.35,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 29.99,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   }
+  },
+  "llama/persist_grow/N=16/ctx=4096": {
+   "ms_per_token": {
+    "value": 35.9,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 27.86,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   }
+  },
+  "llama/persist_grow/N=16/ctx=8192": {
+   "ms_per_token": {
+    "value": 40.74,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 24.54,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   }
+  },
+  "llama/persist_grow/N=16/ctx=16384": {
+   "ms_per_token": {
+    "value": 50.51,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 19.8,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   }
+  },
+  "llama/persist_grow/N=16/ctx=32768": {
+   "ms_per_token": {
+    "value": 70.18,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 14.25,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   }
+  },
+  "llama/persist_grow/N=16/ctx=65536": {
+   "ms_per_token": {
+    "value": 109.44,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 9.14,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   }
+  },
+  "llama/persist_grow/N=16/ctx=131068": {
+   "ms_per_token": {
+    "value": 187.88,
+    "unit": "ms",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   },
+   "tok_s": {
+    "value": 5.32,
+    "unit": "tok/s",
+    "range": "fastest of 20, 4 tokens/dispatch"
+   }
+  },
+  "llama/persist_grow/N=16/prompt=512": {
+   "ttft_ms": {
+    "value": 1015.1,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "ttft_min_ms": {
+    "value": 1014.7,
+    "unit": "ms",
+    "range": "fastest of 5"
+   },
+   "ttft_npu_dispatch_ms": {
+    "value": 1013.1,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "ttft_host_ms": {
+    "value": 2.1,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "prefill_tok_s": {
+    "value": 505.4,
+    "unit": "tok/s",
+    "range": "prompt tokens over the median of 5 TTFTs"
+   }
+  },
+  "llama/persist_grow/N=16/prompt=1024": {
+   "ttft_ms": {
+    "value": 2289.6,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "ttft_min_ms": {
+    "value": 2286.2,
+    "unit": "ms",
+    "range": "fastest of 5"
+   },
+   "ttft_npu_dispatch_ms": {
+    "value": 2287.4,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "ttft_host_ms": {
+    "value": 2.2,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "prefill_tok_s": {
+    "value": 447.7,
+    "unit": "tok/s",
+    "range": "prompt tokens over the median of 5 TTFTs"
+   }
+  },
+  "llama/persist_grow/N=16/prompt=2048": {
+   "ttft_ms": {
+    "value": 5675.3,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "ttft_min_ms": {
+    "value": 5673.9,
+    "unit": "ms",
+    "range": "fastest of 5"
+   },
+   "ttft_npu_dispatch_ms": {
+    "value": 5673.0,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "ttft_host_ms": {
+    "value": 2.3,
+    "unit": "ms",
+    "range": "median of 5"
+   },
+   "prefill_tok_s": {
+    "value": 361.0,
+    "unit": "tok/s",
+    "range": "prompt tokens over the median of 5 TTFTs"
+   }
+  }
+ },
+ "builds": {},
+ "detail": [
+  {
+   "case": "llama/persist_grow/N=16",
+   "passed": true,
+   "tokens_passed": 36,
+   "tokens_total": 36,
+   "timing": {
+    "64": {
+     "n_iters": 20,
+     "min_ms": 123.31,
+     "median_ms": 123.84,
+     "mad_ms": 0.04,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 30.83,
+     "tok_s": 32.44
+    },
+    "1024": {
+     "n_iters": 20,
+     "min_ms": 128.42,
+     "median_ms": 128.88,
+     "mad_ms": 0.08,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 32.11,
+     "tok_s": 31.15
+    },
+    "2048": {
+     "n_iters": 20,
+     "min_ms": 133.39,
+     "median_ms": 133.82,
+     "mad_ms": 0.05,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 33.35,
+     "tok_s": 29.99
+    },
+    "4096": {
+     "n_iters": 20,
+     "min_ms": 143.58,
+     "median_ms": 143.68,
+     "mad_ms": 0.07,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 35.9,
+     "tok_s": 27.86
+    },
+    "8192": {
+     "n_iters": 20,
+     "min_ms": 162.97,
+     "median_ms": 163.27,
+     "mad_ms": 0.11,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 40.74,
+     "tok_s": 24.54
+    },
+    "16384": {
+     "n_iters": 20,
+     "min_ms": 202.02,
+     "median_ms": 202.5,
+     "mad_ms": 0.06,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 50.51,
+     "tok_s": 19.8
+    },
+    "32768": {
+     "n_iters": 20,
+     "min_ms": 280.7,
+     "median_ms": 281.06,
+     "mad_ms": 0.03,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 70.18,
+     "tok_s": 14.25
+    },
+    "65536": {
+     "n_iters": 20,
+     "min_ms": 437.76,
+     "median_ms": 438.1,
+     "mad_ms": 0.04,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 109.44,
+     "tok_s": 9.14
+    },
+    "131068": {
+     "n_iters": 20,
+     "min_ms": 751.52,
+     "median_ms": 751.96,
+     "mad_ms": 0.04,
+     "tokens_per_dispatch": 4,
+     "ms_per_token": 187.88,
+     "tok_s": 5.32
+    }
+   },
+   "generate_passed": true,
+   "oracle_passed": 32,
+   "oracle_total": 32,
+   "ttft_runs": 5,
+   "ttft_ms": 104.3,
+   "ttft_min_ms": 103.5,
+   "ttft_npu_dispatch_ms": 102.1,
+   "ttft_host_ms": 2.1,
+   "decode_tok_s": 31.82,
+   "greedy_agree": 32,
+   "greedy_total": 32,
+   "prefill": {
+    "512": {
+     "prefill_passed": true,
+     "prompt_tokens": 513,
+     "ttft_runs": 5,
+     "ttft_ms": 1015.1,
+     "ttft_min_ms": 1014.7,
+     "ttft_npu_dispatch_ms": 1013.1,
+     "ttft_host_ms": 2.1
+    },
+    "1024": {
+     "prefill_passed": true,
+     "prompt_tokens": 1025,
+     "ttft_runs": 5,
+     "ttft_ms": 2289.6,
+     "ttft_min_ms": 2286.2,
+     "ttft_npu_dispatch_ms": 2287.4,
+     "ttft_host_ms": 2.2
+    },
+    "2048": {
+     "prefill_passed": true,
+     "prompt_tokens": 2049,
+     "ttft_runs": 5,
+     "ttft_ms": 5675.3,
+     "ttft_min_ms": 5673.9,
+     "ttft_npu_dispatch_ms": 5673.0,
+     "ttft_host_ms": 2.3
+    }
+   },
+   "accuracy_passed": true,
+   "top1_bf16": 91.7,
+   "kl_bf16": 0.0225,
+   "elf_bytes": 2633292,
+   "pdi_bytes": null,
+   "compile_place_s": 41.37,
+   "compile_route_s": 5.51,
+   "compile_lower_s": 4.12,
+   "compile_kernels_s": 0.0,
+   "compile_codegen_s": 0.43,
+   "compile_link_s": 0.41,
+   "compile_package_s": 0.03,
+   "compile_other_s": 0.01,
+   "compile_aiecc_wall_s": 51.78,
+   "compile_outside_aiecc_s": 2.99,
+   "compile_aiecc_outside_graph_s": 0.08,
+   "compile_place_s_warm": 37.85,
+   "compile_route_s_warm": 5.46,
+   "compile_lower_s_warm": 3.85,
+   "compile_kernels_s_warm": 0.0,
+   "compile_codegen_s_warm": 0.42,
+   "compile_link_s_warm": 0.42,
+   "compile_package_s_warm": 0.03,
+   "compile_other_s_warm": 0.01,
+   "compile_aiecc_wall_s_warm": 47.99,
+   "compile_outside_aiecc_s_warm": 2.94,
+   "compile_aiecc_outside_graph_s_warm": 0.08,
+   "compile_peak_unavailable": null,
+   "compile_s": 54.8,
+   "compile_peak_mib": 1368.7,
+   "compile_peak_rss_mb": 345.9,
+   "compile_s_warm": 51.01,
+   "compile_peak_mib_warm": 371.1,
+   "compile_peak_rss_mb_warm": 347.5
+  }
+ ]
+}

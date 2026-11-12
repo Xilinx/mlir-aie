@@ -1004,6 +1004,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "43169647825",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43169647825",
+   "date": "2026-11-12T06:39:22+00:00",
+   "commit": {
+    "id": "7221628a25ca66f5b4104b8194b8f07db4e09773",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7221628a25ca66f5b4104b8194b8f07db4e09773",
+    "message": "[cert] Find the generated configure sequence by tag, not by name (#4044)",
+    "timestamp": "2026-11-11T18:03:05Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "7221628a25",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
