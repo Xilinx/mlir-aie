@@ -203,8 +203,7 @@ inline cl::opt<bool> reconfigTeardown(
              "or overlay load before the next one; only the first "
              "configuration of a runtime sequence keeps it (requires full-ELF "
              "output and --expand-load-pdis or --load-pdi-to-ctrl-pkt; "
-             "default: off, since data a configuration's run leaves in the "
-             "stream switches outlives a teardown)"));
+             "default: on with --load-pdi-to-ctrl-pkt)"));
 inline cl::opt<bool> reconfigInitEntry(
     "reconfig-init-entry",
     cl::desc("Move the one reset or overlay load to an argument-free "
@@ -749,6 +748,8 @@ inline bool resolveOptions(bool resuming = false) {
                 llvm::is_contained(getOutputs, fullElfName.getValue()) ||
                 llvm::is_contained(cutOutputs, fullElfName.getValue());
   bool fullElf = wantFullElf || resuming;
+  if (!reconfigTeardown.getNumOccurrences())
+    reconfigTeardown = loadPdiToCtrlPkt && wantFullElf;
   if (!ctrlpktAdaptiveOverlay.getNumOccurrences())
     ctrlpktAdaptiveOverlay = ctrlPktOverlay || loadPdiToCtrlPkt;
   if (!ctrlpktParallelShims.getNumOccurrences())
