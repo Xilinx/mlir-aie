@@ -75,9 +75,11 @@ requires a full ELF:
   resets the memtile and core-tile DMA channels it started. A sequence then
   keeps only its first reset or overlay load. A device that starts a shim DMA
   channel itself is refused, since shim channels have no reset. Under
-  `--expand-load-pdis` the teardown is an `aiex.npu.write_teardown`. On by
-  default under `--load-pdi-to-ctrl-pkt`; under it, the teardown is sent as
-  control packets and leaves the control overlay in place.
+  `--expand-load-pdis` the teardown is an `aiex.npu.write_teardown`; under
+  `--load-pdi-to-ctrl-pkt` it is sent as control packets and leaves the control
+  overlay in place. Off by default: no register clears the stream switches'
+  buffers, so data a run sends and does not consume, which a reset discards,
+  outlives the teardown and reaches the next configuration's streams.
 - `--reconfig-init-entry` (with `--reconfig-teardown`): the reset moves into an
   argument-free `<device>:reconfig_init` entry; under `--load-pdi-to-ctrl-pkt` it
   also installs the control overlay. The host runs it before the first entry on a
