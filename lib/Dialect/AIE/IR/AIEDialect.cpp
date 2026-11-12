@@ -4713,6 +4713,37 @@ LogicalResult BufferOp::verify() {
                        "holds one reservation of a core's sections");
   }
 
+  // A bank pin no placement can satisfy: one its address space excludes, or
+  // one past the banks of its tile type.
+  if (std::optional<int32_t> memBank = getMemBank()) {
+    SmallVector<int, 2> banks = banksFromMemorySpace(getType());
+    if (!banks.empty() && !llvm::is_contained(banks, *memBank)) {
+      auto diag = emitOpError("has address space for bank ") << banks.front();
+      if (banks.size() > 1)
+        diag << " or " << banks.back();
+      return diag << " but is pinned to bank " << *memBank
+                  << ". These constraints disagree";
+    }
+    if (auto tileLike =
+            dyn_cast_if_present<TileLike>(getTile().getDefiningOp());
+        tileLike && (tileLike.isCoreTile() || tileLike.isMemTile())) {
+      const AIETargetModel &targetModel = getTargetModel(*this);
+      std::optional<int> col = tileLike.tryGetCol();
+      std::optional<int> row = tileLike.tryGetRow();
+      for (int c = 0; !(col && row) && c < targetModel.columns(); ++c)
+        for (int r = 0; !(col && row) && r < targetModel.rows(); ++r)
+          if (targetModel.getTileType(c, r) == tileLike.getTileType()) {
+            col = c;
+            row = r;
+          }
+      if (col && row &&
+          (*memBank < 0 ||
+           *memBank >=
+               static_cast<int32_t>(targetModel.getNumBanks(*col, *row))))
+        return emitOpError("mem_bank attribute value is out of range");
+    }
+  }
+
   // A logical tile stands for a placement the compiler has yet to choose, so
   // neither check below has a tile to reason about.
   auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
@@ -4754,6 +4785,41 @@ LogicalResult BufferOp::verify() {
     }
   }
   return success();
+}
+
+// Peano models a bank as an address space (`aiebase_resources.h`: a..d are
+// 5..8, 9..14 are pairs) and schedules loads on the strength of the qualifier,
+// while nothing placed the buffer to match. Reading it here makes that
+// assumption true rather than merely asserted.
+SmallVector<int, 2> xilinx::AIE::banksFromMemorySpace(Type type) {
+  auto memref = dyn_cast<MemRefType>(type);
+  if (!memref) {
+    return {};
+  }
+  auto space = dyn_cast_or_null<IntegerAttr>(memref.getMemorySpace());
+  if (!space) {
+    return {};
+  }
+  int64_t value = space.getInt();
+  if (value >= 5 && value <= 8) {
+    return {static_cast<int>(value - 5)};
+  }
+  switch (value) {
+  case 9:
+    return {0, 1};
+  case 10:
+    return {0, 2};
+  case 11:
+    return {0, 3};
+  case 12:
+    return {1, 2};
+  case 13:
+    return {1, 3};
+  case 14:
+    return {2, 3};
+  default:
+    return {};
+  }
 }
 
 // FIXME: make address assignment for buffers explicit and move this function to

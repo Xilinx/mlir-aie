@@ -384,6 +384,10 @@ void printFlowVias(mlir::OpAsmPrinter &printer, mlir::Operation *op,
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
+// The banks a memref's address space names (5-8 one bank each, 9-14 a pair),
+// or none.
+llvm::SmallVector<int, 2> banksFromMemorySpace(mlir::Type type);
+
 // Trace Event Value Parsing/Printing (handles both string and typed enums)
 mlir::ParseResult parseTraceEvent(mlir::AsmParser &parser,
                                   mlir::Attribute &result);

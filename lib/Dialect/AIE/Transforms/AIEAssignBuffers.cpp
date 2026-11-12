@@ -158,72 +158,21 @@ static LogicalResult materializeCoreSections(DeviceOp device) {
   return success();
 }
 
-// Peano models a bank as an address space (`aiebase_resources.h`: a..d are
-// 5..8, 9..14 are pairs) and schedules loads on the strength of the qualifier,
-// while nothing placed the buffer to match. Reading it here makes that
-// assumption true rather than merely asserted.
-static SmallVector<int, 2> banksFromMemorySpace(Type type) {
-  auto memref = dyn_cast<MemRefType>(type);
-  if (!memref) {
-    return {};
-  }
-  auto space = dyn_cast_or_null<IntegerAttr>(memref.getMemorySpace());
-  if (!space) {
-    return {};
-  }
-  int64_t value = space.getInt();
-  if (value >= 5 && value <= 8) {
-    return {static_cast<int>(value - 5)};
-  }
-  switch (value) {
-  case 9:
-    return {0, 1};
-  case 10:
-    return {0, 2};
-  case 11:
-    return {0, 3};
-  case 12:
-    return {1, 2};
-  case 13:
-    return {1, 3};
-  case 14:
-    return {2, 3};
-  default:
-    return {};
-  }
-}
-
-// Check a buffer's bank pin against its address space. A singleton space also
-// supplies the pin; pairs stay flexible until placement.
+// A singleton address space supplies the bank pin (BufferOp::verify has
+// already checked an explicit pin against it); pairs stay flexible until
+// placement.
 //
 // The buffer carries the space rather than the kernel's declaration doing so
 // alone, because `func.call` already requires operand types to match the
-// callee's signature exactly. Agreement between the buffer and the kernel it is
-// passed to is therefore checked by the verifier, not here; all that is left is
-// to place the buffer where its type says it lives.
-static LogicalResult applySignatureBankConstraints(DeviceOp device) {
-  auto result = success();
+// callee's signature exactly, so all that is left is to place the buffer where
+// its type says it lives.
+static void applySignatureBankConstraints(DeviceOp device) {
   device.walk([&](BufferOp buffer) {
-    auto banks = banksFromMemorySpace(buffer.getType());
-    if (banks.empty()) {
-      return;
-    }
-    if (auto existing = buffer.getMemBank();
-        existing && !llvm::is_contained(banks, *existing)) {
-      auto diag = buffer.emitOpError("has address space for bank ");
-      diag << banks.front();
-      if (banks.size() > 1)
-        diag << " or " << banks.back();
-      diag << " but is pinned to bank " << *existing
-           << ". These constraints disagree";
-      result = failure();
-      return;
-    }
-    if (banks.size() == 1)
+    SmallVector<int, 2> banks = banksFromMemorySpace(buffer.getType());
+    if (banks.size() == 1 && !buffer.getMemBank())
       buffer.setMemBankAttr(IntegerAttr::get(
           IntegerType::get(device.getContext(), 32), banks.front()));
   });
-  return result;
 }
 
 static bool isBufferPreAllocated(BufferOp buffer) {
@@ -654,8 +603,7 @@ static FailureOr<bool> checkAndAddBufferWithAddress(size_t i,
 using RequiredBanks = DenseMap<size_t, SmallVector<int, 2>>;
 
 // Record the allowed banks, intersected with any explicit mem_bank request.
-// applySignatureBankConstraints has already checked that the intersection is
-// nonempty.
+// BufferOp::verify has already checked that the intersection is nonempty.
 static LogicalResult recordRequiredBank(size_t i, const BankAwareContext &ctx,
                                         RequiredBanks &requiredBanks,
                                         TileLayout &layout) {
@@ -1656,9 +1604,7 @@ struct AIEAssignBufferAddressesPass
       device.emitError("placement-budget must be positive, got ") << budget;
       return signalPassFailure();
     }
-    if (failed(applySignatureBankConstraints(device))) {
-      return signalPassFailure();
-    }
+    applySignatureBankConstraints(device);
     if (failed(materializeCoreSections(device))) {
       return signalPassFailure();
     }
