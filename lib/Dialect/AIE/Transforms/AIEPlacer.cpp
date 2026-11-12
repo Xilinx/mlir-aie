@@ -943,12 +943,14 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
   if (!held) {
     for (PinnedChannels::End end : pins) {
       if (std::optional<PinnedChannels::End> other =
-              pinsAt.clashWith(tile, end))
+              pinsAt.clashWith(tile, end)) {
+        std::optional<std::string> why = pinnedRule.whyApart(end, *other);
         return end.fifo.emitError()
                << "pins " << (end.sends ? "MM2S" : "S2MM") << " channel "
                << end.channel << " of tile (" << tile.col << ", " << tile.row
                << "), which @" << other->fifo.getSymName()
-               << " pins there too, but " << *pinnedRule.whyApart(end, *other);
+               << " pins there too, but " << (why ? *why : "they clash");
+      }
       if (std::optional<DMAChannelAnalysis::ChannelClaim> claim =
               pinsAt.claimWith(tile, end)) {
         auto diag = end.fifo.emitError()
@@ -1838,7 +1840,9 @@ void Placer::collectOverlayUses(DeviceOp device) {
     for (auto fifo : other.getOps<ObjectFifoCreateOp>()) {
       std::optional<PinnedChannels::End> end =
           PinnedChannels::endOf(fifo, std::nullopt);
-      auto tile = dyn_cast_or_null<TileOp>(end ? end->tile : nullptr);
+      if (!end)
+        continue;
+      auto tile = dyn_cast_or_null<TileOp>(end->tile);
       if (!tile || !tile.isShimNOCorPLTile())
         continue;
       if (isPacketSwitched(fifo.packetHeader(), packetSwitched))
@@ -2465,8 +2469,13 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   });
   if (!mergeLogicalTiles)
     assignedNonCoreTiles.insert(*maybeTile);
-  auto [heldIn, heldOut] =
-      *pinsAt.heldAt(*maybeTile, pinnedEnds.lookup(logicalTile));
+  std::optional<std::pair<int, int>> held =
+      pinsAt.heldAt(*maybeTile, pinnedEnds.lookup(logicalTile));
+  if (!held)
+    return logicalTile.emitError()
+           << "pins a channel that (" << maybeTile->col << ", "
+           << maybeTile->row << ") cannot hold beside its other pinned ends";
+  auto [heldIn, heldOut] = *held;
   recordStreamAndBdUsage(logicalTile, *maybeTile);
   if (numInputChannels > heldIn)
     updateChannelUsage(*maybeTile, DmaDir::In, numInputChannels - heldIn);
@@ -2482,6 +2491,7 @@ bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
           AIETileType::ShimNOCTile ||
       !shimSpans)
     return false;
+  const ShimTransferSpans &spans = *shimSpans;
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
   OverlayFit overlay = overlayWith(tile, logicalTile);
   if (!overlay.fits)
@@ -2501,13 +2511,13 @@ bool SequentialPlacer::fitsSharingShim(TileID tile, Operation *logicalTile,
       sides.push_back(&shareableShimEnds.find(op)->second[dir]);
     SmallVector<StringAttr> extra;
     if (dir == 1 && overlay.own)
-      extra.push_back(shimSpans->overlayEnd(tile.col));
+      extra.push_back(spans.overlayEnd(tile.col));
     SmallVector<int> pinnedHere = pinsAt.channelsAt(tile, dir == 1);
     for (const PinnedChannels::End &end : pinnedEnds.lookup(logicalTile))
       if (end.sends == (dir == 1))
         pinnedHere.push_back(end.channel);
     if (used[dir] + need[dir] -
-            shimChannelsSaved(*shimSpans, sides, extra, pinnedHere) >
+            shimChannelsSaved(spans, sides, extra, pinnedHere) >
         max[dir])
       return false;
   }

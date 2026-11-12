@@ -2036,15 +2036,16 @@ bool SAPlacer::generateMove(
       }
     }
 
-    // Tiles of a type several may share a physical tile of also move onto an
-    // occupied one, or how many sit on each could never change.
-    if (occupant && type != AIETileType::CoreTile &&
-        drawBoundedIndex(rng, 2) == 0) {
+    // Shift onto an empty target, or onto an occupied one whose type several
+    // tiles may share (a coin flip keeps swaps available too, since how many
+    // sit on each could never change if sharing always won).
+    if (!occupant ||
+        (type != AIETileType::CoreTile && drawBoundedIndex(rng, 2) == 0)) {
       if (!isLegalPosition(tile, targetPos))
         continue;
       moves.clear();
       moves.push_back({tile, targetPos});
-    } else if (occupant) {
+    } else {
       // Swap: both tiles must accept each other's position.
       if (tileTypes[occupant] != type)
         continue;
@@ -2053,12 +2054,6 @@ bool SAPlacer::generateMove(
       moves.clear();
       moves.push_back({tile, targetPos});
       moves.push_back({occupant, currentPos});
-    } else {
-      // Shift: target is empty.
-      if (!isLegalPosition(tile, targetPos))
-        continue;
-      moves.clear();
-      moves.push_back({tile, targetPos});
     }
     return true;
   }
@@ -2354,11 +2349,12 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
   if (pinnedRule.failed())
     return failure();
+  llvm::ArrayRef<DMAChannelAnalysis::ChannelClaim> claims =
+      channelAnalysis.emplace(device).getChannelClaims();
   buildRouteModel(device, collected.flows, collected.pktFlows, collected.routes,
-                  channelAnalysis.emplace(device).getChannelClaims());
+                  claims);
   claimsOf.clear();
-  for (const DMAChannelAnalysis::ChannelClaim &claim :
-       channelAnalysis->getChannelClaims())
+  for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
     claimsOf[claim.tile.getDefiningOp()].push_back(claim);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   collectOverlayUses(device);
