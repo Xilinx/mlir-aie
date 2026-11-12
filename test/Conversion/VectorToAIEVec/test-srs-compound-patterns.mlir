@@ -231,3 +231,26 @@ func.func @test_scalar_clamp_only_unsigned(%arg0: i32) -> i8 {
   %result = arith.trunci %clamped : i32 to i8
   return %result : i8
 }
+
+// Test: a scalar clamp narrower than the destination type's range is not a
+// saturation, so no SRS: the trunci is left as is (it used to be marked
+// illegal and then crash the vector trunc lowering).
+
+// CHECK-LABEL: func.func @test_scalar_clamp_not_saturation(
+// CHECK: arith.maxsi
+// CHECK: arith.minsi
+// CHECK: arith.trunci %{{.*}} : i32 to i16
+// CHECK-NOT: aievec.srs
+// AIE2P-LABEL: func.func @test_scalar_clamp_not_saturation(
+// AIE2P: arith.maxsi
+// AIE2P: arith.minsi
+// AIE2P: arith.trunci %{{.*}} : i32 to i16
+// AIE2P-NOT: aievec.srs
+func.func @test_scalar_clamp_not_saturation(%arg0: i32) -> i16 {
+  %c0 = arith.constant 0 : i32
+  %c63 = arith.constant 63 : i32
+  %clamped0 = arith.maxsi %arg0, %c0 : i32
+  %clamped = arith.minsi %clamped0, %c63 : i32
+  %result = arith.trunci %clamped : i32 to i16
+  return %result : i16
+}
