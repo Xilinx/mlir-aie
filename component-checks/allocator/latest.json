@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "42952186365",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/42952186365",
- "date": "2026-11-11T03:21:14+00:00",
+ "id": "43147604795",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43147604795",
+ "date": "2026-11-12T03:21:01+00:00",
  "commit": {
-  "id": "97edc63ef0c107fb431545822730ec1908b86e1c",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/97edc63ef0c107fb431545822730ec1908b86e1c",
-  "message": "[AIEX] Verify aiex.control_packet header fields (#4040)",
-  "timestamp": "2026-11-10T20:50:02Z"
+  "id": "7221628a25ca66f5b4104b8194b8f07db4e09773",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/7221628a25ca66f5b4104b8194b8f07db4e09773",
+  "message": "[cert] Find the generated configure sequence by tag, not by name (#4044)",
+  "timestamp": "2026-11-11T18:03:05Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 7763 64-Core Processor",
+ "device": "AMD EPYC 9V74 80-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "97edc63ef0",
-  "cpu": "AMD EPYC 7763 64-Core Processor"
+  "commit": "7221628a25",
+  "cpu": "AMD EPYC 9V74 80-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 173.6,
+    "value": 206.8,
     "unit": "s"
    }
   }
@@ -102,7 +102,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.0s (max 30s)"
+   "detail": "300/300 placed in 0.1s (max 30s)"
   }
  ]
 }
