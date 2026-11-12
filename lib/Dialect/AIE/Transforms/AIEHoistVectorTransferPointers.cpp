@@ -99,7 +99,8 @@ static AffineExpr withinIVRange(AffineMap map, ValueRange operands,
   std::optional<int64_t> lb = getConstantIntValue(forOp.getLowerBound());
   std::optional<int64_t> ub = getConstantIntValue(forOp.getUpperBound());
   AffineExpr e = map.getResult(0);
-  if (!lb || !ub || *lb < 0)
+  // (an unsigned loop's bounds are not their signed values)
+  if (forOp.getUnsignedCmp() || !lb || !ub || *lb < 0)
     return e;
   std::function<AffineExpr(AffineExpr)> rw = [&](AffineExpr x) -> AffineExpr {
     auto bin = dyn_cast<AffineBinaryOpExpr>(x);

@@ -481,3 +481,26 @@ func.func @view_in_loop(%arg0: memref<16x8x8xbf16>, %out: memref<64xbf16>) {
   }
   return
 }
+
+// -----
+
+// An unsigned loop to -1 (2^64 - 1) does not keep iv in [0, 16): iv mod 16 is
+// not iv, and the read is not hoisted.
+// CHECK-LABEL: func.func @iv_range_unsigned
+// CHECK: scf.for unsigned
+// CHECK-NOT: iter_args
+// CHECK: affine.apply
+// CHECK: vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}]
+func.func @iv_range_unsigned(%arg0: memref<1x16x64xbf16>, %out: memref<64xbf16>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %cm1 = arith.constant -1 : index
+  %cst = arith.constant 0.0 : bf16
+  scf.for unsigned %i = %c0 to %cm1 step %c1 {
+    %a = affine.apply affine_map<(d0) -> (d0 floordiv 16)>(%i)
+    %b = affine.apply affine_map<(d0) -> (d0 mod 16)>(%i)
+    %v = vector.transfer_read %arg0[%a, %b, %c0], %cst {in_bounds = [true]} : memref<1x16x64xbf16>, vector<64xbf16>
+    vector.transfer_write %v, %out[%c0] {in_bounds = [true]} : vector<64xbf16>, memref<64xbf16>
+  }
+  return
+}
