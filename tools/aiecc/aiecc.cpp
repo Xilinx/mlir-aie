@@ -3366,36 +3366,30 @@ int main(int argc, char **argv) {
   // Only the failure placing again addresses (no room, with the note naming
   // what to charge) counts; anything else the attempt reports stands as
   // itself.
-  auto noRoom = [&](llvm::StringRef edge, llvm::StringLiteral message,
-                    llvm::StringLiteral note) {
-    return failedAt(edge) &&
-           llvm::any_of(
-               attempts.back().errors, [&](const RecordedError &error) {
-                 return llvm::StringRef(error.message).contains(message) &&
-                        llvm::any_of(error.notes, [&](const auto &n) {
-                          return llvm::StringRef(n.first).starts_with(note);
-                        });
-               });
-  };
-  llvm::StringMap<MeasuredRegion> coreData;
-  while ((mayWalkAgain && noRoom(kWithSymbolsEdge, xilinx::AIE::kNoBufferRoom,
-                                 xilinx::AIE::kTurnWalkedNote)) ||
-         (mayCoreAgain && noRoom(kAddressesEdge, xilinx::AIE::kNoTileRoom,
-                                 xilinx::AIE::kCoreSectionsNote))) {
-    Attempt &last = attempts.back();
-    // Each charge names its device, and only the devices that failed are
-    // charged, so the others place as they did. Names are written as symbol
-    // references, which quote any name the list's separators would break.
+  struct Charges {
+    // The pools a kNoBufferRoom error's note names, not yet in saWalkedFifos
+    // (what the next retry's command line would add). Each charge names its
+    // device, and only the devices that failed are charged, so the others
+    // place as they did. Names are written as symbol references, which quote
+    // any name the list's separators would break.
     std::vector<std::string> fifos;
+    // Whether a kNoBufferRoom error named a walked pool at all, charged or
+    // not: unlike `fifos`, this does not go empty once every pool it names is
+    // already charged, so the loop still sees the attempt as worth a look
+    // instead of appearing to have found nothing to charge.
+    bool anyWalked = false;
     llvm::StringSet<> fullDevices;
-    for (const RecordedError &error : last.errors) {
+  };
+  auto collectCharges = [&] {
+    Charges charges;
+    for (const RecordedError &error : attempts.back().errors) {
       llvm::StringRef message = error.message;
       if (mayCoreAgain && message.contains(xilinx::AIE::kNoTileRoom))
         for (const auto &[note, attrs] : error.notes)
           if (llvm::StringRef(note).starts_with(xilinx::AIE::kCoreSectionsNote))
             for (mlir::Attribute attr : attrs)
               if (llvm::isa<mlir::FlatSymbolRefAttr>(attr))
-                fullDevices.insert(llvm::formatv("{0}", attr).str());
+                charges.fullDevices.insert(llvm::formatv("{0}", attr).str());
       if (!mayWalkAgain || !message.contains(xilinx::AIE::kNoBufferRoom))
         continue;
       // Only the pools the SA counts otherwise than allocation lays them out.
@@ -3403,19 +3397,29 @@ int main(int argc, char **argv) {
         if (llvm::StringRef(note).starts_with(xilinx::AIE::kTurnWalkedNote))
           for (mlir::Attribute attr : attrs)
             if (llvm::isa<mlir::SymbolRefAttr>(attr)) {
+              charges.anyWalked = true;
               std::string entry = llvm::formatv("{0}", attr).str();
               if (!llvm::is_contained(saWalkedFifos, entry) &&
-                  !llvm::is_contained(fifos, entry))
-                fifos.push_back(entry);
+                  !llvm::is_contained(charges.fifos, entry))
+                charges.fifos.push_back(entry);
             }
     }
+    return charges;
+  };
+  llvm::StringMap<MeasuredRegion> coreData;
+  for (Charges charges = collectCharges();
+       (mayWalkAgain && failedAt(kWithSymbolsEdge) && charges.anyWalked) ||
+       (mayCoreAgain && failedAt(kAddressesEdge) &&
+        !charges.fullDevices.empty());
+       charges = collectCharges()) {
     // A core's measurement keeps its largest value, so the charges only grow
     // and the attempts end.
     bool grew = false;
     {
       std::lock_guard<std::mutex> lock(measuredCores.mutex);
       for (auto &[core, region] : measuredCores.regions)
-        if (fullDevices.contains(llvm::StringRef(core).rsplit(':').first))
+        if (charges.fullDevices.contains(
+                llvm::StringRef(core).rsplit(':').first))
           if (MeasuredRegion &charged = coreData[core];
               region.bytes > charged.bytes || region.align > charged.align) {
             charged = {std::max(charged.bytes, region.bytes),
@@ -3423,15 +3427,15 @@ int main(int argc, char **argv) {
             grew = true;
           }
     }
-    if (fifos.empty() && !grew) {
+    if (charges.fifos.empty() && !grew) {
       if (attempts.size() > 1)
         noPlacement = "aiecc: no placement with what allocation found counted "
                       "fits either";
       break;
     }
     std::vector<std::string> why;
-    if (!fifos.empty()) {
-      for (std::string &entry : fifos)
+    if (!charges.fifos.empty()) {
+      for (std::string &entry : charges.fifos)
         saWalkedFifos.push_back(entry);
       llvm::sort(saWalkedFifos);
       why.emplace_back("buffers channel turns walked whole found no room");
