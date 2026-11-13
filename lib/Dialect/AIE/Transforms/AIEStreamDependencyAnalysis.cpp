@@ -1604,8 +1604,8 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes,
 
   // The arbiters that granted two trees a hop they share in one order: the
   // one both took to leave the switchbox above it where they came into it
-  // apart, and each they took on the way down from there together that
-  // neither takes at another hop, so grants each packet once.
+  // apart. Also each arbiter on their shared path below it, provided each
+  // tree passes it only once.
   using Grant = std::pair<TileID, int>;
   auto orderedBy = [&](size_t a, int ha, size_t b, int hb) {
     SmallVector<Grant, 4> grants;

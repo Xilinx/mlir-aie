@@ -110,10 +110,10 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
                                 StreamClaim{dest, true});
   }
 
-  // Shim allocations reserve channels outside the DMA bodies above. One the
-  // ends its aie.shareable_with names may share holds its channel from the
-  // rest, so the placers count it too; the control overlay's they count as
-  // its planned channel.
+  // Shim allocations reserve channels outside the DMA bodies above. A
+  // shareable allocation still holds its channel against unlisted ends, so
+  // it is a claim too; skip the control overlay's, which the placers count
+  // as the planned overlay channel.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
     MLIRContext *context = allocOp->getContext();
     if (!AIEDialect::ShareableWithAttrHelper(context).isAttrPresent(allocOp)) {
@@ -446,11 +446,11 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
     }
     return true;
   };
-  // Within a group and direction, ends take distinct free channels below
-  // their bounds, which nest; so they fit exactly when, for every bound, no
-  // more of them have that bound or a tighter one than free channels lie below
-  // it. Checked as ends are placed, every completed choice matches, and no
-  // group ever holds more ends than it has channels.
+  // The same nesting (bounds above) means a group's ends fit a direction
+  // exactly when, for every bound, no more of them have that bound or a
+  // tighter one than free channels lie below it. Checked as ends are placed:
+  // every completed choice matches, since no group ever holds more ends than
+  // it has channels.
   SmallVector<int> bounds;
   for (const BDPlanEnd &end : ends)
     bounds.push_back(end.limit);

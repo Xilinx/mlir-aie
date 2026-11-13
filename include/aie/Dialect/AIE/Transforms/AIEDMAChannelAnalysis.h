@@ -71,8 +71,9 @@ private:
 public:
   DMAChannelAnalysis(DeviceOp &device);
 
-  /// The channels taken by index rather than through a route endpoint, one
-  /// per channel, in the order the claims were made.
+  /// The channels taken by index rather than through a route endpoint, in
+  /// the order the claims were made. A shareable one may appear more than
+  /// once.
   llvm::ArrayRef<ChannelClaim> getChannelClaims() const { return claims; }
 
   /// Exclusive upper bound on channel indices eligible for this transfer.
@@ -204,7 +205,7 @@ public:
     llvm::DenseMap<int, int64_t>
     at(const AIETargetModel &target, int col, int row,
        llvm::ArrayRef<mlir::Operation *> tiles = {}) const;
-    /// Coordinates of the tiles holding ids that have them.
+    /// Coordinates of the placed tiles that hold BD ids.
     llvm::SmallVector<std::pair<int, int>> positions() const;
 
   private:
