@@ -108,6 +108,8 @@ struct AIEObjectFifoAllocatePass
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
+  /// See LockPlan::groupCounts for what this changes.
+  bool semaphoreLocks = false;
   bool walkSearchStopped = false;
   bool lockSearchStopped = false;
 
@@ -495,7 +497,8 @@ struct AIEObjectFifoAllocatePass
         users.push_back(
             {indexOf(tile),
              isa<ObjectFifoDmaEndpointOp>(user) &&
-                 !cast<TileLike>(tile.getDefiningOp()).isMemTile()});
+                 LockPlan::dmaLocalOnly(
+                     cast<TileLike>(tile.getDefiningOp()).getTileType())});
       }
       groups.push_back(
           LockPlan::group(count, indexOf(lockPlacement(pool, group)),
@@ -505,14 +508,11 @@ struct AIEObjectFifoAllocatePass
     for (auto pool : pools) {
       if (!poolLocks->needsLocks(pool))
         continue;
-      if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
-        if (!pool.getLocks())
-          add(pool, pool, pool.getDepth());
-      } else {
-        for (auto segment : pool.getSegmentOps())
-          if (!(segment.getProduceLock() && segment.getConsumeLock()))
-            add(pool, segment, 2);
-      }
+      SmallVector<Operation *> owners = lockOwners(pool);
+      for (auto [owner, count] : llvm::zip_equal(
+               owners, LockPlan::groupCounts(device.getTargetModel(),
+                                             pool.getDepth(), owners.size())))
+        add(pool, owner, count);
     }
     LockPlan::Assignment assignment = plan.assign(groups);
     if (assignment.failed) {
@@ -545,9 +545,21 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// AIE1 guards each buffer with one binary lock that rotates with it; AIE2
-  /// gives each segment a counting pair, the producer's lock counting free
-  /// objects and the consumer's counting full ones.
+  /// The ops whose locks allocation makes for `pool`: with semaphore locks,
+  /// each segment without its pair; otherwise the pool, when it has none.
+  SmallVector<Operation *> lockOwners(ObjectFifoPoolOp pool) {
+    SmallVector<Operation *> owners;
+    if (!semaphoreLocks) {
+      if (!pool.getLocks())
+        owners.push_back(pool);
+      return owners;
+    }
+    for (auto segment : pool.getSegmentOps())
+      if (!(segment.getProduceLock() && segment.getConsumeLock()))
+        owners.push_back(segment);
+    return owners;
+  }
+
   void allocateLocks(ObjectFifoPoolOp pool) {
     if (!poolLocks->needsLocks(pool))
       return;
@@ -557,7 +569,7 @@ struct AIEObjectFifoAllocatePass
     int filled = initValues ? initValues->size() : 0;
     int repeat = pool.getRepeatCount().value_or(1);
 
-    if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
+    if (!semaphoreLocks) {
       if (pool.getLocks()) {
         return;
       }
@@ -589,9 +601,9 @@ struct AIEObjectFifoAllocatePass
 
   bool canAccessLocks(Operation *endpoint, Value tile) {
     Value user = endpoint->getOperand(0);
-    // Compute-tile DMA engines, unlike cores, only use their own lock module.
     if (isa<ObjectFifoDmaEndpointOp>(endpoint) &&
-        !cast<TileLike>(user.getDefiningOp()).isMemTile())
+        LockPlan::dmaLocalOnly(
+            cast<TileLike>(user.getDefiningOp()).getTileType()))
       return canAccess(user, tile, /*localOnly=*/true);
     return canAccess(user, tile);
   }
@@ -599,7 +611,7 @@ struct AIEObjectFifoAllocatePass
   template <typename EndpointOp>
   void collectLockUsers(EndpointOp endpoint) {
     auto pool = endpoint.getPoolOp();
-    if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
+    if (!semaphoreLocks) {
       lockUsers[pool].push_back(endpoint);
       return;
     }
@@ -615,7 +627,7 @@ struct AIEObjectFifoAllocatePass
     auto pool = endpoint.getPoolOp();
     if (pool.getDepth() == 0)
       return tiles;
-    if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
+    if (!semaphoreLocks) {
       if (poolLocks->needsLocks(pool) && !pool.getLocks())
         tiles.push_back(lockPlacement(pool, pool));
       else
@@ -2637,6 +2649,8 @@ struct AIEObjectFifoAllocatePass
   void runOnOperation() override {
     device = getOperation();
     builder = OpBuilder(device.getContext());
+    semaphoreLocks =
+        device.getTargetModel().hasProperty(AIETargetModel::UsesSemaphoreLocks);
     // One pass instance serves every device in the module, and none of this
     // state means anything outside the device it was gathered from.
     channelSharers.clear();

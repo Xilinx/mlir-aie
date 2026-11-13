@@ -614,8 +614,8 @@ std::optional<uint64_t> StreamVolumeAnalysis::loopedVolume(
 
 bool StreamVolumeAnalysis::walkLoop(const DmaChannelProgram &p,
                                     function_ref<void(DMABDOp)> visit) const {
-  // AIE1 locks hold a state rather than count tokens.
-  if (getTargetModel(device).getTargetArch() == AIEArch::AIE1 ||
+  // Binary locks hold a state rather than count tokens.
+  if (!getTargetModel(device).hasProperty(AIETargetModel::UsesSemaphoreLocks) ||
       !visiting.insert(&p).second)
     return false;
   llvm::scope_exit done([&] { visiting.erase(&p); });
@@ -792,9 +792,11 @@ static std::optional<uint64_t> programCapacity(const DmaChannelProgram &p,
   SmallVector<Block *> sequence = chainBlocks(p);
   if (sequence.empty())
     return 0;
-  // AIE1 locks hold a state an acquire waits to equal and a release sets; later
-  // locks count, and an acquire waiting for an exact count is taken to block.
-  bool stateLocks = getTargetModel(device).getTargetArch() == AIEArch::AIE1;
+  // Binary locks hold a state an acquire waits to equal and a release sets;
+  // semaphore locks count, and an acquire waiting for an exact count is taken
+  // to block.
+  bool stateLocks =
+      !getTargetModel(device).hasProperty(AIETargetModel::UsesSemaphoreLocks);
   DenseMap<Operation *, int64_t> lockValues;
   uint64_t bytes = 0;
   // Lock values and bytes when the cycle last began. A cycle that leaves every

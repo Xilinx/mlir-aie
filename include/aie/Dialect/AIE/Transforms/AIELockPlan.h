@@ -37,7 +37,7 @@ public:
     llvm::SmallVector<TileID, 1> positions;
     std::optional<TileID> at;
   };
-  /// A tile using the locks. A compute tile's DMA uses only its own.
+  /// A tile using the locks, `localOnly` when only its own (dmaLocalOnly).
   struct User {
     unsigned tile;
     bool localOnly;
@@ -108,6 +108,25 @@ public:
   };
 
   explicit LockPlan(const AIETargetModel &target) : target(target) {}
+
+  /// The lock groups `owners` lock owners of a pool of `depth` objects take,
+  /// by count. With semaphore locks each owner is a segment taking a pair,
+  /// one lock counting free objects and one full ones; otherwise the one
+  /// owner is the pool, taking a binary lock per object.
+  static llvm::SmallVector<int> groupCounts(const AIETargetModel &target,
+                                            int64_t depth, int owners) {
+    if (target.hasProperty(AIETargetModel::UsesSemaphoreLocks))
+      return llvm::SmallVector<int>(owners, 2);
+    if (!owners)
+      return {};
+    return {static_cast<int>(depth)};
+  }
+
+  /// Whether a DMA on a tile of `type` uses only its own tile's locks: every
+  /// DMA does but a mem tile's.
+  static bool dmaLocalOnly(AIETileType type) {
+    return type != AIETileType::MemTile;
+  }
 
   unsigned addTile(Tile tile) {
     tiles.push_back(std::move(tile));
