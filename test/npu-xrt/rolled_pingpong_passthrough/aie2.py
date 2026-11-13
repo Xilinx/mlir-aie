@@ -18,12 +18,13 @@
 # The compute structure (ObjectFifos + a passthrough Worker) is expressed with
 # IRON's dataflow API.  The runtime sequence itself is a rolled ping-pong: it
 # issues N_TILES copies of a single input tile using a depth-1 ping-pong, where
-# an scf.for carries the in-flight input task handle as an iter_arg and frees the
-# previous iteration's task while the next is in flight.
+# an scf.for carries the in-flight input task handle as an iter_arg and awaits
+# and frees the previous iteration's task while the next is in flight.
 #
 # The rolled loop is written directly with fill/drain in "unmanaged" mode
 # (managed=False): each returns a Task the body owns, carried across scf.for
-# iterations as a range_ iter_arg and freed by hand while the next is in flight.
+# iterations as a range_ iter_arg, and awaited and freed by hand while the next
+# is in flight.
 #
 # The sequence is additionally wrapped in a constant-true scf.if to exercise the
 # full static-path control-flow story: the loop is unrolled (the unroll pass
@@ -78,8 +79,8 @@ def design(dev):
     # The rolled ping-pong runtime sequence. This is a hand-rolled software
     # pipeline: fill/drain run in "unmanaged" mode (managed=False) so the body
     # owns each transfer's lifetime via the returned Task, carrying the in-flight
-    # input task across scf.for iterations as a range_ iter_arg and freeing the
-    # previous one while the next is in flight.
+    # input task across scf.for iterations as a range_ iter_arg and awaiting and
+    # freeing the previous one while the next is in flight.
     def ping_pong(A, B, in_h, out_h):
         # Wrap the whole sequence in a constant-true scf.if. This exercises the
         # other half of the static-path invariant: the loop below is unrolled
@@ -113,6 +114,7 @@ def design(dev):
                     wait=True,
                     managed=False,
                 )
+                prev.await_()
                 prev.free()
                 yield_([tile_in])
 
