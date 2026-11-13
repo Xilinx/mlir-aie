@@ -1533,13 +1533,9 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
       if (int64_t data = core.getDataSize().value_or(
               static_cast<int64_t>(core.getMeasuredDataSize().value_or(0)))) {
         auto device = core->getParentOfType<DeviceOp>();
-        auto cores = device.getOps<CoreOp>();
-        diag.attachNote() << kCoreSectionsNote << data << " bytes (core "
-                          << std::distance(cores.begin(),
-                                           llvm::find(cores, core))
-                          << " of "
-                          << FlatSymbolRefAttr::get(device.getSymNameAttr())
-                          << ")";
+        diag.attachNote(core.getLoc())
+            << kCoreSectionsNote << data << " bytes (device "
+            << FlatSymbolRefAttr::get(device.getSymNameAttr()) << ")";
       }
     if (layout.exhausted) {
       diag.attachNote() << "the search hit its " << budget

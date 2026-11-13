@@ -96,9 +96,9 @@ module @test6 {
     %tile_0_2 = aie.tile(0, 2)
     %a = aie.buffer(%tile_0_2) {sym_name = "a"} : memref<4096xi8>
     // expected-error @below {{could not be placed: buffer "b" needs 4096 bytes}}
-    // expected-note @below {{the core on this tile keeps its own sections in 60000 bytes}}
     %b = aie.buffer(%tile_0_2) {sym_name = "b"} : memref<4096xi8>
     %c = aie.buffer(%tile_0_2) {sym_name = "c"} : memref<4096xi8>
+    // expected-note @below {{this core keeps its own sections in 60000 bytes}}
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32, data_size = 60000 : i32}

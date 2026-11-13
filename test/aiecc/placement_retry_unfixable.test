@@ -13,7 +13,7 @@
 // again, and the second placement puts %c beside %p, whose tile now has no
 // room for x's buffers. %p keeps no sections, so placing again cannot charge
 // anything for it: that failure is the second placement's own, and it stands.
-// CHECK: note: the core on this tile keeps its own sections in 28672 bytes (core 1 of @main)
+// CHECK: note: this core keeps its own sections in 28672 bytes (device @main)
 // CHECK: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=28672@16 (a core's buffers found no room beside its own sections); the messages above are from placement 1
 // CHECK: error: 'aie.buffer' op could not be placed: buffer "x__buf1"
 // CHECK-NOT: no placement

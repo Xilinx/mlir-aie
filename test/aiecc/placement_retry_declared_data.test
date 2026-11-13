@@ -13,7 +13,7 @@
 // declared data_size, so a measurement cannot change where it puts %c, and
 // aiecc does not place again: the failure is reported as it is.
 // CHECK: error: 'aie.buffer' op could not be placed:
-// CHECK: note: the core on this tile keeps its own sections in 61440 bytes
+// CHECK: note: this core keeps its own sections in 61440 bytes
 // CHECK-NOT: placing again
 // CHECK-NOT: no placement
 // CHECK: aiecc: edge 'input_with_addresses.mlir' failed

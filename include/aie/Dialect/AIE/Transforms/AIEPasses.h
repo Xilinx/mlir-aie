@@ -47,11 +47,11 @@ inline constexpr llvm::StringLiteral kTurnWalkedNote =
     "channel turns walked these objectFIFOs' mem tile pools whole: ";
 
 /// How `--aie-assign-buffer-addresses` says a buffer fits no tile memory left,
-/// and the note it adds when a core on that tile keeps its own sections there;
-/// the note's symbol argument names the core's device.
+/// and the note it adds, at the core, when a core on that tile keeps its own
+/// sections there; the note's symbol argument names the core's device.
 inline constexpr llvm::StringLiteral kNoTileRoom = "could not be placed: ";
 inline constexpr llvm::StringLiteral kCoreSectionsNote =
-    "the core on this tile keeps its own sections in ";
+    "this core keeps its own sections in ";
 
 /// Whether `whileOp` repeats forever: its condition is a constant true, and its
 /// condition region does nothing but forward its arguments to the body. This is
