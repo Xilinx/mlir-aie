@@ -2626,7 +2626,10 @@ def AIE_ObjectFifoCreateOp
 
     `transport` names the path the objects take (`#aie.transport`), and
     `prod_port` and `cons_ports` name what drives each end (`#aie.end_port`):
-    a DMA channel, pinned or left to allocation, or a core stream port.
+    a DMA channel, pinned or left to allocation, or a core stream port. Leaving
+    `transport` absent (auto) never sets `packet` on the fifo itself, but
+    allocation may still put packet headers on the routes it gives a shim
+    channel shared between transfers that are never in flight together.
 
     ```
       aie.objectfifo @of5 (%tile12, { %tile33 }, 2 : i32)
