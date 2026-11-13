@@ -9,7 +9,7 @@
 
 // CHECK: module @elementGenerationShim {
 // CHECK:   aie.device(xcvc1902) {
-// CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(1, 0)
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(2, 0)
 // CHECK-DAG:     %[[VAL_1:.*]] = aie.tile(1, 2)
 // CHECK-DAG:     %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1__cons__buf0"} : memref<16xi32>
 // CHECK-DAG:     %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1__cons__buf1"} : memref<16xi32>
@@ -37,7 +37,7 @@
 
 module @elementGenerationShim {
    aie.device(xcvc1902) {
-      %tile10 = aie.tile(1, 0)
+      %tile10 = aie.tile(2, 0)
       %tile12 = aie.tile(1, 2)
 
       aie.objectfifo @of1 (%tile10, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>

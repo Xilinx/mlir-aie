@@ -56,10 +56,10 @@ module {
 
 module {
   aie.device(xcve2302) {
-    %tile00 = aie.tile(0, 0)
-    aie.shim_dma_allocation @of(%tile00, MM2S, 0, <pkt_id = 3>)
+    %tile20 = aie.tile(2, 0)
+    aie.shim_dma_allocation @of(%tile20, MM2S, 0, <pkt_id = 3>)
     // expected-error@+1 {{'aie.shim_dma_allocation' op packet has no pkt_id}}
-    aie.shim_dma_allocation @of2(%tile00, MM2S, 1, <>)
+    aie.shim_dma_allocation @of2(%tile20, MM2S, 1, <>)
   }
 }
 

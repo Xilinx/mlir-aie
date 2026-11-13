@@ -865,6 +865,9 @@ LogicalResult AIEX::NpuDmaWaitOp::verify() {
 
 LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
+  if (failed(AIE::verifyDMAChannel(getOperation(), targetModel, getColumn(),
+                                   getRow(), getDirection(), getChannel())))
+    return failure();
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   // bd_id and repeat_count are SSA operands; range-check them only when they
   // are compile-time constants. A runtime repeat_count is checked on the host
@@ -1603,8 +1606,8 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
 }
 
 LogicalResult AIEX::DMAConfigureTaskOp::verify() {
-  if (failed(AIE::verifyDMAChannelIndex(getOperation(), getTileLike(),
-                                        getDirection(), getChannel())))
+  if (failed(AIE::verifyDMAChannel(getOperation(), getTileLike(),
+                                   getDirection(), getChannel())))
     return failure();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
   // Skip the per-BD dimension check on an unplaced (logical) tile: the ND limit
@@ -2131,6 +2134,9 @@ AIE::BDChainOp AIEX::DMAStartBdChainOp::getBDChainOp() {
 }
 
 LogicalResult AIEX::DMAStartBdChainOp::verify() {
+  if (failed(AIE::verifyDMAChannel(getOperation(), getTileLike(),
+                                   getDirection(), getChannel())))
+    return failure();
   AIE::BDChainOp chain = getBDChainOp();
   if (!chain) {
     return emitOpError("symbol does not reference valid BD chain");

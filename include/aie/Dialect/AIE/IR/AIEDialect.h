@@ -620,6 +620,15 @@ mlir::LogicalResult verifyAssignedPacket(mlir::Operation *op,
 mlir::LogicalResult verifyDMAChannelIndex(mlir::Operation *op, TileLike tile,
                                           DMAChannelDir dir, int64_t channel);
 
+// As verifyDMAChannelIndex, and the tile has a DMA: a shim PL tile has none.
+mlir::LogicalResult verifyDMAChannel(mlir::Operation *op, TileLike tile,
+                                     DMAChannelDir dir, int64_t channel);
+// As above, for the tile at (`col`, `row`).
+mlir::LogicalResult verifyDMAChannel(mlir::Operation *op,
+                                     const AIETargetModel &targetModel, int col,
+                                     int row, DMAChannelDir dir,
+                                     int64_t channel);
+
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult
 verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
