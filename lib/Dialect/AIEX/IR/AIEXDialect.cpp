@@ -1617,6 +1617,57 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       bds.push_back(bd);
     });
   }
+  // Only a memtile's low-numbered channels reach its neighbours' buffers and
+  // locks; the rest are local only, as in aie.memtile_dma.
+  bool onMemTile = col && row && targetModel.isMemTile(*col, *row);
+  uint32_t adjacentChannels =
+      onMemTile ? targetModel.getMaxChannelNumForAdjacentMemTile(*col, *row)
+                : 0;
+  if (onMemTile && static_cast<uint32_t>(getChannel()) >= adjacentChannels) {
+    auto isNonLocal = [&](AIE::TileLike tile) {
+      // Pinned logical and physical tiles can denote the same location. Defer
+      // the check until placement if the resource's coordinates are unknown.
+      auto resourceCol = tile.tryGetCol();
+      auto resourceRow = tile.tryGetRow();
+      return resourceCol && resourceRow &&
+             (*resourceCol != *col || *resourceRow != *row);
+    };
+    body.walk([&](Operation *op) {
+      Operation *nonLocal = nullptr;
+      StringRef what;
+      if (auto bd = dyn_cast<AIE::DMABDOp>(op)) {
+        auto buffer = bd.getBuffer().getDefiningOp<AIE::BufferOp>();
+        if (buffer && isNonLocal(buffer.getTileLike())) {
+          nonLocal = buffer;
+          what = "buffer";
+        }
+      } else if (auto useLock = dyn_cast<AIE::UseLockOp>(op)) {
+        auto lock = useLock.getLock().getDefiningOp<AIE::LockOp>();
+        if (!lock) {
+          useLock.emitOpError()
+              << "requires a lock defined by aie.lock in a task on memtile DMA "
+                 "channel "
+              << getChannel();
+          result = failure();
+          return;
+        }
+        if (isNonLocal(lock.getTileLike())) {
+          nonLocal = lock;
+          what = "lock";
+        }
+      }
+      if (!nonLocal)
+        return;
+      InFlightDiagnostic err = op->emitOpError()
+                               << "is in a task on memtile DMA channel "
+                               << getChannel()
+                               << " and attempts to access a non-local " << what
+                               << "; only channels below " << adjacentChannels
+                               << " reach neighbouring tiles";
+      err.attachNote(nonLocal->getLoc()) << what;
+      result = failure();
+    });
+  }
   if (getOutOfOrder()) {
     // Out-of-order mode rejects task completion token (bits are aliased).
     if (getIssueToken()) {
