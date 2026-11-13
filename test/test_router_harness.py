@@ -5,7 +5,6 @@
 
 """The router's model and shrinker, with the real aie-opt; no NPU required."""
 
-import argparse
 import importlib.util
 import json
 import random
@@ -397,52 +396,25 @@ def router_hw():
 def test_an_unknown_variant_name_fails_instead_of_running_nothing(
     router_hw, hw_case, tmp_path
 ):
-    args = argparse.Namespace(
-        case=hw_case,
-        variant=["typo"],
-        runs=20,
-        process_timeout_s=120,
-        work=tmp_path / "work",
-        verdicts=None,
-        peano="unused",
-    )
-    assert router_hw.run_case(args) != 0
-    assert not (tmp_path / "work").exists()
+    work = tmp_path / "work"
+    argv = ["run", str(hw_case), "--variant", "typo", "--work", str(work)]
+    assert router_hw.main(argv + ["--peano", "unused"]) != 0
+    assert not work.exists()
 
 
 def test_a_case_not_on_npu2_is_not_retargeted(router_hw, hw_case, tmp_path, capsys):
-    args = argparse.Namespace(
-        case=hw_case,
-        variant=[],
-        device="npu1",
-        runs=20,
-        process_timeout_s=120,
-        work=tmp_path / "work",
-        verdicts=None,
-        peano="unused",
-    )
-    assert router_hw.run_case(args) != 0
+    work = tmp_path / "work"
+    argv = ["run", str(hw_case), "--device", "npu1", "--work", str(work)]
+    assert router_hw.main(argv + ["--peano", "unused"]) != 0
     assert "cannot retarget to npu1" in capsys.readouterr().err
-    assert not (tmp_path / "work").exists()
+    assert not work.exists()
 
 
-def test_a_nonpositive_runs_count_is_rejected(router_hw, hw_case):
-    result = subprocess.run(
-        [
-            sys.executable,
-            router_hw.__file__,
-            "run",
-            str(hw_case),
-            "--runs",
-            "0",
-            "--peano",
-            "unused",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode != 0
-    assert "--runs" in result.stderr
+def test_a_nonpositive_runs_count_is_rejected(router_hw, hw_case, capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        router_hw.main(["run", str(hw_case), "--runs", "0", "--peano", "unused"])
+    assert exit_info.value.code != 0
+    assert "--runs" in capsys.readouterr().err
 
 
 def test_a_router_failure_leaves_the_input_and_a_command_to_reproduce_it(
