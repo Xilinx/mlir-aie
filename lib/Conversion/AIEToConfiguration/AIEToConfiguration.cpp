@@ -821,10 +821,13 @@ using LockAcquire = std::pair<bool, int32_t>;
 
 static std::optional<LockAddress> getLockAddress(UseLockOp use) {
   auto lock = use.getLock().getDefiningOp<LockOp>();
-  if (!lock || !lock.getLockID())
+  if (!lock)
+    return std::nullopt;
+  auto lockId = lock.getLockID();
+  if (!lockId)
     return std::nullopt;
   auto tile = lock.getTileOp();
-  return LockAddress{tile.colIndex(), tile.rowIndex(), *lock.getLockID()};
+  return LockAddress{tile.colIndex(), tile.rowIndex(), *lockId};
 }
 
 static std::optional<LockAcquire> getLockAcquire(UseLockOp use) {
@@ -1006,12 +1009,16 @@ insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
   std::vector<TransactionBinaryOperation> writes;
   for (auto address : candidates) {
     auto [column, row, lockId] = address;
+    auto localAddress = model.getLocalLockAddress(lockId, TileID{column, row});
+    auto value =
+        analysis.locks.at(address).getSatisfyingValue(model.getMaxLockValue());
+    if (!localAddress || !value)
+      return device.emitOpError(
+          "teardown lock drain requires a valid lock address and value");
     TransactionBinaryOperation write{};
     write.cmd.Opcode = XAie_TxnOpcode::XAIE_IO_WRITE;
-    write.cmd.RegOff = tileAddress(column, row) |
-                       *model.getLocalLockAddress(lockId, TileID{column, row});
-    write.cmd.Value =
-        *analysis.locks.at(address).getSatisfyingValue(model.getMaxLockValue());
+    write.cmd.RegOff = tileAddress(column, row) | *localAddress;
+    write.cmd.Value = *value;
     write.sourceLoc = device.getLoc();
     writes.push_back(write);
   }
