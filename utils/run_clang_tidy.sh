@@ -55,8 +55,12 @@ if [ ! -f "$BUILD_DIR/compile_commands.json" ]; then
   exit 1
 fi
 
+# CMakeFiles keeps a directory per CMake version that configured the build;
+# read the one the cache names, not a stale one from before an upgrade.
+CMAKE_VERSION=$(sed -nE 's/^CMAKE_CACHE_(MAJOR|MINOR|PATCH)_VERSION:INTERNAL=//p' \
+  "$BUILD_DIR/CMakeCache.txt" 2>/dev/null | paste -sd. || true)
 COMPILER_ID=$(sed -n 's/^set(CMAKE_CXX_COMPILER_ID "\(.*\)")$/\1/p' \
-  "$BUILD_DIR"/CMakeFiles/*/CMakeCXXCompiler.cmake 2>/dev/null | head -n 1)
+  "$BUILD_DIR/CMakeFiles/$CMAKE_VERSION/CMakeCXXCompiler.cmake" 2>/dev/null || true)
 if [ "$COMPILER_ID" != "Clang" ]; then
   echo "error: $BUILD_DIR was configured with ${COMPILER_ID:-an unknown compiler}, but CI's clang-tidy" >&2
   echo "       reads a clang-configured build, whose warning flags differ. Configure one" >&2
