@@ -39,8 +39,8 @@ int shimMuxChannelFrom(Port src);
 int shimMuxChannelTo(Port dst);
 
 // The connections from the source ports to the destination ports of a
-// switchbox, if `srcCoords == dstCoords`, or of the wires from one switchbox
-// to its neighbour at `dstCoords`.
+// switchbox's crossbar, if `isCrossbar`, or of the wires from one switchbox to
+// the one at `dstCoords`.
 struct SwitchboxConnect {
   // A connection from a source port to a destination port.
   struct Cell {
@@ -71,6 +71,7 @@ struct SwitchboxConnect {
       : srcCoords(srcCoords), dstCoords(dstCoords) {}
 
   TileID srcCoords, dstCoords;
+  bool isCrossbar = true;
   std::vector<Port> srcPorts;
   std::vector<Port> dstPorts;
   // The connection from srcPorts[i] to dstPorts[j] is cells[i * dstPorts.size()
@@ -137,9 +138,10 @@ struct SwitchboxConnect {
   // update demand at the beginning of each dijkstraShortestPaths iteration
   void updateDemand();
 
-  // Bumps an over-capacity cell's demand, all but ruling it out if a
-  // prioritized flow uses it, to keep prioritized flows' routes.
-  static void bumpDemand(Cell &c);
+  // Bumps the demand of the connection from srcPorts[i] to dstPorts[j] if it
+  // is at capacity, all but ruling it out if a prioritized flow uses it, to
+  // keep prioritized flows' routes.
+  void bumpDemand(size_t i, size_t j);
 
 private:
   static int indexIn(llvm::ArrayRef<Port> ports, Port p) {
@@ -216,13 +218,16 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 }
 
 // A hop of a packet flow's tree, from one port to the next; `joined` when the
-// flow takes it by joining another flow's tree.
+// flow takes it by joining another flow's tree, `isCrossbar` when it crosses a
+// switchbox rather than a wire.
 struct TreeHop {
   PathEndPoint from, to;
   bool joined;
+  bool isCrossbar;
 
   bool operator==(const TreeHop &rhs) const {
-    return from == rhs.from && to == rhs.to && joined == rhs.joined;
+    return from == rhs.from && to == rhs.to && joined == rhs.joined &&
+           isCrossbar == rhs.isCrossbar;
   }
 };
 using PacketTrees = std::map<PathEndPoint, std::vector<TreeHop>>;
@@ -478,9 +483,13 @@ private:
   std::map<PathEndPoint, std::map<PathEndPoint, mlir::Location>> flowLocs;
   std::optional<mlir::Location> flowLoc(const PathEndPoint &src,
                                         const PathEndPoint *dst) const;
-  // The routing graph, by the tiles a SwitchboxConnect connects: a tile to
-  // itself for its switchbox, or to a neighbour for the wires between them.
-  std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
+  // The routing graph, by the tiles a SwitchboxConnect connects and whether it
+  // is a crossbar: a tile to itself for its switchbox, or to a neighbour for
+  // the wires between them.
+  using GraphKey = std::tuple<TileID, TileID, bool>;
+  static GraphKey crossbarKey(TileID tile) { return {tile, tile, true}; }
+  static GraphKey wireKey(TileID src, TileID dst) { return {src, dst, false}; }
+  std::map<GraphKey, SwitchboxConnect> graph;
 
   // Dense routing graph (built once by buildRoutingGraph()).
   bool graphBuilt = false;

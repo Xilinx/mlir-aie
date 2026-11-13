@@ -5947,9 +5947,8 @@ WireBundle xilinx::AIE::getConnectingBundle(WireBundle dir) {
 }
 
 std::optional<std::pair<TileID, Port>>
-xilinx::AIE::getConnectingWireEndpoint(const AIETargetModel &targetModel,
-                                       TileID tile, Port port) {
-  switch (port.bundle) {
+xilinx::AIE::getLinkedInput(TileID tile, Port output) {
+  switch (output.bundle) {
   case WireBundle::North:
     tile.row++;
     break;
@@ -5965,9 +5964,17 @@ xilinx::AIE::getConnectingWireEndpoint(const AIETargetModel &targetModel,
   default:
     return std::nullopt;
   }
-  if (!targetModel.isValidTile(tile))
+  return std::pair(tile,
+                   Port{getConnectingBundle(output.bundle), output.channel});
+}
+
+std::optional<std::pair<TileID, Port>>
+xilinx::AIE::getConnectingWireEndpoint(const AIETargetModel &targetModel,
+                                       TileID tile, Port port) {
+  auto endpoint = getLinkedInput(tile, port);
+  if (!endpoint || !targetModel.isValidTile(endpoint->first))
     return std::nullopt;
-  return std::pair(tile, Port{getConnectingBundle(port.bundle), port.channel});
+  return endpoint;
 }
 
 //===----------------------------------------------------------------------===//

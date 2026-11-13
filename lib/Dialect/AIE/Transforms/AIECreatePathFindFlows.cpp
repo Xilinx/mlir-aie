@@ -268,34 +268,13 @@ LogicalResult AIEPathfinderPass::runOnFlow(DeviceOp d,
   return success();
 }
 
-/// The switchbox a master port feeds, and the slave port it feeds there.
-static std::optional<std::pair<TileID, Port>> linkedInput(TileID tile,
-                                                          Port out) {
-  switch (out.bundle) {
-  case WireBundle::East:
-    return std::pair{TileID{tile.col + 1, tile.row},
-                     Port{WireBundle::West, out.channel}};
-  case WireBundle::West:
-    return std::pair{TileID{tile.col - 1, tile.row},
-                     Port{WireBundle::East, out.channel}};
-  case WireBundle::North:
-    return std::pair{TileID{tile.col, tile.row + 1},
-                     Port{WireBundle::South, out.channel}};
-  case WireBundle::South:
-    return std::pair{TileID{tile.col, tile.row - 1},
-                     Port{WireBundle::North, out.channel}};
-  default:
-    return std::nullopt;
-  }
-}
-
 /// Whether the connection out of `out` at `tile` leads, through `settings`, to
 /// `finalPort` at `finalTile`.
 static bool findPathToDest(const SwitchSettings &settings, TileID tile,
                            Port out, TileID finalTile, Port finalPort) {
   if (tile == finalTile && out == finalPort)
     return true;
-  std::optional<std::pair<TileID, Port>> next = linkedInput(tile, out);
+  std::optional<std::pair<TileID, Port>> next = getLinkedInput(tile, out);
   if (!next)
     return false;
   TileID neighbour = next->first;
@@ -1100,13 +1079,16 @@ std::pair<std::map<TileID, SmallVector<Leaving, 8>>, std::set<TileID>>
 leavingPinnedTrees(const StreamConflicts &conflicts,
                    const PacketTrees &pinnedTrees,
                    const PrioritizedPackets &prioritized) {
-  // Each hop of a pinned tree by the hop before it, unset where two lead to it.
-  std::map<PathEndPoint, std::map<PathEndPoint, std::optional<PathEndPoint>>>
+  // Each hop of a pinned tree by the hop before it, and whether it crosses a
+  // switchbox, unset where two lead to it.
+  std::map<PathEndPoint,
+           std::map<PathEndPoint, std::optional<std::pair<PathEndPoint, bool>>>>
       preds;
   for (const auto &[src, hops] : pinnedTrees)
     for (const TreeHop &hop : hops) {
-      auto [it, first] = preds[src].try_emplace(hop.to, hop.from);
-      if (!first && it->second && !(*it->second == hop.from))
+      std::pair<PathEndPoint, bool> pred{hop.from, hop.isCrossbar};
+      auto [it, first] = preds[src].try_emplace(hop.to, pred);
+      if (!first && it->second && !(*it->second == pred))
         it->second.reset();
     }
   std::map<TileID, SmallVector<Leaving, 8>> leaving;
@@ -1124,9 +1106,10 @@ leavingPinnedTrees(const StreamConflicts &conflicts,
       auto pred = tree->second.find(at);
       if (pred == tree->second.end() || !pred->second)
         break;
-      if (pred->second->coords == at.coords)
-        hops.push_back({pred->second->port, at});
-      at = *pred->second;
+      auto [from, isCrossbar] = *pred->second;
+      if (isCrossbar)
+        hops.push_back({from.port, at});
+      at = from;
     }
     if (!(at == src)) {
       leaving[s.dst.tile].push_back({i, std::nullopt, s.dst.port});
@@ -1538,7 +1521,7 @@ void PacketFlowRouting::collectFlows() {
                  llvm::zip(setting->second.srcs, setting->second.dsts))
               if (src == input && !(tile == destCoords && dest == destPort) &&
                   findPathToDest(settings, tile, dest, destCoords, destPort)) {
-                at = linkedInput(tile, dest);
+                at = getLinkedInput(tile, dest);
                 break;
               }
           }
@@ -1701,7 +1684,7 @@ void PacketFlowRouting::findCircuitHops() {
           !claimedSlaves.count({tileId, slave}) &&
           llvm::all_of(reached,
                        [&, tileId = tileId](Port m) {
-                         return isDirectional(m.bundle) &&
+                         return getLinkedInput(tileId, m).has_value() &&
                                 !claimedMasters.count({tileId, m});
                        }) &&
           llvm::all_of(

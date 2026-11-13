@@ -88,7 +88,8 @@ void SwitchboxConnect::updateDemand() {
                c.avoidance;
 }
 
-void SwitchboxConnect::bumpDemand(Cell &c) {
+void SwitchboxConnect::bumpDemand(size_t i, size_t j) {
+  Cell &c = at(i, j);
   if (c.usedCapacity >= maxCircuitStreamCapacity)
     c.demand *= c.isPriority ? priorityDemandCoeff : demandCoeff;
 }
@@ -295,7 +296,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   auto intraconnect = [&](int col, int row) {
     TileID coords = {col, row};
     SwitchboxConnect &sb =
-        graph.try_emplace({coords, coords}, coords).first->second;
+        graph.try_emplace(crossbarKey(coords), coords).first->second;
 
     for (int i = 0, e = getMaxEnumValForWireBundle() + 1; i < e; ++i) {
       WireBundle bundle = symbolizeWireBundle(i).value();
@@ -340,7 +341,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
                           WireBundle srcBundle, WireBundle dstBundle) {
     TileID src = {col, row}, dst = {targetCol, targetRow};
     SwitchboxConnect &sb =
-        graph.try_emplace({src, dst}, src, dst).first->second;
+        graph.try_emplace(wireKey(src, dst), src, dst).first->second;
+    sb.isCrossbar = false;
     for (int channel = 0; channel < maxChannels[srcBundle]; channel++) {
       sb.srcPorts.push_back(Port{srcBundle, channel});
       sb.dstPorts.push_back(Port{dstBundle, channel});
@@ -614,7 +616,7 @@ LogicalResult Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   int col = switchboxOp.colIndex();
   int row = switchboxOp.rowIndex();
   TileID coords = {col, row};
-  auto &sb = graph[std::make_pair(coords, coords)];
+  auto &sb = graph[crossbarKey(coords)];
   // Validate every connect against the original connectivity before reserving
   // any resource, so a broadcast (one source fanning out to several dests) does
   // not invalidate its own sibling connects mid-scan. A destination port may be
@@ -700,7 +702,7 @@ LogicalResult Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
 }
 
 void Pathfinder::excludeTile(TileID coords) {
-  auto it = graph.find({coords, coords});
+  auto it = graph.find(crossbarKey(coords));
   if (it == graph.end())
     return;
   SwitchboxConnect &sb = it->second;
@@ -710,7 +712,7 @@ void Pathfinder::excludeTile(TileID coords) {
 }
 
 void Pathfinder::avoidPort(TileID coords, Port port) {
-  auto it = graph.find({coords, coords});
+  auto it = graph.find(crossbarKey(coords));
   if (it == graph.end())
     return;
   SwitchboxConnect &sb = it->second;
@@ -759,14 +761,14 @@ void Pathfinder::buildRoutingGraph() {
     PathEndPoint src = nodes[id];
     // The ports the crossbar connects this one to, and the neighbours' ports
     // its wire reaches.
-    std::vector<PathEndPoint> dests;
-    auto intraIt = graph.find({src.coords, src.coords});
+    std::vector<std::pair<PathEndPoint, SwitchboxConnect *>> dests;
+    auto intraIt = graph.find(crossbarKey(src.coords));
     if (intraIt != graph.end()) {
       auto &sb = intraIt->second;
       for (auto [i, pIn] : llvm::enumerate(sb.srcPorts))
         for (auto [j, pOut] : llvm::enumerate(sb.dstPorts))
           if (pIn == src.port && sb.at(i, j).available)
-            dests.emplace_back(src.coords, pOut);
+            dests.push_back({{src.coords, pOut}, &sb});
     }
     std::pair<TileID, Port> neighbors[] = {
         {{src.coords.col, src.coords.row - 1},
@@ -778,18 +780,21 @@ void Pathfinder::buildRoutingGraph() {
         {{src.coords.col + 1, src.coords.row},
          {WireBundle::West, src.port.channel}}};
     for (const auto &[neighborCoords, neighborPort] : neighbors) {
-      auto nIt = graph.find({src.coords, neighborCoords});
+      auto nIt = graph.find(wireKey(src.coords, neighborCoords));
       if (nIt != graph.end() &&
           src.port.bundle == getConnectingBundle(neighborPort.bundle) &&
           llvm::is_contained(nIt->second.dstPorts, neighborPort))
-        dests.emplace_back(neighborCoords, neighborPort);
+        dests.push_back({{neighborCoords, neighborPort}, &nIt->second});
     }
-    llvm::sort(dests);
+    llvm::sort(dests, [](const auto &a, const auto &b) {
+      return std::make_tuple(a.first, !a.second->isCrossbar) <
+             std::make_tuple(b.first, !b.second->isCrossbar);
+    });
 
     std::vector<Edge> edges;
     edges.reserve(dests.size());
-    for (auto &dest : dests) {
-      auto &sb = graph.at({src.coords, dest.coords});
+    for (auto &[dest, link] : dests) {
+      auto &sb = *link;
       int i = sb.srcIndex(src.port);
       int j = sb.dstIndex(dest.port);
       assert(i >= 0 && j >= 0);
@@ -797,9 +802,8 @@ void Pathfinder::buildRoutingGraph() {
       edges.push_back(Edge{destId, &sb, i, j});
     }
     auto wires =
-        std::stable_partition(edges.begin(), edges.end(), [](const Edge &e) {
-          return e.sb->srcCoords == e.sb->dstCoords;
-        });
+        std::stable_partition(edges.begin(), edges.end(),
+                              [](const Edge &e) { return e.sb->isCrossbar; });
     if (wireEdgesBegin.size() < nodes.size())
       wireEdgesBegin.resize(nodes.size());
     wireEdgesBegin[id] = wires - edges.begin();
@@ -833,7 +837,7 @@ double Pathfinder::edgeWeight(const Edge &e, std::optional<int> packetId,
   // only shows once the group is routed.
   if (packetId && cell.packetFlowCount > 0 && cell.packetIds.count(*packetId))
     w *= demandCoeff;
-  if (e.sb->srcCoords == e.sb->dstCoords)
+  if (e.sb->isCrossbar)
     for (const llvm::BitVector *flows : {avoid, avoidBranch})
       if (flows && llvm::any_of(e.sb->unitFlows(e.j),
                                 [&](int f) { return flows->test(f); }))
@@ -1041,7 +1045,7 @@ Pathfinder::RouteState::RouteState(const Pathfinder &pf)
     std::map<PathEndPoint, SmallVector<int, 4>> sets;
     for (const TreeHop &h : tree) {
       auto to = pf.nodeIds.find(h.to);
-      if (h.from.coords == h.to.coords && to != pf.nodeIds.end())
+      if (h.isCrossbar && to != pf.nodeIds.end())
         sets[h.from].push_back(stateId(to->second, Out));
     }
     for (auto &[_, set] : sets) {
@@ -1182,9 +1186,9 @@ int Pathfinder::RouteState::splitPart(int flow, const std::set<int> &ids) {
 // A link with a channel no flow takes and a free master port driving it
 // was overused only by the way the flows went; its flows could spread.
 bool Pathfinder::hasRoom(const SwitchboxConnect &sb) const {
-  if (sb.srcCoords == sb.dstCoords)
+  if (sb.isCrossbar)
     return true;
-  auto xbar = graph.find({sb.srcCoords, sb.srcCoords});
+  auto xbar = graph.find(crossbarKey(sb.srcCoords));
   for (size_t i = 0; i < sb.srcPorts.size(); i++)
     for (size_t j = 0; j < sb.dstPorts.size(); j++) {
       const SwitchboxConnect::Cell &c = sb.at(i, j);
@@ -1207,7 +1211,7 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
   // A prioritized flow keeps the route it takes alone, so the others
   // may have had to fit around it.
   auto overused = [](const SwitchboxConnect &sb) {
-    return sb.srcCoords != sb.dstCoords &&
+    return !sb.isCrossbar &&
            llvm::any_of(sb.cells, [](const SwitchboxConnect::Cell &c) {
              return c.usedCapacity > maxCircuitStreamCapacity;
            });
@@ -1229,7 +1233,7 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
             ", and it holds a channel " + link(*hop.second.sb) +
             " the other flows need.");
       }
-      if (hop.second.sb->srcCoords != hop.second.sb->dstCoords)
+      if (!hop.second.sb->isCrossbar)
         held.insert(hop.second.sb);
     }
   }
@@ -1273,7 +1277,7 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
   }
   if (!worst)
     return llvm::make_error<RoutingFailure>("");
-  bool crossbar = worst->srcCoords == worst->dstCoords;
+  bool crossbar = worst->isCrossbar;
   std::vector<std::string> users;
   for (const auto &[src, settings] : st.routing.settings) {
     auto it = settings.find(worst->srcCoords);
@@ -1314,9 +1318,9 @@ llvm::Error Pathfinder::cutOverflow() const {
   auto onDevice = [&](TileID t) { return t.col < columns && t.row < rows; };
   std::map<std::tuple<bool, int, bool>, size_t> channels;
   for (const auto &[ends, sb] : graph) {
-    const auto &[a, b] = ends;
-    auto xbar = graph.find({a, a});
-    if (a == b || !onDevice(a) || !onDevice(b) || xbar == graph.end())
+    const auto &[a, b, isCrossbar] = ends;
+    auto xbar = graph.find(crossbarKey(a));
+    if (isCrossbar || !onDevice(a) || !onDevice(b) || xbar == graph.end())
       continue;
     bool rows = a.col == b.col;
     int below = rows ? std::min(a.row, b.row) : std::min(a.col, b.col);
@@ -1700,8 +1704,7 @@ void Pathfinder::TreeBuilder::meet(int owner) {
                   llvm::any_of(below(k), [&](const auto &hop) {
                     const Edge &e = hop.second.second;
                     return taken(hop.first) ||
-                           (e.sb->srcCoords == e.sb->dstCoords &&
-                            e.sb->circuitOnlyDst[e.j]);
+                           (e.sb->isCrossbar && e.sb->circuitOnlyDst[e.j]);
                   })))
       continue;
     SmallVector<int, 4> leaving;
@@ -1712,7 +1715,7 @@ void Pathfinder::TreeBuilder::meet(int owner) {
         }))
       continue;
     TileID tile = pf.nodes[stateNode(at)].coords;
-    auto sb = pf.graph.find({tile, tile});
+    auto sb = pf.graph.find(crossbarKey(tile));
     if (sb == pf.graph.end())
       continue;
     for (Port port : sb->second.srcPorts) {
@@ -1801,7 +1804,7 @@ void Pathfinder::TreeBuilder::search(const llvm::DenseSet<int> &drop,
   if (avoid)
     for (const auto &[state, hop] : planned) {
       const auto &[from, e] = hop;
-      if (e.sb->srcCoords != e.sb->dstCoords || drop.count(state))
+      if (!e.sb->isCrossbar || drop.count(state))
         continue;
       llvm::BitVector &away =
           branchAvoid.try_emplace(from, st.conflicting.size()).first->second;
@@ -1936,16 +1939,14 @@ llvm::DenseSet<int> Pathfinder::TreeBuilder::trunkOff(int dst) const {
 
 // Lay the tree along the route the flow takes alone.
 llvm::Error Pathfinder::TreeBuilder::placePinned() {
-  for (const auto &[from, to, joined] : *pinned) {
+  for (const auto &[from, to, joined, intra] : *pinned) {
     if (toSelf && from == to)
       continue;
-    bool intra = from.coords == to.coords;
     auto fromId = pf.nodeIds.find(from), toId = pf.nodeIds.find(to);
     const Edge *e = nullptr;
     if (fromId != pf.nodeIds.end() && toId != pf.nodeIds.end())
       for (const Edge &out : pf.adjacency[fromId->second])
-        if (out.dst == toId->second &&
-            (out.sb->srcCoords == out.sb->dstCoords) == intra)
+        if (out.dst == toId->second && out.sb->isCrossbar == intra)
           e = &out;
     if (!e)
       return llvm::make_error<RoutingFailure>(
@@ -2096,7 +2097,8 @@ void Pathfinder::TreeBuilder::claim() {
     switchSettings[part.src.coords].srcs.push_back(part.src.port);
     switchSettings[part.src.coords].dsts.push_back(part.src.port);
     if (part.packetId)
-      st.routing.packetTrees[part.src].push_back({part.src, part.src, false});
+      st.routing.packetTrees[part.src].push_back(
+          {part.src, part.src, false, true});
   }
   const std::optional<int> &packetId = part.packetId;
   int packetGroupId = part.packetGroupId;
@@ -2125,7 +2127,7 @@ void Pathfinder::TreeBuilder::claim() {
     auto seen =
         packetId ? cell.packetIds.find(*packetId) : cell.packetIds.end();
     auto mergeable = [&] {
-      if (!isDirectional(sb.dstPorts[j].bundle))
+      if (sb.isCrossbar && !getLinkedInput(sb.dstCoords, sb.dstPorts[j]))
         return true;
       auto reached = [&](const Flow &f) {
         std::set<PathEndPoint> dsts;
@@ -2164,8 +2166,8 @@ void Pathfinder::TreeBuilder::claim() {
     }
     // if at capacity, bump demand to discourage using this Channel
     // this means the order matters!
-    SwitchboxConnect::bumpDemand(cell);
-    if (pred.coords == curr.coords) {
+    sb.bumpDemand(i, j);
+    if (sb.isCrossbar) {
       switchSettings[pred.coords].srcs.push_back(pred.port);
       switchSettings[curr.coords].dsts.push_back(curr.port);
       if (packetId) {
@@ -2181,7 +2183,8 @@ void Pathfinder::TreeBuilder::claim() {
     st.treeDsts[flow].append(met.begin(), met.end());
     for (const auto &[currId, hop] : planned)
       st.routing.packetTrees[part.src].push_back(
-          {pf.nodes[stateNode(hop.first)], pf.nodes[stateNode(currId)], false});
+          {pf.nodes[stateNode(hop.first)], pf.nodes[stateNode(currId)], false,
+           hop.second.sb->isCrossbar});
   }
 }
 
@@ -2191,8 +2194,9 @@ bool Pathfinder::TreeBuilder::join(int state, int predId, const Edge &e) {
     return false;
   const PathEndPoint &pred = pf.nodes[stateNode(predId)];
   const PathEndPoint &curr = pf.nodes[stateNode(state)];
-  st.routing.packetTrees[part.src].push_back({pred, curr, true});
-  if (pred.coords == curr.coords) {
+  st.routing.packetTrees[part.src].push_back(
+      {pred, curr, true, e.sb->isCrossbar});
+  if (e.sb->isCrossbar) {
     switchSettings[pred.coords].srcs.push_back(pred.port);
     switchSettings[curr.coords].dsts.push_back(curr.port);
     e.sb->addToUnit(e.j, flow);
@@ -2403,7 +2407,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
   bool unjoined = false;
   for (const auto &[tile, conn] : faults.connections) {
     illegalEdges++;
-    auto it = graph.find({tile, tile});
+    auto it = graph.find(crossbarKey(tile));
     if (it == graph.end())
       continue;
     SwitchboxConnect &sb = it->second;
@@ -2457,11 +2461,11 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   crowdedTiles.clear();
   // initialize all Channel histories to 0
   for (auto &[_, sb] : graph) {
-    if (sb.srcCoords == sb.dstCoords)
+    if (sb.isCrossbar)
       for (auto [j, port] : llvm::enumerate(sb.dstPorts))
         sb.circuitOnlyDst[j] = cappedTiles.contains(sb.srcCoords) &&
                                port.channel >= packetFanoutCap &&
-                               isDirectional(port.bundle);
+                               getLinkedInput(sb.dstCoords, port).has_value();
     for (SwitchboxConnect::Cell &c : sb.cells) {
       c.usedCapacity = 0;
       c.overCapacity = 0;
@@ -2551,14 +2555,16 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
         if (llvm::Error err = routePart(st, flow))
           return std::move(err);
       for (auto &[_, sb] : graph) {
-        for (SwitchboxConnect::Cell &c : sb.cells) {
-          // fix used capacity for packet flows
-          if (c.packetFlowCount > 0) {
-            c.packetFlowCount = 0;
-            c.usedCapacity++;
+        for (size_t i = 0; i < sb.srcPorts.size(); i++)
+          for (size_t j = 0; j < sb.dstPorts.size(); j++) {
+            SwitchboxConnect::Cell &c = sb.at(i, j);
+            // fix used capacity for packet flows
+            if (c.packetFlowCount > 0) {
+              c.packetFlowCount = 0;
+              c.usedCapacity++;
+            }
+            sb.bumpDemand(i, j);
           }
-          SwitchboxConnect::bumpDemand(c);
-        }
       }
     }
 
@@ -2671,7 +2677,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       // total path length, across switchboxes
       int totalPathLength = 0;
       for (const auto &[_, sb] : graph)
-        if (sb.srcCoords != sb.dstCoords)
+        if (!sb.isCrossbar)
           for (const SwitchboxConnect::Cell &c : sb.cells)
             totalPathLength += c.usedCapacity;
       llvm::dbgs() << "\t\t---End findPaths iteration #" << iterationCount
