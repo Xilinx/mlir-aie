@@ -135,13 +135,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "mlir::ModuleOp"> {
                   "wins">,
        Option<"clPlacementBudget", "placement-budget", "int64_t",
               /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
-              "aie-assign-buffer-addresses' placement-budget, which the SA "
-              "placer lays core tiles out with as addressing will.">,
+              "Search budget per tile; the SA uses it to lay out core tiles "
+              "as aie-assign-buffer-addresses will.">,
        Option<"clCtrlPktOverlay", "ctrl-pkt-overlay", "bool",
               /*default=*/"false",
-              "Leave each shim tile the MM2S channel the configuration "
-              "overlay of aie-generate-column-control-overlay takes, but "
-              "for the ends never in flight with its control packets">,
+              "Reserve on each shim the MM2S channel the configuration "
+              "overlay of aie-generate-column-control-overlay will take">,
        Option<"clCtrlPktOverlayAdaptive", "ctrl-pkt-overlay-adaptive", "bool",
               /*default=*/"true",
               "With ctrl-pkt-overlay, where the overlay's MM2S channel goes, "

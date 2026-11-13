@@ -2821,9 +2821,7 @@ def AIE_ObjectFifoCreateOp
     /// participant that does not own the link's pool.
     bool allocateFallsBackToDMA();
     /// Why the fifo's objects cannot be its link's pool's, should it share
-    /// memory with the link: None for an unlinked fifo, the pool's owner, or
-    /// a fifo of the owner's object type, without initial objects of its own,
-    /// that its link's DMA ends do not share with other fifos.
+    /// memory with the link; LinkPoolMisfit documents each reason.
     LinkPoolMisfit linkPoolMisfit();
 
     /// Why the fifo moves by DMA wherever its ends are placed; nothing when
@@ -3070,13 +3068,8 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     // When the pool owner is an input, the consumer of it whose end the pool
     // is: one on the shared tile, after those earlier links took there.
     std::optional<unsigned> getOwnerConsumerIndex();
-    // Objects in the pool on the shared tile; with participants whose
-    // aie.objectfifo.allocate shares the pool, enough for the owner's ends and
-    // each other participant's end off the shared tile. The owner's allocate
-    // is honoured or rejected; another participant's, one of a single consumer
-    // that fits the pool (linkPoolMisfit), shares it only where `positions`
-    // puts its tiles so that allocatedHome finds the shared tile (by default,
-    // where they are placed). getPoolPlan holds what no placement changes.
+    // What sizes the link's pool regardless of placement; depthAt applies a
+    // placement.
     LinkPoolPlan getPoolPlan();
     int64_t getPoolDepth();
     int64_t getPoolDepth(TilePositions positions);
@@ -3223,10 +3216,7 @@ def AIE_ObjectFifoPoolOp
     /// named after.
     llvm::StringRef getBaseName();
 
-    /// Whether one iterating descriptor a side could walk the pool: a plain
-    /// mem tile pool of one segment, deeper than one object and no deeper than
-    /// a lock counts, whose ends neither dispatch nor, draining, lay out
-    /// dimensions, which on a contiguous pool walk a stream window.
+    /// Whether one BD per side can walk the pool whole.
     bool canWalkWhole();
   }];
 }

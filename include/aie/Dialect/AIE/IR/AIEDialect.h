@@ -443,20 +443,23 @@ struct LinkPoolPlan {
 };
 
 // The DMA end aie-objectfifo-split gives a fifo on one tile, known before
-// placement: the BD ids it takes, as ObjectFifoDmaEndpointOp::getNumBDs
-// counts them, and the pool it walks, `id` telling a fifo's own consumer
-// pools apart. Walked whole, a pool's ends take one BD id each. The pool's
-// objects are `objectBytes` each, one a buffer, unless the split lays
-// `contiguousObjects` of them, zero objects included, in one buffer.
-// `channel` is the DMA channel the end pins, if any.
+// placement.
 struct PlannedDmaEnd {
+  // BD ids the end takes, as ObjectFifoDmaEndpointOp::getNumBDs counts them.
   int64_t bds;
+  // The pool this end walks.
   mlir::Operation *pool;
+  // Tells a fifo's own consumer pools on the same tile apart.
   int id;
+  // The pool's depth. Walked whole, a pool's ends take one BD id each.
   int64_t depth;
+  // Whether one BD per side can walk the pool whole.
   bool walkable;
+  // Bytes in each of the pool's objects.
   int64_t objectBytes;
+  // Objects the split lays contiguously in one buffer; zero if none do.
   int64_t contiguousObjects;
+  // The DMA channel the end pins, if any.
   std::optional<int> channel;
 };
 
