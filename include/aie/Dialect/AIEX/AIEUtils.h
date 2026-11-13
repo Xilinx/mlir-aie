@@ -110,6 +110,24 @@ bool getReachableConfigures(Value task,
 // as above, or null if there is none or more than one.
 DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 
+// The tile a runtime-sequence DMA op programs: an aiex.dma_configure_task's
+// own, or for an aiex.dma_configure_task_for or aiex.npu.dma_memcpy_nd, the
+// tile of the shim DMA allocation or route endpoint its symbol names, or the
+// shim end of the objectFIFO it names before allocation. Logical before
+// placement; null for any other op or symbol.
+Operation *getRuntimeDmaTile(Operation *op, SymbolTable &symbols);
+
+// Calls `pinned` for each BD id the runtime sequences of `device` fix at
+// compile time, in IR order: a bd_id on an aiex.dma_configure_task or
+// aiex.dma_configure_task_for BD, and an aiex.npu.dma_memcpy_nd's id. A static
+// BD on the same tile must not take one. `channel` is the task's, or the shim
+// DMA allocation's its symbol names, and unset before allocation picks one.
+void forEachRuntimePinnedBdId(
+    AIE::DeviceOp device,
+    llvm::function_ref<void(Operation *op, Operation *tile,
+                            std::optional<int> channel, int32_t id)>
+        pinned);
+
 // `device:sequence`, the name a host runs `seq` by.
 std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);
 

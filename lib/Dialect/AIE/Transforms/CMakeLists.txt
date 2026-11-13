@@ -66,6 +66,7 @@ add_mlir_dialect_library(
 
   LINK_LIBS PUBLIC
   AIEX
+  AIEXUtils
   MLIRAnalysis
   MLIRArithTransforms
   MLIRIR

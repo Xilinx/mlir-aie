@@ -370,9 +370,7 @@ public:
       bool constrained = false;
     };
     RuntimeBdIds() = default;
-    RuntimeBdIds(DeviceOp device,
-                 llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
-                 const AIETargetModel &targetModel);
+    RuntimeBdIds(DeviceOp device, const AIETargetModel &targetModel);
 
     bool uses(mlir::Operation *logicalTile) const {
       return peaks.contains(logicalTile);

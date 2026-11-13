@@ -460,9 +460,10 @@ def AIEReserveRuntimeBDIDs
   let summary =
       "Reserve runtime-sequence pinned BD ids for the static allocator";
   let description = [{
-    Records the compile-time BD ids that `aiex.dma_configure_task` ops pin in the
-    runtime sequence, per tile, as an `aiex.reserved_bd_ids` attribute on each
-    `aie.tile`. The static allocator (`aie-assign-bd-ids`) runs in the AIE
+    Records the compile-time BD ids the runtime sequence pins, per tile, as an
+    `aiex.reserved_bd_ids` attribute on each `aie.tile`: the `bd_id`s of
+    `aiex.dma_configure_task` and `aiex.dma_configure_task_for` BDs, and the
+    `id` of each `aiex.npu.dma_memcpy_nd`. The static allocator (`aie-assign-bd-ids`) runs in the AIE
     dialect and cannot walk AIEX ops, so it reads this attribute to keep its
     auto-assignment off ids the runtime sequence already claimed.
   }];

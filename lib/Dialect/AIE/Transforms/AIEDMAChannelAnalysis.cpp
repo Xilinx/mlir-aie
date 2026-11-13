@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "llvm/ADT/BitVector.h"
@@ -283,16 +284,10 @@ DMAChannelAnalysis::TakenBDs::TakenBDs(DeviceOp device) {
           if (Operation *tile = program.getTile().getDefiningOp())
             fixed[tile][start.getChannelIndex()] += countBDs(start);
   unsigned order = 0;
-  device.walk([&](AIEX::DMAConfigureTaskOp task) {
-    Operation *tile = task.getTile().getDefiningOp();
-    if (!tile)
-      return;
-    task.getBody().walk([&](DMABDOp bd) {
-      if (std::optional<int32_t> id = bd.getBdId())
-        pinned[tile].try_emplace(
-            *id, Pin{order++, static_cast<int>(task.getChannel())});
-    });
-  });
+  AIEX::forEachRuntimePinnedBdId(
+      device,
+      [&](Operation *, Operation *tile, std::optional<int> channel,
+          int32_t id) { pinned[tile].try_emplace(id, Pin{order++, channel}); });
 }
 
 DenseMap<int, int64_t>
@@ -315,8 +310,12 @@ DMAChannelAnalysis::TakenBDs::at(const AIETargetModel &target, int col, int row,
         if (auto [it, added] = ids.try_emplace(id, pin);
             !added && pin.order < it->second.order)
           it->second = pin;
+  int numChannels = std::max(
+      target.getNumSourceSwitchboxConnections(col, row, WireBundle::DMA),
+      target.getNumDestSwitchboxConnections(col, row, WireBundle::DMA));
   for (auto [id, pin] : ids)
-    for (int channel = 0; channel <= pin.channel; ++channel)
+    for (int channel = 0, last = pin.channel.value_or(numChannels - 1);
+         channel <= last; ++channel)
       if (target.isBdChannelAccessible(col, row, id, channel)) {
         ++taken[channel];
         break;

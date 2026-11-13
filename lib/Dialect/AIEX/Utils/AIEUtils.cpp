@@ -423,3 +423,60 @@ AIEX::DMAConfigureTaskOp AIEX::getUniqueReachableConfigure(Value task) {
     return nullptr;
   return configures.front();
 }
+
+// The symbol an aiex.dma_configure_task_for or aiex.npu.dma_memcpy_nd names.
+static StringAttr runtimeDmaSymbol(Operation *op) {
+  if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
+    return task.getAlloc().getRootReference();
+  if (auto copy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
+    return copy.getMetadata().getRootReference();
+  return {};
+}
+
+Operation *AIEX::getRuntimeDmaTile(Operation *op, SymbolTable &symbols) {
+  if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op))
+    return task.getTile().getDefiningOp();
+  StringAttr symbol = runtimeDmaSymbol(op);
+  Operation *named = symbol ? symbols.lookup(symbol) : nullptr;
+  if (auto alloc = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(named))
+    return alloc.getTile().getDefiningOp();
+  if (auto endpoint = dyn_cast_or_null<AIE::RouteEndpointOp>(named))
+    return endpoint.getTile().getDefiningOp();
+  auto fifo = dyn_cast_or_null<AIE::ObjectFifoCreateOp>(named);
+  if (!fifo)
+    return nullptr;
+  SmallVector<Value> ends{fifo.getProducerTile()};
+  llvm::append_range(ends, fifo.getConsumerTiles());
+  for (Value end : ends)
+    if (auto tile = dyn_cast_or_null<AIE::TileLike>(end.getDefiningOp());
+        tile && tile.isShimNOCTile())
+      return tile;
+  return nullptr;
+}
+
+void AIEX::forEachRuntimePinnedBdId(
+    AIE::DeviceOp device,
+    llvm::function_ref<void(Operation *op, Operation *tile,
+                            std::optional<int> channel, int32_t id)>
+        pinned) {
+  SymbolTable symbols(device);
+  device.walk([&](Operation *op) {
+    Operation *tile = getRuntimeDmaTile(op, symbols);
+    if (!tile)
+      return;
+    std::optional<int> channel;
+    if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op))
+      channel = task.getChannel();
+    else if (auto alloc =
+                 symbols.lookup<AIE::ShimDMAAllocationOp>(runtimeDmaSymbol(op)))
+      channel = alloc.getChannelIndex();
+    if (auto copy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op)) {
+      pinned(op, tile, channel, static_cast<int32_t>(copy.getId()));
+      return;
+    }
+    cast<AIEX::DMAConfigureTaskLike>(op).getBody().walk([&](AIE::DMABDOp bd) {
+      if (std::optional<int32_t> id = bd.getBdId())
+        pinned(op, tile, channel, *id);
+    });
+  });
+}

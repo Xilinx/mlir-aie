@@ -10,6 +10,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
 #include "mlir/IR/Diagnostics.h"
@@ -253,7 +254,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   }
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
-  runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
+  runtimeBdIds = RuntimeBdIds(device, *targetModel);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos, demandKeys);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
@@ -2788,23 +2789,14 @@ void SequentialPlacer::buildStreamDemand(
 }
 
 Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
-                                   ArrayRef<ObjectFifoCreateOp> objectFifos,
                                    const AIETargetModel &targetModel)
     : targetModel(&targetModel) {
-  auto shimOf = [](Value tile) -> Operation * {
-    auto like = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
-    return like && like.isShimNOCTile() ? like.getOperation() : nullptr;
+  auto shimOf = [](Operation *tile) -> Operation * {
+    auto like = dyn_cast_or_null<TileLike>(tile);
+    return like && like.isShimNOCTile() ? tile : nullptr;
   };
-  llvm::StringMap<Operation *> shimOfFifo;
-  for (auto of : objectFifos) {
-    SmallVector<Value> ends{of.getProducerTile()};
-    llvm::append_range(ends, of.getConsumerTiles());
-    for (Value end : ends)
-      if (Operation *shim = shimOf(end))
-        shimOfFifo[of.getSymName()] = shim;
-  }
   for (auto program : device.getOps<ShimDMAOp>())
-    if (Operation *shim = shimOf(program.getTile())) {
+    if (Operation *shim = shimOf(program.getTile().getDefiningOp())) {
       StaticBds &bds = statics[shim];
       program.walk([&](DMABDOp bd) {
         if (std::optional<int32_t> id = bd.getBdId())
@@ -2819,6 +2811,7 @@ Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
     if (targetModel.getTileType(col, 0) == AIETileType::ShimNOCTile)
       shimCol = col;
 
+  SymbolTable symbols(device);
   device.walk([&](RuntimeSequenceOp seq) {
     auto &events = sequences.emplace_back();
     DenseMap<Value, unsigned> taskOf;
@@ -2842,15 +2835,9 @@ Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
     seq.walk([&](Operation *op) {
       if (!shimCol)
         return;
-      if (auto cfg = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
-        if (Operation *shim =
-                shimOfFifo.lookup(cfg.getAlloc().getRootReference().getValue()))
-          configure(shim, cfg.getResult(), cfg.getBody());
-        return;
-      }
-      if (auto cfg = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
-        if (Operation *shim = shimOf(cfg.getTile()))
-          configure(shim, cfg.getResult(), cfg.getBody());
+      if (auto cfg = dyn_cast<AIEX::DMAConfigureTaskLike>(op)) {
+        if (Operation *shim = shimOf(AIEX::getRuntimeDmaTile(op, symbols)))
+          configure(shim, op->getResult(0), cfg.getBody());
         return;
       }
       Value released;

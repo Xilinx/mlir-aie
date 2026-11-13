@@ -192,8 +192,9 @@ public:
 
   /// The BD ids tiles' own programs hold before objectFIFOs take theirs: the
   /// chains DMA programs start by index, on their channels, and each id a
-  /// runtime task pins, once per tile, on the lowest channel reaching it
-  /// (aie-reserve-runtime-bd-ids keeps static BDs off those).
+  /// runtime sequence pins (AIEX::forEachRuntimePinnedBdId), once per tile, on
+  /// the lowest channel up to its own reaching it (aie-reserve-runtime-bd-ids
+  /// keeps static BDs off those).
   class TakenBDs {
   public:
     TakenBDs() = default;
@@ -209,7 +210,7 @@ public:
   private:
     struct Pin {
       unsigned order;
-      int channel;
+      std::optional<int> channel;
     };
     llvm::MapVector<mlir::Operation *, llvm::DenseMap<int, int64_t>> fixed;
     llvm::MapVector<mlir::Operation *, llvm::DenseMap<int32_t, Pin>> pinned;

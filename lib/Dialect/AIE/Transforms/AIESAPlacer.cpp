@@ -2362,7 +2362,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device), controlOverlay);
-  runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
+  runtimeBdIds = RuntimeBdIds(device, *targetModel);
   takenBDs = DMAChannelAnalysis::TakenBDs(device);
   logicalMemTiles.clear();
   for (auto tile : device.getOps<LogicalTileOp>())
