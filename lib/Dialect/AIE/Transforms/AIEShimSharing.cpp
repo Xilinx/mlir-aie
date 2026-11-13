@@ -7,6 +7,7 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Matchers.h"
@@ -323,19 +324,16 @@ void ShimTransferSpans::analyzeGates(
       if (!shimEnd)
         return;
       int64_t from = position[op], to = position[op];
-      std::optional<int64_t> runs = 1;
       for (Operation *parent = op->getParentOp(); parent != sequence;
            parent = parent->getParentOp()) {
         from = position[parent];
         to = end[parent];
-        auto loop = dyn_cast<LoopLikeOpInterface>(parent);
-        std::optional<APInt> trips =
-            loop ? loop.getStaticTripCount() : std::nullopt;
-        runs = runs && trips && !trips->isZero()
-                   ? llvm::checkedMul(
-                         *runs, static_cast<int64_t>(trips->getZExtValue()))
-                   : std::nullopt;
       }
+      // A loop that may not run leaves an issue or await unconfirmed, the
+      // same as an unknown trip count.
+      std::optional<int64_t> runs = AIEX::staticExecutions(op);
+      if (runs == 0)
+        runs = std::nullopt;
       Span &span = byFifo[shimEnd->fifo];
       span.sends |= shimEnd->sends;
       span.first = std::min(span.first, from);
@@ -366,15 +364,8 @@ void ShimTransferSpans::analyzeGates(
       std::optional<End> shimEnd = endOf(device, symbol);
       if (!shimEnd)
         return;
-      for (Operation *parent = op->getParentOp(); bytes && parent != sequence;
-           parent = parent->getParentOp()) {
-        auto loop = dyn_cast<LoopLikeOpInterface>(parent);
-        std::optional<APInt> trips =
-            loop ? loop.getStaticTripCount() : std::nullopt;
-        bytes = trips ? llvm::checkedMul(
-                            *bytes, static_cast<int64_t>(trips->getZExtValue()))
-                      : std::nullopt;
-      }
+      std::optional<int64_t> runs = AIEX::staticExecutions(op);
+      bytes = bytes && runs ? llvm::checkedMul(*bytes, *runs) : std::nullopt;
       std::optional<int64_t> &total =
           moved.try_emplace(shimEnd->fifo, 0).first->second;
       total = total && bytes ? llvm::checkedAdd(*total, *bytes) : std::nullopt;
