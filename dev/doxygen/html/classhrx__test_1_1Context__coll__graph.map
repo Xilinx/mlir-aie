@@ -1,0 +1,7 @@
+<map id="hrx_test::Context" name="hrx_test::Context">
+<area shape="rect" id="Node000001" title=" " alt="" coords="55,106,188,134"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,110,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="76,44,116,105,110,106,73,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="133,5,240,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="177,45,156,84,136,108,132,103,151,80,172,48"/>
+</map>
