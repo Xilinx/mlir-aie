@@ -1015,12 +1015,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (!seen.insert(block).second)
         return std::nullopt;
       for (AIE::DMABDOp bd : block->getOps<AIE::DMABDOp>()) {
-        std::optional<int32_t> len = bd.getConstantLen();
+        std::optional<int64_t> len = bd.getStaticLenInBytes();
         if (!len || bd.getIteration() || bd.getNextBdId() ||
             bd.getLengthParameterAttr())
           return std::nullopt;
         int64_t width = bd.getBufferElementTypeWidthInBytes();
-        bytes[-1] += static_cast<uint32_t>(*len) * width;
+        bytes[-1] += *len;
         if (std::optional<uint8_t> index = bd.getLengthStateTableIdx()) {
           std::optional<int32_t> unit = bd.getLengthUnit();
           if (!unit ||

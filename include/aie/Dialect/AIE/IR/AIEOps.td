@@ -1436,6 +1436,10 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       return static_cast<uint64_t>(memrefType.getNumElements()) *
              static_cast<uint64_t>(getBufferElementTypeWidthInBytes());
     }
+    // The bytes moved with a zero length parameter: the constant len, or the
+    // whole static buffer when len is omitted and sizes/strides are static.
+    // Nullopt for a runtime len.
+    std::optional<int64_t> getStaticLenInBytes();
     int64_t getOffsetInBytes() {
       return static_cast<int64_t>(getConstantOffset().value_or(0)) *
              static_cast<int64_t>(getBufferElementTypeWidthInBytes());

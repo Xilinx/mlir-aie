@@ -1670,30 +1670,6 @@ LogicalResult AIEX::DMAStartTaskOp::verify() {
   return success();
 }
 
-// A BD's static length in bytes: the explicit or implicit (whole-buffer)
-// length, scaled by the element width. Nullopt for a runtime length, or one a
-// scratchpad parameter lengthens at run time (AIEOps.td's "Runtime length").
-static std::optional<int64_t> staticBdLenBytes(AIE::DMABDOp bd) {
-  if (bd.getLengthParameterAttr() || bd.getLengthStateTableIdxAttr())
-    return std::nullopt;
-  int64_t elems;
-  if (std::optional<int32_t> len = bd.getConstantLen()) {
-    // Zero-extended, as DMABDOp::getLenInBytes() reads the length.
-    elems = static_cast<uint32_t>(*len);
-  } else {
-    // With runtime sizes/strides, an omitted len is their inner extent
-    // (AIEDMATasksToNPU), not the whole buffer.
-    if (bd.hasLen() || !bd.getSizes().empty() || !bd.getStrides().empty())
-      return std::nullopt;
-    auto buffer = dyn_cast<MemRefType>(bd.getBuffer().getType());
-    if (!buffer || !buffer.hasStaticShape())
-      return std::nullopt;
-    elems = buffer.getNumElements();
-  }
-  return llvm::checkedMul(
-      elems, static_cast<int64_t>(bd.getBufferElementTypeWidthInBytes()));
-}
-
 std::optional<int64_t> AIEX::DMAConfigureTaskForOp::getStaticBytesStreamed() {
   int64_t starts = 0;
   for (Operation *user : getResult().getUsers()) {
@@ -1730,7 +1706,12 @@ std::optional<int64_t> AIEX::DMAConfigureTaskForOp::getStaticBytesStreamed() {
     if (scc.hasCycle())
       return std::nullopt;
     for (AIE::DMABDOp bd : scc->front()->getOps<AIE::DMABDOp>()) {
-      std::optional<int64_t> len = staticBdLenBytes(bd);
+      // A scratchpad parameter lengthens the BD at run time (AIEOps.td's
+      // "Runtime length").
+      std::optional<int64_t> len =
+          bd.getLengthParameterAttr() || bd.getLengthStateTableIdxAttr()
+              ? std::nullopt
+              : bd.getStaticLenInBytes();
       if (!len || bd.getIteration() || bd.getNextBdId())
         return std::nullopt;
       moved = llvm::checkedAdd(*moved, *len);

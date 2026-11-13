@@ -51,6 +51,44 @@ module {
 
 // -----
 
+// The same round with the input's len omitted: each push moves the whole
+// 64-element buffer, as the output's explicit len does.
+module {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    aie.runtime_sequence @rounds(%a: memref<64xi32>, %c: memref<64xi32>) {
+      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%a : memref<64xi32>)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in0)
+      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<64xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%out0)
+      aiex.dma_free_task(%in0)
+      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%a : memref<64xi32>)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in1)
+      %out1 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<64xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out1)
+      aiex.dma_await_task(%out1)
+      aiex.dma_free_task(%in1)
+    }
+  }
+}
+
+// -----
+
 // An MHA-style round: q is pushed before the output and k after it, k's
 // length the parameter @n, as is part of the output's. Both are covered once
 // the output is awaited, whatever @n is.

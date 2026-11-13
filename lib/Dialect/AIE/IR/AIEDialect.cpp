@@ -6025,6 +6025,24 @@ LogicalResult DMABDPACKETOp::verify() {
   return success();
 }
 
+std::optional<int64_t> DMABDOp::getStaticLenInBytes() {
+  int64_t elems;
+  if (std::optional<int32_t> len = getConstantLen()) {
+    elems = static_cast<uint32_t>(*len);
+  } else {
+    // With runtime sizes/strides, an omitted len is their inner extent
+    // (AIEDMATasksToNPU), not the whole buffer.
+    if (hasLen() || !getSizes().empty() || !getStrides().empty())
+      return std::nullopt;
+    auto buffer = dyn_cast<MemRefType>(getBuffer().getType());
+    if (!buffer || !buffer.hasStaticShape())
+      return std::nullopt;
+    elems = buffer.getNumElements();
+  }
+  return llvm::checkedMul(
+      elems, static_cast<int64_t>(getBufferElementTypeWidthInBytes()));
+}
+
 uint32_t DMABDOp::getAxcacheOrDefault() {
   return getAxcache().value_or(
       getTargetModel(getOperation()).getDefaultAxCache());
