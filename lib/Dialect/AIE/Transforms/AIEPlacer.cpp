@@ -802,29 +802,23 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   };
 
   // compTiles is sorted column-major top-to-bottom. For high-fanin LTOs
-  // (neighborDemand > 0) the placer needs an INTERIOR tile (with two
-  // compute neighbors) so its compute-peer producers/consumers can sit
-  // on either side. Reorder the candidate iteration for THIS LTO only
-  // to prefer high-neighbor-count rows first; LTOs with no neighbor
-  // demand fall through to the default column-major order so existing
-  // single-worker tests keep landing on (col, 2).
-  auto computeNeighborCount = [&](TileID t) {
-    int n = 0;
-    if (t.row > 0 &&
-        targetModel->getTileType(t.col, t.row - 1) == AIETileType::CoreTile)
-      ++n;
-    if (t.row + 1 < targetModel->rows() &&
-        targetModel->getTileType(t.col, t.row + 1) == AIETileType::CoreTile)
-      ++n;
-    return n;
-  };
+  // (neighborDemand > 0) the placer needs an INTERIOR tile (with the most
+  // compute neighbors sharing its memory) so its compute-peer
+  // producers/consumers can sit around it. Reorder the candidate iteration
+  // for THIS LTO only to prefer high-neighbor-count rows first; LTOs with
+  // no neighbor demand fall through to the default column-major order so
+  // existing single-worker tests keep landing on (col, 2).
   SmallVector<TileID> orderedCandidates(candidates);
   if (neighborDemand(logicalTile.getOperation()) > 0) {
+    DenseMap<TileID, int> neighbors;
+    for (TileID candidate : orderedCandidates)
+      forEachMemAffinityNeighbor(*targetModel, candidate,
+                                 [&](TileID) { ++neighbors[candidate]; });
     llvm::stable_sort(orderedCandidates, [&](TileID a, TileID b) {
       if (a.col != b.col)
         return a.col < b.col;
-      int na = computeNeighborCount(a);
-      int nb = computeNeighborCount(b);
+      int na = neighbors.lookup(a);
+      int nb = neighbors.lookup(b);
       if (na != nb)
         return na > nb;
       return a.row < b.row;
