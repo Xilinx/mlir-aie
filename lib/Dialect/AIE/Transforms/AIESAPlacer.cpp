@@ -3241,8 +3241,12 @@ void SAPlacer::explainPenalties(InFlightDiagnostic &diag) {
     llvm::sort(tiles);
     tiles.erase(llvm::unique(tiles), tiles.end());
     Operation *anchor = nullptr;
+    // Structurally alike tile ops share a rank; the first written anchors.
     auto consider = [&](Operation *op) {
-      if (!anchor || collected.rank.lookup(op) < collected.rank.lookup(anchor))
+      unsigned rank = collected.rank.lookup(op);
+      if (!anchor || rank < collected.rank.lookup(anchor) ||
+          (rank == collected.rank.lookup(anchor) &&
+           op->isBeforeInBlock(anchor)))
         anchor = op;
     };
     if (!tiles.empty()) {
