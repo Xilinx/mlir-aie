@@ -308,9 +308,8 @@ module @memtile_sender_out_of_order {
 // -----
 
 // a and b reach the mem tile through joins of two cores' halves, so the walk
-// back from the peers cannot name one core per peer. Both cores make b three
-// times before a while the receiver wants a first, so the ends do not take
-// turns.
+// back from the peers cannot name one core per peer. Both cores make b before
+// a while the receiver wants a first, so the ends do not take turns.
 // WHY: a__cons__dma + b__cons__dma: a peer's feeding core is not known, or feeds two peers
 // ERR: :[[@LINE+7]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @join_peers {
@@ -330,35 +329,17 @@ module @join_peers {
     aie.objectfifo.link [@b1, @b2] -> [@b] ([0, 512] [])
     aie.objectfifo @c(%sh, {%r}, 1 : i32) : !aie.objectfifo<memref<1024xi32>>
     aie.core(%s1) {
-      %c0 = arith.constant 0 : index
-      %c1 = arith.constant 1 : index
-      %n = arith.constant 4 : index
-      scf.for %i = %c0 to %n step %c1 {
-        %b1_Produce_0_0 = aie.objectfifo.acquire @b1(Produce, 1) : memref<512xi32>
-        aie.objectfifo.release @b1(Produce, 1)
-        %b1_Produce_1_0 = aie.objectfifo.acquire @b1(Produce, 1) : memref<512xi32>
-        aie.objectfifo.release @b1(Produce, 1)
-        %b1_Produce_2_0 = aie.objectfifo.acquire @b1(Produce, 1) : memref<512xi32>
-        aie.objectfifo.release @b1(Produce, 1)
-        %a1_Produce_0_0 = aie.objectfifo.acquire @a1(Produce, 1) : memref<512xi32>
-        aie.objectfifo.release @a1(Produce, 1)
-      }
+      %b1 = aie.objectfifo.acquire @b1(Produce, 1) : memref<512xi32>
+      aie.objectfifo.release @b1(Produce, 1)
+      %a1 = aie.objectfifo.acquire @a1(Produce, 1) : memref<512xi32>
+      aie.objectfifo.release @a1(Produce, 1)
       aie.end
     }
     aie.core(%s2) {
-      %c0 = arith.constant 0 : index
-      %c1 = arith.constant 1 : index
-      %n = arith.constant 4 : index
-      scf.for %i = %c0 to %n step %c1 {
-        %b2_Produce_0_1 = aie.objectfifo.acquire @b2(Produce, 1) : memref<512xi32>
-        aie.objectfifo.release @b2(Produce, 1)
-        %b2_Produce_1_1 = aie.objectfifo.acquire @b2(Produce, 1) : memref<512xi32>
-        aie.objectfifo.release @b2(Produce, 1)
-        %b2_Produce_2_1 = aie.objectfifo.acquire @b2(Produce, 1) : memref<512xi32>
-        aie.objectfifo.release @b2(Produce, 1)
-        %a2_Produce_0_1 = aie.objectfifo.acquire @a2(Produce, 1) : memref<512xi32>
-        aie.objectfifo.release @a2(Produce, 1)
-      }
+      %b2 = aie.objectfifo.acquire @b2(Produce, 1) : memref<512xi32>
+      aie.objectfifo.release @b2(Produce, 1)
+      %a2 = aie.objectfifo.acquire @a2(Produce, 1) : memref<512xi32>
+      aie.objectfifo.release @a2(Produce, 1)
       aie.end
     }
     aie.core(%r) {
@@ -691,67 +672,17 @@ module @down_broadcast {
       aie.end
     }
     aie.core(%d) {
-      %c0 = arith.constant 0 : index
-      %c1 = arith.constant 1 : index
-      %n = arith.constant 4 : index
-      scf.for %i = %c0 to %n step %c1 {
-        %b6 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b7 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b8 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b9 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b10 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b11 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b12 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b13 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b14 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %a15 = aie.objectfifo.acquire @a(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @a(Consume, 1)
-        %a16 = aie.objectfifo.acquire @a(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @a(Consume, 1)
-        %a17 = aie.objectfifo.acquire @a(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @a(Consume, 1)
-      }
+      %b = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
+      aie.objectfifo.release @b(Consume, 1)
+      %a = aie.objectfifo.acquire @a(Consume, 1) : memref<1024xi32>
+      aie.objectfifo.release @a(Consume, 1)
       aie.end
     }
     aie.core(%e) {
-      %c0 = arith.constant 0 : index
-      %c1 = arith.constant 1 : index
-      %n = arith.constant 4 : index
-      scf.for %i = %c0 to %n step %c1 {
-        %b18 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b19 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b20 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b21 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b22 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b23 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b24 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b25 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %b26 = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @b(Consume, 1)
-        %a27 = aie.objectfifo.acquire @a(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @a(Consume, 1)
-        %a28 = aie.objectfifo.acquire @a(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @a(Consume, 1)
-        %a29 = aie.objectfifo.acquire @a(Consume, 1) : memref<1024xi32>
-        aie.objectfifo.release @a(Consume, 1)
-      }
+      %b = aie.objectfifo.acquire @b(Consume, 1) : memref<1024xi32>
+      aie.objectfifo.release @b(Consume, 1)
+      %a = aie.objectfifo.acquire @a(Consume, 1) : memref<1024xi32>
+      aie.objectfifo.release @a(Consume, 1)
       aie.end
     }
     aie.runtime_sequence(%out : memref<12288xi32>) {
