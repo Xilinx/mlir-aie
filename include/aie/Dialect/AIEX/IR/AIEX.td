@@ -2083,9 +2083,10 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     `#aiex.joint_bound` to the length parameter's `joint_bounds`, which the host library
     checks when it syncs the scratchpad.
     A parameter used as a DMA offset may get `offset_multiple`, the element count it must move
-    in: the update that adds it clears the low two bits of the register holding the BD address,
-    so it moves in 4 bytes on a shim or core tile and in 16 on a mem tile, whose address counts
-    words from bit 0. The host library rejects a value that is not a multiple of it.
+    in: 4 bytes on a core tile, whose address field counts words and shares its low bits with
+    the length field, or on a shim, where the update clears the register's low two bits; 16 on
+    a mem tile, whose address field counts words from bit 0 and whose update also clears those
+    bits. The host library rejects a value that is not a multiple of it.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
     For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
