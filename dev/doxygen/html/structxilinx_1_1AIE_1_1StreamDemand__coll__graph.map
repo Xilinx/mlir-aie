@@ -1,5 +1,0 @@
-<map id="xilinx::AIE::StreamDemand" name="xilinx::AIE::StreamDemand">
-<area shape="rect" id="Node000001" title=" " alt="" coords="5,173,202,201"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="84,5,123,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="106,47,106,173,101,172,101,50"/>
-</map>
