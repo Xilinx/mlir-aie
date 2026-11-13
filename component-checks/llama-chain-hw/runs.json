@@ -794,6 +794,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "llama-chain-hw",
+   "id": "43380177802",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43380177802",
+   "date": "2026-11-13T06:39:07+00:00",
+   "commit": {
+    "id": "1a66f9fe978ae37a3bf8f109564f5a04d70bd0d5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1a66f9fe978ae37a3bf8f109564f5a04d70bd0d5",
+    "message": "[AIE] Hoist vector transfer pointers through floordiv/mod indices and in-loop views (#4050)",
+    "timestamp": "2026-11-12T23:17:38Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "1a66f9fe97",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 71,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

@@ -1032,6 +1032,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "43380177802",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43380177802",
+   "date": "2026-11-13T06:39:07+00:00",
+   "commit": {
+    "id": "1a66f9fe978ae37a3bf8f109564f5a04d70bd0d5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1a66f9fe978ae37a3bf8f109564f5a04d70bd0d5",
+    "message": "[AIE] Hoist vector transfer pointers through floordiv/mod indices and in-loop views (#4050)",
+    "timestamp": "2026-11-12T23:17:38Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "1a66f9fe97",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
