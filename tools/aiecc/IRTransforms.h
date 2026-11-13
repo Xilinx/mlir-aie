@@ -18,6 +18,7 @@
 #include "StackSizeAnalysis.h"
 #include "Utils.h"
 
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -739,6 +740,9 @@ inline mlir::OwningOpRef<mlir::ModuleOp>
 patchCoreElfFiles(mlir::ModuleOp src,
                   const llvm::StringMap<std::string> &elfByKey) {
   mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
+  cloned->walk([](xilinx::AIE::DeviceOp device) {
+    xilinx::AIE::recordCoreLockAcquires(device);
+  });
   cloned->walk([&](xilinx::AIE::CoreOp coreOp) {
     auto it = elfByKey.find(coreKey(coreOp));
     if (it == elfByKey.end()) {
