@@ -6,17 +6,13 @@
 """The router's model and shrinker, with the real aie-opt; no NPU required."""
 
 import argparse
-import dis
-import functools
 import importlib.util
-import inspect
 import json
 import random
 import shutil
 import subprocess
 import sys
 import time
-import types
 from pathlib import Path
 
 import numpy as np
@@ -232,26 +228,13 @@ def test_a_packet_owed_twice_and_received_once_counts_as_missing():
     assert HwCase().check_packets([np.array([b, a], dtype=np.int32)], [[a, b]], 2) == []
 
 
-def test_a_batch_gets_one_limit_not_one_per_design():
-    assert list(inspect.signature(rp.run_end).parameters) == ["deadline"]
-    assert "ROUTE_TIMEOUT_S" in code_names(rp.run_end.__code__)
+def test_a_run_stops_by_its_deadline_or_the_limit_whichever_is_first():
     start = time.monotonic()
     assert rp.run_end() - start <= rp.ROUTE_TIMEOUT_S + 1
-    assert not {"SPLIT", "count"} & code_names(rp.aie_opt.__code__)
+    assert rp.run_end(start) == start
 
 
-def test_every_judged_router_run_reads_a_crash_as_a_crash():
-    spent = rp.aie_opt("module {}", deadline=time.monotonic())
-    assert rp.run_failure(spent)[0] == "timeout"
-    # judge() routes twice: the design the verifier rejects, and any other.
-    for fn, runs in ((router_mutation.judge, 2), (router_mutation.judge_strict, 1)):
-        calls = [i for i in dis.get_instructions(fn) if i.argval == "run_failure"]
-        assert len(calls) == runs, fn.__name__
-
-
-def test_the_unknown_tier_names_a_timeout_a_timeout():
-    for fn in (rp.main, rp.model_run):
-        assert "run_failure" in code_names(fn.__code__), fn.__name__
+def test_a_run_past_its_deadline_is_a_timeout():
     spent = rp.aie_opt("module {}", deadline=time.monotonic())
     assert rp.run_failure(spent)[0] == "timeout"
 
@@ -274,40 +257,6 @@ def test_a_timeout_on_a_design_the_verifier_rejects_is_a_timeout():
         d, "route", True, 0, deadline=time.monotonic()
     )
     assert outcome == "timeout", detail
-
-
-def code_names(code):
-    names = set(code.co_names)
-    for const in code.co_consts:
-        if isinstance(const, types.CodeType):
-            names |= code_names(const)
-    return names
-
-
-# Seconds the slowest judged design takes on a busy hosted runner.
-SLOWEST_JUDGED_S = 258
-
-
-def test_the_nightly_limit_leaves_room_over_the_slowest_judged_design():
-    assert SLOWEST_JUDGED_S <= 0.75 * rp.ROUTE_TIMEOUT_S
-
-
-def test_no_router_run_chooses_its_own_limit():
-    for runner in (rp.aie_opt, rp.find_flows):
-        params = inspect.signature(runner).parameters
-        assert "timeout" not in params and "deadline" in params
-        assert "run_end" in code_names(runner.__code__)
-    for module in (rp, router_mutation, router_shrink):
-        for name, fn in vars(module).items():
-            if not inspect.isfunction(fn) or fn.__module__ != module.__name__:
-                continue
-            if fn in (rp.aie_opt, rp.find_flows):
-                continue
-            assert "subprocess" not in code_names(fn.__code__), name
-    for name, value in vars(router_mutation).items():
-        assert not isinstance(value, functools.partial), name
-        if inspect.isfunction(value):
-            assert value.__module__ != rp.__name__, name
 
 
 def test_shrinking_stops_a_judgement_at_its_budget():

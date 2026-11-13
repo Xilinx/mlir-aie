@@ -5797,7 +5797,8 @@ def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=No
 TIMEOUT = -1000
 SPLIT = "\n// -----\n"
 
-# Room for the slowest design the mutation nightly judges, on a busy runner.
+# Room for the slowest design the mutation nightly judges, 258 s on a busy
+# hosted runner, with a quarter to spare.
 ROUTE_TIMEOUT_S = 360
 
 
