@@ -1431,8 +1431,8 @@ private:
   /// lockGroups). Sets `stopped`, when given, to whether its search stopped.
   int computeLockPenalty(bool *stopped = nullptr) const;
   /// The lock groups aie-objectfifo-allocate gives the pools the split makes
-  /// where the tiles sit now: how many locks each takes (two a segment, or a
-  /// pool's depth on AIE1) and the tiles using them, a compute tile's DMA
+  /// where the tiles sit now: how many locks each takes
+  /// (LockPlan::groupCounts) and the tiles using them, a compute tile's DMA
   /// reaching only its own.
   llvm::SmallVector<
       std::pair<int, llvm::SmallVector<std::pair<TileID, bool>, 2>>>
