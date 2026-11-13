@@ -1213,12 +1213,9 @@ struct AIEObjectFifoAllocatePass
       for (const DMAChannelAnalysis::BDPlanEnd &end : ends)
         total += end.bds;
       return deepest->emitOpError("needs ")
-             << bdsOf(deepest)
-             << " buffer descriptors, but no choice of channels fits its "
-                "tile's "
-             << ends.size() << " unpinned DMA ends, " << total
-             << " buffer descriptors in all, into the BD ids their channels "
-                "share, and no pool on the tile is left to walk whole";
+             << bdsOf(deepest) << " buffer descriptors, but the tile's "
+             << ends.size() << " unpinned DMA ends need " << total
+             << " in all, more than their channels' BD ids hold";
     }
 
     for (auto endpoint : pending) {
@@ -2762,10 +2759,12 @@ struct AIEObjectFifoAllocatePass
         InFlightDiagnostic error =
             walkSearchStopped
                 ? bufferFailure.emitOpError(
-                      "could not place buffers: the search for which pools to "
-                      "walk whole stopped after ")
+                      "could not place buffers: the search for which pools "
+                      "to make contiguous (one buffer, one BD per side) "
+                      "stopped after ")
                       << DMAChannelAnalysis::kMaxWalkPlacements
-                      << " placements tried in one spill component"
+                      << " placements tried in one group of neighbouring "
+                         "mem tiles"
                 : bufferFailure.emitOpError(kNoBufferRoom);
         if (std::optional<StringRef> fifo = bufferFailure.getFifoName())
           error << " for objectFIFO "

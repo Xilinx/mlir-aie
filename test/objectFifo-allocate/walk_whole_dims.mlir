@@ -50,7 +50,7 @@ module @none_left {
     %m = aie.tile(0, 1)
     %t0 = aie.tile(0, 2)
     aie.objectfifo @in(%s0, {%m}, [1 : i32, 30 : i32]) : !aie.objectfifo<memref<64xi32>>
-    // expected-error@+1 {{needs 30 buffer descriptors, but no choice of channels fits its tile's 2 unpinned DMA ends, 60 buffer descriptors in all, into the BD ids their channels share, and no pool on the tile is left to walk whole}}
+    // expected-error@+1 {{needs 30 buffer descriptors, but the tile's 2 unpinned DMA ends need 60 in all, more than their channels' BD ids hold}}
     aie.objectfifo @out(%m dimensionsToStream [<size = 8, stride = 1>, <size = 8, stride = 8>], {%t0}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo.link [@in] -> [@out] ([] [])
     aie.core(%t0) {

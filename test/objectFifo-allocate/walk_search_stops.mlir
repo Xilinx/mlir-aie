@@ -7,7 +7,7 @@
 // of them walked whole: 22 walk sets a tile, 10648 choices for the spill
 // component, and no buffer room for any. The search stops at its bound, and
 // the error says so rather than that no placement exists.
-// CHECK: error: 'aie.objectfifo.pool' op could not place buffers: the search for which pools to walk whole stopped after 1024 placements tried in one spill component
+// CHECK: error: 'aie.objectfifo.pool' op could not place buffers: the search for which pools to make contiguous (one buffer, one BD per side) stopped after 1024 placements tried in one group of neighbouring mem tiles
 module @search_stops {
   aie.device(npu2) {
     %s0 = aie.tile(0, 0)
