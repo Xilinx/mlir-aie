@@ -202,7 +202,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                    DMAConfigureTaskOp cfg) {
     if (opaqueLoad)
       return success();
-    DmaQueueModel::ChannelKey key = channelOf(cfg);
+    DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(cfg);
     if (resetChannels.count(key))
       return success();
     auto &starts =
@@ -288,7 +288,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         DMAConfigureTaskOp cfg = start.getTaskOp();
         if (!cfg)
           return WalkResult::advance();
-        ChannelKey key = channelOf(cfg);
+        ChannelKey key = DmaQueueModel::keyOf(cfg);
         AIE::TileOp tile = cfg.getTileOp();
         uint32_t depth = tm.getDmaTaskQueueDepth(
             tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
@@ -304,7 +304,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         // an unresolved task is diagnosed by the recycle path. Skip both here.
         if (!cfg || !cfg.getIssueToken())
           return WalkResult::advance();
-        ChannelKey key = channelOf(cfg);
+        ChannelKey key = DmaQueueModel::keyOf(cfg);
         int &tokens = avail[key];
         if (tokens < 1) {
           await.emitOpError(
@@ -812,11 +812,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   };
   std::map<std::pair<int, int>, std::map<uint32_t, ReleasedTask>> freedInFlight;
 
-  static DmaQueueModel::ChannelKey channelOf(DMAConfigureTaskOp cfg) {
-    return DmaQueueModel::keyOf(cfg.getTileOp(), cfg.getDirection(),
-                                cfg.getChannel());
-  }
-
   // An await consumes the oldest outstanding token on the channel, regardless
   // of the configure named by its SSA operand. Only that token-issuing task and
   // the tasks queued ahead of it are known to have finished.
@@ -1130,7 +1125,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           cfg ? allocationOf(cfg) : allocationOf(copy);
       std::optional<DmaQueueModel::ChannelKey> channel;
       if (cfg)
-        channel = channelOf(cfg);
+        channel = DmaQueueModel::keyOf(cfg);
       else if (QueueEffect raw = rawQueueEffect(op, *deviceState.symbols);
                raw.kind == QueueEffect::Kind::Push)
         channel = raw.key;
@@ -1823,7 +1818,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     for (DMAConfigureTaskOp task : live) {
       if (!isCandidate(task) || waitsOnLater(task))
         continue;
-      DmaQueueModel::ChannelKey key = channelOf(task);
+      DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(task);
       if (!tm.getDmaStatusAddress(key[0], key[1], key[3],
                                   static_cast<AIE::DMAChannelDir>(key[2])))
         continue;
@@ -1850,7 +1845,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (!victim)
       return failure();
 
-    DmaQueueModel::ChannelKey key = channelOf(victim);
+    DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(victim);
     std::optional<uint32_t> status = tm.getDmaStatusAddress(
         key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
     if (!status)
@@ -2027,8 +2022,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               return WalkResult::interrupt();
             knownComplete.erase(cfg);
             provenFinished.erase(cfg);
-            notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg), start,
-                     allocationOf(cfg), pushVolume(start, cfg));
+            notePush(DmaQueueModel::keyOf(cfg), cfg,
+                     start.getPushIssueToken(cfg), start, allocationOf(cfg),
+                     pushVolume(start, cfg));
           }
         } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
           noteLoadPdi(load);
@@ -2040,7 +2036,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = await.getTaskOp())
             if (cfg.getIssueToken())
-              noteAwaited(channelOf(cfg));
+              noteAwaited(DmaQueueModel::keyOf(cfg));
           if (failed(recycleTask(await.getTask(), await, /*isAwait=*/true)))
             return WalkResult::interrupt();
         } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
