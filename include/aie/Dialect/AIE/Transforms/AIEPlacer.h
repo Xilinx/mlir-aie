@@ -501,25 +501,18 @@ inline bool isSharedComputeMemory(const AIETargetModel &targetModel, TileID a,
          targetModel.isLegalMemAffinity(b.col, b.row, a.col, a.row);
 }
 
-// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that can share
-// compute-peer memory with it per the target model.
+// Invoke `fn(TileID)` on every other CoreTile that can share compute-peer
+// memory with `at` per the target model.
 template <typename F>
 inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
                                        TileID at, F &&fn) {
-  for (auto [dc, dr] :
-       {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{1, 0}}) {
-    int nc = at.col + dc;
-    int nr = at.row + dr;
-    if (nc < 0 || nc >= targetModel.columns())
-      continue;
-    if (nr < 0 || nr >= targetModel.rows())
-      continue;
-    if (targetModel.getTileType(nc, nr) != AIETileType::CoreTile)
-      continue;
-    if (!isSharedComputeMemory(targetModel, at, TileID{nc, nr}))
-      continue;
-    fn(TileID{nc, nr});
-  }
+  for (int col = 0; col < targetModel.columns(); ++col)
+    for (int row = 0; row < targetModel.rows(); ++row)
+      if (TileID other{col, row};
+          other != at &&
+          targetModel.getTileType(col, row) == AIETileType::CoreTile &&
+          isSharedComputeMemory(targetModel, at, other))
+        fn(other);
 }
 
 // Sequential placement algorithm
