@@ -403,11 +403,14 @@ def configure_trace(
         memtile_events: List of events for mem tile tracing (max 8).
         shimtile_events: List of events for shim tile tracing (max 8).
         core_trace_mode: Trace mode for core tiles (default: Event-Time).
+
+    Returns:
+        The names of the aie.trace ops emitted, in order.
     """
     _configured_trace_names.clear()
 
     if not tiles_to_trace:
-        return
+        return []
 
     # Packet IDs are intentionally NOT assigned here. IRON workers may be
     # unplaced at this point, so a stable (col, row)-derived id can't be
@@ -542,6 +545,8 @@ def configure_trace(
 
         _configured_trace_names.append(trace_name)
         trace_seq += 1
+
+    return list(_configured_trace_names)
 
 
 def start_trace(

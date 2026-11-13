@@ -225,9 +225,11 @@ class Program:
             coremem_events (list | None, optional): List of up to 8 core memory trace events.
                 Defaults to None (uses hardware defaults).
             memtile_events (list | None, optional): List of up to 8 mem tile trace events.
-                Defaults to None (uses hardware defaults).
+                When set, every mem tile the design uses is traced.
+                Defaults to None (no mem tile is traced).
             shimtile_events (list | None, optional): List of up to 8 shim tile trace events.
-                Defaults to None (uses hardware defaults).
+                When set, every shim tile the design uses is traced.
+                Defaults to None (no shim tile is traced).
             egress_shim_col (int, optional): Column of the shim tile used to
                 egress trace packets to DDR. Defaults to 0.
             core_trace_mode (TraceMode, optional): Trace mode for core tiles.

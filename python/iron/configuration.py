@@ -94,6 +94,8 @@ class DeviceConfiguration(DeviceResources):
         self._shimtile_events = None
         self._core_trace_mode = TraceMode.EventTime
         self._owners = None
+        # Tiles the runtime bodies reach first, recorded as they claim them.
+        self._runtime_tiles: list = []
         self._prebuilt: str | None = None
         self._scratchpad_parameters: list[ScratchpadParameter] = []
 
@@ -220,6 +222,7 @@ class DeviceConfiguration(DeviceResources):
             )
         self._claim(resource, self._owners)
         self._claim(resource.tile, self._owners)
+        self._runtime_tiles.append(resource.tile)
 
     def _claim_fifo_graph(self, handle, owners, visited=None, reached=None) -> None:
         if visited is None:
@@ -316,6 +319,87 @@ class DeviceConfiguration(DeviceResources):
         self._shimtile_events = shimtile_events
         self._core_trace_mode = core_trace_mode
         self._egress_shim_col = egress_shim_col
+
+    def _configure_traces(self, design_tiles) -> None:
+        """Emit the aie.trace ops ahead of the first runtime sequence and start them.
+
+        design_tiles holds every tile the design places, those the runtime
+        bodies reach first included; their tile ops precede the sequences, so
+        the traces go after them. Each runtime sequence starts every trace
+        right after its trace host_config.
+        """
+        if self._trace_workers is not None:
+            tiles_to_trace = [worker.tile.op for worker in self._trace_workers]
+        else:
+            tiles_to_trace = [
+                worker.tile.op for worker in self._workers if worker.trace is not None
+            ]
+        tiles_to_trace += self._data_movement_tiles_to_trace(design_tiles)
+        block = ir.InsertionPoint.current.block
+        first_sequence = next(
+            (op for op in block.operations if isinstance(op, RuntimeSequenceOp)),
+            None,
+        )
+        ip = (
+            ir.InsertionPoint(first_sequence)
+            if first_sequence is not None
+            else ir.InsertionPoint(block)
+        )
+        with ip:
+            trace_names = trace_utils.configure_trace(
+                tiles_to_trace,
+                coretile_events=self._coretile_events,
+                coremem_events=self._coremem_events,
+                memtile_events=self._memtile_events,
+                shimtile_events=self._shimtile_events,
+                core_trace_mode=self._core_trace_mode,
+            )
+        for runtime in self._runtimes:
+            runtime.start_traces(trace_names)
+
+    def _data_movement_tiles_to_trace(self, all_tiles) -> list:
+        """Return the shim and mem tiles that the set event lists ask to trace.
+
+        Workers only cover compute tiles, so shimtile_events and memtile_events
+        would otherwise trace nothing. all_tiles holds every tile the design
+        places, in first-use order, the runtime bodies' last; each tile of a
+        wanted kind is traced once.
+
+        These may be logical tiles that the placer later puts on one physical
+        tile, as it does with the shim endpoints of a column. Their traces are
+        identical, and -aie-insert-trace-flows merges them into one.
+        """
+        wanted = [
+            (
+                "shimtile_events",
+                self._shimtile_events,
+                "shim",
+                lambda op: op.is_shim_tile(),
+            ),
+            (
+                "memtile_events",
+                self._memtile_events,
+                "mem",
+                lambda op: op.is_mem_tile(),
+            ),
+        ]
+        traced = []
+        for name, events, kind, is_kind in wanted:
+            if events is None:
+                continue
+            ops = []
+            for tile in all_tiles:
+                if is_kind(tile.op) and tile.op not in ops:
+                    ops.append(tile.op)
+            if not ops:
+                logger.warning(
+                    "%s was set but the design uses no %s tile, so nothing is traced for it.",
+                    name,
+                    kind,
+                )
+                continue
+            traced += ops
+        return traced
 
     # Device-local symbols share one namespace inside this configuration: an
     # explicit name may be claimed once, and unnamed ones take fresh names.
@@ -632,23 +716,10 @@ class DeviceConfiguration(DeviceResources):
 
             self.resolve_tile_dmas()
 
-            if self._trace_workers is not None:
-                tiles_to_trace = [worker.tile.op for worker in self._trace_workers]
-            else:
-                tiles_to_trace = [
-                    worker.tile.op
-                    for worker in self._workers
-                    if worker.trace is not None
-                ]
-            if self._trace_size is not None and self._trace_size > 0:
-                trace_utils.configure_trace(
-                    tiles_to_trace,
-                    coretile_events=self._coretile_events,
-                    coremem_events=self._coremem_events,
-                    memtile_events=self._memtile_events,
-                    shimtile_events=self._shimtile_events,
-                    core_trace_mode=self._core_trace_mode,
-                )
+            # The runtime bodies run before the traces are configured, as a
+            # body can reach a tile nothing else names (a task places its
+            # buffer's tile, ahead of the sequence).
+            self._runtime_tiles = []
 
             for runtime in self._runtimes:
                 implicit_configure_device_ref = (
@@ -663,6 +734,9 @@ class DeviceConfiguration(DeviceResources):
                     implicit_configure_device_ref=implicit_configure_device_ref,
                     device=current_device,
                 )
+
+            if self._trace_size is not None and self._trace_size > 0:
+                self._configure_traces(all_tiles + self._runtime_tiles)
 
             for flow in self._flows:
                 flow.resolve()

@@ -28,7 +28,7 @@ from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAcces
 from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     RuntimeSequenceOp,
 )
-from ...dialects.aie import Port
+from ...dialects.aie import Port, trace_host_config, trace_start_config
 from ...dialects.aiex import (
     dma_await_task,
     dma_free_task,
@@ -44,7 +44,6 @@ from ...helpers.util import (
     np_dtype_to_mlir_type,
     try_convert_np_type_to_mlir_type,
 )
-from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow.objectfifo import ObjectFifoHandle, ObjectFifoLink
 from ..dataflow.objectfifopool import ObjectFifoPoolHandle
@@ -346,6 +345,8 @@ class Runtime(Declared, DeviceResources, Resolvable):
         # designs that hand-wire flows + DMA programs instead of letting
         # ObjectFifo manage them).
         self._scratchpad_parameters: list[ScratchpadParameter] = []
+        # The sequence's aie.trace.host_config, after which its traces start.
+        self._trace_host_config = None
         self._strict_task_groups = strict_task_groups
         self._implicit_configure = implicit_configure
         self._task_group_index = itertools.count()
@@ -665,9 +666,12 @@ class Runtime(Declared, DeviceResources, Resolvable):
                     assert rt_data is not None
                     arg._bind(self._dispatch_binding, rt_data.op)
 
+            # The traces start right after this, in start_traces: the program
+            # configures them once every runtime body has run.
+            self._trace_host_config = None
             if trace_size is not None and trace_size > 0:
-                trace_utils.start_trace(
-                    trace_size=trace_size,
+                self._trace_host_config = trace_host_config(
+                    buffer_size=trace_size,
                     reuse_output_buffer=reuse_output_buffer,
                     routing="single",
                     egress_shim_col=egress_shim_col,
@@ -732,6 +736,21 @@ class Runtime(Declared, DeviceResources, Resolvable):
             self.load_pdi_first(entry_block, implicit_configure_device_ref)
 
         self._dedup_runtime_consumers()
+
+    def start_traces(self, trace_names: Sequence[str]) -> None:
+        """Start each of ``trace_names`` right after this sequence's trace host_config.
+
+        Nothing is added to a sequence resolved without a trace size.
+
+        Args:
+            trace_names: The aie.trace ops to start, in order.
+        """
+        host_config = self._trace_host_config
+        if host_config is None:
+            return
+        with ir.InsertionPoint.after(host_config), host_config.location:
+            for name in trace_names:
+                trace_start_config(name)
 
     def load_pdi_first(self, entry_block: ir.Block, device_ref: str) -> None:
         """Load ``device_ref``'s PDI at the start of ``entry_block``, the full-ELF entry's body.
