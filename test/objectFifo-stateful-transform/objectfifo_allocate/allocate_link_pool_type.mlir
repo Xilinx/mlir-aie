@@ -11,8 +11,6 @@
 // shares memory: its core fills the link's one pool directly, one pool object
 // per acquire. When the pool's owner is the larger output, those objects are
 // not the fifo's, so the allocate is rejected once the tiles are placed.
-// Before, the stateful transform failed later with "acquired object type
-// 'memref<1024xi32>' does not match".
 
 module @larger_output {
   aie.device(npu2_1col) {

@@ -9,12 +9,10 @@
 // RUN: not aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=2" %s 2>&1 | FileCheck %s
 // RUN: not aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=3" %s 2>&1 | FileCheck %s
 
-// The split keeps an allocated fifo's objects at
-// ObjectFifoCreateOp::allocatedHome, which both ends must reach, pinned
-// aie.tile ends included: a linked fifo's at the link's pool on the link tile.
-// No placement of these designs gives in0 or @f a home its ends reach, so the
-// SA fails on its delegate penalty. Before, it checked only the logical ends'
-// reach of the delegate and stayed silent, and the split or addressing failed.
+// The split keeps an allocated fifo's objects at its allocated home, which both
+// ends must reach, pinned aie.tile ends included: a linked fifo's at the link's
+// pool on the link tile. No placement of these designs gives in0 or @f a home
+// its ends reach, so the SA fails on its delegate penalty.
 
 // CHECK: [[@LINE+4]]:3: error: SA placer failed to find a legal placement (cascade and shared memory penalty=0, delegate penalty={{[1-9][0-9]*}})
 // A on (0,2) reaches only (0,3)'s memory, which another core holds; the link

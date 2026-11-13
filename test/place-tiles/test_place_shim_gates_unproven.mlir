@@ -13,9 +13,7 @@
 // nothing proves the cores send only in their turn (no #aie.consumed_by),
 // so objectFIFO allocation will not let two receiving ends share a channel.
 // The placers count turns with the gates allocation uses, taken from
-// aie-objectfifo-verify on a copy of the design, and see the shortfall:
-// before, both placed the three ends on the one shim and allocation failed
-// ("requires at least 3 S2MM channels").
+// aie-objectfifo-verify on a copy of the design, and see the shortfall.
 // SEQ: error: no ShimNOCTile on the device has 1 input/0 output DMA channel(s) free
 // SA:  warning: SA placer's resource estimate is over capacity
 

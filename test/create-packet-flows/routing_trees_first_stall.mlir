@@ -12,8 +12,7 @@
 // an attempt gives up when doing so has moved maxReorderedStall trees without
 // fewer overused channels, rather than run to the iteration limit. The design
 // is then rejected for its packet flows' arbiter hold cycle, as the unreduced
-// one is. Reduced from the router nightly's npu2 seed 207610162, port-cap
-// mutant.
+// one is.
 // CHECK-NOT: giving up after {{[0-9]+}} iterations (the iteration limit)
 // CHECK: giving up after {{[0-9]+}} iterations (circuit trees routed first stopped helping)
 // CHECK-NOT: giving up after {{[0-9]+}} iterations (the iteration limit)

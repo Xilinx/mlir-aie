@@ -8,9 +8,7 @@
 // A shim allocation with aie.shareable_with holds its channel from every end
 // its list does not name, as allocation does. This one names none, and MM2S 1
 // is reserved outright, so the logical shim pinned to (0, 0) has no MM2S
-// channel left: the sequential placer refuses and the SA charges it. Before,
-// both counted the shareable allocation nowhere, and allocation then failed
-// ("requires at least 3 MM2S channels").
+// channel left: the sequential placer refuses and the SA charges it.
 
 // RUN: not aie-opt --aie-place-tiles %s 2>&1 | FileCheck %s --check-prefix=SEQ
 // RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=1' %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=SA

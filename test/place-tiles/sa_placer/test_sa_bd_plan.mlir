@@ -6,10 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 // The SA placer counts a mem tile's BD ids as aie-objectfifo-allocate will
-// spend them: each end as the split makes it (ObjectFifoCreateOp::
-// plannedDmaEnd), channels planned by the ids they share
-// (DMAChannelAnalysis::planBDChannels), and the deepest pools walked whole
-// until they fit.
+// spend them: each end as the split makes it, channels planned by the ids they
+// share, and the deepest pools walked whole until they fit.
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %s -o /dev/null
 

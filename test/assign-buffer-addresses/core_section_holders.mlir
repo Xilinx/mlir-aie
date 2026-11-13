@@ -7,12 +7,9 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-assign-buffer-addresses %s | FileCheck %s
 
-// An existing aie.buffer holds a core's section reservation only when it is
-// the exact extent addressing would make: the same kind, bank or address, and
-// size (CoreOp::getSectionReservationBuffers). Anything else is materialized
-// beside it or diagnosed. Before, any buffer with the right attributes stood
-// in, so a 16-byte one dropped a 12000-byte bank reservation or let buffers
-// land inside a prebaked ELF's data.
+// An existing aie.buffer holds a core's section reservation only when it is the
+// exact extent addressing would make: the same kind, bank or address, and size.
+// Anything else is materialized beside it or diagnosed.
 
 // A smaller bank_reserved buffer leaves the bank's reservation to be made.
 // CHECK-LABEL: module @small_bank_holder

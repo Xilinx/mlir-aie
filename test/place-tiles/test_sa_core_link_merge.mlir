@@ -11,9 +11,6 @@
 // A merge keeps one pool on its tile, the output's two 4 KB objects, beside
 // the 50000-byte buffer. Every input consumed there shares it, though only the
 // first plans a DMA end, so the SA classifies an end by its link on the tile.
-// Before, @in1 had no planned end and was charged its own 8 KB consumer pool,
-// which the split never builds: the SA warned over capacity, and addressing
-// fits the tile.
 // CHECK-NOT: over capacity
 
 module @merge_core {

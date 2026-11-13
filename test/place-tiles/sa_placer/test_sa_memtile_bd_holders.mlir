@@ -15,8 +15,7 @@
 // ends or not, and caches a position's plan by all of them.
 
 // Hand program on a logical tile pinned to (1, 1): the link's mem tile goes
-// elsewhere and allocates. Before, a plan cached for another position with the
-// same BD layout was served at (1, 1), and allocation then refused the link.
+// elsewhere and allocates.
 // ALLOC-LABEL: @pinned_holder
 // ALLOC-NOT:   error
 // ALLOC:       aie.objectfifo.dma_endpoint
@@ -194,7 +193,6 @@ module @pinned_holder {
 
 // Hand program on an unplaced logical tile without fifo ends, on a one-column
 // device: both mem tiles share (0, 1), so the ids run out and the SA says so.
-// Before, it counted only tiles with fifo ends there and placed it silently.
 // SA:  warning: SA placer's resource estimate is over capacity
 // ALLOC: error: 'aie.objectfifo.dma_endpoint' op needs 1 buffer descriptors, but no choice of channels fits
 

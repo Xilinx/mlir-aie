@@ -11,9 +11,7 @@
 // Core %c is pinned to column 0 and reads a buffer on (0, 5), but (0, 3) and
 // (0, 2), the column's free tiles, are not (0, 5)'s neighbours. A column pin
 // outranks cores-per-col, so the error gives the causes of searching past the
-// budget, as without one, and does not blame the budget. Before, at
-// cores-per-col=1 it dropped the adjacency cause and its note and said the
-// budget may be limiting placement.
+// budget, as without one, and does not blame the budget.
 // CHECK-NOT: cores-per-col
 // CHECK: error: no compute tile available matching constraint (0, ?) and shared-L1 buffer adjacency
 // CHECK-NOT: cores-per-col

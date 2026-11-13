@@ -14,8 +14,7 @@
 // The SA lays core tiles out with the placement-budget addressing will use
 // (aiecc forwards --placement-budget to both). At the default budget this
 // design places and addresses; with a budget of one placement, addressing
-// gives up on a tile and the SA says so. Before, the SA always used the
-// default and was silent.
+// gives up on a tile and the SA says so.
 // DEFAULT-NOT: over capacity
 // ONE: warning: SA placer's resource estimate is over capacity
 // ADDR: error: {{.*}}could not be placed

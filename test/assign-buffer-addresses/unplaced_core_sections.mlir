@@ -8,8 +8,7 @@
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-assign-buffer-addresses %s
 
 // A core on a logical tile with nothing to reserve for its own sections is
-// left alone; one that has something to reserve gets a diagnostic. Before,
-// both aborted in a cast to aie.tile.
+// left alone; one that has something to reserve gets a diagnostic.
 
 module @nothing_to_reserve {
   aie.device(npu2_1col) {

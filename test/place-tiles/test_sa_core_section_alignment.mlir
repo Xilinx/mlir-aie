@@ -10,11 +10,9 @@
 // RUN: not aie-opt --split-input-file --aie-assign-buffer-addresses %t 2>&1 >/dev/null | FileCheck %s --check-prefix=ADDR
 
 // The SA pads a core's data region and bank reservations to the measured
-// section alignment, as addressing does (CoreOp::getSectionAlignment). A
-// 4097-byte region aligned to 4096 takes 8192 bytes beside a 60352-byte
-// buffer and a 1 KB stack, which does not fit; with the default alignment it
-// does. Before, the SA padded to the vector rule only and was silent where
-// addressing failed.
+// section alignment, as addressing does. A 4097-byte region aligned to 4096
+// takes 8192 bytes beside a 60352-byte buffer and a 1 KB stack, which does not
+// fit; with the default alignment it does.
 
 // WARN: [[@LINE+4]]:3: warning: SA placer's resource estimate is over capacity
 // ADDR: error: {{.*}}could not be placed
@@ -66,7 +64,7 @@ module @bank_align_ctrl {
 
 // An existing core_data or bank_reserved buffer is charged at the alignment
 // addressing places it at (bufferAlignBytes), its measured section alignment
-// included. Before, the SA padded it to the vector rule only.
+// included.
 // WARN: [[@LINE+4]]:3: warning: SA placer's resource estimate is over capacity
 // ADDR: error: {{.*}}could not be placed
 // ADDR-NOT: error

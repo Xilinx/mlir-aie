@@ -8,9 +8,9 @@
 // RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=1' %s | FileCheck %s
 
 // A fifo whose consumer end is a core stream port moves by DMA wherever its
-// ends sit (ObjectFifoCreateOp::dmaReason), so the placer neither counts it
-// as shared memory between the two neighbouring cores nor asks for an
-// aie.objectfifo.allocate, which the verifier would refuse.
+// ends sit, so the placer neither counts it as shared memory between the two
+// neighbouring cores nor asks for an aie.objectfifo.allocate, which the
+// verifier would refuse.
 // CHECK: aie.objectfifo @s
 // CHECK-NOT: aie.objectfifo.allocate
 module {

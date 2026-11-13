@@ -13,9 +13,7 @@
 // A one-column device has one mem tile position, which a logical mem tile
 // pinned to (0, 1) names. A mem tile position holds several tiles, as the
 // SA's moves, the sequential placer and allocation all allow, so the SA puts
-// the unpinned logical mem tile there too. Before, a pinned mem tile took its
-// position out of the SA's starting pool and the SA failed with "no available
-// physical tile for placement".
+// the unpinned logical mem tile there too.
 // CHECK: aie.objectfifo @out(%mem_tile_0_1,
 // ALLOC: aie.objectfifo.dma_endpoint
 

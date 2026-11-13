@@ -9,7 +9,7 @@
 
 // The cores-per-col note counts the compute tiles left to unpinned cores,
 // after the physical and pinned cores in each column take their share of the
-// budget. Before, it printed columns x cores-per-col ("leaves 2").
+// budget.
 
 // CHECK: error: no available compute tiles for placement
 // CHECK: note: cores-per-col=2 leaves 0 of this device's 4 compute tiles placeable

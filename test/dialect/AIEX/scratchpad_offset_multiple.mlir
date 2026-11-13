@@ -9,8 +9,8 @@
 // and the BD address register drops its low two bits. On an element type
 // narrower than 4 bytes the parameter records the element count whose bytes
 // fill a word, which the host library makes its value a multiple of, as the
-// static offset path rejects the same misalignment (NpuDmaMemcpyNdOp::verify,
-// "Offset must be 4-byte-aligned").
+// static offset path rejects the same misalignment ("Offset must be
+// 4-byte-aligned").
 //
 //===----------------------------------------------------------------------===//
 

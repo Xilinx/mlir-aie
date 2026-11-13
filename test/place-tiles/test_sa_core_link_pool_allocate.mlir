@@ -11,10 +11,7 @@
 
 // A linked fifo with an aie.objectfifo.allocate shares memory, but the split
 // still builds the link's one pool on the link tile and nothing else for the
-// fifo, so the SA charges that pool there and no shared-memory pool. Before,
-// the shared-memory branch charged the input's own objects (at the delegate)
-// and never the link pool: the SA was silent and addressing failed on
-// "out__buf3".
+// fifo, so the SA charges that pool there and no shared-memory pool.
 
 // The output, with initial values, owns the 4 x 4 KB pool; the delegate is the
 // link tile.

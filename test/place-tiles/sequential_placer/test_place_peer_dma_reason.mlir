@@ -8,9 +8,8 @@
 // RUN: aie-opt --verify-diagnostics --aie-place-tiles %s
 
 // A core-to-core fifo whose producer reshapes the data moves by DMA wherever
-// its ends sit (ObjectFifoCreateOp::dmaReason), so it costs its consumer an
-// input channel even beside its producer: with two from the shim, three, one
-// more than a core has.
+// its ends sit, so it costs its consumer an input channel even beside its
+// producer: with two from the shim, three, one more than a core has.
 module @peer_reshapes {
   aie.device(npu2) {
     %shim = aie.logical_tile<ShimNOCTile>(?, ?)

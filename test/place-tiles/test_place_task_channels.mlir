@@ -9,11 +9,10 @@
 // RUN: not aie-opt --aie-place-tiles %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=SEQ
 
 // The runtime sequence configures all six S2MM channels of one mem tile by
-// index, with no flow naming them; on a one-column device the objectFIFO
-// link's mem tile shares its position and needs a seventh. Both placers count
-// every by-index claim DMAChannelAnalysis makes (program starts, runtime
-// tasks, shim allocations), as allocation does ("requires at least 7 S2MM
-// channels"). Before, they counted program starts but not runtime tasks.
+// index, with no flow naming them; on a one-column device the objectFIFO link's
+// mem tile shares its position and needs a seventh. Both placers count every
+// by-index claim the DMA channel analysis makes (program starts, runtime tasks,
+// shim allocations), as allocation does ("requires at least 7 S2MM channels").
 // SA:  warning: SA placer's resource estimate is over capacity
 // SEQ: error: no MemTile on the device has 1 input/1 output DMA channel(s) free
 

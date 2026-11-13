@@ -11,9 +11,7 @@
 
 // A linked fifo's allocated objects are the link's pool on the link tile, so
 // A on (0,2) must reach the link tile's memory as well as the delegate's: only
-// (0,3) does. Before, the SA checked only the delegate, put the link tile on
-// (1,2), whose core reaches A's memory but not the reverse, and addressing
-// could not place the pool.
+// (0,3) does.
 
 // CHECK:     %[[L:.*]] = aie.tile(0, 3)
 // CHECK-DAG: aie.buffer(%[[L]]) {{.*}}sym_name = "in0__cons__buf0"} : memref<1024xi32>

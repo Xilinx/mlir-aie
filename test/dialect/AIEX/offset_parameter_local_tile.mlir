@@ -13,8 +13,8 @@
 // and clears that register's bits [1:0].
 
 // A mem tile BD's address counts words from bit 0 of word 1, so an i32
-// offset adds 1 a element there, the buffer starts on 16 bytes, and the
-// offset moves in 4 elements.
+// offset adds 1 per element there, the buffer starts on a 16-byte boundary,
+// and the offset moves in steps of 4 elements.
 // CHECK-LABEL: aiex.scratchpad_parameter @off
 // CHECK-SAME: offset_multiple = 4 : i32
 // CHECK-LABEL: aie.device(npu2) @mem
@@ -74,7 +74,7 @@ aie.device(npu2) @mem_i16 {
 // -----
 
 // A core tile BD's word address sits at bit 14 of word 0, above its length,
-// so an i32 offset adds 1 << 14 an element and moves in whole elements; the
+// so an i32 offset adds 1 << 14 per element and moves in whole elements; the
 // update clears the length's low two bits (13 = 0b1101), which a maskwrite
 // puts back.
 // CHECK-LABEL: aie.device(npu2) @core_i32
@@ -99,7 +99,7 @@ aie.device(npu2) @core_i32 {
 
 // -----
 
-// i16 moves half a word an element: 1 << 13, in steps of 2 elements.
+// i16 moves half a word per element: 1 << 13, in steps of 2 elements.
 // CHECK-LABEL: aiex.scratchpad_parameter @off
 // CHECK-SAME: offset_multiple = 2 : i32
 // CHECK-LABEL: aie.device(npu2) @core_i16
@@ -121,7 +121,7 @@ aie.device(npu2) @core_i16 {
 
 // -----
 
-// i64 moves two words an element.
+// i64 moves two words per element.
 // CHECK-LABEL: aie.device(npu2) @core_i64
 // CHECK: aiex.npu.update_from_scratchpad<mul> {address = {{[0-9]+}} : ui32, func_arg = 32768 : ui32
 aiex.scratchpad_parameter @off : i32

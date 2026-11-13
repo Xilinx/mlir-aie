@@ -13,7 +13,6 @@
 // U-turn on South:3, and comes back down into its own source port on it. A
 // loopback inside (0, 1) would put DMA:3 and North:3 on one arbiter with id
 // 28, and id 31 on (0, 2)'s Core:0 arbiter with id 28: a hold cycle.
-// Reduced from router_properties.py npu1 seed 207470648.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[UP:.*]] = aie.amsel<0> (0)

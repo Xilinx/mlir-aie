@@ -206,7 +206,7 @@ module @segments_uneven {
 
 // big's third segment z goes to another core and does not take the turns, so
 // the segments do not count as one peer, and one core feeding two peers
-// refuses the turns as before.
+// refuses the turns.
 // WHY: x__cons__dma + y__cons__dma: a peer's feeding core is not known, or feeds two peers
 // ERR: :[[@LINE+6]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @segment_outside_turns {
@@ -265,8 +265,8 @@ module @segment_outside_turns {
 
 // -----
 
-// The same pool filled from the shim: the host feeds it, as it did before
-// segments counted as one peer, so x and y take turns.
+// The same pool filled from the shim: the host feeds it, so x and y take
+// turns.
 // CHECK-LABEL: module @shim_fed_segment_outside_turns
 // CHECK-DAG: aie.objectfifo.dma_endpoint @x__prod__dma({{.*}}turns = [@x__prod__dma, @y__prod__dma]}
 module @shim_fed_segment_outside_turns {

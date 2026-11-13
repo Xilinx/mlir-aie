@@ -11,8 +11,7 @@
 // RUN: aie-opt --aie-place-tiles="cores-per-col=4" %s | FileCheck %s
 
 // The physical tile (0, 3) already runs its own aie.core, so neither placer
-// offers it to a logical core. Before, both could put one there and the
-// pass failed ("tile (0, 3) already has a core").
+// offers it to a logical core.
 // CHECK: aie.core(%tile_0_3)
 // CHECK-NOT: aie.core(%tile_0_3)
 

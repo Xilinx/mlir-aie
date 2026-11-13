@@ -5,9 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The SA placer charges each end the pool aie-objectfifo-split gives it
-// (ObjectFifoCreateOp::dmaDepth), so a core that only overflows with the
-// split's depths is reported over capacity.
+// The SA placer charges each end the pool aie-objectfifo-split gives it, so a
+// core that only overflows with the split's depths is reported over capacity.
 
 // RUN: aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectfifo-split %s 2> %t.err | FileCheck %s
 // RUN: FileCheck %s --check-prefix=ERR --input-file=%t.err

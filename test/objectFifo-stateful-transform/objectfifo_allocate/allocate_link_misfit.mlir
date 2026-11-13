@@ -10,9 +10,7 @@
 // Where its ends reach the delegate and the link tile, an allocated linked
 // fifo would keep its objects in the link's pool, which a merge's inputs and
 // a dispatch's outputs reach only by taking turns on one DMA end, and which a
-// fifo between two links cannot be for both. Before, the split aborted on
-// "an endpoint the split made is not planned exactly once" or failed with an
-// internal error.
+// fifo between two links cannot be for both.
 
 module @merge_first_input {
   aie.device(npu2_1col) {

@@ -12,9 +12,7 @@
 // @f goes from (7, 4) to a core and back to (7, 4), whose core acquires 3
 // objects to produce and 1 to consume. Each end's depth counts only its own
 // core's acquires: 4 objects to produce and 2 to consume on (7, 4), 3 on the
-// other core, which acquires 2. Before, the consuming end on (7, 4) counted
-// the producing acquires too, the placers planned it 4 deep, the split made
-// it 2 deep, and the split's check of that plan asserted.
+// other core, which acquires 2.
 // CHECK-LABEL: module @physical
 // CHECK: aie.objectfifo.pool @f__pool(%{{.*}}) {depth = 4 : i32
 // CHECK: aie.objectfifo.pool @f__cons0__pool(%{{.*}}) {depth = 3 : i32
@@ -70,8 +68,8 @@ module @logical {
 // -----
 
 // A producer's core that acquires more to consume than to produce: its
-// producing end holds only the 1 object it acquires plus 1 in flight, where
-// the producing acquire and the consuming one used to share the larger depth.
+// producing end holds only the 1 object it acquires plus 1 in flight, not the
+// larger depth its consuming end needs.
 // CHECK-LABEL: module @consume_larger
 // CHECK: aie.objectfifo.pool @f__pool(%{{.*}}) {depth = 2 : i32
 // CHECK: aie.objectfifo.pool @f__cons0__pool(%{{.*}}) {depth = 3 : i32

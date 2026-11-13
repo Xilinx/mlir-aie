@@ -12,8 +12,7 @@
 // flow naming them; on a one-column device the objectFIFO link's mem tile
 // shares its position and needs a seventh. Both placers count a program's
 // channels from the claims aie-objectfifo-allocate's DMAChannelAnalysis makes,
-// as allocation does ("requires at least 7 S2MM channels"). Before, they
-// counted flows and routes only and placed it silently.
+// as allocation does ("requires at least 7 S2MM channels").
 // SA:  warning: SA placer's resource estimate is over capacity
 // SEQ: error: no MemTile on the device has 1 input/1 output DMA channel(s) free
 

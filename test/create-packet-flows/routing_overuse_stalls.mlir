@@ -11,7 +11,6 @@
 // An attempt whose routing never fits the fabric gives up once its fewest
 // overused channels have not dropped for maxOverusedStall iterations, rather
 // than run to the iteration limit; a later, relaxed attempt routes the design.
-// Reduced from the router nightly's npu1 seed 207600022, port-cap mutant.
 // CHECK-NOT: giving up after {{[0-9]+}} iterations (the iteration limit)
 // CHECK: giving up after {{[0-9]+}} iterations (the overuse stalled)
 // CHECK-NOT: giving up after {{[0-9]+}} iterations (the iteration limit)

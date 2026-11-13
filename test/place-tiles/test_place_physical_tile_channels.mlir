@@ -15,9 +15,7 @@
 // The physical mem tile (0, 1)'s own DMA program starts all six S2MM channels
 // by index. Both placers count a physical tile's flows and channel claims at
 // its coordinates, keyed by position as DMAChannelAnalysis keys tiles, so the
-// objectFIFO link's mem tile goes to (1, 1), which is free. Before, they
-// dropped a physical tile's claims, put the link's tile on (0, 1), and
-// allocation refused ("requires at least 7 S2MM channels").
+// objectFIFO link's mem tile goes to (1, 1), which is free.
 // CHECK: aie.objectfifo @out(%mem_tile_1_1,
 // ALLOC: aie.objectfifo.dma_endpoint
 

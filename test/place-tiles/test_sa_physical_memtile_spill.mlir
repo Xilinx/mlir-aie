@@ -13,12 +13,10 @@
 
 // The SA's mem tile spill estimate counts what a physical mem tile already
 // holds, its objectFIFO pools and its aie.buffers, at its position, as it
-// counts a pinned logical mem tile's. On one column the logical link's
-// 256 KB lands on (0, 1) beside 320 KB the physical tile holds, which
-// allocation cannot fit in 512 KB; the SA warns, as it does for the pinned
-// logical form. Before, it counted logical mem tiles only and placed both
-// silently. On two columns the logical link still goes to (1, 1) and
-// allocation succeeds.
+// counts a pinned logical mem tile's. On one column the logical link's 256 KB
+// lands on (0, 1) beside 320 KB the physical tile holds, which allocation
+// cannot fit in 512 KB; the SA warns, as it does for the pinned logical form.
+// On two columns the logical link still goes to (1, 1) and allocation succeeds.
 // ALLOC-COUNT-2: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity
 // ALLOC-NOT: error
 

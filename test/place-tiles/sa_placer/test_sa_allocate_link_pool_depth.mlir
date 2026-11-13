@@ -9,9 +9,9 @@
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=2" --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s | FileCheck %s
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=3" --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s | FileCheck %s
 
-// The SA plans a shared link pool at the depth the split gives it
-// (ObjectFifoLinkOp::getPoolDepth), and the placement lowers: two objects for
-// in0's dispatch to four outputs, where its declared five would take 20 BDs.
+// The SA plans a shared link pool at the depth the split gives it, and the
+// placement lowers: two objects for in0's dispatch to four outputs, where its
+// declared five would take 20 BDs.
 // CHECK-LABEL: module @dispatch_declared_5
 // CHECK: aie.lock({{.*}}) {init = 2 : i32, sym_name = "in0__cons__prodlock0"}
 // CHECK-NOT: in0__cons__buf2

@@ -13,10 +13,7 @@
 // A shared-memory fifo between the physical core (0, 3) and a logical core
 // keeps its objects on whichever tile the SA charged them to, which is the
 // one without the 40 KB buffer. The SA writes the aie.objectfifo.allocate
-// for a physical end as for a pinned logical one. Before, it skipped fifos
-// with a physical end, so allocation kept the objects on the producer and
-// addressing failed ("f__buf1 needs 16384 bytes and this tile has no room
-// left") although the SA reported no overrun.
+// for a physical end as for a pinned logical one.
 
 // CHECK-LABEL: module @physical_producer
 // CHECK: aie.objectfifo.allocate @f(%tile_0_2)

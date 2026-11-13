@@ -8,12 +8,10 @@
 // RUN: aie-opt --aie-objectfifo-split %s | FileCheck %s
 
 // A self-loop whose core never acquires Produce (only Consume): the
-// producing end's own-port scan finds no acquire to size from and falls
-// back to the declared depth, 6, where it was 2 (the largest Consume
-// acquire plus one) before this end also counted the core's Consume
-// acquires. Conservative: the pool only grows. Nothing ever fills this
-// pool, so the stateful transform correctly refuses it on its own,
-// unrelated ground; this only exercises the split.
+// producing end finds no Produce acquire to size from and falls back to the
+// declared depth, 6. The consuming end holds the largest Consume acquire plus
+// one, 2. Nothing fills this pool, so the stateful transform refuses it; this
+// test exercises the split alone.
 // CHECK: aie.objectfifo.pool @f__pool(%{{.*}}) {depth = 6 : i32
 // CHECK: aie.objectfifo.pool @f__cons__pool(%{{.*}}) {depth = 2 : i32
 module @self_loop_dma_no_produce {

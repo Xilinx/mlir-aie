@@ -15,8 +15,6 @@
 // partner meets it there: all three memtile sources leave on one arbiter, and
 // (0, 5)'s id 18 joins them at (0, 4), where the tree turns back down to the
 // shim.
-// Reduced from router_mutation.py's multi-source mutation of
-// router_properties.py npu1 seed 207460168.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[UP:.*]] = aie.amsel<0> (0)

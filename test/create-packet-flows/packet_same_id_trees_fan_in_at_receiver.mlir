@@ -13,8 +13,6 @@
 // the arbiter (2, 4)'s need into (2, 2) DMA:0 while it queues behind one of
 // theirs into (2, 1). Kept from joining, they come down column 2 on channels
 // of their own and fan in at (2, 1) DMA:0 alone.
-// Reduced from router_mutation.py's id-reuse mutation of router_properties.py
-// npu1 seed 207460302.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_2_1)
 // CHECK:         %[[IN:.*]] = aie.amsel<0> (0)

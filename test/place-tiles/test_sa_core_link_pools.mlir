@@ -9,11 +9,9 @@
 // RUN: FileCheck %s --check-prefix=WARN --input-file=%t.err
 // RUN: not aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %t 2>&1 >/dev/null | FileCheck %s --check-prefix=ADDR
 
-// A link through a core tile keeps one pool there, as the split builds it
-// from ObjectFifoLinkOp::getPoolOwner and getPoolDepth, and the SA charges
-// that pool, through the ends' planned DMA ends. Before, it charged each
-// input's consumer pool, so a join or a 1->1 link with a larger output was
-// under-charged: the SA was silent and addressing failed on "out__buf3".
+// A link through a core tile keeps one pool there, as the split builds it with
+// the link's pool owner and depth, and the SA charges that pool, through the
+// ends' planned DMA ends.
 
 // The join's pool is the output's: 4 objects of 8 KB beside 40000 bytes.
 // WARN: [[@LINE+3]]:3: warning: SA placer's resource estimate is over capacity

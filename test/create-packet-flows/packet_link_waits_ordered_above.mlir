@@ -13,7 +13,6 @@
 // one of those links was granted that arbiter after it, so packets queued
 // each behind the next on them make no cycle, though id 20's two sources
 // merged at (2, 4) and not at (2, 3).
-// Reduced from router_properties.py npu1 seed 207471827.
 
 // CHECK-LABEL: aie.switchbox(%tile_2_3)
 // CHECK:         %[[SIXTEEN:.*]] = aie.amsel<0> (0)

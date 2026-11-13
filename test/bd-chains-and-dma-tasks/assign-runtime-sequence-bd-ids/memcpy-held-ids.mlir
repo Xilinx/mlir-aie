@@ -11,7 +11,7 @@
 
 // A task in flight while an aiex.npu.dma_memcpy_nd programs BD 0 on its tile
 // takes another id, as for the control packets aie-ctrl-packet-to-dma streams
-// in with id 0. Before, the task also got 0 and the copy reprogrammed it.
+// in with id 0.
 // CHECK-LABEL: @task_in_flight_over_copy
 // CHECK: aie.dma_bd({{.*}}) {bd_id = 1 : i32}
 // CHECK: aiex.npu.dma_memcpy_nd({{.*}}id = 0 : i64

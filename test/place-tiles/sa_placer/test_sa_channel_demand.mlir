@@ -5,10 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The SA placer charges a DMA channel to each end the split gives its own
-// (ObjectFifoCreateOp::plannedDmaEnd), so a merge's inputs share the one
-// channel they take turns on: seven of them fit a mem tile's six input
-// channels, and place and allocate without a warning.
+// The SA placer charges a DMA channel to each end the split gives its own, so a
+// merge's inputs share the one channel they take turns on: seven of them fit a
+// mem tile's six input channels, and place and allocate without a warning.
 
 // RUN: aie-opt --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %s -o /dev/null
 

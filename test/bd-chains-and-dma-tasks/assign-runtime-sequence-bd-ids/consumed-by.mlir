@@ -390,8 +390,8 @@ module {
 
 // -----
 
-// A copy on the input's own channel is now counted as the input's own bytes
-// (see consumed-by-copy.mlir), so it moves more through @in than @out proves
+// A copy on the input's own channel counts as the input's own bytes (see
+// consumed-by-copy.mlir), so it moves more through @in than @out proves
 // taken by the time the sequence ends: nothing is credited.
 module {
   aie.device(npu2) {

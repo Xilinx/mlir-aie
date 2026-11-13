@@ -13,7 +13,7 @@
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
 
 // Two logical shims each send a circuit fifo on pinned MM2S 0: they take two
-// shim tiles. Before, the sequential placer put both on (0, 0).
+// shim tiles.
 // CHECK-LABEL: module @two_shims_same_pin
 // CHECK: aie.route_endpoint @a__prod__dma(%[[A:[a-z_0-9]+]]) DMA {{.*}}channelIndex = 0
 // CHECK-NOT: aie.route_endpoint @b__prod__dma(%[[A]])
@@ -41,8 +41,7 @@ module @two_shims_same_pin {
 
 // -----
 
-// The same on two columns with a third shim. Before, the SA put both on one
-// shim on seeds 1-6.
+// The same on two columns with a third shim.
 // CHECK-LABEL: module @two_shims_same_pin_2col
 // CHECK: aie.route_endpoint @a__prod__dma(%[[A:[a-z_0-9]+]]) DMA {{.*}}channelIndex = 0
 // CHECK-NOT: aie.route_endpoint @b__prod__dma(%[[A]])
@@ -80,13 +79,12 @@ module @two_shims_same_pin_2col {
 // -----
 
 // Two logical shims on one column send packet fifos with distinct ids on
-// pinned MM2S 0: placed together they share the channel. Before, the
-// sequential placer counted it twice and refused, and the SA warned.
-// CHECK-LABEL: module @s3_two_logical_shims_samepin_pkt
+// pinned MM2S 0: placed together they share the channel.
+// CHECK-LABEL: module @two_logical_shims_same_pin_pkt
 // CHECK: aie.route_endpoint @a__prod__dma(%[[S:[a-z_0-9]+]]) DMA {{.*}}channelIndex = 0{{.*}}pkt_id = 3
 // CHECK: aie.route_endpoint @b__prod__dma(%[[S]]) DMA {{.*}}channelIndex = 0{{.*}}pkt_id = 4
 // CHECK: aie.route_endpoint @d__prod__dma(%[[S]]) DMA {{.*}}channelIndex = 1
-module @s3_two_logical_shims_samepin_pkt {
+module @two_logical_shims_same_pin_pkt {
   aie.device(npu2_1col) {
     %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
     %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
@@ -123,11 +121,11 @@ module @s3_two_logical_shims_samepin_pkt {
 
 // One of those ends on a physical shim, the other on a logical shim placed on
 // it.
-// CHECK-LABEL: module @s2b_phys_and_logical_samepin_pkt
+// CHECK-LABEL: module @physical_and_logical_same_pin_pkt
 // CHECK: aie.route_endpoint @a__prod__dma(%[[S:[a-z_0-9]+]]) DMA {{.*}}channelIndex = 0{{.*}}pkt_id = 3
 // CHECK: aie.route_endpoint @b__prod__dma(%[[S]]) DMA {{.*}}channelIndex = 0{{.*}}pkt_id = 4
 // CHECK: aie.route_endpoint @d__prod__dma(%[[S]]) DMA {{.*}}channelIndex = 1
-module @s2b_phys_and_logical_samepin_pkt {
+module @physical_and_logical_same_pin_pkt {
   aie.device(npu2_1col) {
     %p = aie.tile(0, 0)
     %s = aie.logical_tile<ShimNOCTile>(?, ?)

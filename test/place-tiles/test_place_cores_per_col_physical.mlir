@@ -9,8 +9,7 @@
 // RUN: aie-opt --split-input-file --aie-place-tiles="cores-per-col=2" %s | FileCheck %s --check-prefix=TWO
 
 // A physical aie.tile's own core counts against its column's cores-per-col
-// budget, so column 0 holds no more than the budget. Before, the budget
-// counted logical cores only and column 0 took one more.
+// budget, so column 0 holds no more than the budget.
 
 // ONE-LABEL: module @physical_core_low
 // ONE: aie.core(%tile_0_2)

@@ -9,12 +9,11 @@
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=2" --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s | FileCheck %s
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=3" --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s | FileCheck %s
 
-// A merge's input or a dispatch's output cannot share the link's pool
-// (ObjectFifoCreateOp::linkPoolMisfit), so the SA places its ends where the
-// allocate is not honoured, and the split moves it by DMA with objects of its
-// own, as it does any link participant that does not own the pool: the link
-// tile goes to (0,4), not to (0,3), which is nearer but where A on (0,2)
-// reaches its memory. Before, the SA chose (0,3) and the split aborted.
+// A merge's input or a dispatch's output cannot share the link's pool, so the
+// SA places its ends where the allocate is not honoured, and the split moves it
+// by DMA with objects of its own, as it does any link participant that does not
+// own the pool: the link tile goes to (0,4), not to (0,3), which is nearer but
+// where A on (0,2) reaches its memory.
 
 // CHECK-LABEL: module @merge_alloc
 // CHECK-DAG: %[[A:.*]] = aie.tile(0, 2)

@@ -16,8 +16,6 @@
 // tile of @pin -> @pout, whose input takes the sixth S2MM. Both placers count
 // a physical tile's objectFIFO ends at its position, as they count its flows
 // and claims, so the logical link's mem tile goes to (1, 1), which is free.
-// Before, they counted logical tiles' fifo ends only, put it on (0, 1), and
-// allocation refused ("requires at least 7 S2MM channels").
 // CHECK: aie.objectfifo @out(%mem_tile_1_1,
 // ALLOC: aie.objectfifo.dma_endpoint
 

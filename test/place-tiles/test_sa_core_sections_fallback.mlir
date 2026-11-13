@@ -12,12 +12,10 @@
 
 // The SA charges a core's own sections as assign-buffer-addresses reserves
 // them: data_size, then measured_data_size, then nothing. The producer (0, 3)
-// declares neither, so with its 1 KB stack it is the emptier end of the
-// 62 KB shared-memory fifo and keeps it; the consumer (0, 2) holds a 2 KB
-// buffer and a 512 B data region. Before, the SA took 3 KB for the
-// producer's sections, moved the fifo to the consumer with an allocate, and
-// addressing failed ("buffer "small" needs 2048 bytes and this tile has no
-// room left"). The same holds with the cores physical or pinned logical.
+// declares neither, so with its 1 KB stack it is the emptier end of the 62 KB
+// shared-memory fifo and keeps it; the consumer (0, 2) holds a 2 KB buffer and
+// a 512 B data region. The same holds with the cores physical or pinned
+// logical.
 // CHECK-NOT: aie.objectfifo.allocate
 
 // ADDR-LABEL: module @physical

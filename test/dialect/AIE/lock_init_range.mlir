@@ -7,7 +7,8 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
-// A lock holds 0 to getMaxLockValue(): 63 on AIE2 and AIE2P, 1 on AIE1.
+// A lock holds 0 to the target's maximum lock value: 63 on AIE2 and AIE2P, 1 on
+// AIE1.
 
 aie.device(npu2) {
   %t = aie.tile(0, 2)

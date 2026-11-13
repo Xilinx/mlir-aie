@@ -13,9 +13,7 @@
 // The physical core (0, 3) holds a 4 KB buffer, its 1 KB stack and an 8 KB
 // data region. The SA counts its stack and data region as it does a logical
 // core's, so the 52 KB shared-memory fifo goes to the logical consumer and
-// the SA writes its aie.objectfifo.allocate. Before, it saw only the 4 KB
-// buffer, kept the fifo on (0, 3), and addressing failed ("buffer "big"
-// needs 4096 bytes and this tile has no room left") after a clean report.
+// the SA writes its aie.objectfifo.allocate.
 // CHECK: aie.objectfifo.allocate @f(%tile_0_{{[24]}})
 // ADDR-DAG: aie.buffer(%tile_0_{{[24]}}) {{.*}}sym_name = "f__buf0"
 // ADDR-DAG: aie.buffer(%tile_0_{{[24]}}) {{.*}}sym_name = "f__buf1"

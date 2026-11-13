@@ -7,10 +7,9 @@
 //
 // A sequence with a hand-written aiex.dma_bd_pool_pop (as
 // npu-xrt/dma_s2mm_ooo_shim_recv writes one) reaches neither of
-// aie-lower-dynamic-bd-pool's own lowering paths -- it has no runtime
-// control flow for the pass to lower, and it already carries a pop -- so the
-// pass used to skip it, and a copy of BD 0 on the same tile shared it with
-// the hand-written pop's first pop. The copy's id is still withheld.
+// aie-lower-dynamic-bd-pool's own lowering paths: it has no runtime control
+// flow for the pass to lower, and it already carries a pop. A copy of BD 0 on
+// the same tile still withholds its id from the hand-written pop.
 //
 //===----------------------------------------------------------------------===//
 

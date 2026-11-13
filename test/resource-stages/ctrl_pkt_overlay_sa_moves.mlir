@@ -8,8 +8,6 @@
 // Three logical shims on two shim tiles leave none empty, so the SA reaches
 // the one placement that fits (an input alone where the control packet goes)
 // only by moving a shim onto an occupied tile, not just by swapping two.
-// Before, seeds 1, 5, 7 and 8 kept two inputs on column 0 and allocation
-// needed three MM2S channels there.
 
 // RUN: aie-opt --verify-diagnostics --pass-pipeline='builtin.module(aie-resource-stages{generate-ctrl-pkt-overlay=true placer=sa_placer sa-seed=1})' %s | FileCheck %s
 // RUN: aie-opt --verify-diagnostics --pass-pipeline='builtin.module(aie-resource-stages{generate-ctrl-pkt-overlay=true placer=sa_placer sa-seed=2})' %s | FileCheck %s

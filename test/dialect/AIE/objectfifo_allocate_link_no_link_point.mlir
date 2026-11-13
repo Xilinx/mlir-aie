@@ -9,8 +9,7 @@
 
 // @f's allocate is verified before its links. The second link makes @f a
 // misfit of its pool (another object type), but the first link naming @f has
-// no link point, which its own verifier reports. Before, the allocate's
-// verifier read the missing link point and aborted.
+// no link point, which its own verifier reports.
 
 module {
   aie.device(npu2_1col) {

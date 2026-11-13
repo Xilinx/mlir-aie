@@ -14,8 +14,8 @@
 // The core takes a and b in turn from mem tile pools of 7 and 6 objects, so
 // allocation walks both pools whole, one buffer each. The SA placer counts
 // their objects apart, which fit the holes of the mem tile next to the core;
-// the walked buffers do not. aiecc places again with the pools allocation
-// says channel turns walked counted walked, and that placement allocates.
+// the walked buffers do not. aiecc places again, charging the pools
+// allocation walked whole, and that placement allocates.
 // RETRY: error: 'aie.objectfifo.pool' op could not place buffers
 // RETRY: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // RETRY-NOT: error:

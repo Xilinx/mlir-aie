@@ -10,7 +10,6 @@
 // in0 owns the link's pool and shares memory with the link tile through its
 // allocate, so its core fills the pool directly: the pool starts with in0's
 // initial objects, full, as in0's own pool would without the allocate.
-// Before, the pool started empty and the initial values were lost.
 
 // CHECK-LABEL: module @input_owner
 // CHECK:     %[[L:.*]] = aie.tile(0, 3)
@@ -41,8 +40,6 @@ module @input_owner {
 // two. Without the allocate, A's pool holds the four and the link tile's two
 // start empty. Shared, the one pool serves both ends, so it takes the deeper
 // end's depth and starts with all four.
-// Before, the pool took the link tile's two and failed on "more 'init_values'
-// than 'depth' objects".
 
 // CHECK-LABEL: module @input_owner_deeper_producer
 // CHECK:     %[[L:.*]] = aie.tile(0, 3)

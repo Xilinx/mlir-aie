@@ -71,8 +71,7 @@ module @join_far {
 
 // The output, with initial values, owns the pool on the link tile (1,2). The
 // delegate is A's own tile, which the link tile reaches, but A cannot reach
-// the pool, so in0 moves by DMA. Before, the split gave in0 the pool anyway
-// and addressing could not place it in memory A reaches.
+// the pool, so in0 moves by DMA.
 
 // CHECK-LABEL: module @link_tile_east
 // CHECK:     %[[A:.*]] = aie.tile(0, 2)

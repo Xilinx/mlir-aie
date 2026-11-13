@@ -12,14 +12,10 @@
 // RUN: not aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %t 2>&1 >/dev/null | FileCheck %s --check-prefix=ADDR
 
 // The SA charges each core what assign-buffer-addresses reserves for its own
-// sections (CoreOp::getSectionReservations), measured bank sizes and a
-// prebaked ELF's data ranges included. Before, it charged the data region
-// only.
+// sections, measured bank sizes and a prebaked ELF's data ranges included.
 
 // The producer (0, 3) pins 3 KB of static data to bank 0, so the consumer is
 // the emptier end of the 61 KB shared-memory fifo and the SA moves it there.
-// Before, the SA kept it on (0, 3) and addressing failed ("f__buf1 needs
-// 31232 bytes and this tile has no room left").
 // CHECK-LABEL: module @bank_sizes
 // CHECK: aie.objectfifo.allocate @f(%tile_0_2)
 // ADDR-NOT: error
@@ -45,7 +41,7 @@ module @bank_sizes {
 // -----
 
 // A prebaked core's 2 KB data range and its 62 KB buffer do not fit beside
-// its stack, and the SA says so as addressing does. Before, it was silent.
+// its stack, and the SA says so as addressing does.
 // WARN-NOT: over capacity
 // WARN: [[@LINE+4]]:3: warning: SA placer's resource estimate is over capacity
 // ADDR: error: 'aie.buffer' op could not be placed: buffer "big" needs 63488 bytes
@@ -60,10 +56,8 @@ module @prebaked_ranges {
 
 // -----
 
-// A reservation whose aie.buffer is already there is charged once, through
-// that buffer, as addressing then reserves it once
-// (CoreOp::getSectionReservationBuffer). Before, the SA charged it again and
-// warned for a design that addresses.
+// A reservation whose aie.buffer is already there is charged once, through that
+// buffer, as addressing then reserves it once.
 // WARN-NOT: over capacity
 module @bank_present {
   aie.device(npu2_1col) {

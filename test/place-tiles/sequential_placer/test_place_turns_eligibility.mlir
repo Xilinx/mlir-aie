@@ -9,7 +9,7 @@
 
 // A core draining three mem tile fifos in turn has two input channels; the
 // sequential placer counts the fifos as sharing one by turns only where
-// aie-objectfifo-allocate can let them (ObjectFifoCreateOp::canTakeTurns).
+// aie-objectfifo-allocate can let them.
 
 // Plain fifos take turns on one channel.
 // CHECK-LABEL: module @plain

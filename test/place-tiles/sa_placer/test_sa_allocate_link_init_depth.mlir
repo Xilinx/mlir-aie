@@ -10,10 +10,8 @@
 // RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=3" --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s | FileCheck %s
 
 // in0 owns the link's pool and shares it through its allocate, so the pool
-// takes in0's deeper producer depth (ObjectFifoLinkOp::getPoolDepth) and its
-// four initial objects, which the SA's plan of the pool charges too. Before,
-// the SA placed it silently and the split failed on "more 'init_values' than
-// 'depth' objects".
+// takes in0's deeper producer depth and its four initial objects, which the
+// SA's plan of the pool charges too.
 
 // CHECK-DAG: aie.buffer({{.*}}) {{.*}}sym_name = "in0__cons__buf0"} : memref<16xi32> = dense<5>
 // CHECK-DAG: aie.buffer({{.*}}) {{.*}}sym_name = "in0__cons__buf3"} : memref<16xi32> = dense<8>

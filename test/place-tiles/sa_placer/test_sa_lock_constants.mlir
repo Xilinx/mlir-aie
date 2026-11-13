@@ -9,9 +9,9 @@
 // RUN: FileCheck %s --input-file=%t.err
 // RUN: aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %t | FileCheck %s --check-prefix=ALLOC
 
-// The SA asks PoolLocks' rule of the pools the split makes. @w's producer
-// pool starts full of its one initial object and nothing fills it again,
-// so it holds constants and takes no locks; the consumer's pool does.
+// The SA asks allocation's pool-lock rule of the pools the split makes. @w's
+// producer pool starts full of its one initial object and nothing fills it
+// again, so it holds constants and takes no locks; the consumer's pool does.
 // CHECK: 1 sa-lock-groups
 // ALLOC-COUNT-1: __prodlock{{[0-9]+}} = aie.lock
 // ALLOC-NOT: __prodlock{{[0-9]+}} = aie.lock

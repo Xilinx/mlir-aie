@@ -10,8 +10,7 @@
 
 // A pinned logical core counts against its column's cores-per-col budget as
 // a physical core does, wherever in the column it is pinned, so the floating
-// core goes to the next column. Before, the budget kept the column's first
-// rows for floating cores whatever the pinned core took.
+// core goes to the next column.
 
 // TWO-LABEL: module @physical_and_pinned
 // TWO: aie.core(%tile_0_2)
@@ -61,8 +60,7 @@ module @pinned_without_core {
 
 // Explicit pins outrank the budget: a core pinned only by column, or only
 // by row, takes a tile the budget left out when none within it matches, as a
-// fully pinned core already may. Before, both failed ("no compute tile
-// available matching constraint").
+// fully pinned core already may.
 // ONE-LABEL: module @column_pinned
 // ONE: aie.core(%tile_0_5)
 // ONE: aie.core(%tile_0_2)
@@ -93,8 +91,7 @@ module @row_pinned {
 
 // A pinned core takes a tile past the budget that passes every check before
 // it takes, in the last, relaxed pass, the budget's one tile that its floating
-// shared-L1 peer needs. Before, %c took (0, 2) and %f had no tile ("no
-// available compute tiles for placement").
+// shared-L1 peer needs.
 // ONE-LABEL: module @column_pinned_with_floating_peer
 // ONE: aie.core(%tile_0_3)
 // ONE: aie.core(%tile_0_2)
