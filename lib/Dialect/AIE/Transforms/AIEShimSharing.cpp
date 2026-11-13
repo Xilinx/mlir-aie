@@ -479,6 +479,29 @@ bool ShimTransferSpans::gated(StringAttr a, StringAttr b) const {
   return false;
 }
 
+StringAttr ShimTransferSpans::keyOf(RouteEndpointOp endpoint) {
+  return endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
+                                    : endpoint.getSymNameAttr();
+}
+
+std::optional<ShimTransferSpans::End>
+ShimTransferSpans::endOf(DeviceOp device, StringAttr symbol) {
+  Operation *op = SymbolTable::lookupNearestSymbolFrom(device, symbol);
+  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(op)) {
+    if (endpoint.getBundle() != WireBundle::DMA ||
+        !endpoint.getTileLike().isShimTile())
+      return std::nullopt;
+    return End{keyOf(endpoint),
+               endpoint.getRouteDirection() == DMAChannelDir::MM2S};
+  }
+  auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(op);
+  if (!fifo)
+    return std::nullopt;
+  auto producer =
+      dyn_cast_or_null<TileLike>(fifo.getProducerTile().getDefiningOp());
+  return End{symbol, producer && producer.isShimTile()};
+}
+
 ShimTransferSpans::Gates ShimTransferSpans::provenGates(
     DeviceOp device, function_ref<StringAttr(RouteEndpointOp)> keyOf) {
   Gates gates;

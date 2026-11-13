@@ -68,6 +68,15 @@ public:
 
   using Gates = llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<Gate>>;
 
+  /// How ends and gates name a shim route end: by its objectFIFO, else by its
+  /// own symbol.
+  static mlir::StringAttr keyOf(RouteEndpointOp endpoint);
+  /// The end a runtime sequence of `device` transfers through when it names
+  /// `symbol`: a shim DMA route end, keyed by keyOf, or, before
+  /// aie-objectfifo-split, an objectFIFO, sending when a shim tile produces
+  /// it.
+  static std::optional<End> endOf(DeviceOp device, mlir::StringAttr symbol);
+
   /// `endOf` maps a symbol a runtime sequence transfers through to the
   /// objectFIFO end it belongs to, or nothing when it belongs to none.
   /// `gates` holds each receiving end's gates, keyed as `endOf` keys ends;

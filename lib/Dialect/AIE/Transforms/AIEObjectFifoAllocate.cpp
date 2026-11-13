@@ -1319,24 +1319,14 @@ struct AIEObjectFifoAllocatePass
   /// ends share as the tile needs. Packet headers tell a shared channel's ends
   /// apart.
   bool planShimSharing(TileLike exhausted, DMAChannelDir dir) {
-    // Without --aie-objectfifo-verify there are no gates.
+    // Receiving ends share by the #aie.consumed_by proofs
+    // aie-objectfifo-verify leaves; without them, by explicit permission only.
     ShimTransferSpans spans(
         device,
-        [&](StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
-          auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
-              device, symbol);
-          if (!endpoint || endpoint.getBundle() != WireBundle::DMA ||
-              !endpoint.getTileLike().isShimTile())
-            return std::nullopt;
-          return ShimTransferSpans::End{
-              endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
-                                         : endpoint.getSymNameAttr(),
-              endpoint.getRouteDirection() == DMAChannelDir::MM2S};
+        [&](StringAttr symbol) {
+          return ShimTransferSpans::endOf(device, symbol);
         },
-        ShimTransferSpans::provenGates(device, [](RouteEndpointOp endpoint) {
-          return endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
-                                            : endpoint.getSymNameAttr();
-        }));
+        ShimTransferSpans::provenGates(device, ShimTransferSpans::keyOf));
     SmallVector<Operation *> candidates;
     SmallVector<StringAttr> fifos, names;
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {
@@ -1346,8 +1336,7 @@ struct AIEObjectFifoAllocatePass
           endpoint.getRouteDirection() != dir)
         continue;
       candidates.push_back(endpoint);
-      fifos.push_back(endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
-                                                 : endpoint.getSymNameAttr());
+      fifos.push_back(ShimTransferSpans::keyOf(endpoint));
       names.push_back(endpoint.getSymNameAttr());
     }
     SmallVector<ShimDMAAllocationOp> allocations;
