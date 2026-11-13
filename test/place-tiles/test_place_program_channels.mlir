@@ -33,34 +33,22 @@ module @chan {
     }
     %md = aie.memtile_dma(%hm) {
       %s0 = aie.dma_start(S2MM, 0, ^b0, ^st1)
-    ^b0:
-      aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32, next_bd_id = 0 : i32}
-      aie.next_bd ^b0
+    ^b0: aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32, next_bd_id = 0 : i32} aie.next_bd ^b0
   ^st1:
       %s1 = aie.dma_start(S2MM, 1, ^b1, ^st2)
-    ^b1:
-      aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 1 : i32, next_bd_id = 1 : i32}
-      aie.next_bd ^b1
+    ^b1: aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 1 : i32, next_bd_id = 1 : i32} aie.next_bd ^b1
   ^st2:
       %s2 = aie.dma_start(S2MM, 2, ^b2, ^st3)
-    ^b2:
-      aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 2 : i32, next_bd_id = 2 : i32}
-      aie.next_bd ^b2
+    ^b2: aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 2 : i32, next_bd_id = 2 : i32} aie.next_bd ^b2
   ^st3:
       %s3 = aie.dma_start(S2MM, 3, ^b3, ^st4)
-    ^b3:
-      aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 3 : i32, next_bd_id = 3 : i32}
-      aie.next_bd ^b3
+    ^b3: aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 3 : i32, next_bd_id = 3 : i32} aie.next_bd ^b3
   ^st4:
       %s4 = aie.dma_start(S2MM, 4, ^b4, ^st5)
-    ^b4:
-      aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 4 : i32, next_bd_id = 4 : i32}
-      aie.next_bd ^b4
+    ^b4: aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 4 : i32, next_bd_id = 4 : i32} aie.next_bd ^b4
   ^st5:
       %s5 = aie.dma_start(S2MM, 5, ^b5, ^end)
-    ^b5:
-      aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 5 : i32, next_bd_id = 5 : i32}
-      aie.next_bd ^b5
+    ^b5: aie.dma_bd(%hb : memref<16xi32> offset = 0 len = 16) {bd_id = 5 : i32, next_bd_id = 5 : i32} aie.next_bd ^b5
     ^end:
       aie.end
     }

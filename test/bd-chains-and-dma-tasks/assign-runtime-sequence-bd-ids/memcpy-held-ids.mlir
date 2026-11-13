@@ -473,45 +473,19 @@ module @too_many_copy_note {
       %big = aiex.dma_configure_task_for @out {
         aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
         aie.next_bd ^bd1
-      ^bd1:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd2
-      ^bd2:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd3
-      ^bd3:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd4
-      ^bd4:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd5
-      ^bd5:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd6
-      ^bd6:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd7
-      ^bd7:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd8
-      ^bd8:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd9
-      ^bd9:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd10
-      ^bd10:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd11
-      ^bd11:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd12
-      ^bd12:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd13
-      ^bd13:
-        aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
-        aie.next_bd ^bd14
+      ^bd1: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd2
+      ^bd2: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd3
+      ^bd3: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd4
+      ^bd4: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd5
+      ^bd5: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd6
+      ^bd6: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd7
+      ^bd7: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd8
+      ^bd8: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd9
+      ^bd9: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd10
+      ^bd10: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd11
+      ^bd11: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd12
+      ^bd12: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd13
+      ^bd13: aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) aie.next_bd ^bd14
       ^bd14:
         aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16)
         aie.end

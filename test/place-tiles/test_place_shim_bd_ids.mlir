@@ -41,36 +41,16 @@ module @static_shim_bds {
     %ext = aie.external_buffer {sym_name = "ext"} : memref<1024xi32>
     aie.shim_dma(%shim_s) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
-    ^bd0:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 0 len = 64)
-      aie.next_bd ^bd1
-    ^bd1:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 64 len = 64)
-      aie.next_bd ^bd2
-    ^bd2:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 128 len = 64)
-      aie.next_bd ^bd3
-    ^bd3:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 192 len = 64)
-      aie.next_bd ^bd4
-    ^bd4:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 256 len = 64)
-      aie.next_bd ^bd5
-    ^bd5:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 320 len = 64)
-      aie.next_bd ^bd6
-    ^bd6:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 384 len = 64)
-      aie.next_bd ^bd7
-    ^bd7:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 448 len = 64)
-      aie.next_bd ^bd8
-    ^bd8:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 512 len = 64)
-      aie.next_bd ^bd9
-    ^bd9:
-      aie.dma_bd(%ext : memref<1024xi32> offset = 576 len = 64)
-      aie.next_bd ^end
+    ^bd0: aie.dma_bd(%ext : memref<1024xi32> offset = 0 len = 64) aie.next_bd ^bd1
+    ^bd1: aie.dma_bd(%ext : memref<1024xi32> offset = 64 len = 64) aie.next_bd ^bd2
+    ^bd2: aie.dma_bd(%ext : memref<1024xi32> offset = 128 len = 64) aie.next_bd ^bd3
+    ^bd3: aie.dma_bd(%ext : memref<1024xi32> offset = 192 len = 64) aie.next_bd ^bd4
+    ^bd4: aie.dma_bd(%ext : memref<1024xi32> offset = 256 len = 64) aie.next_bd ^bd5
+    ^bd5: aie.dma_bd(%ext : memref<1024xi32> offset = 320 len = 64) aie.next_bd ^bd6
+    ^bd6: aie.dma_bd(%ext : memref<1024xi32> offset = 384 len = 64) aie.next_bd ^bd7
+    ^bd7: aie.dma_bd(%ext : memref<1024xi32> offset = 448 len = 64) aie.next_bd ^bd8
+    ^bd8: aie.dma_bd(%ext : memref<1024xi32> offset = 512 len = 64) aie.next_bd ^bd9
+    ^bd9: aie.dma_bd(%ext : memref<1024xi32> offset = 576 len = 64) aie.next_bd ^end
     ^end:
       aie.end
     }
