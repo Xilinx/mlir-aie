@@ -15,11 +15,14 @@
 #include "aie/Targets/AIERT.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Matchers.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
 
 extern "C" {
@@ -29,9 +32,13 @@ extern "C" {
 #include "xaiengine/xaie_txn.h"
 }
 
+#include <algorithm>
 #include <array>
 #include <cstring>
+#include <map>
 #include <optional>
+#include <set>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -805,6 +812,236 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
                                    skipCtrlPktOverlay ? device : DeviceOp{});
 }
 
+namespace {
+
+constexpr llvm::StringLiteral coreLockAcquiresAttr =
+    "aie.teardown_lock_acquires";
+using LockAddress = std::tuple<int32_t, int32_t, int32_t>;
+using LockAcquire = std::pair<bool, int32_t>;
+
+static std::optional<LockAddress> getLockAddress(UseLockOp use) {
+  auto lock = use.getLock().getDefiningOp<LockOp>();
+  if (!lock || !lock.getLockID())
+    return std::nullopt;
+  auto tile = lock.getTileOp();
+  return LockAddress{tile.colIndex(), tile.rowIndex(), *lock.getLockID()};
+}
+
+static std::optional<LockAcquire> getLockAcquire(UseLockOp use) {
+  APInt value;
+  if (!matchPattern(use.getValue(), m_ConstantInt(&value)))
+    return std::nullopt;
+  return LockAcquire{use.acquireGE(), value.getSExtValue()};
+}
+
+static ArrayAttr collectCoreLockAcquires(CoreOp core) {
+  if (core.getElfFile())
+    return core->getAttrOfType<ArrayAttr>(coreLockAcquiresAttr);
+  std::set<std::array<int32_t, 5>> uniqueAcquires;
+  llvm::DenseSet<Operation *> visited;
+  SmallVector<Operation *> pending{core};
+  bool unknown = false;
+  while (!pending.empty()) {
+    Operation *operation = pending.pop_back_val();
+    if (!visited.insert(operation).second)
+      continue;
+    operation->walk([&](UseLockOp use) {
+      if (use.release())
+        return;
+      auto address = getLockAddress(use);
+      auto acquire = getLockAcquire(use);
+      if (!address || !acquire) {
+        unknown = true;
+        return;
+      }
+      auto [column, row, lockId] = *address;
+      auto [greaterEqual, value] = *acquire;
+      uniqueAcquires.insert({column, row, lockId, greaterEqual, value});
+    });
+    operation->walk([&](func::CallOp call) {
+      auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          call, call.getCalleeAttr());
+      if (callee && !callee.isExternal())
+        pending.push_back(callee);
+      else
+        unknown = true;
+    });
+    operation->walk([&](func::CallIndirectOp) { unknown = true; });
+  }
+  SmallVector<Attribute> acquires;
+  for (const auto &acquire : uniqueAcquires)
+    acquires.push_back(DenseI32ArrayAttr::get(core.getContext(), acquire));
+  if (unknown)
+    acquires.push_back(UnitAttr::get(core.getContext()));
+  return ArrayAttr::get(core.getContext(), acquires);
+}
+
+struct LockAcquireSummary {
+  std::set<LockAcquire> acquires;
+  SmallVector<CoreOp> cores;
+  bool unknown = false;
+
+  std::optional<int32_t> getSatisfyingValue(uint32_t maximum) const {
+    if (unknown || acquires.empty())
+      return std::nullopt;
+    int32_t lowerBound = 0;
+    std::optional<int32_t> equality;
+    for (auto [greaterEqual, value] : acquires) {
+      if (value < 0 || static_cast<uint32_t>(value) > maximum)
+        return std::nullopt;
+      if (greaterEqual && value != 0) {
+        lowerBound = std::max(lowerBound, value);
+      } else {
+        if (equality && *equality != value)
+          return std::nullopt;
+        equality = value;
+      }
+    }
+    if (equality && *equality < lowerBound)
+      return std::nullopt;
+    return equality.value_or(lowerBound);
+  }
+};
+
+struct CoreLockAcquireAnalysis {
+  std::map<LockAddress, LockAcquireSummary> locks;
+  llvm::DenseMap<CoreOp, std::set<LockAddress>> coreLocks;
+  llvm::DenseSet<CoreOp> unsupported;
+
+  explicit CoreLockAcquireAnalysis(DeviceOp device) {
+    const auto &model = device.getTargetModel();
+    for (auto core : device.getOps<CoreOp>()) {
+      auto summary = collectCoreLockAcquires(core);
+      if (!summary) {
+        core.emitWarning("teardown cannot determine lock acquires for an ELF "
+                         "without aie.teardown_lock_acquires; skipping device "
+                         "lock draining");
+        unsupported.insert(core);
+        continue;
+      }
+      for (Attribute attribute : summary) {
+        auto entry = dyn_cast<DenseI32ArrayAttr>(attribute);
+        if (!entry || entry.size() != 5) {
+          unsupported.insert(core);
+          continue;
+        }
+        auto values = entry.asArrayRef();
+        LockAddress address{values[0], values[1], values[2]};
+        auto &lock = locks[address];
+        lock.acquires.emplace(values[3] != 0, values[4]);
+        lock.unknown |=
+            values[0] < 0 || values[0] >= model.columns() || values[1] < 0 ||
+            values[1] >= model.rows() || values[3] < 0 || values[3] > 1 ||
+            values[2] < 0 ||
+            !model.getLocalLockAddress(values[2], TileID{values[0], values[1]});
+        if (coreLocks[core].insert(address).second)
+          lock.cores.push_back(core);
+      }
+      if (unsupported.contains(core))
+        core.emitWarning("teardown cannot determine every lock acquire: "
+                         "unresolved locks, dynamic values, or opaque callees; "
+                         "skipping device lock draining");
+    }
+    if (!unsupported.empty()) {
+      for (auto core : device.getOps<CoreOp>())
+        unsupported.insert(core);
+      return;
+    }
+    device.walkOutsideRuntimeSequences<UseLockOp>([&](UseLockOp use) {
+      if (use->getParentOfType<CoreOp>() || use.release() || !use.getAcqEn())
+        return;
+      auto address = getLockAddress(use);
+      if (!address)
+        return;
+      auto found = locks.find(*address);
+      if (found == locks.end())
+        return;
+      auto acquire = getLockAcquire(use);
+      if (!acquire)
+        found->second.unknown = true;
+      else
+        found->second.acquires.insert(*acquire);
+    });
+    for (auto &[address, lock] : locks) {
+      auto [column, row, lockId] = address;
+      bool competing = lock.cores.size() > 1;
+      bool incompatible = !lock.getSatisfyingValue(model.getMaxLockValue());
+      if (!competing && !incompatible)
+        continue;
+      for (auto core : lock.cores) {
+        core.emitWarning()
+            << "teardown cannot drain lock " << lockId << " on tile (" << column
+            << ", " << row << "): "
+            << (competing ? "multiple cores may consume the supplied count"
+                          : "no single writable value satisfies every acquire")
+            << "; skipping core lock draining";
+        unsupported.insert(core);
+      }
+    }
+  }
+};
+
+static LogicalResult
+insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
+                    AIEX::BlockwriteData &blockwriteData,
+                    AIEToConfigurationOutputType outputType) {
+  const auto &model = device.getTargetModel();
+  if (!model.hasProperty(AIETargetModel::UsesSemaphoreLocks))
+    return success();
+  CoreLockAcquireAnalysis analysis(device);
+  std::set<LockAddress> candidates;
+  SmallVector<CoreOp> cores;
+  for (auto core : device.getOps<CoreOp>()) {
+    auto found = analysis.coreLocks.find(core);
+    if (analysis.unsupported.contains(core) ||
+        found == analysis.coreLocks.end())
+      continue;
+    candidates.insert(found->second.begin(), found->second.end());
+    cores.push_back(core);
+  }
+  auto tileAddress = [&](int32_t column, int32_t row) {
+    return (static_cast<uint32_t>(column) << model.getColumnShift()) |
+           (static_cast<uint32_t>(row) << model.getRowShift());
+  };
+  std::vector<TransactionBinaryOperation> writes;
+  for (auto address : candidates) {
+    auto [column, row, lockId] = address;
+    TransactionBinaryOperation write{};
+    write.cmd.Opcode = XAie_TxnOpcode::XAIE_IO_WRITE;
+    write.cmd.RegOff = tileAddress(column, row) |
+                       *model.getLocalLockAddress(lockId, TileID{column, row});
+    write.cmd.Value =
+        *analysis.locks.at(address).getSatisfyingValue(model.getMaxLockValue());
+    write.sourceLoc = device.getLoc();
+    writes.push_back(write);
+  }
+  if (failed(convertTransactionOpsToMLIR(builder, outputType, writes,
+                                         blockwriteData, {})))
+    return failure();
+  for (auto core : cores) {
+    auto tile = core.getTileOp();
+    auto constant = [&](uint32_t value) {
+      return arith::ConstantOp::create(builder, core.getLoc(),
+                                       builder.getI32IntegerAttr(value));
+    };
+    Value status =
+        constant(tileAddress(tile.colIndex(), tile.rowIndex()) | 0x32004);
+    Value zero = constant(0);
+    Value mask = constant(0x3c0);
+    AIEX::NpuMaskPollOp::create(builder, core.getLoc(), status, zero, mask,
+                                nullptr, nullptr, nullptr);
+  }
+  return success();
+}
+
+} // namespace
+
+void xilinx::AIE::recordCoreLockAcquires(DeviceOp device) {
+  for (auto core : device.getOps<CoreOp>())
+    if (auto summary = collectCoreLockAcquires(core))
+      core->setAttr(coreLockAcquiresAttr, summary);
+}
+
 LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device,
     AIEX::BlockwriteData &blockwriteData,
@@ -821,8 +1058,11 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (failed(ctl.teardownSwitches(device, skipCtrlPktOverlay)) ||
       failed(ctl.disableCores(device)) || failed(ctl.resetDmaChannels(device)))
     return failure();
-  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
-                                   skipCtrlPktOverlay ? device : DeviceOp{});
+  if (failed(
+          insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
+                                    skipCtrlPktOverlay ? device : DeviceOp{})))
+    return failure();
+  return insertCoreLockDrain(builder, device, blockwriteData, outputType);
 }
 
 LogicalResult
