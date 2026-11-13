@@ -35,7 +35,8 @@ module @free_then_reuse {
     }
     aie.runtime_sequence @p1(%b: memref<4096xi32>) {
       %t = aiex.dma_configure_task_for @in1 {
-        // expected-warning @below {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-note@+1 {{not proven finished: aie-objectfifo-verify found no output whose progress proves @in0 consumed}}
         aie.dma_bd(%b : memref<4096xi32> offset = 0 len = 4096)
         aie.end
       } {issue_token = true}

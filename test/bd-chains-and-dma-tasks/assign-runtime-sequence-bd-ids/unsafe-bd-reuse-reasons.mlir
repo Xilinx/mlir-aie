@@ -23,7 +23,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: aie-objectfifo-verify found no output whose progress proves @in consumed}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: aie-objectfifo-verify found no output whose progress proves @in consumed}}
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
@@ -47,7 +48,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: it names no shim allocation, so no output's progress can prove it consumed}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       }
@@ -78,7 +80,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, no await on it has retired a transfer yet}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, no await on it has retired a transfer yet}}
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
@@ -116,7 +119,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%next)
       %out1 = aiex.dma_configure_task(%t, S2MM, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, the bytes its awaited transfers moved, 256, fall short of the bytes the input moved up to this transfer, 512}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, the bytes its awaited transfers moved, 256, fall short of the bytes the input moved up to this transfer, 512}}
         aie.dma_bd(%c : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @out, issue_token = true}
@@ -157,7 +161,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%next)
       %out1 = aiex.dma_configure_task(%t, S2MM, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, the bytes its awaited transfers moved times 2, 256, fall short of the bytes the input moved up to this transfer times 1, 256 + 256*@n, for some parameter values}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, the bytes its awaited transfers moved times 2, 256, fall short of the bytes the input moved up to this transfer times 1, 256 + 256*@n, for some parameter values}}
         aie.dma_bd(%c : memref<4096xi32> offset = 64 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 32 : i32}
         aie.end
       } {alloc = @out, issue_token = true}
@@ -199,7 +204,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, another transfer shares their channels, which the counts do not describe}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, another transfer shares their channels, which the counts do not describe}}
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
@@ -234,7 +240,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, a transfer on them moves a byte count the compiler cannot follow (a BD chain, a loop, or a length parameter without min_value >= 0)}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, a transfer on them moves a byte count the compiler cannot follow (a BD chain, a loop, or a length parameter without min_value >= 0)}}
         aie.dma_bd(%a : memref<4096xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
@@ -268,7 +275,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean}}
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
@@ -307,7 +315,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in1)
       %out1 = aiex.dma_configure_task(%t, S2MM, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, no await on it has retired a transfer since this one was pushed}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, no await on it has retired a transfer since this one was pushed}}
         aie.dma_bd(%c : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @out, issue_token = true}
@@ -358,7 +367,10 @@ module {
       aiex.dma_free_task(%in0)
       aiex.dma_free_task(%in1)
       %in2 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{through @o1, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes, 64 + 64*@a + 64*@b, against output bytes, 64*@a); through @o2, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes, 64 + 64*@a + 64*@b, against output bytes, 64*@b). No one output's proof covers the input: it moves more than each proves alone, by how much depending on the runtime parameters @b, @a}}
+        // expected-warning@+4 {{reuses buffer descriptor ID}}
+        // expected-note@+3 {{not proven finished: through @o1, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes, 64 + 64*@a + 64*@b, against output bytes, 64*@a)}}
+        // expected-note@+2 {{not proven finished: through @o2, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes, 64 + 64*@a + 64*@b, against output bytes, 64*@b)}}
+        // expected-note@+1 {{not proven finished: no one output's proof covers the input: it moves more than each proves alone, by how much depending on the runtime parameters @b, @a}}
         aie.dma_bd(%x : memref<4096xi32> offset = 2048 len = 16)
         aie.end
       } {alloc = @in}
@@ -383,7 +395,8 @@ module {
       aiex.dma_start_task(%in0)
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
-      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+      // expected-note@+1 {{not proven finished: aie-objectfifo-verify found no output whose progress proves @in consumed}}
       aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrl} : memref<?xi32>
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32

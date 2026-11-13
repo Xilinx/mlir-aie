@@ -72,7 +72,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, the bytes its awaited transfers moved, less the part of an object of the join the proof passes (256 bytes) they may end in, times 1, -127, fall short of the bytes the input moved up to this transfer times 2, 128}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, the bytes its awaited transfers moved, less the part of an object of the join the proof passes (256 bytes) they may end in, times 1, -127, fall short of the bytes the input moved up to this transfer times 2, 128}}
         aie.dma_bd(%a : memref<512xi32> offset = 16 len = 16)
         aie.end
       } {alloc = @in}
@@ -154,7 +155,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, the bytes its awaited transfers moved, less the part of an object of the join the proof passes (256 bytes) they may end in, times 1, -255 + 128*@n, fall short of the bytes the input moved up to this transfer times 2, 128*@n, for some parameter values}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, the bytes its awaited transfers moved, less the part of an object of the join the proof passes (256 bytes) they may end in, times 1, -255 + 128*@n, fall short of the bytes the input moved up to this transfer times 2, 128*@n, for some parameter values}}
         aie.dma_bd(%a : memref<4096xi32> offset = 2048 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 16 : i32}
         aie.end
       } {alloc = @in}
@@ -194,7 +196,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, a stretch of @s may end with the output partway through an object of the join the proof passes (256 output bytes)}}
+        // expected-warning@+2 {{reuses buffer descriptor ID}}
+        // expected-note@+1 {{not proven finished: through @out, a stretch of @s may end with the output partway through an object of the join the proof passes (256 output bytes)}}
         aie.dma_bd(%a : memref<512xi32> offset = 32 len = 16)
         aie.end
       } {alloc = @in}

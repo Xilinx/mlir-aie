@@ -101,7 +101,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task_for @in {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-note@+1 {{not proven finished: aie-objectfifo-verify found no output whose progress proves @in__shim_alloc consumed}}
         aie.dma_bd(%a : memref<32xi32> offset = 16 len = 16)
         aie.end
       }

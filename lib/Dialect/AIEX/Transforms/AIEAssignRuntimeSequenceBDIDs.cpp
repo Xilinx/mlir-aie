@@ -1390,18 +1390,24 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // Why no proof shows `task`'s transfer finished, for the unsafe-reuse
   // warning: one clause per proof its allocation holds, and the ops they
   // point at as notes.
-  void explainUnproven(DMAConfigureTaskOp task, llvm::raw_ostream &os,
+  void explainUnproven(DMAConfigureTaskOp task,
+                       SmallVectorImpl<std::string> &why,
                        SmallVectorImpl<std::pair<Location, std::string>> &at) {
     AIE::ShimDMAAllocationOp input = allocationOf(task);
     ArrayAttr proofs = input ? input.getConsumedByAttr() : ArrayAttr();
     if (!input) {
-      os << "it names no shim allocation, so no output's progress can prove "
-            "it consumed";
+      why.push_back("it names no shim allocation, so no output's progress "
+                    "can prove it consumed");
       return;
     }
     if (!proofs || proofs.empty()) {
-      os << "aie-objectfifo-verify found no output whose progress proves @"
-         << input.getSymName() << " consumed";
+      std::string clause;
+      {
+        llvm::raw_string_ostream os(clause);
+        os << "aie-objectfifo-verify found no output whose progress proves @"
+           << input.getSymName() << " consumed";
+      }
+      why.push_back(std::move(clause));
       return;
     }
     auto seq = task->getParentOfType<AIE::RuntimeSequenceOp>();
@@ -1410,158 +1416,168 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                               : getOperation();
     size_t excess = 0;
     SmallVector<std::pair<int64_t, AIE::RuntimeSequenceOp>> exceeding;
-    llvm::interleave(
-        proofs.getAsRange<AIE::ConsumedByAttr>(), os,
-        [&](AIE::ConsumedByAttr proof) {
-          auto output = deviceState.symbols->lookup<AIE::ShimDMAAllocationOp>(
-              proof.getOutput().getAttr());
-          os << "through " << proof.getOutput() << ", ";
-          if (!output) {
-            os << "that output is not in this device";
-            return;
-          }
-          if (!configured || proofDevice(proof) != configured) {
-            os << "the proof describes the array of "
-               << (proof.getDevice() ? proof.getDevice()
-                                     : FlatSymbolRefAttr::get(
-                                           getOperation().getSymNameAttr()))
-               << ", which is not the one loaded";
-            return;
-          }
-          if (!leavesNothing(input, output, proof)) {
-            for (auto other : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
-              Verdict verdict;
-              Unbalanced why = stretchesUnbalanced(
-                  other, nullptr, proofDevice(proof), input, output, {input},
-                  {output}, proof, /*byChannel=*/false, &verdict);
-              Operation *where = verdict.where;
-              if (why == Unbalanced::No)
-                continue;
-              std::string note;
-              if (why == Unbalanced::Traffic) {
-                os << "another transfer shares their channels, which the "
-                      "counts do not describe";
-                note = "the other transfer";
-              } else if (why == Unbalanced::PartGranule) {
-                os << "a stretch of @" << other.getSymName()
-                   << " may end with the output partway through an object of "
-                      "the join the proof passes ("
-                   << proof.getGranuleBytes()
-                   << " output bytes), whose later segments it has then taken "
-                      "less of";
-                note = "the stretch ends here";
-              } else if (why == Unbalanced::Unsized) {
-                os << "a transfer on them moves a byte count the compiler "
-                      "cannot follow (a BD chain, a loop, or a length "
-                      "parameter without min_value >= 0)";
-                note = "the transfer";
-              } else {
-                bool scaled = proof.getInputBytes() != proof.getOutputBytes();
-                os << "a stretch of @" << other.getSymName()
-                   << " can end having moved more through the input than the "
-                      "output proves taken, so the next dispatch's counts do "
-                      "not start clean (input bytes";
-                if (scaled)
-                  os << " times " << proof.getOutputBytes();
-                os << ", ";
-                printVolume(os, verdict.in, proof.getOutputBytes(), other);
-                os << ", against output bytes";
-                if (scaled)
-                  os << " times " << proof.getInputBytes();
-                os << ", ";
-                printVolume(os, verdict.out, proof.getInputBytes(), other);
-                os << ")";
-                ++excess;
-                for (const auto &term : verdict.in) {
-                  int64_t index = term.first;
-                  auto taken = verdict.out.find(index);
-                  if (index >= 0 &&
-                      term.second * proof.getOutputBytes() >
-                          (taken == verdict.out.end() ? 0 : taken->second) *
-                              proof.getInputBytes() &&
-                      llvm::none_of(exceeding, [&](const auto &seen) {
-                        return seen.first == index;
-                      }))
-                    exceeding.push_back({index, other});
-                }
-                note = "the stretch ends here";
-              }
-              std::pair<Location, std::string> pointer = {
-                  where ? where->getLoc() : other.getLoc(), note};
-              if (!llvm::is_contained(at, pointer))
-                at.push_back(pointer);
-              return;
-            }
-          }
-          auto pushes = loadState.pushesByAllocation.find(input);
-          auto order = pushCounts.find(task);
-          const AllocationPush *push =
-              pushes == loadState.pushesByAllocation.end() ||
-                      order == pushCounts.end()
-                  ? nullptr
-                  : llvm::find_if(pushes->second, [&](const AllocationPush &p) {
-                      return p.order == order->second.lastPushOrder;
-                    });
-          if (!push || push == pushes->second.end() || !push->through) {
-            os << "the bytes the input has moved up to this transfer are not "
-                  "known";
-            return;
-          }
-          auto awaited = loadState.awaitedThrough.find(output);
-          if (awaited == loadState.awaitedThrough.end()) {
-            os << "no await on it has retired a transfer yet";
-            return;
-          }
-          if (awaited->second.pushesBefore <= push->order) {
-            os << "no await on it has retired a transfer since this one was "
-                  "pushed";
-            return;
-          }
-          const std::optional<Volume> &taken = awaited->second.through;
-          if (!taken) {
-            os << "the bytes its awaited transfers moved are not known";
-            return;
-          }
-          Volume counted = countedOutput(*taken, proof);
-          if (atMost(*push->through, proof.getOutputBytes(), counted,
-                     proof.getInputBytes())) {
-            os << "its awaited transfers cover this transfer's bytes, but "
-                  "not those of every push of this task";
-            return;
-          }
-          bool scaled = proof.getInputBytes() != proof.getOutputBytes();
-          os << "the bytes its awaited transfers moved";
-          if (!wholeGranules(*taken, proof.getGranuleBytes()))
-            os << ", less the part of an object of the join the proof passes ("
-               << proof.getGranuleBytes() << " bytes) they may end in,";
-          if (scaled)
-            os << " times " << proof.getInputBytes();
-          os << ", ";
-          printVolume(os, counted, proof.getInputBytes(), seq);
-          os << ", fall short of the bytes the input moved up to this "
-                "transfer";
-          if (scaled)
-            os << " times " << proof.getOutputBytes();
-          os << ", ";
-          printVolume(os, *push->through, proof.getOutputBytes(), seq);
-          auto isParameter = [](auto term) { return term.first >= 0; };
-          if (llvm::any_of(counted, isParameter) ||
-              llvm::any_of(*push->through, isParameter))
-            os << ", for some parameter values";
-        },
-        "; ");
-    if (proofs.size() > 1 && excess == proofs.size()) {
-      os << ". No one output's proof covers the input: it moves more than "
-            "each proves alone";
-      if (!exceeding.empty()) {
-        os << ", by how much depending on the runtime parameter";
-        if (exceeding.size() > 1)
-          os << "s";
-        os << " ";
-        llvm::interleaveComma(exceeding, os, [&](const auto &parameter) {
-          printParameter(os, parameter.first, parameter.second);
-        });
+    auto explainProof = [&](AIE::ConsumedByAttr proof, llvm::raw_ostream &os) {
+      auto output = deviceState.symbols->lookup<AIE::ShimDMAAllocationOp>(
+          proof.getOutput().getAttr());
+      os << "through " << proof.getOutput() << ", ";
+      if (!output) {
+        os << "that output is not in this device";
+        return;
       }
+      if (!configured || proofDevice(proof) != configured) {
+        os << "the proof describes the array of "
+           << (proof.getDevice()
+                   ? proof.getDevice()
+                   : FlatSymbolRefAttr::get(getOperation().getSymNameAttr()))
+           << ", which is not the one loaded";
+        return;
+      }
+      if (!leavesNothing(input, output, proof)) {
+        for (auto other : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
+          Verdict verdict;
+          Unbalanced why = stretchesUnbalanced(
+              other, nullptr, proofDevice(proof), input, output, {input},
+              {output}, proof, /*byChannel=*/false, &verdict);
+          Operation *where = verdict.where;
+          if (why == Unbalanced::No)
+            continue;
+          std::string note;
+          if (why == Unbalanced::Traffic) {
+            os << "another transfer shares their channels, which the "
+                  "counts do not describe";
+            note = "the other transfer";
+          } else if (why == Unbalanced::PartGranule) {
+            os << "a stretch of @" << other.getSymName()
+               << " may end with the output partway through an object of "
+                  "the join the proof passes ("
+               << proof.getGranuleBytes()
+               << " output bytes), whose later segments it has then taken "
+                  "less of";
+            note = "the stretch ends here";
+          } else if (why == Unbalanced::Unsized) {
+            os << "a transfer on them moves a byte count the compiler "
+                  "cannot follow (a BD chain, a loop, or a length "
+                  "parameter without min_value >= 0)";
+            note = "the transfer";
+          } else {
+            bool scaled = proof.getInputBytes() != proof.getOutputBytes();
+            os << "a stretch of @" << other.getSymName()
+               << " can end having moved more through the input than the "
+                  "output proves taken, so the next dispatch's counts do "
+                  "not start clean (input bytes";
+            if (scaled)
+              os << " times " << proof.getOutputBytes();
+            os << ", ";
+            printVolume(os, verdict.in, proof.getOutputBytes(), other);
+            os << ", against output bytes";
+            if (scaled)
+              os << " times " << proof.getInputBytes();
+            os << ", ";
+            printVolume(os, verdict.out, proof.getInputBytes(), other);
+            os << ")";
+            ++excess;
+            for (const auto &term : verdict.in) {
+              int64_t index = term.first;
+              auto taken = verdict.out.find(index);
+              if (index >= 0 &&
+                  term.second * proof.getOutputBytes() >
+                      (taken == verdict.out.end() ? 0 : taken->second) *
+                          proof.getInputBytes() &&
+                  llvm::none_of(exceeding, [&](const auto &seen) {
+                    return seen.first == index;
+                  }))
+                exceeding.push_back({index, other});
+            }
+            note = "the stretch ends here";
+          }
+          std::pair<Location, std::string> pointer = {
+              where ? where->getLoc() : other.getLoc(), note};
+          if (!llvm::is_contained(at, pointer))
+            at.push_back(pointer);
+          return;
+        }
+      }
+      auto pushes = loadState.pushesByAllocation.find(input);
+      auto order = pushCounts.find(task);
+      const AllocationPush *push =
+          pushes == loadState.pushesByAllocation.end() ||
+                  order == pushCounts.end()
+              ? nullptr
+              : llvm::find_if(pushes->second, [&](const AllocationPush &p) {
+                  return p.order == order->second.lastPushOrder;
+                });
+      if (!push || push == pushes->second.end() || !push->through) {
+        os << "the bytes the input has moved up to this transfer are not "
+              "known";
+        return;
+      }
+      auto awaited = loadState.awaitedThrough.find(output);
+      if (awaited == loadState.awaitedThrough.end()) {
+        os << "no await on it has retired a transfer yet";
+        return;
+      }
+      if (awaited->second.pushesBefore <= push->order) {
+        os << "no await on it has retired a transfer since this one was "
+              "pushed";
+        return;
+      }
+      const std::optional<Volume> &taken = awaited->second.through;
+      if (!taken) {
+        os << "the bytes its awaited transfers moved are not known";
+        return;
+      }
+      Volume counted = countedOutput(*taken, proof);
+      if (atMost(*push->through, proof.getOutputBytes(), counted,
+                 proof.getInputBytes())) {
+        os << "its awaited transfers cover this transfer's bytes, but "
+              "not those of every push of this task";
+        return;
+      }
+      bool scaled = proof.getInputBytes() != proof.getOutputBytes();
+      os << "the bytes its awaited transfers moved";
+      if (!wholeGranules(*taken, proof.getGranuleBytes()))
+        os << ", less the part of an object of the join the proof passes ("
+           << proof.getGranuleBytes() << " bytes) they may end in,";
+      if (scaled)
+        os << " times " << proof.getInputBytes();
+      os << ", ";
+      printVolume(os, counted, proof.getInputBytes(), seq);
+      os << ", fall short of the bytes the input moved up to this "
+            "transfer";
+      if (scaled)
+        os << " times " << proof.getOutputBytes();
+      os << ", ";
+      printVolume(os, *push->through, proof.getOutputBytes(), seq);
+      auto isParameter = [](auto term) { return term.first >= 0; };
+      if (llvm::any_of(counted, isParameter) ||
+          llvm::any_of(*push->through, isParameter))
+        os << ", for some parameter values";
+    };
+    for (AIE::ConsumedByAttr proof : proofs.getAsRange<AIE::ConsumedByAttr>()) {
+      std::string clause;
+      {
+        llvm::raw_string_ostream os(clause);
+        explainProof(proof, os);
+      }
+      why.push_back(std::move(clause));
+    }
+    if (proofs.size() > 1 && excess == proofs.size()) {
+      std::string clause;
+      {
+        llvm::raw_string_ostream os(clause);
+        os << "no one output's proof covers the input: it moves more than "
+              "each proves alone";
+        if (!exceeding.empty()) {
+          os << ", by how much depending on the runtime parameter";
+          if (exceeding.size() > 1)
+            os << "s";
+          os << " ";
+          llvm::interleaveComma(exceeding, os, [&](const auto &parameter) {
+            printParameter(os, parameter.first, parameter.second);
+          });
+        }
+      }
+      why.push_back(std::move(clause));
     }
   }
 
@@ -1583,10 +1599,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     auto [entry, inserted] = unsafeReuses.try_emplace(
         at, UnsafeReuse{id, tile.getCol(), tile.getRow(), {}});
     UnsafeReuse &reuse = entry->second;
-    if (inserted) {
-      llvm::raw_string_ostream os(reuse.why);
-      explainUnproven(released.configure, os, reuse.notes);
-    }
+    if (inserted)
+      explainUnproven(released.configure, reuse.why, reuse.notes);
     if (!llvm::is_contained(reuse.freeLocs, released.freeOp->getLoc()))
       reuse.freeLocs.push_back(released.freeOp->getLoc());
     reuse.tiles.insert({tile.getCol(), tile.getRow()});
@@ -1604,7 +1618,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     SmallVector<Location> freeLocs;
     std::set<std::pair<int, int>> tiles = {};
     int64_t count = 0;
-    std::string why = {};
+    SmallVector<std::string> why = {};
     SmallVector<std::pair<Location, std::string>> notes = {};
   };
   llvm::MapVector<Location, UnsafeReuse> unsafeReuses;
@@ -1633,9 +1647,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
              "running and this reprograms it underneath. Consume the "
              "outstanding tokens on the same tile, direction and channel "
              "through a task queued at or after this transfer -- each await "
-             "consumes the oldest token, regardless of the task it names. "
-             "The compiler cannot prove that transfer finished: "
-          << reuse.why;
+             "consumes the oldest token, regardless of the task it names.";
+      for (const std::string &why : reuse.why)
+        diag.attachNote() << "not proven finished: " << why;
       for (Location freeLoc : reuse.freeLocs)
         diag.attachNote(freeLoc) << "released here";
       for (auto &[noteLoc, text] : reuse.notes)

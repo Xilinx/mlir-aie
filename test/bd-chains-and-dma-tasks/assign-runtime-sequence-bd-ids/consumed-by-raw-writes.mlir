@@ -32,7 +32,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-note@+1 {{not proven finished: through @out, another transfer shares their channels, which the counts do not describe}}
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
@@ -77,7 +78,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-note@+1 {{not proven finished: through @out, another transfer shares their channels, which the counts do not describe}}
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
@@ -119,7 +121,8 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        // expected-note@+1 {{not proven finished: through @out, another transfer shares their channels, which the counts do not describe}}
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
