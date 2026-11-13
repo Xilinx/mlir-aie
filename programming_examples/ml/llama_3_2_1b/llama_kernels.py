@@ -66,7 +66,10 @@ def attn_block(*, tb=KV_TB):
     return KernelSource(
         "llama_attn_block.cc",
         [
-            "-O1",
+            # -O1 drops whole optimization-pass categories (inlining, DCE,
+            # VLIW bundling) and nets *larger* code here than -O2 on the
+            # pinned Peano; -Os keeps those passes and actually shrinks it.
+            "-Os",
             "-ffp-contract=off",
             f"-DLLAMA_ATTN_HEAD_DIM={HEAD_D}",
             f"-DLLAMA_ATTN_TB={tb}",
