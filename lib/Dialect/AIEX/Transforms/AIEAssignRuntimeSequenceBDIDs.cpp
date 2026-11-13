@@ -30,6 +30,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
@@ -79,10 +80,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   static constexpr llvm::StringLiteral kNoTokenAdvice =
       "it issues no token: set issue_token = true and wait for it, or await "
       "a later token-issuing transfer on its channel.";
-
-  // Bytes as a linear form in the sequence's scratchpad parameters: the
-  // constant at key -1, each parameter's coefficient at its state-table index.
-  using Volume = std::map<int64_t, int64_t>;
 
   // Whether `op` writes array registers raw, at an address it does not fix or
   // over one of `keys`' task queues, so pushing a task no count sees.
@@ -242,14 +239,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         unloaded.insert(task);
     gens.clear();
     liveByTile.clear();
-    holdsByChannel.clear();
-    holdsOn.clear();
-    copyOwned.clear();
     pendingAwaitReleases.clear();
     freedInFlight.clear();
-    pushesByAllocation.clear();
-    creditedPushes.clear();
-    awaitedThrough.clear();
+    loadState = {};
   }
 
   // Reject control flow the static path cannot lower. Constant-trip scf.for is
@@ -325,7 +317,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         }
         tokens--;
         queue.awaitToken(key);
-      } else if (QueueEffect raw = rawQueueEffect(op, *symbols);
+      } else if (QueueEffect raw = rawQueueEffect(op, *deviceState.symbols);
                  raw.kind == QueueEffect::Kind::Await) {
         // A raw wait may consume a token from a push this count cannot see,
         // such as a raw register write. Do not diagnose those here, but never
@@ -472,7 +464,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           for (auto [id, copy] : it->second)
             if (llvm::is_contained(blocked, id))
               copied.push_back({id, copy, true});
-        for (auto [owner, id] : copyOwned)
+        for (auto [owner, id] : loadState.copyOwned)
           if (owner == tile.getTileID() &&
               targetModel.isBdChannelAccessible(tile.getCol(), tile.getRow(),
                                                 id, op.getChannel()))
@@ -528,14 +520,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                << " buffer descriptor ID " << id
                << (isForbidden ? " while the task may run; "
                                : " until it is retired: ");
-          note << (rawQueueEffect(copy, *symbols).issuesToken ? kWaitForToken
-                                                              : kNoTokenAdvice);
+          note << (rawQueueEffect(copy, *deviceState.symbols).issuesToken
+                       ? kWaitForToken
+                       : kNoTokenAdvice);
         }
         return WalkResult::interrupt();
       }
       checkReallocation(tile, *next_id, bd_op.getLoc());
       bd_op.setBdId(next_id);
-      assignedHere.push_back(bd_op);
+      roundState.assignedHere.push_back(bd_op);
       return WalkResult::advance();
     });
     for (int32_t id : blocked)
@@ -567,11 +560,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   };
   std::map<DmaQueueModel::ChannelKey, ChannelPushes> startedOnChannel;
   uint64_t pushCount = 0;
-  // Per configure, its pushes in startedOnChannel and how many of them are not
-  // yet finished. A configure pushes onto its own channel alone.
-  llvm::DenseMap<Operation *, unsigned> startCount;
-  llvm::DenseMap<Operation *, unsigned> runningCount;
-  llvm::DenseMap<Operation *, uint64_t> lastPushOrder;
+  // Per configure, its pushes in startedOnChannel, how many of them are not
+  // yet finished, and the order of its latest one. A configure pushes onto
+  // its own channel alone.
+  struct PushCounts {
+    unsigned started = 0;
+    unsigned running = 0;
+    uint64_t lastPushOrder = 0;
+  };
+  llvm::DenseMap<Operation *, PushCounts> pushCounts;
 
   void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
                 bool issuesToken, Operation *origin,
@@ -580,13 +577,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     uint64_t order = pushCount++;
     startedOnChannel[key].tasks.push_back({task, origin, issuesToken, order});
     if (task) {
-      ++startCount[task];
-      ++runningCount[task];
-      lastPushOrder[task] = order;
+      PushCounts &counts = pushCounts[task];
+      ++counts.started;
+      ++counts.running;
+      counts.lastPushOrder = order;
     }
     if (!allocation)
       return;
-    auto &pushes = pushesByAllocation[allocation];
+    auto &pushes = loadState.pushesByAllocation[allocation];
     std::optional<Volume> through =
         pushes.empty() ? Volume() : pushes.back().through;
     if (through && moved)
@@ -606,15 +604,25 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   llvm::SmallPtrSet<Operation *, 16> reclaimed;
   // Configures whose ids went back to the pool by any route.
   llvm::SmallPtrSet<Operation *, 16> releasedTasks;
-  // Each top-level op's place in the sequence, and per lock the last place a
-  // task releasing it is configured or started (see reclaimFor).
-  llvm::DenseMap<Operation *, unsigned> positionOf;
-  llvm::DenseMap<Value, unsigned> lastReleaseOf;
+  // State scoped to one allocation attempt of one sequence: reset by
+  // assignment in resetPerSequenceState, which runs again for each
+  // reallocation round within a sequence.
+  struct RoundState {
+    // Each top-level op's place in the sequence, and per lock the last place
+    // a task releasing it is configured or started (see reclaimFor).
+    llvm::DenseMap<Operation *, unsigned> positionOf;
+    llvm::DenseMap<Value, unsigned> lastReleaseOf;
+    bool reallocate = false;
+    // What one allocation of the sequence did that the next undoes.
+    SmallVector<AIE::DMABDOp> assignedHere;
+    SmallVector<Operation *> insertedHere;
+  };
+  RoundState roundState;
 
   void indexLockReleases(AIE::RuntimeSequenceOp seq) {
     unsigned position = 0;
     for (Operation &op : seq.getBody().getOps()) {
-      positionOf[&op] = position++;
+      roundState.positionOf[&op] = position++;
       DMAConfigureTaskOp cfg = dyn_cast<DMAConfigureTaskOp>(op);
       if (auto start = dyn_cast<DMAStartTaskOp>(op))
         cfg = start.getTaskOp();
@@ -622,7 +630,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         continue;
       cfg.walk([&](AIE::UseLockOp lock) {
         if (lock.release())
-          lastReleaseOf[lock.getLock()] = positionOf[&op];
+          roundState.lastReleaseOf[lock.getLock()] = roundState.positionOf[&op];
       });
     }
   }
@@ -639,37 +647,30 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::TileID tile;
     int32_t id;
   };
-  std::map<DmaQueueModel::ChannelKey, std::deque<CopyHold>> holdsByChannel;
   using TileBdId = std::pair<AIE::TileID, int32_t>;
   struct HeldBy {
     NpuDmaMemcpyNdOp copy;
     bool issuesToken;
   };
-  llvm::DenseMap<TileBdId, std::map<uint64_t, HeldBy>> holdsOn;
-  llvm::DenseSet<TileBdId> copyOwned;
   // Per configure, the ids it may not take and the copy that reprograms each
   // while it may run.
   llvm::DenseMap<Operation *, SmallVector<std::pair<int32_t, Operation *>>>
       forbidden;
-  bool reallocate = false;
-  // What one allocation of the sequence did that the next undoes.
-  SmallVector<AIE::DMABDOp> assignedHere;
-  SmallVector<Operation *> insertedHere;
 
   // The oldest copy still holding `id` on `tile`, if copies hold it.
   const HeldBy *copyHolding(AIE::TileID tile, int32_t id) const {
-    if (!copyOwned.contains({tile, id}))
+    if (!loadState.copyOwned.contains({tile, id}))
       return nullptr;
-    return &holdsOn.find({tile, id})->second.begin()->second;
+    return &loadState.holdsOn.find({tile, id})->second.begin()->second;
   }
 
   // Return a task's id to the pool; a copy waiting for it takes it at once.
   void releaseTaskBdId(AIE::TileID tile, BdIdGenerator &gen, int32_t id) {
     gen.freeBdId(id);
-    if (!holdsOn.contains({tile, id}))
+    if (!loadState.holdsOn.contains({tile, id}))
       return;
     gen.assignBdId(id);
-    copyOwned.insert({tile, id});
+    loadState.copyOwned.insert({tile, id});
   }
 
   static DMAStartTaskOp startAfter(DMAConfigureTaskOp task, Operation *op) {
@@ -691,8 +692,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::TileOp tile = allocationOf(copy).getTileOp();
     AIE::TileID tileId = tile.getTileID();
     auto id = static_cast<int32_t>(copy.getId());
-    if (auto held = holdsOn.find({tileId, id});
-        held != holdsOn.end() && warnUnsafeBdReuse) {
+    if (auto held = loadState.holdsOn.find({tileId, id});
+        held != loadState.holdsOn.end() && warnUnsafeBdReuse) {
       const HeldBy &earlier = held->second.begin()->second;
       auto [entry, inserted] = copiesOverCopies.try_emplace(
           copy.getLoc(),
@@ -702,15 +703,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       entry->second.count++;
     }
     BdIdGenerator &gen = getGeneratorForTile(tile);
-    holdsByChannel[key].push_back({order, tileId, id});
-    holdsOn[{tileId, id}][order] = {copy, issuesToken};
+    loadState.holdsByChannel[key].push_back({order, tileId, id});
+    loadState.holdsOn[{tileId, id}][order] = {copy, issuesToken};
     if (!gen.bdIdAlreadyAssigned(id)) {
       checkReallocation(tile, id, copy.getLoc());
       gen.assignBdId(id);
-      copyOwned.insert({tileId, id});
+      loadState.copyOwned.insert({tileId, id});
       return success();
     }
-    if (copyOwned.contains({tileId, id}))
+    if (loadState.copyOwned.contains({tileId, id}))
       return success();
     for (DMAConfigureTaskOp task : liveByTile[tileId]) {
       if (releasedTasks.contains(task) || unloaded.contains(task))
@@ -722,14 +723,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       });
       if (!held)
         continue;
-      bool running = runningCount.lookup(task);
+      bool running = pushCounts.lookup(task).running;
       // A task not yet started even once has no prior push to its name: its
       // only start landing after the copy is its first, not a restart.
-      bool everStarted = lastPushOrder.contains(task);
+      bool everStarted = pushCounts.contains(task);
       DMAStartTaskOp restart = startAfter(task, copy);
       if (!running && !restart)
         return success();
-      if (!llvm::is_contained(assignedHere, held)) {
+      if (!llvm::is_contained(roundState.assignedHere, held)) {
         InFlightDiagnostic diag =
             task.emitOpError("Specified buffer descriptor ID ") << id;
         if (running)
@@ -758,7 +759,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                            [&](auto &entry) { return entry.first == id; }) &&
              "a forbidden id was handed out again");
       forbidden[task].push_back({id, copy});
-      reallocate = true;
+      roundState.reallocate = true;
       return success();
     }
     // The id was already taken in the generator, owned by neither a copy
@@ -782,8 +783,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   void releaseRetiredCopies(const DmaQueueModel::ChannelKey &key) {
-    auto holds = holdsByChannel.find(key);
-    if (holds == holdsByChannel.end())
+    auto holds = loadState.holdsByChannel.find(key);
+    if (holds == loadState.holdsByChannel.end())
       return;
     const ChannelPushes &channel = startedOnChannel[key];
     std::optional<uint64_t> oldest;
@@ -793,12 +794,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
            (!oldest || holds->second.front().order < *oldest)) {
       CopyHold hold = holds->second.front();
       holds->second.pop_front();
-      auto on = holdsOn.find({hold.tile, hold.id});
+      auto on = loadState.holdsOn.find({hold.tile, hold.id});
       on->second.erase(hold.order);
       if (!on->second.empty())
         continue;
-      holdsOn.erase(on);
-      if (copyOwned.erase({hold.tile, hold.id}))
+      loadState.holdsOn.erase(on);
+      if (loadState.copyOwned.erase({hold.tile, hold.id}))
         gens.find(hold.tile)->second.freeBdId(hold.id);
     }
   }
@@ -829,13 +830,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     size_t retired = std::distance(started.begin(), it) + 1;
     for (size_t i = 0; i < retired; ++i)
       if (DMAConfigureTaskOp task = started[i].task) {
-        --startCount[task];
+        --pushCounts[task].started;
         if (i >= channel.finished)
-          --runningCount[task];
+          --pushCounts[task].running;
       }
     for (size_t i = 0; i < retired; ++i)
       if (DMAConfigureTaskOp task = started[i].task)
-        if (startCount.lookup(task) == 0)
+        if (pushCounts.lookup(task).started == 0)
           knownComplete.insert(task);
     // Counts are cumulative, so the newest push an allocation retired here
     // credits all that its older ones would.
@@ -865,37 +866,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     for (size_t done = channel.tasks.size() - unfinished;
          channel.finished < done; ++channel.finished)
       if (DMAConfigureTaskOp task = channel.tasks[channel.finished].task)
-        if (--runningCount[task] == 0)
+        if (--pushCounts[task].running == 0)
           provenFinished.insert(task);
     releaseRetiredCopies(key);
-  }
-
-  // Whether a * scaleA <= b * scaleB whatever values the parameters take.
-  // Every parameter is at least 0, so it is enough to compare the terms one
-  // by one, a term missing from either side counting as 0.
-  static bool atMost(const Volume &a, int64_t scaleA, const Volume &b,
-                     int64_t scaleB) {
-    std::set<int64_t> keys;
-    for (const auto &term :
-         llvm::concat<const std::pair<const int64_t, int64_t>>(a, b))
-      keys.insert(term.first);
-    for (int64_t key : keys) {
-      auto x = a.find(key), y = b.find(key);
-      int64_t lhs = 0, rhs = 0;
-      if ((x != a.end() && llvm::MulOverflow(x->second, scaleA, lhs)) ||
-          (y != b.end() && llvm::MulOverflow(y->second, scaleB, rhs)) ||
-          lhs > rhs)
-        return false;
-    }
-    return true;
-  }
-
-  // Whether `bytes` is a multiple of `granule` whatever values the parameters
-  // take: every term is.
-  static bool wholeGranules(const Volume &bytes, int64_t granule) {
-    return !granule || llvm::all_of(bytes, [&](const auto &term) {
-      return term.second % granule == 0;
-    });
   }
 
   // The output bytes `proof` lets count: `received` rounded down to a
@@ -914,8 +887,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // share slots, so where `seq` does not list what it reads, every parameter
   // on the slot must be.
   bool nonNegative(AIE::RuntimeSequenceOp seq, int64_t index) {
-    auto [it, inserted] =
-        nonNegativeByIndex.try_emplace({seq.getOperation(), index}, false);
+    auto [it, inserted] = deviceState.nonNegativeByIndex.try_emplace(
+        {seq.getOperation(), index}, false);
     if (!inserted)
       return it->second;
     auto module = getOperation()->getParentOfType<ModuleOp>();
@@ -936,7 +909,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     it->second = found && held;
     return it->second;
   }
-  llvm::DenseMap<std::pair<Operation *, int64_t>, bool> nonNegativeByIndex;
 
   // The bytes one push of `cfg` by `start` moves, or nullopt where its chain
   // loops, iterates, continues outside its body, or takes its length from a
@@ -991,20 +963,34 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return volume;
   }
 
-  // The device's symbols; a task names one of its own device's allocations.
-  // runOnOperation sets it before visiting any op.
-  std::optional<SymbolTable> symbols;
-  // Each output's proofs, with the input that holds each.
-  llvm::DenseMap<
-      Operation *,
-      SmallVector<std::pair<AIE::ShimDMAAllocationOp, AIE::ConsumedByAttr>>>
-      proofsByOutput;
+  // State whose lifetime is this device's whole processing in runOnOperation,
+  // independent of which sequence or load is being walked: reset by
+  // assignment there, so a new field is reset without a hand-kept list.
+  struct DeviceState {
+    // The device's symbols; a task names one of its own device's
+    // allocations. runOnOperation sets this before visiting any op.
+    std::optional<SymbolTable> symbols;
+    // Each output's proofs, with the input that holds each.
+    llvm::DenseMap<
+        Operation *,
+        SmallVector<std::pair<AIE::ShimDMAAllocationOp, AIE::ConsumedByAttr>>>
+        proofsByOutput;
+    // Whether leavesNothing already proved (input, output) balanced, valid
+    // for the device's lifetime since nothing it depends on changes per
+    // sequence.
+    llvm::DenseMap<std::pair<Operation *, Operation *>, bool> balancedPairs;
+    // Whether the host library holds a scratchpad parameter at or above 0,
+    // by (sequence, state-table index); likewise device-lifetime.
+    llvm::DenseMap<std::pair<Operation *, int64_t>, bool> nonNegativeByIndex;
+  };
+  DeviceState deviceState;
 
   // The shim allocation `cfg` was configured for, when substitution kept it.
   AIE::ShimDMAAllocationOp allocationOf(DMAConfigureTaskOp cfg) {
     FlatSymbolRefAttr alloc = cfg.getAllocAttr();
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-    return alloc ? symbols->lookup<AIE::ShimDMAAllocationOp>(alloc.getAttr())
+    return alloc ? deviceState.symbols->lookup<AIE::ShimDMAAllocationOp>(
+                       alloc.getAttr())
                  : nullptr;
   }
 
@@ -1013,7 +999,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (!copy)
       return nullptr;
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-    return symbols->lookup<AIE::ShimDMAAllocationOp>(
+    return deviceState.symbols->lookup<AIE::ShimDMAAllocationOp>(
         copy.getMetadata().getRootReference());
   }
 
@@ -1024,11 +1010,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     uint64_t order;
     std::optional<Volume> through;
   };
-  llvm::DenseMap<Operation *, SmallVector<AllocationPush>> pushesByAllocation;
-  // Per (input, output), how many of the input's pushes that output has
-  // already proven taken: both counts only grow, so a credit resumes there.
-  llvm::DenseMap<std::pair<Operation *, Operation *>, size_t> creditedPushes;
-  llvm::DenseMap<std::pair<Operation *, Operation *>, bool> balancedPairs;
   // Per output, the bytes moved through its newest push an await retired since
   // the latest load (nullopt where unknown), and how many pushes the sequence
   // had issued by that await.
@@ -1036,7 +1017,19 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     std::optional<Volume> through;
     uint64_t pushesBefore;
   };
-  llvm::DenseMap<Operation *, Awaited> awaitedThrough;
+  // State valid for one "loaded device" span: wiped at the per-sequence
+  // reset and again whenever a new aiex.npu.load_pdi reconfigures the array.
+  struct LoadState {
+    llvm::DenseMap<Operation *, SmallVector<AllocationPush>> pushesByAllocation;
+    // Per (input, output), how many of the input's pushes that output has
+    // already proven taken: both counts only grow, so a credit resumes there.
+    llvm::DenseMap<std::pair<Operation *, Operation *>, size_t> creditedPushes;
+    llvm::DenseMap<Operation *, Awaited> awaitedThrough;
+    std::map<DmaQueueModel::ChannelKey, std::deque<CopyHold>> holdsByChannel;
+    llvm::DenseMap<TileBdId, std::map<uint64_t, HeldBy>> holdsOn;
+    llvm::DenseSet<TileBdId> copyOwned;
+  };
+  LoadState loadState;
 
   // Whether every stretch of every runtime sequence of this device, from its
   // start or a load to the next load or its end, ends with all of `input`'s
@@ -1049,7 +1042,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   bool leavesNothing(AIE::ShimDMAAllocationOp input,
                      AIE::ShimDMAAllocationOp output,
                      AIE::ConsumedByAttr proof) {
-    auto entry = balancedPairs.try_emplace({input, output}, true);
+    auto entry = deviceState.balancedPairs.try_emplace({input, output}, true);
     if (entry.second)
       entry.first->second = llvm::all_of(
           getOperation().getOps<AIE::RuntimeSequenceOp>(),
@@ -1081,21 +1074,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                module, ref)
                          : AIE::DeviceOp();
   }
-
-  // Why a stretch of `proof`'s device may leave `input`'s bytes behind.
-  enum class Unbalanced {
-    No,
-    // A push of either moves bytes no count follows: a parameter not held
-    // non-negative, a chain, or a loop of a dynamic-pool sequence.
-    Unsized,
-    // Other traffic shares their channels.
-    Traffic,
-    // The input moves more than the output proves taken.
-    Excess,
-    // The output may end partway through an object of the join its proof
-    // passes, whose later segments it has then taken less of.
-    PartGranule,
-  };
 
   // Whether each stretch of `seq` after `from` (all of them when null) with
   // `target` loaded ends with the bytes `proof`'s input channel moved covered
@@ -1131,16 +1109,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (!counting)
         return WalkResult::advance();
       if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
-        if (target && loaded == target &&
-            !wholeGranules(out, proof.getGranuleBytes())) {
-          why = Unbalanced::PartGranule;
-          if (at)
-            *at = {op, in, out};
-          return WalkResult::interrupt();
-        }
-        if (target && loaded == target &&
-            !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
-          why = Unbalanced::Excess;
+        if (target && loaded == target)
+          why = balanceUnder(proof, in, out);
+        if (why != Unbalanced::No) {
           if (at)
             *at = {op, in, out};
           return WalkResult::interrupt();
@@ -1160,7 +1131,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       std::optional<DmaQueueModel::ChannelKey> channel;
       if (cfg)
         channel = channelOf(cfg);
-      else if (QueueEffect raw = rawQueueEffect(op, *symbols);
+      else if (QueueEffect raw = rawQueueEffect(op, *deviceState.symbols);
                raw.kind == QueueEffect::Kind::Push)
         channel = raw.key;
       bool circuit = byChannel && allocation && !allocation.getPacket();
@@ -1195,12 +1166,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         (isInput ? in : out)[key] += bytes;
       return WalkResult::advance();
     });
-    if (why == Unbalanced::No && target && loaded == target &&
-        !wholeGranules(out, proof.getGranuleBytes()))
-      why = Unbalanced::PartGranule;
-    else if (why == Unbalanced::No && target && loaded == target &&
-             !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
-      why = Unbalanced::Excess;
+    if (why == Unbalanced::No && target && loaded == target)
+      why = balanceUnder(proof, in, out);
     if (at && why != Unbalanced::No && !at->where)
       *at = {nullptr, in, out};
     return why;
@@ -1236,16 +1203,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           if (!copied ||
               DmaQueueModel::keyOf(copy) != DmaQueueModel::keyOf(input))
             continue;
-          for (auto cp : copied.getAsRange<AIE::ConsumedByAttr>())
-            if (proofDevice(cp) == loaded)
-              // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-              if (auto out = symbols->lookup<AIE::ShimDMAAllocationOp>(
-                      cp.getOutput().getAttr());
-                  out &&
-                  DmaQueueModel::keyOf(out) == DmaQueueModel::keyOf(output)) {
-                inputs.push_back(copy);
-                outputs.push_back(out);
-              }
+          for (auto cp : copied.getAsRange<AIE::ConsumedByAttr>()) {
+            if (proofDevice(cp) != loaded)
+              continue;
+            // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+            auto out = deviceState.symbols->lookup<AIE::ShimDMAAllocationOp>(
+                cp.getOutput().getAttr());
+            if (out &&
+                DmaQueueModel::keyOf(out) == DmaQueueModel::keyOf(output)) {
+              inputs.push_back(copy);
+              outputs.push_back(out);
+            }
+          }
         }
         Unbalanced why = stretchesUnbalanced(seq, last, loaded, input, output,
                                              inputs, outputs, proof,
@@ -1289,9 +1258,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // `output`'s pushes up to `order` have finished; see recordConsumption in
   // aie-objectfifo-verify for why that finishes its inputs' pushes too.
   void creditInputs(AIE::ShimDMAAllocationOp output, uint64_t order) {
-    auto outPushes = pushesByAllocation.find(output);
-    auto proofs = proofsByOutput.find(output);
-    if (outPushes == pushesByAllocation.end() || proofs == proofsByOutput.end())
+    auto outPushes = loadState.pushesByAllocation.find(output);
+    auto proofs = deviceState.proofsByOutput.find(output);
+    if (outPushes == loadState.pushesByAllocation.end() ||
+        proofs == deviceState.proofsByOutput.end())
       return;
     auto byOrder = [](const auto &push, uint64_t bound) {
       return push.order < bound;
@@ -1300,7 +1270,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         llvm::lower_bound(outPushes->second, order, byOrder);
     if (done == outPushes->second.end() || done->order != order)
       return;
-    awaitedThrough[output] = {done->through, pushCount};
+    loadState.awaitedThrough[output] = {done->through, pushCount};
     if (!done->through)
       return;
     AIE::DeviceOp configured = opaqueLoad     ? AIE::DeviceOp()
@@ -1309,13 +1279,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     for (auto [input, proof] : proofs->second) {
       if (!configured || proofDevice(proof) != configured)
         continue;
-      auto inPushes = pushesByAllocation.find(input);
+      auto inPushes = loadState.pushesByAllocation.find(input);
       DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(input);
-      if (inPushes == pushesByAllocation.end() ||
+      if (inPushes == loadState.pushesByAllocation.end() ||
           !leavesNothing(input, output, proof))
         continue;
       ArrayRef<AllocationPush> pushes = inPushes->second;
-      size_t &credited = creditedPushes[{input, output}];
+      size_t &credited = loadState.creditedPushes[{input, output}];
       size_t covered = credited;
       Volume counted = countedOutput(*done->through, proof);
       for (; covered < pushes.size(); ++covered) {
@@ -1369,7 +1339,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // from 0, so a just-freed low id is the first one handed out again -- the
   // worst case for aliasing a BD that is still running.
   void noteFreedInFlight(DMAConfigureTaskOp cfg, Operation *freeOp) {
-    if (!startCount.lookup(cfg))
+    if (!pushCounts.lookup(cfg).started)
       return;
     AIE::TileOp tile = cfg.getTileOp();
     auto &ids = freedInFlight[{tile.getCol(), tile.getRow()}];
@@ -1434,7 +1404,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     llvm::interleave(
         proofs.getAsRange<AIE::ConsumedByAttr>(), os,
         [&](AIE::ConsumedByAttr proof) {
-          auto output = symbols->lookup<AIE::ShimDMAAllocationOp>(
+          auto output = deviceState.symbols->lookup<AIE::ShimDMAAllocationOp>(
               proof.getOutput().getAttr());
           os << "through " << proof.getOutput() << ", ";
           if (!output) {
@@ -1509,21 +1479,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               return;
             }
           }
-          auto pushes = pushesByAllocation.find(input);
-          auto order = lastPushOrder.find(task);
+          auto pushes = loadState.pushesByAllocation.find(input);
+          auto order = pushCounts.find(task);
           const AllocationPush *push =
-              pushes == pushesByAllocation.end() || order == lastPushOrder.end()
+              pushes == loadState.pushesByAllocation.end() ||
+                      order == pushCounts.end()
                   ? nullptr
                   : llvm::find_if(pushes->second, [&](const AllocationPush &p) {
-                      return p.order == order->second;
+                      return p.order == order->second.lastPushOrder;
                     });
           if (!push || push == pushes->second.end() || !push->through) {
             os << "the bytes the input has moved up to this transfer are not "
                   "known";
             return;
           }
-          auto awaited = awaitedThrough.find(output);
-          if (awaited == awaitedThrough.end()) {
+          auto awaited = loadState.awaitedThrough.find(output);
+          if (awaited == loadState.awaitedThrough.end()) {
             os << "no await on it has retired a transfer yet";
             return;
           }
@@ -1717,7 +1688,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return WalkResult::interrupt();
       }
       if (gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
-          !copyOwned.contains(
+          !loadState.copyOwned.contains(
               {task_op.getTileOp().getTileID(), bd.getBdId().value()})) {
         releaseTaskBdId(task_op.getTileOp().getTileID(), gen,
                         bd.getBdId().value());
@@ -1833,13 +1804,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return success();
       }
 
-    unsigned at = positionOf.lookup(op);
+    unsigned at = roundState.positionOf.lookup(op);
     auto waitsOnLater = [&](DMAConfigureTaskOp task) {
       bool waits = false;
       task.walk([&](AIE::UseLockOp lock) {
-        auto last = lastReleaseOf.find(lock.getLock());
+        auto last = roundState.lastReleaseOf.find(lock.getLock());
         waits |= (lock.acquire() || lock.acquireGE()) &&
-                 last != lastReleaseOf.end() && last->second >= at;
+                 last != roundState.lastReleaseOf.end() && last->second >= at;
       });
       return waits;
     };
@@ -1899,7 +1870,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     auto cst = [&](uint32_t v) {
       auto constant = arith::ConstantOp::create(b, op.getLoc(), b.getI32Type(),
                                                 b.getI32IntegerAttr(v));
-      insertedHere.push_back(constant);
+      roundState.insertedHere.push_back(constant);
       return constant.getResult();
     };
     Value maskValue = cst(mask);
@@ -1909,7 +1880,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                       maskValue,
                                       /*buffer=*/nullptr, /*column=*/nullptr,
                                       /*row=*/nullptr);
-    insertedHere.push_back(poll);
+    roundState.insertedHere.push_back(poll);
     SmallVector<int32_t> ids;
     victim.walk([&](AIE::DMABDOp bd) { ids.push_back(*bd.getBdId()); });
     // Not poll.emitRemark(): its "see current operation" note verifies and
@@ -1941,8 +1912,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pendingAwaitReleases.clear();
     startedOnChannel.clear();
     pushCount = 0;
-    startCount.clear();
-    runningCount.clear();
+    pushCounts.clear();
     knownComplete.clear();
     provenFinished.clear();
     reclaimed.clear();
@@ -1953,18 +1923,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     opaqueLoad = {};
     unloaded.clear();
     resetChannels.clear();
-    pushesByAllocation.clear();
-    creditedPushes.clear();
-    awaitedThrough.clear();
-    lastPushOrder.clear();
-    positionOf.clear();
-    lastReleaseOf.clear();
-    holdsByChannel.clear();
-    holdsOn.clear();
-    copyOwned.clear();
-    reallocate = false;
-    assignedHere.clear();
-    insertedHere.clear();
+    loadState = {};
+    roundState = {};
   }
 
   void warnLeaks(AIE::RuntimeSequenceOp sequence) {
@@ -1998,16 +1958,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::DeviceOp device = getOperation();
     staticBdIds.clear();
     loopingStarts.clear();
-    nonNegativeByIndex.clear();
-    balancedPairs.clear();
-    proofsByOutput.clear();
-    symbols.emplace(device);
+    deviceState = {};
+    deviceState.symbols.emplace(device);
     for (auto input : device.getOps<AIE::ShimDMAAllocationOp>())
       if (ArrayAttr proofs = input.getConsumedByAttr())
         for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>())
-          if (auto output = symbols->lookup<AIE::ShimDMAAllocationOp>(
-                  proof.getOutput().getAttr()))
-            proofsByOutput[output].push_back({input, proof});
+          if (auto output =
+                  deviceState.symbols->lookup<AIE::ShimDMAAllocationOp>(
+                      proof.getOutput().getAttr()))
+            deviceState.proofsByOutput[output].push_back({input, proof});
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
       if (failed(checkForeignTail(seq)))
@@ -2088,7 +2047,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           if (failed(recycleTask(freeOp.getTask(), freeOp, /*isAwait=*/false)))
             return WalkResult::interrupt();
           frees.push_back(freeOp);
-        } else if (QueueEffect raw = rawQueueEffect(op, *symbols);
+        } else if (QueueEffect raw = rawQueueEffect(op, *deviceState.symbols);
                    raw.kind == QueueEffect::Kind::Await) {
           noteAwaited(raw.key);
           if (failed(recycleCompletedTasks(op)))
@@ -2101,7 +2060,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           if (copy) {
             if (failed(holdCopy(copy, raw.key, pushCount - 1, raw.issuesToken)))
               return WalkResult::interrupt();
-            if (reallocate)
+            if (roundState.reallocate)
               return WalkResult::interrupt();
           }
         }
@@ -2118,7 +2077,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       std::vector<Diagnostic> held;
       for (;;) {
         resetPerSequenceState();
-        // positionOf/lastReleaseOf only ever feed reclaimFor.
+        // roundState.positionOf/roundState.lastReleaseOf only ever feed
+        // reclaimFor.
         if (reclaimBds)
           indexLockReleases(seq);
         frees.clear();
@@ -2133,11 +2093,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           });
           r = seq.walk(visit);
         }
-        if (!reallocate)
+        if (!roundState.reallocate)
           break;
-        for (AIE::DMABDOp bd : assignedHere)
+        for (AIE::DMABDOp bd : roundState.assignedHere)
           bd.removeBdIdAttr();
-        for (Operation *inserted : llvm::reverse(insertedHere))
+        for (Operation *inserted : llvm::reverse(roundState.insertedHere))
           inserted->erase();
         unsafeReuses = reusesBefore;
         copiesOverCopies = copiesBefore;
