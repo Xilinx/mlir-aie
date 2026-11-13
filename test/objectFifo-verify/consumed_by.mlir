@@ -9,8 +9,11 @@
 // consumed: once the host has received R bytes through the output, the first
 // R * input_bytes / output_bytes bytes the input sent have been taken.
 
-// RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-verify %s | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform %s | FileCheck %s --check-prefix=ALLOC
+// RUN: sed -e '/^ *\/\/ RTP-ROW-DESIGN$/{r %S/Inputs/rtp_row_design.mlir' -e 'd;}' %s | aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-verify | FileCheck %s
+// RUN: sed -e '/^ *\/\/ RTP-ROW-DESIGN$/{r %S/Inputs/rtp_row_design.mlir' -e 'd;}' %s | aie-opt --split-input-file --aie-objectFifo-stateful-transform | FileCheck %s --check-prefix=ALLOC
+
+// A case's RTP-ROW-DESIGN line stands for the tiles, fifos and core of
+// Inputs/rtp_row_design.mlir, which the RUN lines expand in place.
 
 // A core taking one object of `in` before releasing each object of `out`.
 // Allocation moves the proof onto the input's shim_dma_allocation, its output
@@ -250,38 +253,7 @@ module @broadcast {
 // CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_row {
   aie.device(npu2) {
-    %shim = aie.tile(0, 0)
-    %shim1 = aie.tile(1, 0)
-    %core = aie.tile(0, 2)
-    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
-    %barrier = aie.lock(%core)
-    aie.core(%core) {
-      %c0 = arith.constant 0 : index
-      %one = arith.constant 1 : i32
-      %c1 = arith.constant 1 : index
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
-        %n = memref.load %rtp[%c0] : memref<1xi32>
-        aie.use_lock(%barrier, Release, %one)
-        %cols = arith.index_cast %n : i32 to index
-        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
-        scf.for %j = %c0 to %cols step %c1 {
-          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
-          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
-          aie.objectfifo.release @x(Consume, 1)
-          aie.objectfifo.release @out(Produce, 1)
-        }
-        aie.objectfifo.release @angle(Consume, 1)
-        scf.yield
-      }
-      aie.end
-    }
+    // RTP-ROW-DESIGN
     aie.runtime_sequence @seq(%a: memref<128xbf16>) {
       %c24 = arith.constant 24 : i32
       aiex.npu.rtp_write(@rtp, 0, %c24) : i32
@@ -301,38 +273,7 @@ module @rtp_row {
 // CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_two_values {
   aie.device(npu2) {
-    %shim = aie.tile(0, 0)
-    %shim1 = aie.tile(1, 0)
-    %core = aie.tile(0, 2)
-    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
-    %barrier = aie.lock(%core)
-    aie.core(%core) {
-      %c0 = arith.constant 0 : index
-      %one = arith.constant 1 : i32
-      %c1 = arith.constant 1 : index
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
-        %n = memref.load %rtp[%c0] : memref<1xi32>
-        aie.use_lock(%barrier, Release, %one)
-        %cols = arith.index_cast %n : i32 to index
-        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
-        scf.for %j = %c0 to %cols step %c1 {
-          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
-          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
-          aie.objectfifo.release @x(Consume, 1)
-          aie.objectfifo.release @out(Produce, 1)
-        }
-        aie.objectfifo.release @angle(Consume, 1)
-        scf.yield
-      }
-      aie.end
-    }
+    // RTP-ROW-DESIGN
     aie.runtime_sequence @wide(%a: memref<128xbf16>) {
       %c24 = arith.constant 24 : i32
       aiex.npu.rtp_write(@rtp, 0, %c24) : i32
@@ -358,38 +299,7 @@ module @rtp_two_values {
 // CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_set_before_write {
   aie.device(npu2) {
-    %shim = aie.tile(0, 0)
-    %shim1 = aie.tile(1, 0)
-    %core = aie.tile(0, 2)
-    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
-    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
-    %barrier = aie.lock(%core)
-    aie.core(%core) {
-      %c0 = arith.constant 0 : index
-      %one = arith.constant 1 : i32
-      %c1 = arith.constant 1 : index
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
-        %n = memref.load %rtp[%c0] : memref<1xi32>
-        aie.use_lock(%barrier, Release, %one)
-        %cols = arith.index_cast %n : i32 to index
-        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
-        scf.for %j = %c0 to %cols step %c1 {
-          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
-          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
-          aie.objectfifo.release @x(Consume, 1)
-          aie.objectfifo.release @out(Produce, 1)
-        }
-        aie.objectfifo.release @angle(Consume, 1)
-        scf.yield
-      }
-      aie.end
-    }
+    // RTP-ROW-DESIGN
     aie.runtime_sequence @seq(%a: memref<128xbf16>) {
       %c1 = arith.constant 1 : i32
       aiex.set_lock(%barrier, %c1)
