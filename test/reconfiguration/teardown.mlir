@@ -408,59 +408,33 @@ module {
 
 // -----
 
-// The teardown grants each lock request a stopped core or channel can have left
-// pending, while the cores are disabled and the channels held in reset, then
-// zeroes the lock: (0, 2)'s lock 0 the channel's largest acquire (2), lock 1 the
-// acquire (0, 3)'s core makes on its neighbour (1), lock 5 the acquire-equal of
-// (0, 2)'s core (1).
+// The teardown grants each lock request a disabled core can have left pending,
+// then zeroes the lock: (0, 2)'s lock 1 the largest lock value, for the
+// greater-equal acquire (0, 3)'s core makes on its neighbour, and lock 5 1, for
+// the acquire-equal of (0, 2)'s core.
 
 // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<16xi32>)
 // CHECK-DAG:  %[[CORE_LOW:.*]] = arith.constant 2301952 : i32
 // CHECK-DAG:  %[[CORE_HIGH:.*]] = arith.constant 3350528 : i32
-// CHECK-DAG:  %[[S2MM0:.*]] = arith.constant 2219520 : i32
-// CHECK-DAG:  %[[LOCK0:.*]] = arith.constant 2224128 : i32
 // CHECK-DAG:  %[[LOCK1:.*]] = arith.constant 2224144 : i32
 // CHECK-DAG:  %[[LOCK5:.*]] = arith.constant 2224208 : i32
 // CHECK-DAG:  %[[ZERO:.*]] = arith.constant 0 : i32
 // CHECK-DAG:  %[[ONE:.*]] = arith.constant 1 : i32
-// CHECK-DAG:  %[[TWO:.*]] = arith.constant 2 : i32
+// CHECK-DAG:  %[[MAX:.*]] = arith.constant 63 : i32
 // CHECK:      aiex.npu.sync
 // CHECK:      aiex.npu.maskwrite32(%[[CORE_LOW]], %[[ZERO]], %[[ONE]])
 // CHECK-NEXT: aiex.npu.maskwrite32(%[[CORE_HIGH]], %[[ZERO]], %[[ONE]])
-// CHECK-NEXT: aiex.npu.maskwrite32(%[[S2MM0]], %[[TWO]], %[[TWO]])
-// CHECK-NEXT: aiex.npu.write32(%[[LOCK0]], %[[TWO]])
-// CHECK-NEXT: aiex.npu.write32(%[[LOCK0]], %[[ZERO]])
-// CHECK-NEXT: aiex.npu.write32(%[[LOCK1]], %[[ONE]])
+// CHECK-NEXT: aiex.npu.write32(%[[LOCK1]], %[[MAX]])
 // CHECK-NEXT: aiex.npu.write32(%[[LOCK1]], %[[ZERO]])
 // CHECK-NEXT: aiex.npu.write32(%[[LOCK5]], %[[ONE]])
 // CHECK-NEXT: aiex.npu.write32(%[[LOCK5]], %[[ZERO]])
-// CHECK-NEXT: aiex.npu.write32(%[[S2MM0]], %[[ZERO]])
 
 module {
   aie.device(npu2_1col) @cfg {
     %low = aie.tile(0, 2)
     %high = aie.tile(0, 3)
-    %buf = aie.buffer(%low) {address = 1024 : i32, sym_name = "buf"} : memref<16xi32>
-    %in_prod = aie.lock(%low, 0) {init = 2 : i32}
     %shared = aie.lock(%low, 1) {init = 0 : i32}
     %param = aie.lock(%low, 5) {init = 0 : i32}
-    %mem = aie.mem(%low) {
-      %v1 = arith.constant 1 : i32
-      %v2 = arith.constant 2 : i32
-      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-    ^bb1:
-      aie.use_lock(%in_prod, AcquireGreaterEqual, %v1)
-      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32, next_bd_id = 1 : i32}
-      aie.use_lock(%in_prod, Release, %v1)
-      aie.next_bd ^bb2
-    ^bb2:
-      aie.use_lock(%in_prod, AcquireGreaterEqual, %v2)
-      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 1 : i32, next_bd_id = 0 : i32}
-      aie.use_lock(%in_prod, Release, %v2)
-      aie.next_bd ^bb1
-    ^bb3:
-      aie.end
-    }
     %core_low = aie.core(%low) {
       %v1 = arith.constant 1 : i32
       aie.use_lock(%param, Acquire, %v1)

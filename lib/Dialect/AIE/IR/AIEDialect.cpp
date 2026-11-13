@@ -5842,8 +5842,7 @@ static void printTraceRegValue(OpAsmPrinter &printer, Operation *op,
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
 
 std::optional<ArrayAttr> xilinx::AIE::lockAcquires(CoreOp core) {
-  std::map<std::tuple<int, int, int>, int> greaterEqual;
-  std::set<std::tuple<int, int, int, int>> equal;
+  std::map<std::tuple<int, int, int>, std::pair<bool, std::set<int>>> locks;
   WalkResult walk = core.walk([&](UseLockOp use) {
     if (use.release() || use.getTimeout() == 0)
       return WalkResult::advance();
@@ -5853,30 +5852,28 @@ std::optional<ArrayAttr> xilinx::AIE::lockAcquires(CoreOp core) {
       use.emitOpError("acquires a lock without an id");
       return WalkResult::interrupt();
     }
+    TileOp tile = lock.getTileOp();
+    auto &[greaterEqual, equal] = locks[{tile.getCol(), tile.getRow(), *id}];
+    if (!use.acquire()) {
+      greaterEqual = true;
+      return WalkResult::advance();
+    }
     FailureOr<int32_t> value = use.getConstantValue();
     if (failed(value))
       return WalkResult::interrupt();
-    TileOp tile = lock.getTileOp();
-    if (use.acquire()) {
-      equal.insert({tile.getCol(), tile.getRow(), *id,
-                    *value}); // NOLINT(bugprone-unchecked-optional-access)
-    } else {
-      int &largest = greaterEqual[{tile.getCol(), tile.getRow(), *id}];
-      largest = std::max(largest,
-                         *value); // NOLINT(bugprone-unchecked-optional-access)
-    }
+    equal.insert(*value); // NOLINT(bugprone-unchecked-optional-access)
     return WalkResult::advance();
   });
   if (walk.wasInterrupted())
     return std::nullopt;
   Builder b(core.getContext());
   SmallVector<Attribute> acquires;
-  for (auto [key, value] : greaterEqual) {
+  for (auto &[key, waits] : locks) {
     auto [col, row, id] = key;
-    acquires.push_back(b.getDenseI32ArrayAttr({col, row, id, value, 0}));
+    SmallVector<int32_t> entry = {col, row, id, waits.first};
+    entry.append(waits.second.begin(), waits.second.end());
+    acquires.push_back(b.getDenseI32ArrayAttr(entry));
   }
-  for (auto [col, row, id, value] : equal)
-    acquires.push_back(b.getDenseI32ArrayAttr({col, row, id, value, 1}));
   return b.getArrayAttr(acquires);
 }
 

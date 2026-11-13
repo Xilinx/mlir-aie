@@ -818,11 +818,10 @@ def AIEAnnotateCoreLockAcquires
     and the body is gone once the core is compiled.
 
     This pass sets `aiex.lock_acquires` on each `aie.core` with a body: one
-    `array<i32: col, row, lock, value, equal>` per lock the core acquires with
-    a blocking acquire, where `equal` is 1 for an acquire-equal, whose value is
-    listed once per distinct value, and 0 for an acquire-greater-equal, whose
-    value is the core's largest. An acquire value that is not a constant is an
-    error.
+    `array<i32: col, row, lock, greaterEqual, values...>` per lock the core
+    acquires with a blocking acquire, where `greaterEqual` is 1 if an acquire
+    is greater-equal, followed by each distinct acquire-equal value. An
+    acquire-equal value that is not a constant is an error.
   }];
 
   let constructor = "xilinx::AIEX::createAIEAnnotateCoreLockAcquiresPass()";

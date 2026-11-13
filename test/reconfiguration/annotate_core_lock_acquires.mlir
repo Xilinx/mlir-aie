@@ -7,10 +7,10 @@
 
 // RUN: aie-opt --aie-annotate-core-lock-acquires --split-input-file --verify-diagnostics %s | FileCheck %s
 
-// Per lock, the largest acquire-greater-equal value and each acquire-equal
-// value, including a neighbour's lock; a non-blocking acquire leaves no wait.
+// Per lock, whether an acquire is greater-equal and each acquire-equal value,
+// including a neighbour's lock; a non-blocking acquire leaves no wait.
 
-// CHECK: } {aiex.lock_acquires = [array<i32: 0, 2, 1, 2, 0>, array<i32: 0, 3, 0, 1, 0>, array<i32: 0, 3, 5, 1, 1>, array<i32: 0, 3, 5, 2, 1>]
+// CHECK: } {aiex.lock_acquires = [array<i32: 0, 2, 1, 1>, array<i32: 0, 3, 0, 1>, array<i32: 0, 3, 5, 0, 1, 2>]
 
 module {
   aie.device(npu2) {
@@ -46,7 +46,7 @@ module {
       %buf = memref.alloca() : memref<1xi32>
       %v = memref.load %buf[%c0] : memref<1xi32>
       // expected-error@+1 {{expected the lock value to be a compile-time constant}}
-      aie.use_lock(%lock, AcquireGreaterEqual, %v)
+      aie.use_lock(%lock, Acquire, %v)
       aie.end
     }
   }

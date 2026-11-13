@@ -72,10 +72,10 @@ requires a full ELF:
 - `--reconfig-teardown` (with `--expand-load-pdis` or `--load-pdi-to-ctrl-pkt`):
   before the next load, or at the sequence's end, each configuration disables
   the stream-switch circuits and packet ports it set, disables its cores and
-  resets the memtile and core-tile DMA channels it started. A core or channel
-  stopped in a lock acquire leaves the request pending in the lock's tile, so
-  while they are stopped the teardown writes each lock they acquire the value
-  that grants it, then 0. A sequence then
+  resets the memtile and core-tile DMA channels it started. A core stopped in
+  a lock acquire leaves the request pending in the lock's tile, so while the
+  cores are disabled the teardown writes each lock they acquire the values that
+  grant it, then 0. A sequence then
   keeps only its first reset or overlay load. A device that starts a shim DMA
   channel itself is refused, since shim channels have no reset. Under
   `--expand-load-pdis` the teardown is an `aiex.npu.write_teardown`. On by

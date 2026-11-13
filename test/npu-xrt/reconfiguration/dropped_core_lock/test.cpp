@@ -1,12 +1,13 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Runs main:sequence three times and checks @a's and @b's output slices; a run
-// that does not finish in time fails.
+// Runs main:sequence three times, or argv[1] times, and checks @a's and @b's
+// output slices; a run that does not finish in time fails.
 
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 
 #include <xrt/experimental/xrt_elf.h>
@@ -18,7 +19,8 @@
 
 constexpr int SLICE = 16;
 
-int main() {
+int main(int argc, const char *argv[]) {
+  int passes = argc > 1 ? std::atoi(argv[1]) : 3;
   auto device = xrt::device(0);
   xrt::elf elf{"aie.elf"};
   xrt::hw_context context(device, elf);
@@ -30,7 +32,7 @@ int main() {
     in[i] = 1000 + i;
   bo_in.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   int failures = 0;
-  for (int pass = 0; pass < 3; pass++) {
+  for (int pass = 0; pass < passes; pass++) {
     std::fill(out, out + 2 * SLICE, -1);
     bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     auto kernel = xrt::ext::kernel(context, "main:sequence");

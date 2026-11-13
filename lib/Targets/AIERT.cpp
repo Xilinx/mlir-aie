@@ -31,6 +31,7 @@ extern "C" {
 
 #include <filesystem>
 #include <map>
+#include <set>
 #include <tuple>
 
 #define AIERC_STR(x) x, #x
@@ -928,59 +929,42 @@ LogicalResult xilinx::AIE::AIERTControl::disableCores(DeviceOp &targetOp) {
   return success();
 }
 
-namespace {
-using namespace xilinx::AIE;
-using UsedChannel = std::tuple<TileID, Operation *, DMAChannelDir, int>;
-
-// The DMA channels each memory and memory-tile DMA region uses, with the op
-// that names each, in region order.
-SmallVector<UsedChannel> usedDmaChannels(DeviceOp targetOp) {
-  SmallVector<UsedChannel> channels;
+LogicalResult xilinx::AIE::AIERTControl::resetDmaChannels(DeviceOp &targetOp) {
   auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
   llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
   for (TileElement memOp : memOps) {
     TileID tile = memOp.getTileID();
-    llvm::SmallSet<std::pair<DMAChannelDir, int>, 4> seen;
-    auto add = [&](Operation *op, DMAChannelDir dir, int channel) {
-      if (seen.insert({dir, channel}).second)
-        channels.push_back({tile, op, dir, channel});
+    XAie_LocType tileLoc = XAie_TileLoc(tile.col, tile.row);
+    llvm::SmallSet<std::pair<DMAChannelDir, int>, 4> reset;
+    auto resetChannel = [&](Operation *op, DMAChannelDir dir,
+                            int channel) -> LogicalResult {
+      if (!reset.insert({dir, channel}).second)
+        return success();
+      TxnLocBracket bracket(*this, op->getLoc());
+      XAie_DmaDirection direction =
+          dir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelReset, &aiert->devInst,
+                              tileLoc, channel, direction,
+                              XAie_DmaChReset::DMA_CHANNEL_RESET);
+      // Writing a fresh descriptor ends the reset and returns every field of
+      // the control register, such as out-of-order mode, to its reset value.
+      XAie_DmaChannelDesc defaults;
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelDescInit, &aiert->devInst,
+                              &defaults, tileLoc);
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaWriteChannel, &aiert->devInst,
+                              &defaults, tileLoc, channel, direction);
+      return success();
     };
     Region &region = memOp.getOperation()->getRegion(0);
     for (auto dmaOp : region.getOps<DMAOp>())
-      add(dmaOp, dmaOp.getChannelDir(), dmaOp.getChannelIndex());
+      if (failed(resetChannel(dmaOp, dmaOp.getChannelDir(),
+                              dmaOp.getChannelIndex())))
+        return failure();
     for (Block *block : getOrderedChainOfBlocks(&region))
       for (auto startOp : block->getOps<DMAStartOp>())
-        add(startOp, startOp.getChannelDir(), startOp.getChannelIndex());
-  }
-  return channels;
-}
-} // namespace
-
-LogicalResult
-xilinx::AIE::AIERTControl::holdDmaChannelsInReset(DeviceOp &targetOp) {
-  for (auto [tile, op, dir, channel] : usedDmaChannels(targetOp)) {
-    TxnLocBracket bracket(*this, op->getLoc());
-    TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelReset, &aiert->devInst,
-                            XAie_TileLoc(tile.col, tile.row), channel,
-                            dir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S,
-                            XAie_DmaChReset::DMA_CHANNEL_RESET);
-  }
-  return success();
-}
-
-LogicalResult
-xilinx::AIE::AIERTControl::releaseDmaChannels(DeviceOp &targetOp) {
-  for (auto [tile, op, dir, channel] : usedDmaChannels(targetOp)) {
-    TxnLocBracket bracket(*this, op->getLoc());
-    XAie_LocType tileLoc = XAie_TileLoc(tile.col, tile.row);
-    // Writing a fresh descriptor ends the reset and returns every field of
-    // the control register, such as out-of-order mode, to its reset value.
-    XAie_DmaChannelDesc defaults;
-    TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelDescInit, &aiert->devInst,
-                            &defaults, tileLoc);
-    TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaWriteChannel, &aiert->devInst,
-                            &defaults, tileLoc, channel,
-                            dir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S);
+        if (failed(resetChannel(startOp, startOp.getChannelDir(),
+                                startOp.getChannelIndex())))
+          return failure();
   }
   return success();
 }
@@ -1012,90 +996,42 @@ std::optional<bool> xilinx::AIE::waitsOnOtherTiles(DeviceOp device) {
   return false;
 }
 
-// A core or DMA channel blocked in a lock acquire leaves the request pending in
-// the lock's tile; disabling or resetting the requester does not remove it, so
-// a later configuration's use of the lock would grant it. Each such request is
-// granted here, while its requester is disabled or in reset and cannot act on
-// it: per lock, the sum of the acquire-greater-equal values its waiters can
-// need (one waiter per core or channel), then each acquire-equal value, then 0.
+// A core blocked in a lock acquire leaves the request pending in the lock's
+// tile; disabling or resetting the core does not remove it, so a later
+// configuration's use of the lock would grant it. Each such request is granted
+// here, while the core is disabled: per lock, the largest lock value if a core
+// acquires it greater-equal, then each acquire-equal value, then 0.
 LogicalResult xilinx::AIE::AIERTControl::releaseLockWaits(DeviceOp &targetOp) {
   struct Waits {
-    int greaterEqual = 0;
-    SmallVector<int> equal;
+    bool greaterEqual = false;
+    std::set<int> equal;
     Operation *op = nullptr;
   };
   std::map<std::tuple<int, int, int>, Waits> locks;
-  auto add = [&](Operation *op, int col, int row, int id, int value,
-                 bool equal) {
-    Waits &waits = locks[{col, row, id}];
-    if (!waits.op)
-      waits.op = op;
-    if (equal)
-      waits.equal.push_back(value);
-    else
-      waits.greaterEqual += value;
-  };
   for (auto coreOp : targetOp.getOps<CoreOp>()) {
     std::optional<ArrayAttr> acquires = recordedLockAcquires(coreOp);
     if (!acquires)
       return failure();
     for (auto acquire : acquires->getAsRange<DenseI32ArrayAttr>()) {
       ArrayRef<int32_t> f = acquire.asArrayRef();
-      add(coreOp, f[0], f[1], f[2], f[3], f[4] != 0);
-    }
-  }
-  for (auto [tile, op, dir, channel] : usedDmaChannels(targetOp)) {
-    SmallVector<Block *> blocks;
-    if (auto dma = dyn_cast<DMAOp>(op)) {
-      for (Region &bd : dma.getBds())
-        blocks.push_back(&bd.front());
-    } else {
-      llvm::SmallPtrSet<Block *, 8> seen;
-      for (Block *block = cast<DMAStartOp>(op).getDest();
-           block && seen.insert(block).second;) {
-        blocks.push_back(block);
-        auto next = block->getOps<NextBDOp>();
-        block = next.empty() ? nullptr : (*next.begin()).getDest();
-      }
-    }
-    std::map<std::tuple<int, int, int>, int> greaterEqual;
-    for (Block *block : blocks) {
-      for (auto use : block->getOps<UseLockOp>()) {
-        if (use.release() || use.getTimeout() == 0)
-          continue;
-        LockOp lock = use.getLockOp();
-        std::optional<int> id = lock.getLockID();
-        FailureOr<int32_t> constant = use.getConstantValue();
-        if (!id || failed(constant))
-          return use.emitOpError("cannot be released by the teardown");
-        int value = *constant; // NOLINT(bugprone-unchecked-optional-access)
-        TileOp lockTile = lock.getTileOp();
-        if (use.acquire()) {
-          add(use, lockTile.getCol(), lockTile.getRow(), *id, value, true);
-          continue;
-        }
-        int &largest =
-            greaterEqual[{lockTile.getCol(), lockTile.getRow(), *id}];
-        largest = std::max(largest, value);
-      }
-    }
-    for (auto [key, value] : greaterEqual) {
-      auto [col, row, id] = key;
-      add(op, col, row, id, value, false);
+      Waits &waits = locks[{f[0], f[1], f[2]}];
+      if (!waits.op)
+        waits.op = coreOp;
+      waits.greaterEqual |= f[3] != 0;
+      waits.equal.insert(f.begin() + 4, f.end());
     }
   }
   for (auto &[key, waits] : locks) {
     auto [col, row, id] = key;
     TxnLocBracket bracket(*this, waits.op->getLoc());
-    XAie_LocType tileLoc = XAie_TileLoc(col, row);
     SmallVector<int> values;
     if (waits.greaterEqual)
-      values.push_back(std::min(waits.greaterEqual, 63));
+      values.push_back(targetModel.getMaxLockValue());
     llvm::append_range(values, waits.equal);
     values.push_back(0);
     for (int value : values)
       TRY_XAIE_API_EMIT_ERROR((*waits.op), XAie_LockSetValue, &aiert->devInst,
-                              tileLoc, XAie_LockInit(id, value));
+                              XAie_TileLoc(col, row), XAie_LockInit(id, value));
   }
   return success();
 }

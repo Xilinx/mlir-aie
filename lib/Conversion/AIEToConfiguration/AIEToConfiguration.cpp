@@ -814,17 +814,17 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (!targetModel.hasProperty(AIETargetModel::IsNPU))
     return failure();
 
-  // Stop the configuration, then grant the lock requests its stopped cores and
-  // channels can have left pending. Control packets to different tiles may
-  // land in any order, so a core waiting on another tile's lock needs a
-  // barrier between the two.
+  // Stop the configuration, then grant the lock requests its disabled cores
+  // can have left pending. Control packets to different tiles may land in any
+  // order, so a core waiting on another tile's lock needs a barrier between
+  // the two.
   AIERTControl stop(targetModel);
   if (failed(stop.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
     return failure();
   stop.startTransaction();
   if (failed(stop.teardownSwitches(device, skipCtrlPktOverlay)) ||
       failed(stop.disableCores(device)) ||
-      failed(stop.holdDmaChannelsInReset(device)) ||
+      failed(stop.resetDmaChannels(device)) ||
       failed(
           insertRecordedTransaction(stop, builder, outputType, blockwriteData,
                                     skipCtrlPktOverlay ? device : DeviceOp{})))
@@ -838,8 +838,7 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (failed(drain.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
     return failure();
   drain.startTransaction();
-  if (failed(drain.releaseLockWaits(device)) ||
-      failed(drain.releaseDmaChannels(device)))
+  if (failed(drain.releaseLockWaits(device)))
     return failure();
   return insertRecordedTransaction(drain, builder, outputType, blockwriteData,
                                    skipCtrlPktOverlay ? device : DeviceOp{});

@@ -450,10 +450,10 @@ inline bool isDirectional(WireBundle bundle) {
 }
 
 // The blocking acquires `core`'s body can leave it waiting on, one
-// `array<i32: col, row, lock, value, equal>` per lock: `equal` 1 for each
-// distinct acquire-equal value, 0 for the largest acquire-greater-equal value.
-// None, after an error, for an acquire value that is not a constant or a lock
-// without an id.
+// `array<i32: col, row, lock, greaterEqual, values...>` per lock:
+// `greaterEqual` 1 if an acquire is greater-equal, then each distinct
+// acquire-equal value. None, after an error, for an acquire-equal value that is
+// not a constant or a lock without an id.
 std::optional<mlir::ArrayAttr> lockAcquires(CoreOp core);
 
 void collectTiles(DeviceOp &device,
