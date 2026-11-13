@@ -1277,6 +1277,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                   allocation.getChannelDir(),
                                   allocation.getChannelIndex());
     };
+    SmallVector<std::tuple<AIE::ShimDMAAllocationOp, AIE::ShimDMAAllocationOp,
+                           Unbalanced>>
+        unbalanced;
     for (auto input : loaded.getOps<AIE::ShimDMAAllocationOp>()) {
       ArrayAttr proofs = input.getConsumedByAttr();
       if (!proofs)
@@ -1305,31 +1308,40 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         Unbalanced why = stretchesUnbalanced(seq, last, loaded, input, output,
                                              inputs, outputs, proof,
                                              /*byChannel=*/true);
-        if (why == Unbalanced::No)
-          continue;
-        auto diag = last.emitOpError()
-                    << "leaves " << last.getDeviceRefAttr()
-                    << " loaded, and its next dispatch, whose proof that @"
-                    << input.getSymName() << " is consumed by @"
-                    << output.getSymName()
-                    << " counts on a clean start, finds what this "
-                       "sequence's last stretch left: it ";
-        if (why == Unbalanced::Excess)
-          diag << "moves more through that input than the output proves "
-                  "taken";
-        else if (why == Unbalanced::PartGranule)
-          diag << "may end with the output partway through an object of the "
-                  "join the proof passes";
-        else if (why == Unbalanced::Traffic)
-          diag << "has other traffic on their channels";
-        else
-          diag << "moves bytes on their channels whose count is not known, "
-                  "so cannot be proven balanced";
-        return diag << ". Balance them before the sequence ends, or load "
-                       "this device's PDI again.";
+        if (why != Unbalanced::No)
+          unbalanced.push_back({input, output, why});
       }
     }
-    return success();
+    // Every unbalanced pair, by its channels rather than declaration order.
+    llvm::stable_sort(unbalanced, [&](const auto &a, const auto &b) {
+      return std::pair(channelOfAllocation(std::get<0>(a)),
+                       channelOfAllocation(std::get<1>(a))) <
+             std::pair(channelOfAllocation(std::get<0>(b)),
+                       channelOfAllocation(std::get<1>(b)));
+    });
+    for (auto [input, output, why] : unbalanced) {
+      auto diag = last.emitOpError()
+                  << "leaves " << last.getDeviceRefAttr()
+                  << " loaded, and its next dispatch, whose proof that @"
+                  << input.getSymName() << " is consumed by @"
+                  << output.getSymName()
+                  << " counts on a clean start, finds what this "
+                     "sequence's last stretch left: it ";
+      if (why == Unbalanced::Excess)
+        diag << "moves more through that input than the output proves "
+                "taken";
+      else if (why == Unbalanced::PartGranule)
+        diag << "may end with the output partway through an object of the "
+                "join the proof passes";
+      else if (why == Unbalanced::Traffic)
+        diag << "has other traffic on their channels";
+      else
+        diag << "moves bytes on their channels whose count is not known, "
+                "so cannot be proven balanced";
+      diag << ". Balance them before the sequence ends, or load this "
+              "device's PDI again.";
+    }
+    return failure(!unbalanced.empty());
   }
 
   // `output`'s pushes up to `order` have finished; see recordConsumption in

@@ -261,3 +261,102 @@ module {
     aie.shim_dma_allocation @out(%t, S2MM, 0)
   }
 }
+
+// -----
+
+// Both of @a's proofs see the tail send 128 bytes in and take 64 out, so
+// each pair is reported, in the order of their channels, whichever order
+// @a declares its allocations in.
+module {
+  aie.device(npu2) @main {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @in0(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out0, input_bytes = 1, output_bytes = 1, device = @a>]}
+    aie.shim_dma_allocation @out0(%t, S2MM, 0)
+    aie.shim_dma_allocation @in1(%t, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out1, input_bytes = 1, output_bytes = 1, device = @a>]}
+    aie.shim_dma_allocation @out1(%t, S2MM, 1)
+    aie.runtime_sequence @main_seq(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>) {
+      // expected-error@+2 {{whose proof that @in0 is consumed by @out0 counts on a clean start, finds what this sequence's last stretch left: it moves more through that input than the output proves taken}}
+      // expected-error@+1 {{whose proof that @in1 is consumed by @out1 counts on a clean start, finds what this sequence's last stretch left: it moves more through that input than the output proves taken}}
+      aiex.npu.load_pdi {device_ref = @a}
+      %i0 = aiex.dma_configure_task_for @in0 {
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 128)
+        aie.end
+      }
+      aiex.dma_start_task(%i0)
+      %i1 = aiex.dma_configure_task_for @in1 {
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 128)
+        aie.end
+      }
+      aiex.dma_start_task(%i1)
+      %o0 = aiex.dma_configure_task_for @out0 {
+        aie.dma_bd(%arg1 : memref<4096xi32> offset = 0 len = 64)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%o0)
+      %o1 = aiex.dma_configure_task_for @out1 {
+        aie.dma_bd(%arg1 : memref<4096xi32> offset = 0 len = 64)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%o1)
+      aiex.dma_await_task(%o0)
+      aiex.dma_await_task(%o1)
+      aiex.dma_free_task(%i0)
+      aiex.dma_free_task(%i1)
+    }
+  }
+  aie.device(npu2) @a {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @in0(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out0, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out0(%t, S2MM, 0)
+    aie.shim_dma_allocation @in1(%t, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out1, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out1(%t, S2MM, 1)
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) @main {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @in0(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out0, input_bytes = 1, output_bytes = 1, device = @a>]}
+    aie.shim_dma_allocation @out0(%t, S2MM, 0)
+    aie.shim_dma_allocation @in1(%t, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out1, input_bytes = 1, output_bytes = 1, device = @a>]}
+    aie.shim_dma_allocation @out1(%t, S2MM, 1)
+    aie.runtime_sequence @main_seq(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>) {
+      // expected-error@+2 {{whose proof that @in0 is consumed by @out0 counts on a clean start, finds what this sequence's last stretch left: it moves more through that input than the output proves taken}}
+      // expected-error@+1 {{whose proof that @in1 is consumed by @out1 counts on a clean start, finds what this sequence's last stretch left: it moves more through that input than the output proves taken}}
+      aiex.npu.load_pdi {device_ref = @a}
+      %i0 = aiex.dma_configure_task_for @in0 {
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 128)
+        aie.end
+      }
+      aiex.dma_start_task(%i0)
+      %i1 = aiex.dma_configure_task_for @in1 {
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 128)
+        aie.end
+      }
+      aiex.dma_start_task(%i1)
+      %o0 = aiex.dma_configure_task_for @out0 {
+        aie.dma_bd(%arg1 : memref<4096xi32> offset = 0 len = 64)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%o0)
+      %o1 = aiex.dma_configure_task_for @out1 {
+        aie.dma_bd(%arg1 : memref<4096xi32> offset = 0 len = 64)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%o1)
+      aiex.dma_await_task(%o0)
+      aiex.dma_await_task(%o1)
+      aiex.dma_free_task(%i0)
+      aiex.dma_free_task(%i1)
+    }
+  }
+  aie.device(npu2) @a {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @in1(%t, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out1, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out1(%t, S2MM, 1)
+    aie.shim_dma_allocation @in0(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out0, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out0(%t, S2MM, 0)
+  }
+}
