@@ -389,8 +389,8 @@ using ChannelKey = DmaQueueModel::ChannelKey;
 static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
   Operation *def = start.getTask().getDefiningOp();
   if (auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(def)) {
-    if (AIE::TileOp tile = cfg.tryGetTileOp())
-      return DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
+    if (cfg.tryGetTileOp())
+      return DmaQueueModel::keyOf(cfg);
     return std::nullopt;
   }
   auto cfgFor = dyn_cast_or_null<DMAConfigureTaskForOp>(def);
@@ -400,11 +400,9 @@ static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
   auto alloc = dev ? AIE::ShimDMAAllocationOp::getForSymbol(
                          dev, cfgFor.getAlloc().getRootReference())
                    : AIE::ShimDMAAllocationOp();
-  AIE::TileOp tile = alloc ? alloc.getTileOp() : AIE::TileOp();
-  if (!tile)
+  if (!alloc || !alloc.getTileOp())
     return std::nullopt;
-  return DmaQueueModel::keyOf(tile, alloc.getChannelDir(),
-                              alloc.getChannelIndex());
+  return DmaQueueModel::keyOf(alloc);
 }
 
 // Interleave the slices splitIntoTasks emitted with the starts around them.

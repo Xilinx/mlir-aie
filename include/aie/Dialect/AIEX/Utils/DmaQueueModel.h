@@ -58,6 +58,11 @@ public:
                  allocation.getChannelIndex());
   }
 
+  /// The channel of a configure on a placed tile.
+  static ChannelKey keyOf(DMAConfigureTaskOp cfg) {
+    return keyOf(cfg.getTileOp(), cfg.getDirection(), cfg.getChannel());
+  }
+
   /// One channel's queue: its pushes not yet known to have completed, oldest
   /// first, each true when it issues a completion token.
   struct ChannelState {
@@ -515,6 +520,26 @@ struct DmaCompletionState {
   }
 };
 
+/// Per-channel analysis visits only the block each push, await or poll
+/// reaches through, plus the ops enclosing them, in block order, rather than
+/// the whole sequence.
+using ChannelVisits =
+    llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *>>;
+
+/// Record `op` and each operation enclosing it up to `body`'s own op into
+/// `blocks`, once per block: an ancestor chain's visited block repeats until
+/// the chain's op there changes.
+inline void recordChannelVisit(mlir::Region &body, mlir::Operation *op,
+                               ChannelVisits &blocks) {
+  for (mlir::Operation *at = op; at != body.getParentOp();
+       at = at->getParentOp()) {
+    auto &ops = blocks[at->getBlock()];
+    if (!ops.empty() && ops.back() == at)
+      break;
+    ops.push_back(at);
+  }
+}
+
 /// Guard every push in a runtime sequence that can land on a full queue, and
 /// (when `warnUnsafeBdReuse`) warn at every Free effect whose own push is not
 /// yet proven complete along some reachable path.
@@ -583,18 +608,9 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     if (auto status = tm.getDmaStatusAddress(
             key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2])))
       keyByStatus[*status] = key;
-  using Visits =
-      llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *>>;
-  std::map<DmaQueueModel::ChannelKey, Visits> visits;
+  std::map<DmaQueueModel::ChannelKey, ChannelVisits> visits;
   auto visit = [&](mlir::Operation *op, const DmaQueueModel::ChannelKey &key) {
-    Visits &blocks = visits[key];
-    for (mlir::Operation *at = op; at != body.getParentOp();
-         at = at->getParentOp()) {
-      auto &ops = blocks[at->getBlock()];
-      if (!ops.empty() && ops.back() == at)
-        break;
-      ops.push_back(at);
-    }
+    recordChannelVisit(body, op, visits[key]);
   };
   body.walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
     if (warnUnsafeBdReuse && mlir::isa<mlir::scf::ForOp, mlir::scf::IfOp>(op))

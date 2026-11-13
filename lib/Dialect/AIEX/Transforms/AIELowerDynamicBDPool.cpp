@@ -500,16 +500,12 @@ struct AIELowerDynamicBDPoolPass
                                       StringRef msg) {
     DMAConfigureTaskOp originA = originConfigure.lookup(a);
     DMAConfigureTaskOp originB = originConfigure.lookup(b);
-    if (originA && originB && channelKey(originA) != channelKey(originB)) {
+    if (originA && originB &&
+        DmaQueueModel::keyOf(originA) != DmaQueueModel::keyOf(originB)) {
       op->emitOpError(msg);
       return failure();
     }
     return success();
-  }
-
-  static DmaQueueModel::ChannelKey channelKey(DMAConfigureTaskOp cfg) {
-    return DmaQueueModel::keyOf(cfg.getTileOp(), cfg.getDirection(),
-                                cfg.getChannel());
   }
 
   // Every value that may carry `task`'s BD id after it: the region arguments
@@ -643,22 +639,17 @@ struct AIELowerDynamicBDPoolPass
         cfg = originConfigure.lookup(freeOp.getTask());
         if (!cfg)
           return {};
-        AIE::TileOp tile = cfg.tryGetTileOp();
-        if (!tile)
+        if (!cfg.tryGetTileOp())
           return {};
-        return QueueEffect::free(
-            DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel()),
-            freeOp.getTask());
+        return QueueEffect::free(DmaQueueModel::keyOf(cfg), freeOp.getTask());
       } else {
         return {};
       }
       if (!cfg)
         return {};
-      AIE::TileOp tile = cfg.tryGetTileOp();
-      if (!tile)
+      if (!cfg.tryGetTileOp())
         return {};
-      DmaQueueModel::ChannelKey key =
-          DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
+      DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(cfg);
       if (isConfigure)
         return QueueEffect::configure(key, task);
       return isPush ? QueueEffect::push(key, issuesToken,
