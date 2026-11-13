@@ -2027,15 +2027,13 @@ bool ObjectFifoCreateOp::delegateReaches(const AIETargetModel &target,
   });
 }
 
-std::optional<TileID>
-ObjectFifoCreateOp::allocatedHome(const AIETargetModel &target, TileID producer,
-                                  TileID consumer, TileID delegate,
-                                  std::optional<TileID> linkTile) {
+bool ObjectFifoCreateOp::allocatedHome(const AIETargetModel &target,
+                                       TileID producer, TileID consumer,
+                                       TileID delegate,
+                                       std::optional<TileID> linkTile) {
   TileID home = linkTile.value_or(delegate);
-  if (!delegateReaches(target, delegate, producer, consumer) ||
-      !delegateReaches(target, home, producer, consumer))
-    return std::nullopt;
-  return home;
+  return delegateReaches(target, delegate, producer, consumer) &&
+         delegateReaches(target, home, producer, consumer);
 }
 
 bool ObjectFifoCreateOp::allocateFallsBackToDMA() {
@@ -3396,6 +3394,38 @@ TileOp CascadeFlowOp::getDestTileOp() {
 // ConfigureCascadeOp
 //===----------------------------------------------------------------------===//
 
+// The direction a cascade step (dstCol - srcCol, dstRow - srcRow) leaves the
+// source tile on; getCascadeSteps() only ever returns axis-aligned unit steps.
+static CascadeDir cascadeStepOutputDir(std::pair<int, int> step) {
+  if (step.first == 1)
+    return CascadeDir::East;
+  if (step.first == -1)
+    return CascadeDir::West;
+  return step.second == 1 ? CascadeDir::North : CascadeDir::South;
+}
+
+static CascadeDir oppositeCascadeDir(CascadeDir dir) {
+  switch (dir) {
+  case CascadeDir::North:
+    return CascadeDir::South;
+  case CascadeDir::South:
+    return CascadeDir::North;
+  case CascadeDir::East:
+    return CascadeDir::West;
+  case CascadeDir::West:
+    return CascadeDir::East;
+  }
+  llvm_unreachable("unhandled CascadeDir");
+}
+
+static std::string describeCascadeDirs(ArrayRef<CascadeDir> dirs) {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  llvm::interleave(
+      dirs, os, [&](CascadeDir d) { os << stringifyCascadeDir(d); }, " or ");
+  return s;
+}
+
 LogicalResult ConfigureCascadeOp::verify() {
   if (!isa<TileOp>(getTile().getDefiningOp()))
     return emitOpError("requires a placed tile (aie.tile), not a logical tile");
@@ -3410,16 +3440,21 @@ LogicalResult ConfigureCascadeOp::verify() {
   if (tile.isMemTile())
     return emitOpError("memTile row has no cascade stream interface");
 
-  if (isa<AIE2TargetModel>(t)) {
-    if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
-      return emitOpError("input direction of cascade must be North or West on ")
-             << stringifyAIEArch(t.getTargetArch());
+  llvm::ArrayRef<std::pair<int, int>> steps = t.getCascadeSteps();
+  if (!steps.empty()) {
+    SmallVector<CascadeDir> legalOutputs, legalInputs;
+    for (std::pair<int, int> step : steps) {
+      legalOutputs.push_back(cascadeStepOutputDir(step));
+      legalInputs.push_back(oppositeCascadeDir(legalOutputs.back()));
     }
-    if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
-      return emitOpError(
-                 "output direction of cascade must be South or East on ")
+    if (!llvm::is_contained(legalInputs, inputDir))
+      return emitOpError("input direction of cascade must be ")
+             << describeCascadeDirs(legalInputs) << " on "
              << stringifyAIEArch(t.getTargetArch());
-    }
+    if (!llvm::is_contained(legalOutputs, outputDir))
+      return emitOpError("output direction of cascade must be ")
+             << describeCascadeDirs(legalOutputs) << " on "
+             << stringifyAIEArch(t.getTargetArch());
   } else {
     return emitOpError("cascade not supported in ")
            << stringifyAIEArch(t.getTargetArch());
