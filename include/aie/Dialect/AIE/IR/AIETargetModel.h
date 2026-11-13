@@ -127,6 +127,8 @@ public:
     UsesBDIteration = 1U << 4,
     // Device supports out-of-order S2MM DMA.
     SupportsOutOfOrderDMA = 1U << 5,
+    // Device tiles can be configured by control packets.
+    SupportsControlPackets = 1U << 6,
   };
 
 private:
@@ -887,6 +889,7 @@ public:
     addModelProperty(AIETargetModel::UsesMultiDimensionalBDs);
     addModelProperty(AIETargetModel::UsesBDIteration);
     addModelProperty(AIETargetModel::SupportsOutOfOrderDMA);
+    addModelProperty(AIETargetModel::SupportsControlPackets);
   }
 
   AIEArch getTargetArch() const override;
