@@ -2843,6 +2843,17 @@ def AIE_ObjectFifoCreateOp
     /// names the module. Nothing while an end it needs is unplaced.
     std::optional<llvm::StringRef>
     placedDmaReason(AIETargetModel::SharedMemory &shared);
+    /// Why the producer's DMA end cannot push a task per object
+    /// (`push_queue`): initialized objects, a producer that is not a core's
+    /// sending DMA on a target with core-issued tasks, or no local producer
+    /// release to submit them. Nothing when it can.
+    std::optional<llvm::StringRef> pushQueueRefusal();
+    /// Why a receiving DMA end, on a shim or not and out_of_order or not,
+    /// cannot share its pinned channel with another fifo's: only a tile's
+    /// out_of_order end, which takes each object into the buffer its header
+    /// names, can. Nothing when it can.
+    static std::optional<llvm::StringRef> sharedReceiveRefusal(bool shim,
+                                                               bool outOfOrder);
     /// Whether another fifo moved by DMA pins the DMA channel this one's
     /// producer pins, on the same tile off a shim. A channel cycling on one
     /// fifo's buffers never reaches the other's, so aie-objectfifo-split

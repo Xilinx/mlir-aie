@@ -958,7 +958,8 @@ struct AIEObjectFifoAllocatePass
     // names, so its channel keeps no order its fifos would have to agree on.
     auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
     if (dir == DMAChannelDir::S2MM)
-      return dma && dma.getOutOfOrder();
+      return !ObjectFifoCreateOp::sharedReceiveRefusal(
+          tileOf(endpoint).isShimTile(), dma && dma.getOutOfOrder());
     if (!tileOf(endpoint).isShimTile() &&
         !(dma && dma.getReleaseStrategy() == ObjectFifoRelease::PushQueue))
       return false;

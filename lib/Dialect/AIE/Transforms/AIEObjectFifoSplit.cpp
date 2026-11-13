@@ -261,6 +261,7 @@ struct AIEObjectFifoSplitPass
   verifyOutOfOrderForSharedChannels(ArrayRef<ObjectFifoCreateOp> fifos) {
     DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
         onChannel;
+    DenseMap<std::tuple<int, int, int>, TileOp> tileAt;
     for (ObjectFifoCreateOp fifo : fifos) {
       auto shared = AIETargetModel::SharedMemory::None;
       if (!fifo.placedDmaReason(shared))
@@ -277,16 +278,22 @@ struct AIEObjectFifoSplitPass
         if (channel < 0 || !tile)
           continue;
         onChannel[{tile.getCol(), tile.getRow(), channel}].push_back(fifo);
+        tileAt[{tile.getCol(), tile.getRow(), channel}] = tile;
       }
     }
     for (auto &[channel, sharing] : onChannel) {
       if (sharing.size() < 2)
         continue;
+      TileLike tile = tileAt.lookup(channel);
       for (ObjectFifoCreateOp fifo : sharing) {
         if (!fifo.getOutOfOrder())
           return fifo.emitOpError(
               "shares a receiving channel; explicitly set out_of_order = true "
               "on its packet transport");
+        if (std::optional<StringRef> why =
+                ObjectFifoCreateOp::sharedReceiveRefusal(tile.isShimTile(),
+                                                         true))
+          return fifo.emitOpError("shares a receiving channel, but ") << *why;
       }
     }
     return success();
@@ -299,26 +306,8 @@ struct AIEObjectFifoSplitPass
       auto shared = AIETargetModel::SharedMemory::None;
       if (!fifo.placedDmaReason(shared))
         continue;
-      if (auto values = fifo.getInitValues(); values && !values->empty())
-        return fifo.emitOpError(
-            "push_queue does not support initialized objects");
-      auto tile = fifo.getProducerTileOp();
-      if (!tile.isCoreTile() || fifo.streamsFromProducer() ||
-          device.getTargetModel().getDmaTaskQueueDepth() == 0)
-        return fifo.emitOpError(
-            "push_queue requires a sending DMA on a core tile "
-            "with core-issued task support");
-      bool hasRelease = false;
-      for (CoreOp core : device.getOps<CoreOp>()) {
-        if (core.getTile() == fifo.getProducerTile())
-          core.walk([&](ObjectFifoReleaseOp release) {
-            hasRelease |= release.getObjectFifo() == fifo &&
-                          release.getPort() == ObjectFifoPort::Produce;
-          });
-      }
-      if (!hasRelease)
-        return fifo.emitOpError("push_queue requires producer releases in a "
-                                "local core to submit send tasks");
+      if (std::optional<StringRef> why = fifo.pushQueueRefusal())
+        return fifo.emitOpError(*why);
     }
     return success();
   }

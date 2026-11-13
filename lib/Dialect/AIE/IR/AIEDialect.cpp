@@ -2139,6 +2139,39 @@ ObjectFifoCreateOp::placedDmaReason(AIETargetModel::SharedMemory &shared) {
   return std::nullopt;
 }
 
+std::optional<StringRef> ObjectFifoCreateOp::pushQueueRefusal() {
+  if (auto values = getInitValues(); values && !values->empty())
+    return StringRef("push_queue does not support initialized objects");
+  auto tile = cast<TileLike>(getProducerTile().getDefiningOp());
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  if (!tile.isCoreTile() || streamsFromProducer() ||
+      device.getTargetModel().getDmaTaskQueueDepth() == 0)
+    return StringRef("push_queue requires a sending DMA on a core tile with "
+                     "core-issued task support");
+  bool hasRelease = false;
+  for (CoreOp core : device.getOps<CoreOp>())
+    if (core.getTile() == getProducerTile())
+      core.walk([&](ObjectFifoReleaseOp release) {
+        hasRelease |= release.getObjectFifo() == *this &&
+                      release.getPort() == ObjectFifoPort::Produce;
+      });
+  if (!hasRelease)
+    return StringRef("push_queue requires producer releases in a local core "
+                     "to submit send tasks");
+  return std::nullopt;
+}
+
+std::optional<StringRef>
+ObjectFifoCreateOp::sharedReceiveRefusal(bool shim, bool outOfOrder) {
+  if (shim)
+    return StringRef("a shim's receiving channel writes into the runtime's "
+                     "tasks, which no object header picks");
+  if (!outOfOrder)
+    return StringRef("a channel its fifos receive in turn holds their order; "
+                     "out_of_order puts that order in each object's header");
+  return std::nullopt;
+}
+
 bool ObjectFifoCreateOp::sharesSendChannel() {
   auto pinned = [](ObjectFifoCreateOp fifo) -> std::optional<int> {
     ObjectFifoEndPortAttr port = fifo.getProdPortAttr();

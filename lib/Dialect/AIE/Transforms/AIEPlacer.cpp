@@ -1694,10 +1694,9 @@ std::optional<std::string> Placer::PinnedChannels::whyApart(End a,
   if (a.sends) {
     for (ObjectFifoCreateOp fifo : {a.fifo, b.fifo}) {
       auto tile = cast<TileLike>(fifo.getProducerTile().getDefiningOp());
-      AIETileType type = tile.getTileType();
-      if (type != AIETileType::ShimNOCTile && type != AIETileType::ShimPLTile &&
-          (type != AIETileType::CoreTile ||
-           targetModel->getDmaTaskQueueDepth() == 0))
+      if (tile.isShimTile())
+        continue;
+      if (!tile.isCoreTile() || targetModel->getDmaTaskQueueDepth() == 0)
         return std::string("only a shim, or a core that pushes its tasks, "
                            "sends two fifos on one channel");
     }
@@ -1705,10 +1704,21 @@ std::optional<std::string> Placer::PinnedChannels::whyApart(End a,
         !isPacketSwitched(b.fifo.packetHeader(), packetSwitched))
       return std::string("a shared channel carries both at once, which only "
                          "packet-switched routes tell apart");
-  } else if (!a.fifo.getOutOfOrder() || !b.fifo.getOutOfOrder()) {
-    return std::string("a channel its fifos receive in turn holds their "
-                       "order; out_of_order puts that order in each "
-                       "object's header");
+    // A core's sharers each get push_queue (sharesSendChannel).
+    for (ObjectFifoCreateOp fifo : {a.fifo, b.fifo})
+      if (std::optional<StringRef> why =
+              cast<TileLike>(fifo.getProducerTile().getDefiningOp())
+                      .isShimTile()
+                  ? std::nullopt
+                  : fifo.pushQueueRefusal())
+        return "@" + fifo.getSymName().str() + "'s " + why->str();
+  } else {
+    for (End end : {a, b})
+      if (std::optional<StringRef> why =
+              ObjectFifoCreateOp::sharedReceiveRefusal(
+                  cast<TileLike>(end.tile).isShimTile(),
+                  end.fifo.getOutOfOrder()))
+        return why->str();
   }
   std::optional<uint16_t> id =
       a.fifo.packetHeader() ? a.fifo.packetHeader().getPktId() : std::nullopt;
