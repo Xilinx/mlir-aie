@@ -118,10 +118,8 @@ DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
 Operation *getRuntimeDmaTile(Operation *op, SymbolTable &symbols);
 
 // Calls `pinned` for each BD id the runtime sequences of `device` fix at
-// compile time, in IR order: a bd_id on an aiex.dma_configure_task or
-// aiex.dma_configure_task_for BD, and an aiex.npu.dma_memcpy_nd's id. A static
-// BD on the same tile must not take one. `channel` is the task's, or the shim
-// DMA allocation's its symbol names, and unset before allocation picks one.
+// compile time, in IR order, with the tile getRuntimeDmaTile gives; a static BD
+// on that tile must not take one. `channel` is unset before allocation picks it.
 void forEachRuntimePinnedBdId(
     AIE::DeviceOp device,
     llvm::function_ref<void(Operation *op, Operation *tile,

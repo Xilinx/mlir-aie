@@ -350,20 +350,15 @@ public:
                         llvm::SmallVector<ShimTransferSpans::Gate>>
   provenShimGates(DeviceOp device);
 
-  // The BD ids a shim tile's DMAs take, handed out as aie-assign-bd-ids and
-  // aie-assign-runtime-sequence-bd-ids do. Static aie.shim_dma BDs take ids
-  // around the ones runtime tasks and copies pin, pinned ids first, then the
-  // lowest free; every runtime sequence starts from those. A runtime task
-  // takes its pinned ids, then the lowest free ones, the head aligned as its
-  // starts need, each descriptor split as aie-decompose-large-dma-bd splits it
-  // and held from configure to its first await or free. An
-  // aiex.npu.dma_memcpy_nd holds its id, shared with other copies, to the end
-  // of the sequence. Pieces split into separate tasks are held together, and
-  // reclaim is not modeled; a task started again after its await, an await on
-  // a token already taken, a task's ids a copy forbids, BD chains and aiex.run
-  // callees are not followed, so the count can err low as well as high, and
-  // aie-assign-runtime-sequence-bd-ids checks exactly. Shims already placed
-  // count where they sit.
+  // The BD ids a shim tile's DMAs take, as aie-assign-bd-ids and
+  // aie-assign-runtime-sequence-bd-ids hand them out: static BDs around the ids
+  // runtime tasks and copies pin; each sequence's tasks their pinned ids, then
+  // the lowest free (head aligned, descriptors split as
+  // aie-decompose-large-dma-bd splits them), held from configure to the first
+  // await or free; a copy holds its id to the sequence's end. Reclaim,
+  // restarts, already-taken tokens, ids a copy forbids, BD chains and aiex.run
+  // callees are not followed, so the count can err either way and the pass
+  // checks exactly. Placed shims count where they sit.
   class RuntimeBdIds {
   public:
     // The most ids a shim's DMAs hold at once on a tile of their own, and
@@ -446,8 +441,7 @@ protected:
   // The tile ops overlayUses names.
   llvm::SmallVector<mlir::Operation *> overlayTileOps() const;
 
-  // DMA channels, as (output, index), that each tile op's flows, claims and
-  // route ends name by index (flowChannelDemand).
+  // flowChannelDemand's `named`, by tile op.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
       namedChannels;
   // A tile op among `others` naming a channel `tile` names too, with that

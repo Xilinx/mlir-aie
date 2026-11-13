@@ -424,7 +424,6 @@ AIEX::DMAConfigureTaskOp AIEX::getUniqueReachableConfigure(Value task) {
   return configures.front();
 }
 
-// The symbol an aiex.dma_configure_task_for or aiex.npu.dma_memcpy_nd names.
 static StringAttr runtimeDmaSymbol(Operation *op) {
   if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
     return task.getAlloc().getRootReference();
