@@ -24,6 +24,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FormatVariadic.h"
 
 #include <map>
 #include <memory>
@@ -805,7 +806,9 @@ struct AIEObjectFifoAllocatePass
         os << " [" << segment.getOffset() << ", " << segment.getSize() << "]";
       link(pool, pool.getTile().getDefiningOp(), "tile");
     }
+    DenseMap<StringAttr, Operation *> coreEndpoints;
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      coreEndpoints[endpoint.getSymNameAttr()] = endpoint;
       llvm::raw_string_ostream os(graph.add(endpoint));
       for (auto segment : endpoint.getSelectedSegments())
         os << " @" << segment.getOffset();
@@ -830,6 +833,23 @@ struct AIEObjectFifoAllocatePass
         link(route, lookupEndpoint(dest), "dest");
     }
     DenseMap<Operation *, unsigned> rank = graph.rank();
+    // Ops still tied fall to the order each core first acquires its ends in,
+    // the core's program order: ranking again from the ranks found, with the
+    // cores linked in, splits only ties.
+    for (Operation *node : graph.nodes)
+      graph.features[node] = llvm::formatv("{0,10}", rank[node]).str();
+    for (auto core : device.getOps<CoreOp>()) {
+      graph.add(core);
+      llvm::SmallPtrSet<Operation *, 8> acquired;
+      core.walk([&](ObjectFifoAcquireOp acquire) {
+        Operation *endpoint =
+            coreEndpoints.lookup(acquire.getObjFifoNameAttr().getAttr());
+        if (endpoint && acquired.insert(endpoint).second)
+          graph.link(core, endpoint,
+                     llvm::formatv("acquire {0,10}", acquired.size()).str());
+      });
+    }
+    rank = graph.rank();
     for (auto [tile, node] : tileNode)
       rank[tile] = rank[node];
     structuralRank = std::move(rank);
