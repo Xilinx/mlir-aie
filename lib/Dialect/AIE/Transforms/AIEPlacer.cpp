@@ -2110,30 +2110,25 @@ Placer::PinnedChannelUse::heldAt(TileID at,
 
 DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>>
 Placer::provenShimGates(DeviceOp device) {
-  auto module = device->getParentOfType<ModuleOp>();
-  if (!module)
-    return {};
-  unsigned index = 0;
-  for (DeviceOp other : module.getOps<DeviceOp>()) {
-    if (other == device)
-      break;
-    ++index;
-  }
   // A context of its own: the passes below cannot run nested in this one's.
+  // Printing just this device, not its whole module, keeps the roundtrip's
+  // cost to this device's size on a module with several; the parse skips
+  // reverifying IR this context already verified once.
   std::string text;
   llvm::raw_string_ostream os(text);
-  module->print(os, OpPrintingFlags().printGenericOpForm());
+  device->print(os, OpPrintingFlags().printGenericOpForm());
   MLIRContext context(device.getContext()->getDialectRegistry(),
                       MLIRContext::Threading::DISABLED);
   ScopedDiagnosticHandler quiet(&context,
                                 [](Diagnostic &) { return success(); });
-  OwningOpRef<ModuleOp> copy = parseSourceString<ModuleOp>(text, &context);
+  OwningOpRef<ModuleOp> copy = parseSourceString<ModuleOp>(
+      text, ParserConfig(&context, /*verifyAfterParse=*/false));
   if (!copy)
     return {};
   auto devices = llvm::to_vector(copy->getOps<DeviceOp>());
-  if (index >= devices.size())
+  if (devices.empty())
     return {};
-  DeviceOp clone = devices[index];
+  DeviceOp clone = devices.front();
 
   // Split needs placed tiles. With every fifo between two tiles on DMA,
   // which tiles they are does not change what verify proves.
