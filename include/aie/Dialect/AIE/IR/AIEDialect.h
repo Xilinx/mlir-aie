@@ -449,6 +449,13 @@ inline bool isDirectional(WireBundle bundle) {
          bundle == WireBundle::East || bundle == WireBundle::West;
 }
 
+// The blocking acquires `core`'s body can leave it waiting on, one
+// `array<i32: col, row, lock, value, equal>` per lock: `equal` 1 for each
+// distinct acquire-equal value, 0 for the largest acquire-greater-equal value.
+// None, after an error, for an acquire value that is not a constant or a lock
+// without an id.
+std::optional<mlir::ArrayAttr> lockAcquires(CoreOp core);
+
 void collectTiles(DeviceOp &device,
                   llvm::DenseMap<TileID, mlir::Operation *> &tiles);
 

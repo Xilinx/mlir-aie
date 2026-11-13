@@ -814,14 +814,34 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (!targetModel.hasProperty(AIETargetModel::IsNPU))
     return failure();
 
-  AIERTControl ctl(targetModel);
-  if (failed(ctl.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
+  // Stop the configuration, then grant the lock requests its stopped cores and
+  // channels can have left pending. Control packets to different tiles may
+  // land in any order, so a core waiting on another tile's lock needs a
+  // barrier between the two.
+  AIERTControl stop(targetModel);
+  if (failed(stop.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
     return failure();
-  ctl.startTransaction();
-  if (failed(ctl.teardownSwitches(device, skipCtrlPktOverlay)) ||
-      failed(ctl.disableCores(device)) || failed(ctl.resetDmaChannels(device)))
+  stop.startTransaction();
+  if (failed(stop.teardownSwitches(device, skipCtrlPktOverlay)) ||
+      failed(stop.disableCores(device)) ||
+      failed(stop.holdDmaChannelsInReset(device)) ||
+      failed(
+          insertRecordedTransaction(stop, builder, outputType, blockwriteData,
+                                    skipCtrlPktOverlay ? device : DeviceOp{})))
     return failure();
-  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
+  std::optional<bool> otherTiles = waitsOnOtherTiles(device);
+  if (!otherTiles)
+    return failure();
+  if (*otherTiles && outputType == AIEToConfigurationOutputType::ControlPacket)
+    AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+  AIERTControl drain(targetModel);
+  if (failed(drain.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
+    return failure();
+  drain.startTransaction();
+  if (failed(drain.releaseLockWaits(device)) ||
+      failed(drain.releaseDmaChannels(device)))
+    return failure();
+  return insertRecordedTransaction(drain, builder, outputType, blockwriteData,
                                    skipCtrlPktOverlay ? device : DeviceOp{});
 }
 

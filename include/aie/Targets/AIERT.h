@@ -43,6 +43,14 @@ private:
   uint32_t startCmds;
 };
 
+// The locks `core` can be left waiting on: its aiex.lock_acquires record, or
+// read from its body (see lockAcquires); none, after an error, for an ELF
+// without a record.
+std::optional<mlir::ArrayAttr> recordedLockAcquires(CoreOp core);
+
+// Whether a core of `device` can be left waiting on another tile's lock.
+std::optional<bool> waitsOnOtherTiles(DeviceOp device);
+
 struct AIERTControl {
 
   AIERTControl(const xilinx::AIE::AIETargetModel &tm);
@@ -65,7 +73,9 @@ struct AIERTControl {
   mlir::LogicalResult teardownSwitches(DeviceOp &targetOp,
                                        bool skipCtrlPktOverlay = false);
   mlir::LogicalResult disableCores(DeviceOp &targetOp);
-  mlir::LogicalResult resetDmaChannels(DeviceOp &targetOp);
+  mlir::LogicalResult holdDmaChannelsInReset(DeviceOp &targetOp);
+  mlir::LogicalResult releaseLockWaits(DeviceOp &targetOp);
+  mlir::LogicalResult releaseDmaChannels(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
   mlir::LogicalResult addAieElf(uint8_t col, uint8_t row,
                                 const mlir::StringRef elfPath, bool aieSim);

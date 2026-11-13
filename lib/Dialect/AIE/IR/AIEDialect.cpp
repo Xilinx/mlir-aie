@@ -31,6 +31,7 @@
 #include <map>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -5839,6 +5840,45 @@ static void printTraceRegValue(OpAsmPrinter &printer, Operation *op,
 // Helper to parse a LockBlocking enum keyword.
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
+
+std::optional<ArrayAttr> xilinx::AIE::lockAcquires(CoreOp core) {
+  std::map<std::tuple<int, int, int>, int> greaterEqual;
+  std::set<std::tuple<int, int, int, int>> equal;
+  WalkResult walk = core.walk([&](UseLockOp use) {
+    if (use.release() || use.getTimeout() == 0)
+      return WalkResult::advance();
+    LockOp lock = use.getLockOp();
+    std::optional<int> id = lock.getLockID();
+    if (!id) {
+      use.emitOpError("acquires a lock without an id");
+      return WalkResult::interrupt();
+    }
+    FailureOr<int32_t> value = use.getConstantValue();
+    if (failed(value))
+      return WalkResult::interrupt();
+    TileOp tile = lock.getTileOp();
+    if (use.acquire()) {
+      equal.insert({tile.getCol(), tile.getRow(), *id,
+                    *value}); // NOLINT(bugprone-unchecked-optional-access)
+    } else {
+      int &largest = greaterEqual[{tile.getCol(), tile.getRow(), *id}];
+      largest = std::max(largest,
+                         *value); // NOLINT(bugprone-unchecked-optional-access)
+    }
+    return WalkResult::advance();
+  });
+  if (walk.wasInterrupted())
+    return std::nullopt;
+  Builder b(core.getContext());
+  SmallVector<Attribute> acquires;
+  for (auto [key, value] : greaterEqual) {
+    auto [col, row, id] = key;
+    acquires.push_back(b.getDenseI32ArrayAttr({col, row, id, value, 0}));
+  }
+  for (auto [col, row, id, value] : equal)
+    acquires.push_back(b.getDenseI32ArrayAttr({col, row, id, value, 1}));
+  return b.getArrayAttr(acquires);
+}
 
 FailureOr<int32_t> UseLockOp::getConstantValue() {
   if (auto value = getConstantLockValue(*this))

@@ -806,6 +806,31 @@ def AIEAnnotateCtrlPacketStartGating
   ];
 }
 
+def AIEAnnotateCoreLockAcquires
+    : Pass<"aie-annotate-core-lock-acquires", "mlir::ModuleOp"> {
+  let summary = "Record the locks each core can be left waiting on";
+  let description = [{
+    A core that ends a configuration blocked in a lock acquire leaves the
+    request pending in the lock's tile, and neither disabling nor resetting the
+    core removes it: it is granted later, when the lock reaches its value in
+    the next configuration. `--reconfig-teardown` grants each such request
+    while the core is disabled, which needs the acquires of the core's body,
+    and the body is gone once the core is compiled.
+
+    This pass sets `aiex.lock_acquires` on each `aie.core` with a body: one
+    `array<i32: col, row, lock, value, equal>` per lock the core acquires with
+    a blocking acquire, where `equal` is 1 for an acquire-equal, whose value is
+    listed once per distinct value, and 0 for an acquire-greater-equal, whose
+    value is the core's largest. An acquire value that is not a constant is an
+    error.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEAnnotateCoreLockAcquiresPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIECheckCtrlPacketDelivery
     : Pass<"aie-check-ctrl-packet-delivery", "mlir::ModuleOp"> {
   let summary = "Check the order control packets land in";

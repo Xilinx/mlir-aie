@@ -89,6 +89,8 @@ createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEAnnotateCtrlPacketStartGatingPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEAnnotateCoreLockAcquiresPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECheckCtrlPacketDeliveryPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECheckCtrlPacketDeliveryPass(

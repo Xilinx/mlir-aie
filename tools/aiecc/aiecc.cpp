@@ -1744,14 +1744,20 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   byKey[item.key] = absolutePath(item.filePath);
                 }
                 mlir::ModuleOp physicalMod = physicalN.get().get();
-                // aie-annotate-ctrl-packet-start-gating needs the cores'
-                // bodies, so it runs here; its marks survive the patch.
+                // aie-annotate-ctrl-packet-start-gating and
+                // aie-annotate-core-lock-acquires need the cores' bodies, so
+                // they run here; their marks survive the patch.
                 mlir::OwningOpRef<mlir::ModuleOp> checked;
-                if (loadPdiToCtrlPkt) {
+                if (loadPdiToCtrlPkt || reconfigTeardown) {
                   checked = physicalMod.clone();
                   mlir::PassManager pm(&context);
-                  pm.addPass(xilinx::AIEX::
-                                 createAIEAnnotateCtrlPacketStartGatingPass());
+                  if (loadPdiToCtrlPkt)
+                    pm.addPass(
+                        xilinx::AIEX::
+                            createAIEAnnotateCtrlPacketStartGatingPass());
+                  if (reconfigTeardown)
+                    pm.addPass(
+                        xilinx::AIEX::createAIEAnnotateCoreLockAcquiresPass());
                   if (mlir::failed(pm.run(*checked)))
                     return mlir::failure();
                   physicalMod = *checked;
