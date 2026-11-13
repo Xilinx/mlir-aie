@@ -18,7 +18,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int SIZE = 16;
+constexpr int N = 16;
 constexpr int32_t STAGES = 24;
 
 int main(int argc, const char *argv[]) {
@@ -42,16 +42,16 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_in = xrt::bo(device, SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_in = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                        kernel.group_id(3));
-  auto bo_out = xrt::bo(device, SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                         kernel.group_id(4));
 
-  std::vector<int32_t> in(SIZE);
-  for (int i = 0; i < SIZE; i++)
+  std::vector<int32_t> in(N);
+  for (int i = 0; i < N; i++)
     in[i] = 1000 * i - 7;
-  memcpy(bo_in.map<int32_t *>(), in.data(), SIZE * sizeof(int32_t));
-  memset(bo_out.map<int32_t *>(), 0, SIZE * sizeof(int32_t));
+  memcpy(bo_in.map<int32_t *>(), in.data(), N * sizeof(int32_t));
+  memset(bo_out.map<int32_t *>(), 0, N * sizeof(int32_t));
   memcpy(bo_instr.map<void *>(), instr_v.data(), instr_v.size() * sizeof(int));
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_in.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -67,7 +67,7 @@ int main(int argc, const char *argv[]) {
 
   const int32_t *out = bo_out.map<int32_t *>();
   int errors = 0;
-  for (int i = 0; i < SIZE; i++) {
+  for (int i = 0; i < N; i++) {
     int32_t ref = in[i] + STAGES;
     if (out[i] != ref) {
       std::cout << "Error at " << i << ": " << out[i] << " != " << ref << "\n";
