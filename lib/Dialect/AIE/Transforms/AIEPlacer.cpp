@@ -1127,11 +1127,15 @@ SequentialPlacer::buildChannelRequirements(
       auto consumerLogicalTile = dyn_cast_or_null<LogicalTileOp>(consumerOp);
 
       // Skip a core-to-core fifo neighbor memory may carry instead of DMA: a
-      // compute peer (buildComputePeerAdjacency). One that moves by DMA
-      // wherever it sits (dmaReason) is counted here.
-      if (producerLogicalTile && consumerLogicalTile &&
-          producerLogicalTile.getTileType() == AIETileType::CoreTile &&
-          consumerLogicalTile.getTileType() == AIETileType::CoreTile &&
+      // compute peer (buildComputePeerAdjacency), one end placed or both
+      // not. One that moves by DMA wherever it sits (dmaReason) is counted
+      // here.
+      auto producerLike = dyn_cast_or_null<TileLike>(producerOp);
+      auto consumerLike = dyn_cast_or_null<TileLike>(consumerOp);
+      if (producerLike && consumerLike &&
+          (producerLogicalTile || consumerLogicalTile) &&
+          producerLike.getTileType() == AIETileType::CoreTile &&
+          consumerLike.getTileType() == AIETileType::CoreTile &&
           !ofOp.dmaReason())
         continue;
 
@@ -1351,23 +1355,24 @@ Placer::buildComputePeerAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
   Adjacency adjacency;
   for (auto ofOp : objectFifos) {
     auto producer =
-        dyn_cast_or_null<LogicalTileOp>(ofOp.getProducerTile().getDefiningOp());
+        dyn_cast_or_null<TileLike>(ofOp.getProducerTile().getDefiningOp());
     if (!producer || producer.getTileType() != AIETileType::CoreTile)
       continue;
     // Only a fifo neighbor memory may carry is a compute peer.
     if (ofOp.dmaReason())
       continue;
     for (Value consumerVal : ofOp.getConsumerTiles()) {
-      auto consumer =
-          dyn_cast_or_null<LogicalTileOp>(consumerVal.getDefiningOp());
+      auto consumer = dyn_cast_or_null<TileLike>(consumerVal.getDefiningOp());
       if (!consumer || consumer.getTileType() != AIETileType::CoreTile)
         continue;
       // Self-loops live entirely in the tile's own L1 and consume no DMA
       // channel, so they should not push the LTO toward a neighbor-heavy
-      // placement.
-      if (producer.getOperation() == consumer.getOperation())
+      // placement. Two physical cores leave nothing to place.
+      if (producer.getOperation() == consumer.getOperation() ||
+          (!isa<LogicalTileOp>(producer.getOperation()) &&
+           !isa<LogicalTileOp>(consumer.getOperation())))
         continue;
-      adjacency.addEdge(TileLike(producer), TileLike(consumer));
+      adjacency.addEdge(producer, consumer);
     }
   }
   return adjacency;
@@ -1426,6 +1431,17 @@ void SequentialPlacer::recordPlacement(LogicalTileOp logicalTile, TileID tile,
     recordColumnStreamUsage(logicalTile, tile.col);
     availability.removeTile(tile, AIETileType::CoreTile);
     ctx.reserveNeighborSlots(logicalTile.getOperation(), tile);
+    // A placed compute peer this core is not beside moves the fifo by DMA,
+    // on a channel of its own tile.
+    forEachPeer(
+        logicalTile.getOperation(), ctx.computePeerAdjacency,
+        [&](TileLike peer, bool thisIsFirst) {
+          auto placed = dyn_cast<TileOp>(peer.getOperation());
+          if (placed &&
+              !isSharedComputeMemory(*targetModel, placed.getTileID(), tile))
+            updateChannelUsage(placed.getTileID(),
+                               thisIsFirst ? DmaDir::In : DmaDir::Out, 1);
+        });
   }
 }
 
@@ -1521,11 +1537,21 @@ bool SequentialPlacer::satisfiesComputePeer(
         if (!symmetricOk)
           return;
         auto peerLTO = dyn_cast_or_null<LogicalTileOp>(peer.getOperation());
-        if (!peerLTO)
-          return;
         auto peerPos = resolvePeerPosition(peer, result);
         if (!peerPos)
           return;
+        // A placed core keeps no neighbor budget: apart from it, the fifo
+        // takes one more DMA channel of its tile, which must be free.
+        if (!peerLTO) {
+          auto [maxIn, maxOut] = getDMACapacity(*targetModel, *peerPos);
+          if (!isSharedComputeMemory(*targetModel, *peerPos, candidate) &&
+              (thisIsFirst
+                   ? availability.inputChannelsUsed.lookup(*peerPos) >= maxIn
+                   : availability.outputChannelsUsed.lookup(*peerPos) >=
+                         maxOut))
+            symmetricOk = false;
+          return;
+        }
         // From peer's POV, logicalTile is one of peer's compute peers.
         // If logicalTile is the consumer here (thisIsFirst == false),
         // peer is the producer and logicalTile sits on peer's OUT side.
