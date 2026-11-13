@@ -123,11 +123,10 @@ mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag, bool keepOpDump) {
   return renamed;
 }
 
-// What the retry decisions read of an error: its message, its notes, and the
-// attributes each carries.
+// What the retry decisions read of an error: its message and its notes, each
+// with the attributes it carries.
 struct RecordedError {
   std::string message;
-  std::vector<mlir::Attribute> arguments;
   std::vector<std::pair<std::string, std::vector<mlir::Attribute>>> notes;
 };
 
@@ -185,11 +184,7 @@ public:
 
 private:
   static RecordedError record(mlir::Diagnostic &diag) {
-    RecordedError error{diag.str(), {}, {}};
-    for (mlir::DiagnosticArgument &arg : diag.getArguments())
-      if (arg.getKind() ==
-          mlir::DiagnosticArgument::DiagnosticArgumentKind::Attribute)
-        error.arguments.push_back(arg.getAsAttribute());
+    RecordedError error{diag.str(), {}};
     for (mlir::Diagnostic &note : diag.getNotes()) {
       std::vector<mlir::Attribute> attrs;
       for (mlir::DiagnosticArgument &arg : note.getArguments())
