@@ -354,13 +354,18 @@ public:
 
   // The BD ids a shim tile's DMAs take, handed out as aie-assign-bd-ids and
   // aie-assign-runtime-sequence-bd-ids do. Static aie.shim_dma BDs take ids
-  // around the ones runtime tasks pin, pinned ids first, then the lowest free;
-  // every runtime sequence starts from those. A runtime task takes its pinned
-  // ids, then the lowest free ones, the head aligned as its starts need, each
-  // descriptor split as aie-decompose-large-dma-bd splits it and held from
-  // configure to await or free. Pieces split into separate tasks are held
-  // together, and reclaim is not modeled, so the count errs high. Shims
-  // already placed count where they sit.
+  // around the ones runtime tasks and copies pin, pinned ids first, then the
+  // lowest free; every runtime sequence starts from those. A runtime task
+  // takes its pinned ids, then the lowest free ones, the head aligned as its
+  // starts need, each descriptor split as aie-decompose-large-dma-bd splits it
+  // and held from configure to its first await or free. An
+  // aiex.npu.dma_memcpy_nd holds its id, shared with other copies, to the end
+  // of the sequence. Pieces split into separate tasks are held together, and
+  // reclaim is not modeled; a task started again after its await, an await on
+  // a token already taken, a task's ids a copy forbids, BD chains and aiex.run
+  // callees are not followed, so the count can err low as well as high, and
+  // aie-assign-runtime-sequence-bd-ids checks exactly. Shims already placed
+  // count where they sit.
   class RuntimeBdIds {
   public:
     // The most ids a shim's DMAs hold at once on a tile of their own, and
@@ -389,6 +394,9 @@ public:
       // One entry per descriptor after the split: its pinned id, if any.
       llvm::SmallVector<std::optional<uint32_t>> bdIds;
       uint32_t headAlignment;
+      // An aiex.npu.dma_memcpy_nd: its one id stays held to the end of the
+      // sequence.
+      bool copy = false;
     };
     struct StaticBds {
       llvm::SmallVector<uint32_t> pinned;

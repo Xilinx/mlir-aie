@@ -2840,6 +2840,14 @@ Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
           configure(shim, op->getResult(0), cfg.getBody());
         return;
       }
+      if (auto copy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op)) {
+        if (Operation *shim = shimOf(AIEX::getRuntimeDmaTile(op, symbols))) {
+          events.push_back({tasks.size(), true});
+          tasks.push_back(
+              {shim, {static_cast<uint32_t>(copy.getId())}, 1, true});
+        }
+        return;
+      }
       Value released;
       if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
         released = await.getTask();
@@ -2940,10 +2948,22 @@ int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
     for (uint32_t id : staticIds)
       ids.assignBdId(id);
     DenseMap<unsigned, SmallVector<uint32_t>> held;
+    DenseSet<uint32_t> copied;
     for (auto [index, configured] : events) {
       const Task &task = tasks[index];
       if (!llvm::binary_search(key, task.owner))
         continue;
+      if (task.copy) {
+        // Copies reprogram their id at once, so they share it.
+        uint32_t id = *task.bdIds.front();
+        if (!copied.insert(id).second)
+          continue;
+        if (ids.bdIdAlreadyAssigned(id))
+          ++missing;
+        else
+          ids.assignBdId(id);
+        continue;
+      }
       if (!configured) {
         for (uint32_t id : held.lookup(index))
           ids.freeBdId(id);
