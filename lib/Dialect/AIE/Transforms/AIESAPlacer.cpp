@@ -1162,7 +1162,8 @@ int64_t
 SAPlacer::planCoreFit(TileID pos,
                       DenseMap<TileID, std::map<int64_t, int>> &lent,
                       SmallVectorImpl<std::pair<size_t, TileID>> *moves) const {
-  // The intratile fifos an allocate can move to a neighbour, largest first.
+  // The intratile fifos an allocate can move to a neighbour, largest first,
+  // then with the larger objects, then the one the core acquires first.
   SmallVector<std::pair<size_t, int64_t>, 8> relocatable;
   if (Operation *op = physToLogical.lookup(pos))
     if (auto fifoIt = tileToFifoIndices.find(op);
@@ -1186,8 +1187,17 @@ SAPlacer::planCoreFit(TileID pos,
                      fb.sharedDepth});
       }
     }
-  llvm::stable_sort(relocatable, [](const auto &a, const auto &b) {
-    return a.second > b.second;
+  llvm::stable_sort(relocatable, [&](const auto &a, const auto &b) {
+    const FifoBufferInfo &x = fifoBuffers[a.first];
+    const FifoBufferInfo &y = fifoBuffers[b.first];
+    return std::make_tuple(b.second,
+                           std::max(y.producerRawBytes, y.consumerRawBytes),
+                           firstAcquire.lookup_or(x.fifoOp, UINT_MAX),
+                           collected.rank.lookup(x.fifoOp)) <
+           std::make_tuple(a.second,
+                           std::max(x.producerRawBytes, x.consumerRawBytes),
+                           firstAcquire.lookup_or(y.fifoOp, UINT_MAX),
+                           collected.rank.lookup(y.fifoOp));
   });
 
   // Neighbours in position order, so the plan reads only the tiles' contents.
@@ -2270,6 +2280,14 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   });
   for (auto tile : device.getOps<TileOp>())
     placedTiles.push_back(tile.getTileID());
+  llvm::StringMap<Operation *> fifoNamed;
+  for (ObjectFifoCreateOp fifo : collected.objectFifos)
+    fifoNamed[fifo.getSymName()] = fifo;
+  firstAcquire.clear();
+  device.walk([&](ObjectFifoAcquireOp acquire) {
+    if (Operation *fifo = fifoNamed.lookup(acquire.getObjFifoName()))
+      firstAcquire.try_emplace(fifo, firstAcquire.size());
+  });
   lockReach.clear();
   for (int col = 0; col < targetModel->columns(); ++col)
     for (int row = 0; row < targetModel->rows(); ++row) {

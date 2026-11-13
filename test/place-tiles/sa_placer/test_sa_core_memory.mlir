@@ -14,9 +14,14 @@
 
 // An i4 object of 20000 elements takes 20000 bytes, one per element, as the
 // pool and buffer sizes count it, not 10000: the two intra-tile fifos need
-// 80000 bytes.
+// 80000 bytes. Of the two equal fifos, the one the core acquires first
+// moves, whichever is declared first.
 // CHECK-LABEL: @subbyte_core
-// CHECK:       aie.objectfifo.allocate
+// CHECK:       aie.objectfifo.allocate @a(
+// CHECK-NOT:   aie.objectfifo.allocate
+// CHECK-LABEL: @subbyte_core_declared_backwards
+// CHECK:       aie.objectfifo.allocate @a(
+// CHECK-NOT:   aie.objectfifo.allocate
 
 // A core's measured data section (10000 bytes) is reserved as measured, not
 // as the SA's 3 KiB default.
@@ -28,6 +33,27 @@ module @subbyte_core {
     %core = aie.logical_tile<CoreTile>(?, ?)
     aie.objectfifo @a(%core, {%core}, 2 : i32) : !aie.objectfifo<memref<20000xi4>>
     aie.objectfifo @b(%core, {%core}, 2 : i32) : !aie.objectfifo<memref<20000xi4>>
+    aie.core(%core) {
+      %0 = aie.objectfifo.acquire @a(Produce, 1) : memref<20000xi4>
+      aie.objectfifo.release @a(Produce, 1)
+      %1 = aie.objectfifo.acquire @a(Consume, 1) : memref<20000xi4>
+      aie.objectfifo.release @a(Consume, 1)
+      %2 = aie.objectfifo.acquire @b(Produce, 1) : memref<20000xi4>
+      aie.objectfifo.release @b(Produce, 1)
+      %3 = aie.objectfifo.acquire @b(Consume, 1) : memref<20000xi4>
+      aie.objectfifo.release @b(Consume, 1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+module @subbyte_core_declared_backwards {
+  aie.device(npu2) {
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @b(%core, {%core}, 2 : i32) : !aie.objectfifo<memref<20000xi4>>
+    aie.objectfifo @a(%core, {%core}, 2 : i32) : !aie.objectfifo<memref<20000xi4>>
     aie.core(%core) {
       %0 = aie.objectfifo.acquire @a(Produce, 1) : memref<20000xi4>
       aie.objectfifo.release @a(Produce, 1)

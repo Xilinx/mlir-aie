@@ -167,6 +167,8 @@ public:
     llvm::SmallVector<FlowOp> flows;
     llvm::SmallVector<PacketFlowOp> pktFlows;
     llvm::SmallVector<RouteOp> routes;
+    // The device's top-level ops by StructuralGraph::rank, for ties.
+    llvm::DenseMap<mlir::Operation *, unsigned> rank;
   };
 
   // Collect all placement-relevant operations from the device.
@@ -1083,6 +1085,9 @@ private:
   llvm::MapVector<mlir::Operation *, int> fixedLocks;
   llvm::DenseMap<TileID, int> placedLocks;
   llvm::SmallVector<TileID> placedTiles;
+  // Each fifo's place among the ones its core first acquires, in the core's
+  // program order.
+  llvm::DenseMap<mlir::Operation *, unsigned> firstAcquire;
   // The lock groups of pools already in the input, read as
   // aie-objectfifo-allocate reads them: each segment without its locks, used
   // by the tiles of the endpoints selecting it (a compute tile's DMA reaching
