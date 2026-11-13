@@ -936,6 +936,7 @@ struct AIELowerScratchpadParametersPass
     // and whose update also clears those bits; a tile not known takes the
     // mem tile's 16.
     DenseMap<StringRef, int64_t> offsetMultiples;
+    SymbolTableCollection symbolTables;
     auto rewriteParams =
         [&](Operation *op, FlatSymbolRefAttr offsetRef,
             FlatSymbolRefAttr lengthRef, Type bufType,
@@ -949,17 +950,13 @@ struct AIELowerScratchpadParametersPass
           return failure();
         uint32_t elemBytes =
             llvm::cast<BaseMemRefType>(bufType).getElementTypeBitWidth() / 8;
-        TileLike tile;
-        if (auto task = op->getParentOfType<DMAConfigureTaskOp>()) {
-          tile = task.getTileLike();
-        } else if (auto task = op->getParentOfType<DMAConfigureTaskForOp>()) {
-          Operation *named = SymbolTable::lookupNearestSymbolFrom(
-              task, task.getAlloc().getRootReference());
-          if (auto alloc = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(named))
-            tile = alloc.getTile().getDefiningOp<TileLike>();
-          else if (auto end = dyn_cast_or_null<AIE::RouteEndpoint>(named))
-            tile = end.getTile().getDefiningOp<TileLike>();
-        }
+        Operation *task = op->getParentOfType<DMAConfigureTaskOp>();
+        if (!task)
+          task = op->getParentOfType<DMAConfigureTaskForOp>();
+        auto device = task ? task->getParentOfType<DeviceOp>() : DeviceOp();
+        auto tile = device ? dyn_cast_or_null<TileLike>(getRuntimeDmaTile(
+                                 task, symbolTables.getSymbolTable(device)))
+                           : TileLike();
         uint32_t step =
             isa<NpuDmaMemcpyNdOp>(op) || (tile && !tile.isMemTile()) ? 4 : 16;
         if (elemBytes && elemBytes % step) {
