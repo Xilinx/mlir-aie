@@ -28,7 +28,6 @@ Failures are shrunk with router_shrink.py (--shrink) and written to --repros.
 """
 
 import argparse
-import json
 import random
 import sys
 import time
@@ -1572,46 +1571,62 @@ BAD = {
 }
 
 
-def write_report(path, args, results, partial):
-    """Write the run's report: the tally of the seeds finished so far.
+class MutationReport:
+    """The mutation run's report: the tally of the seeds finished so far,
+    replaced whole each time a seed finishes, so a run its job's time limit
+    stops still leaves what it found.
 
     Args:
-        path: Where to write it; replaced whole, so a reader never sees half.
-        args: The run's arguments.
-        results: (seed, rows) of each seed finished, in any order.
-        partial: Whether seeds are left, so the report covers only those done.
+        path: Where to write it.
+        device: The run's device.
+        hops_off: Whether circuit-switch hops are off.
+        first_seed: The run's first seed.
+        seeds: How many seeds the run is to try.
     """
-    rows = [(seed, row) for seed, seed_rows in sorted(results) for row in seed_rows]
-    kills = Counter(row[1] for _, row in rows if row[0] == "kill")
-    report = {
-        "device": args.device,
-        "hops": "off" if args.hops_off else "on",
-        "first_seed": args.first_seed,
-        "seeds": args.seeds,
-        "seeds_done": len(results),
-        "partial": partial,
-        "killed": kills["killed"],
-        "survived": kills["survived"],
-        "failures": [
+
+    def __init__(self, path, device, hops_off, first_seed, seeds):
+        self.path, self.device, self.hops_off = path, device, hops_off
+        self.first_seed, self.seeds = first_seed, seeds
+
+    def write(self, results, partial):
+        """Replace the report whole.
+
+        Args:
+            results: (seed, rows) of each seed finished, in any order.
+            partial: Whether seeds are left, so the report covers only those
+                done.
+        """
+        rows = [(seed, row) for seed, seed_rows in sorted(results) for row in seed_rows]
+        kills = Counter(row[1] for _, row in rows if row[0] == "kill")
+        rp.write_json(
+            self.path,
             {
-                "seed": seed,
-                "kind": kind,
-                "name": name,
-                "outcome": outcome,
-                "detail": detail.strip()[:300],
-            }
-            for seed, (kind, outcome, name, detail, _) in rows
-            if outcome in BAD
-        ],
-        "strict_misses": [
-            {"seed": seed, "kind": kind, "name": name}
-            for seed, (kind, outcome, name, _, _) in rows
-            if outcome == "strict-miss"
-        ],
-    }
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(report, indent=1))
-    tmp.replace(path)
+                "device": self.device,
+                "hops": "off" if self.hops_off else "on",
+                "first_seed": self.first_seed,
+                "seeds": self.seeds,
+                "seeds_done": len(results),
+                "partial": partial,
+                "killed": kills["killed"],
+                "survived": kills["survived"],
+                "failures": [
+                    {
+                        "seed": seed,
+                        "kind": kind,
+                        "name": name,
+                        "outcome": outcome,
+                        "detail": detail.strip()[:300],
+                    }
+                    for seed, (kind, outcome, name, detail, _) in rows
+                    if outcome in BAD
+                ],
+                "strict_misses": [
+                    {"seed": seed, "kind": kind, "name": name}
+                    for seed, (kind, outcome, name, _, _) in rows
+                    if outcome == "strict-miss"
+                ],
+            },
+        )
 
 
 def main():
@@ -1637,13 +1652,15 @@ def main():
     t0 = time.monotonic()
     seeds = range(args.first_seed, args.first_seed + args.seeds)
     results = []
+    report = args.report and MutationReport(
+        args.report, args.device, args.hops_off, args.first_seed, args.seeds
+    )
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         futures = {pool.submit(run_seed, s, args): s for s in seeds}
         for future in as_completed(futures):
             results.append((futures[future], future.result()))
-            # A run the job's time limit stops still leaves what it found.
-            if args.report:
-                write_report(args.report, args, results, partial=True)
+            if report:
+                report.write(results, partial=True)
     results.sort(key=lambda r: r[0])
 
     tally = defaultdict(Counter)
@@ -1690,8 +1707,8 @@ def main():
             )
             (args.out / f"{kind}-{name}-{outcome}-{seed}.mlir").write_text(text)
     # Written before shrinking, which can outlast the job's timeout.
-    if args.report:
-        write_report(args.report, args, results, partial=False)
+    if report:
+        report.write(results, partial=False)
     if args.shrink:
         done = set()
         # One deadline for the whole shrink phase, not one per failure.

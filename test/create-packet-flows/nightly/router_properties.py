@@ -6220,6 +6220,14 @@ def known_bug(d, problems):
     return next((label for label, test in KNOWN_BUGS if test(d, problems)), None)
 
 
+def write_json(path, data):
+    """Replace `path` with `data` as JSON, whole, so a reader never sees half
+    of it, even from a run stopped part way."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=1))
+    tmp.replace(path)
+
+
 class PropertiesReport:
     """The properties run's report, replaced whole each time it changes, so a
     run its step stops early still leaves the properties and seeds it got to.
@@ -6235,9 +6243,9 @@ class PropertiesReport:
         self.path, self.device = path, device
         self.first_seed, self.seeds = first_seed, seeds
         self.properties, self.regressions = [], []
-        self.tried, self.undecided = 0, []
+        self.done, self.undecided = 0, []
 
-    def seed_tried(self, seed, outcome):
+    def seed_done(self, seed, outcome):
         """Count a seed the generator tried.
 
         Args:
@@ -6245,7 +6253,7 @@ class PropertiesReport:
             outcome: The outcome of the model's router run where the model
                 could not decide the seed ("timeout", "crash"), else None.
         """
-        self.tried += 1
+        self.done += 1
         if outcome:
             self.undecided.append(f"seed {seed}: {outcome}")
         self.write(partial=True)
@@ -6271,16 +6279,14 @@ class PropertiesReport:
             "device": self.device,
             "first_seed": self.first_seed,
             "seeds": self.seeds,
-            "seeds_tried": self.tried,
+            "seeds_done": self.done,
             "undecided": self.undecided,
             "partial": partial,
             "properties": self.properties,
         }
         if counts is not None:
             out["counts"] = counts
-        tmp = self.path.with_name(self.path.name + ".tmp")
-        tmp.write_text(json.dumps(out, indent=1))
-        tmp.replace(self.path)
+        write_json(self.path, out)
 
 
 def main(argv=None):
@@ -6371,9 +6377,9 @@ def main(argv=None):
         try:
             case = routable_case(seed, args.device)
         except ModelRunFailed as x:
-            run_report.seed_tried(seed, x.outcome)
+            run_report.seed_done(seed, x.outcome)
             continue
-        run_report.seed_tried(seed, None)
+        run_report.seed_done(seed, None)
         if case is None:
             gave_up += 1
         else:

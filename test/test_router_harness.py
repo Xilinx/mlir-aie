@@ -304,10 +304,10 @@ def test_the_generator_names_a_seed_the_model_could_not_decide(seed):
 def test_the_properties_report_keeps_the_generators_undecided_seeds(tmp_path):
     path = tmp_path / "npu1-properties.json"
     run = rp.PropertiesReport(path, "npu1", 0, 3)
-    run.seed_tried(0, "timeout")
-    run.seed_tried(1, None)
+    run.seed_done(0, "timeout")
+    run.seed_done(1, None)
     partial = json.loads(path.read_text())
-    assert (partial["partial"], partial["seeds_tried"]) == (True, 2)
+    assert (partial["partial"], partial["seeds_done"]) == (True, 2)
     assert partial["undecided"] == ["seed 0: timeout"]
     run.add("unroutable", True, "0 left to the model")
     run.add("strict-completeness", True, "0 undecided")

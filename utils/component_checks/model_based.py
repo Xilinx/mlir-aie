@@ -101,14 +101,14 @@ def router(
             bad = [p["name"] for p in report["properties"] if not p["ok"]]
             span = f"seed={first}+{report['seeds']}"
             failed += [f"{device}/properties/{span}/{name}" for name in bad]
-            stopped = report.get("partial", False)
+            stopped = report["partial"]
             if stopped:
                 failed.append(
-                    f"{device}/properties/stopped after {report['seeds_tried']} "
+                    f"{device}/properties/stopped after {report['seeds_done']} "
                     f"of {report['seeds']} seeds"
                 )
                 partial.setdefault((device, "failed_properties"), []).append(
-                    f"properties {report['seeds_tried']} of {report['seeds']} seeds"
+                    f"properties {report['seeds_done']} of {report['seeds']} seeds"
                 )
             cells["failed_properties"] = (len(bad), "properties")
             if "counts" in report:
@@ -121,19 +121,13 @@ def router(
                     "first_seed": first,
                     "seeds": report["seeds"],
                     "partial": stopped,
-                    "seeds_tried": report.get("seeds_tried", report["seeds"]),
+                    "seeds_done": report["seeds_done"],
                     "failed": bad,
                 }
             )
             continue
-        if "strict_misses" not in report:
-            failed.append(
-                f"{stem}: report has no strict_misses; it predates "
-                "router_mutation.py's strict-miss report, so rerun it"
-            )
-            continue
         part = f"hops-{report['hops']}"
-        stopped = report.get("partial", False)
+        stopped = report["partial"]
         if stopped:
             failed.append(
                 f"{device}/{part}/stopped after {report['seeds_done']} of "
@@ -161,7 +155,7 @@ def router(
                 "first_seed": first,
                 "seeds": report["seeds"],
                 "partial": stopped,
-                "seeds_done": report.get("seeds_done", report["seeds"]),
+                "seeds_done": report["seeds_done"],
                 "killed": report["killed"],
                 "survived": report["survived"],
                 "failures": len(report["failures"]),

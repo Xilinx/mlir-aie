@@ -16,6 +16,11 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test/create-packet-flows/nightly"))
+sys.path.insert(0, str(ROOT / "utils/router_testing"))
+import router_mutation  # noqa: E402
+import router_properties as rp  # noqa: E402  (paths set just above)
+
 CHECKS = ROOT / "utils/component_checks"
 SMALL = ROOT / "test/place-tiles/sa_placer/test_sa_effort.mlir"
 MOBILENET = CHECKS / "fixtures/mobilenet.mlir"
@@ -608,7 +613,7 @@ def test_a_properties_run_its_time_limit_stops_leaves_a_partial_report(
     )
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline and run.poll() is None:
-        if report.exists() and json.loads(report.read_text())["seeds_tried"]:
+        if report.exists() and json.loads(report.read_text())["seeds_done"]:
             break
         time.sleep(0.2)
     run.kill()
@@ -616,46 +621,41 @@ def test_a_properties_run_its_time_limit_stops_leaves_a_partial_report(
     assert report.exists(), "the run wrote no report before it was stopped"
     partial = json.loads(report.read_text())
     assert partial["partial"]
-    assert 1 <= partial["seeds_tried"] < 2000
+    assert 1 <= partial["seeds_done"] < 2000
     assert partial["undecided"] == []
 
     result, _, meta = collect(tmp_path, "router", report)
     assert result.returncode == 1
-    tried = partial["seeds_tried"]
-    assert f"npu1/properties/stopped after {tried} of 2000 seeds" in meta["failed"]
-    assert (meta["detail"][0]["partial"], meta["detail"][0]["seeds_tried"]) == (
+    done = partial["seeds_done"]
+    assert f"npu1/properties/stopped after {done} of 2000 seeds" in meta["failed"]
+    assert (meta["detail"][0]["partial"], meta["detail"][0]["seeds_done"]) == (
         True,
-        tried,
+        done,
     )
     perf = {r["name"]: r for r in json.loads((tmp_path / "perf.json").read_text())}
-    note = f"partial: properties {tried} of 2000 seeds"
+    note = f"partial: properties {done} of 2000 seeds"
     assert perf["npu1/failed_properties"]["range"] == note
 
 
 def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
     report = tmp_path / "npu2-hops-off.json"
-    failures = [
-        {"seed": 12, "kind": "mutator", "name": "fanout", "outcome": "illegal"},
-        {"seed": 15, "kind": "mutator", "name": "fanout", "outcome": "illegal"},
-        {"seed": 15, "kind": "kill", "name": "amsel", "outcome": "survived"},
-        {"seed": 20, "kind": "base", "name": "", "outcome": "base-fails"},
-        {"seed": 21, "kind": "mutator", "name": "pin-config", "outcome": "timeout"},
+    illegal = ("mutator", "illegal", "fanout", "x", None)
+    results = [
+        (12, [illegal]),
+        (13, [("mutator", "strict-miss", "fanout", "x", None)]),
+        (
+            15,
+            [
+                illegal,
+                ("kill", "survived", "amsel", "x", None),
+                ("kill", "killed", "connect", "x", None),
+            ],
+        ),
+        (20, [("base", "base-fails", "", "x", None)]),
+        (21, [("mutator", "timeout", "pin-config", "timeout after 120s", None)]),
     ]
-    for f in failures:
-        f["detail"] = "timeout after 120s" if f["outcome"] == "timeout" else "x"
-    report.write_text(
-        json.dumps(
-            {
-                "device": "npu2",
-                "hops": "off",
-                "first_seed": 10,
-                "seeds": 20,
-                "killed": 99,
-                "survived": 1,
-                "failures": failures,
-                "strict_misses": [{"seed": 13, "kind": "base", "name": ""}],
-            }
-        )
+    router_mutation.MutationReport(report, "npu2", True, 10, 20).write(
+        results, partial=False
     )
     result, rows, meta = collect(tmp_path, "router", report)
     assert result.returncode == 1
@@ -718,33 +718,16 @@ def test_a_placement_that_fails_to_replay_has_no_cost(hw, aie_opt, tmp_path):
 
 def test_strict_misses_add_up_over_properties_and_mutations(tmp_path):
     mutation, properties = tmp_path / "npu2-hops-on.json", tmp_path / "npu2-p.json"
-    mutation.write_text(
-        json.dumps(
-            {
-                "device": "npu2",
-                "hops": "on",
-                "first_seed": 0,
-                "seeds": 4,
-                "killed": 4,
-                "survived": 0,
-                "failures": [],
-                "strict_misses": [{"seed": 1, "kind": "mutator", "name": "fanout"}],
-            }
-        )
+    router_mutation.MutationReport(mutation, "npu2", False, 0, 4).write(
+        [(1, [("mutator", "strict-miss", "fanout", "x", None)]), (2, []), (3, [])]
+        + [(0, [("kill", "killed", "connect", "x", None)])],
+        partial=False,
     )
     counts = dict.fromkeys(
         ["unrouted", "illegal", "hop_ratio", "amsels_per_design", "ms_per_design"], 0
     )
-    properties.write_text(
-        json.dumps(
-            {
-                "device": "npu2",
-                "first_seed": 0,
-                "seeds": 4,
-                "properties": [],
-                "counts": counts | {"strict_misses": 2},
-            }
-        )
+    rp.PropertiesReport(properties, "npu2", 0, 4).write(
+        partial=False, counts=counts | {"strict_misses": 2}
     )
     # The mutation report comes first, so the properties' count must not
     # overwrite its misses.
@@ -752,27 +735,3 @@ def test_strict_misses_add_up_over_properties_and_mutations(tmp_path):
     assert result.returncode == 0, result.stderr
     assert rows["npu2/strict_misses"] == (3, "designs")
     assert meta["detail"][0]["strict_misses"] == 1
-
-
-def test_a_mutation_report_without_strict_misses_fails_clearly(tmp_path):
-    report = tmp_path / "npu1-hops-on.json"
-    report.write_text(
-        json.dumps(
-            {
-                "device": "npu1",
-                "hops": "on",
-                "first_seed": 0,
-                "seeds": 2,
-                "killed": 3,
-                "survived": 0,
-                "failures": [],
-            }
-        )
-    )
-    result, rows, meta = collect(tmp_path, "router", report)
-    assert result.returncode == 1
-    assert meta["failed"] == [
-        "npu1-hops-on: report has no strict_misses; it predates "
-        "router_mutation.py's strict-miss report, so rerun it"
-    ]
-    assert rows == {}
