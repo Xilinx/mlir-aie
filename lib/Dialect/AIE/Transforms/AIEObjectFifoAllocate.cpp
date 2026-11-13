@@ -2092,8 +2092,9 @@ struct AIEObjectFifoAllocatePass
       if (room >= 0)
         continue;
       int64_t numBDs = target.getNumBDsForChannel(*col, *row, channel);
-      endpoint->emitWarning("channel ")
-          << channel << " can use " << numBDs
+      endpoint->emitWarning("")
+          << stringifyDMAChannelDir(endpoint.getRouteDirection())
+          << " DMA channel " << channel << " can use " << numBDs
           << " BDs, but it and the channels sharing them need " << numBDs - room
           << " at once; BD id assignment fails unless tasks free their BDs "
              "before others start";

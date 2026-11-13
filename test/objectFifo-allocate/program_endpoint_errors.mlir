@@ -217,7 +217,7 @@ module @bds_overcommitted {
     aie.route_endpoint @src(%shim) DMA {fifoName = "p"}
     aie.route from @src to [@fill]
     %b = aie.buffer(%core) {sym_name = "b"} : memref<48xi32>
-    // expected-warning @+1 {{channel 0 can use 16 BDs, but it and the channels sharing them need 17 at once; BD id assignment fails unless tasks free their BDs before others start}}
+    // expected-warning @+1 {{MM2S DMA channel 0 can use 16 BDs, but it and the channels sharing them need 17 at once; BD id assignment fails unless tasks free their BDs before others start}}
     aie.route_endpoint @out(%core) DMA
     aie.route_endpoint @dst(%shim) DMA {fifoName = "b"}
     aie.route from @out to [@dst]
