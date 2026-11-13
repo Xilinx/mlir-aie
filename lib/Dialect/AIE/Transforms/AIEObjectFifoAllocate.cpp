@@ -92,8 +92,8 @@ struct AIEObjectFifoAllocatePass
   /// the design's structure alone, which settles the choices op order would.
   DenseMap<Operation *, unsigned> structuralRank;
   RouteEndpoint channelFailure;
-  // Whether channelFailure's channel has too few BD ids left, rather than no
-  // channel being free.
+  /// Whether channelFailure's channel has too few BD ids left, rather than no
+  /// channel being free.
   bool bdShortfall = false;
   /// Mem tiles once short of BD ids, whose ends since take their channels
   /// from planBDChannels.
@@ -103,7 +103,7 @@ struct AIEObjectFifoAllocatePass
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
-  /// Neighbors made for a spill planBuffers weighed. The ones no buffer ends
+  /// Neighbours made for a spill planBuffers weighed. The ones no buffer ends
   /// up on are erased once allocation is done.
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
@@ -473,7 +473,7 @@ struct AIEObjectFifoAllocatePass
         lockFailure = lock.getTile();
         return failure();
       }
-    // Neighbors created to weigh a spill take no locks: the placers count
+    // Neighbours created to weigh a spill take no locks: the placers count
     // locks only on the tiles that exist before allocation.
     SmallVector<TileLike> tiles(device.getOps<TileLike>());
     llvm::stable_sort(tiles, [&](TileLike a, TileLike b) {
@@ -978,10 +978,8 @@ struct AIEObjectFifoAllocatePass
     return failure(clash);
   }
 
-  /// Whether `endpoint` draws a DMA channel of its own: a core's stream port
-  /// is named by the design (checkStreamPorts has claimed it), and an end in
-  /// channelSharers or allocationSharers takes another's channel, so none of
-  /// them is counted where channels are planned.
+  /// Whether `endpoint` draws a DMA channel of its own, rather than being a
+  /// core's stream port or sharing another end's channel.
   bool drawsOwnChannel(RouteEndpoint endpoint) {
     return endpoint.getRouteBundle() != WireBundle::Core &&
            !channelSharers.contains(endpoint.getOperation()) &&
@@ -1197,7 +1195,7 @@ struct AIEObjectFifoAllocatePass
           planned[endpoint.getOperation()] = channel;
         continue;
       }
-      // Too few channels is reported, or shared, as it is anywhere.
+      // Fails even with zero BDs: a channel shortage, handled below.
       if (!DMAChannelAnalysis::planBDChannels(target, *col, *row, unweighted,
                                               free, [](int) { return 0; }))
         continue;
@@ -1439,10 +1437,10 @@ struct AIEObjectFifoAllocatePass
     return plan;
   }
 
-  /// Walks the pools a plan of the BD ids at home needs (walkHomeBDPools);
-  /// when that plan needs none, the pool on `tile`
-  /// DMAChannelAnalysis::nextPoolToWalk picks, for what only the tile's real
-  /// channels are short of. False when none is left.
+  /// Walks whichever pools need it: first walkHomeBDPools' plan for `tile`'s
+  /// BD ids at home; once that needs none, the one pool
+  /// DMAChannelAnalysis::nextPoolToWalk picks for what only the tile's real
+  /// channels are short of. False once none is left to walk.
   bool walkForBDShortfall(TileLike tile,
                           MutableArrayRef<ObjectFifoPoolOp> pools) {
     if (walkHomeBDPools(pools))

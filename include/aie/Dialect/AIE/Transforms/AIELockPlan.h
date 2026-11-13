@@ -29,11 +29,11 @@
 
 namespace xilinx::AIE {
 
-/// Where aie-objectfifo-allocate puts locks (assign), on plain records the SA
-/// placer also runs.
+/// Lock placement shared by aie-objectfifo-allocate and the SA placer, on
+/// plain records.
 class LockPlan {
 public:
-  /// The positions a tile may take, one once placed, and that position.
+  /// A tile's candidate positions, and the one placement chose, once it has.
   struct Tile {
     llvm::SmallVector<TileID, 1> positions;
     std::optional<TileID> at;
@@ -203,9 +203,8 @@ public:
 
   struct Assignment {
     llvm::SmallVector<std::optional<unsigned>> tiles;
-    /// A group no assignment finds room for, and why: the first placing them
-    /// in order misses (when packing, in a component no packing exists for),
-    /// or, after the matching, the first it leaves out.
+    /// The first group no assignment finds room for: first fit's miss, or,
+    /// after packing or matching run, the first one still left over.
     std::optional<size_t> failed;
     Placed failure;
     /// How many groups no assignment finds room for.
@@ -215,16 +214,12 @@ public:
   };
 
   /// Places `groups` first fit: with `callerOrder`, in order on each one's
-  /// candidates, then, should that miss on groups of different counts, in the
-  /// canonical order (canonicalFirstFit); without, in the canonical order only.
-  /// When one finds no room and all take one count (always on AIE2), a tile
-  /// holds a whole number of groups, so a maximum bipartite matching that
-  /// augments the first-fit placement decides, whatever their order. Groups of
-  /// different counts (AIE1 pools of different depths) are packed by an exact
-  /// search; when no packing exists, or it stops after kPackBudget steps, the
-  /// first-fit placement stands. A caller placing in canonical order only (the
-  /// SA) so fits only where one placing in its own order first (allocation)
-  /// fits too.
+  /// candidates, then in canonical order (canonicalFirstFit); without, in
+  /// canonical order only. On a miss: exact bipartite matching when every
+  /// group takes one count, else exact packing, which leaves the first-fit
+  /// placement standing if no packing exists or the search runs out of
+  /// kPackBudget steps. The SA places in canonical order only, so it fits
+  /// only where allocation's own-order-first pass fits too.
   Assignment assign(llvm::ArrayRef<Group> groups, Memo *memo = nullptr,
                     bool callerOrder = true) {
     Assignment result;
