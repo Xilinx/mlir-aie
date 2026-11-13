@@ -2428,14 +2428,14 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     return emitOpError("delegate must be a tile");
   if (objFifo.getConsumerTiles().size() != 1)
     return emitError("can only be used in 1-to-1 object FIFOs");
-  if (std::optional<StringRef> reason = objFifo.dmaReason())
-    return emitError("cannot allocate a shared memory module to an objectfifo "
-                     "that moves by DMA: ")
-           << *reason;
   // A linked fifo that shares memory keeps its objects in the link's one
   // pool, which a core fills or drains one pool object per acquire. Whether
   // it shares depends on where its tiles are placed.
   std::optional<ObjectFifoLinkOp> linked = objFifo.getLink();
+  if (std::optional<StringRef> reason = objFifo.dmaReason())
+    return emitError("cannot allocate a shared memory module to an objectfifo "
+                     "that moves by DMA: ")
+           << *reason;
   if (LinkPoolMisfit misfit =
           linked ? objFifo.linkPoolMisfit() : LinkPoolMisfit::None;
       linked && misfit != LinkPoolMisfit::None) {
