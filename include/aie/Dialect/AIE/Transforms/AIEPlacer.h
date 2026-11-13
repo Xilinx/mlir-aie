@@ -273,10 +273,11 @@ public:
     // nothing when they can.
     std::optional<std::string> whyApart(End a, End b) const;
     // The channel `end` shares with the ends of its own tile op that took it
-    // before, numbered by the first. An end that cannot share it with one
-    // that, like it, moves by DMA wherever placed is diagnosed: its tile
-    // holds both wherever it goes.
-    unsigned share(End end);
+    // before, numbered by the first. Each pair that cannot share it and, both
+    // moving by DMA wherever placed, would hold it together wherever their
+    // tile goes is diagnosed on the fifo of lower `rank`.
+    unsigned share(End end,
+                   const llvm::DenseMap<mlir::Operation *, unsigned> &rank);
     // Whether share() diagnosed an end, which fails the placement.
     bool failed() const { return diagnosed; }
     // Whether `end` may take turns on the channel of `claim`, as allocation
@@ -714,7 +715,8 @@ private:
   llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
   buildChannelRequirements(
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
-      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
+      const llvm::DenseMap<mlir::Operation *, unsigned> &rank);
 
   // Per-place() neighbor-demand maps and soft-reservation table.
   struct PlacementContext {

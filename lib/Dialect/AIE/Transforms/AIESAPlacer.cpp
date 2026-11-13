@@ -2514,13 +2514,13 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     if (drawsChannel(fb.producerTile, fb.producerEnd.has_value()))
       fb.producerPin = PinnedChannels::endOf(ofOp, std::nullopt);
     if (fb.producerPin)
-      pinnedRule.share(*fb.producerPin);
+      pinnedRule.share(*fb.producerPin, collected.rank);
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci) {
       std::optional<PinnedChannels::End> pin;
       if (drawsChannel(fb.consumerTiles[ci], fb.consumerEnds[ci].has_value()))
         pin = PinnedChannels::endOf(ofOp, ci);
       if (pin)
-        pinnedRule.share(*pin);
+        pinnedRule.share(*pin, collected.rank);
       fb.consumerPins.push_back(pin);
     }
     if (fb.producerEnd && onMemTile(fb.producerTile)) {

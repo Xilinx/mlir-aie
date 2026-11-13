@@ -236,7 +236,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
   // and cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
-      buildChannelRequirements(objectFifos, objectFifoLinks);
+      buildChannelRequirements(objectFifos, objectFifoLinks, collected.rank);
   if (pinnedRule.failed())
     return failure();
   namedChannels.clear();
@@ -1044,7 +1044,8 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
 llvm::DenseMap<Operation *, std::pair<int, int>>
 SequentialPlacer::buildChannelRequirements(
     SmallVector<ObjectFifoCreateOp> &objectFifos,
-    SmallVector<ObjectFifoLinkOp> &objectFifoLinks) {
+    SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
+    const DenseMap<Operation *, unsigned> &rank) {
   llvm::DenseMap<Operation *, std::pair<int, int>> channelRequirements;
 
   // Build map of ObjectFifo name -> CreateOp for link processing
@@ -1092,7 +1093,7 @@ SequentialPlacer::buildChannelRequirements(
     if (!end)
       return true;
     pinnedEnds[tile].push_back(*end);
-    return counted.insert(pinnedRule.share(*end)).second;
+    return counted.insert(pinnedRule.share(*end, rank)).second;
   };
   // An end takes a channel of its own when the fifo moves by DMA: a shim's
   // unless it is a PLIO, any other one the split gives a DMA end.
@@ -1751,7 +1752,9 @@ std::optional<std::string> Placer::PinnedChannels::whyApart(End a,
   return std::nullopt;
 }
 
-unsigned Placer::PinnedChannels::share(End end) {
+unsigned
+Placer::PinnedChannels::share(End end,
+                              const DenseMap<Operation *, unsigned> &rank) {
   auto key =
       std::make_tuple(end.tile, end.channel, static_cast<int>(end.sends));
   auto &[before, number] = taken
@@ -1761,12 +1764,14 @@ unsigned Placer::PinnedChannels::share(End end) {
   for (End other : before) {
     if (!end.movesByDma || !other.movesByDma)
       continue;
-    if (std::optional<std::string> why = whyApart(end, other)) {
-      end.fifo.emitError() << "shares " << (end.sends ? "MM2S" : "S2MM")
-                           << " channel " << end.channel << " with @"
-                           << other.fifo.getSymName() << ", but " << *why;
+    auto [first, second] = rank.lookup(other.fifo) < rank.lookup(end.fifo)
+                               ? std::pair(other, end)
+                               : std::pair(end, other);
+    if (std::optional<std::string> why = whyApart(first, second)) {
+      first.fifo.emitError() << "shares " << (first.sends ? "MM2S" : "S2MM")
+                             << " channel " << first.channel << " with @"
+                             << second.fifo.getSymName() << ", but " << *why;
       diagnosed = true;
-      break;
     }
   }
   before.push_back(end);
