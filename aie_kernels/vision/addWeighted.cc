@@ -63,7 +63,6 @@ void addweighted_aie(const T *__restrict src1, const T *__restrict src2,
   }
 #endif
   gamma_acc.template from_vector(gamma_coeff, SRS_SHIFT);
-  // loop_range(14) - loop : 1 cycle
   AIE_PREPARE_FOR_PIPELINING
   for (int j = 0; j < ADD_WEIGHTED_ELEMS; j += N) // 16 samples per loop
   {

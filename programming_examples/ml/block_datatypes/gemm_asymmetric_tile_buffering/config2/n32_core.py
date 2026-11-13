@@ -85,6 +85,11 @@ def n32_core_gemm(
             "-aie-postpipeliner-maxii=120",
             "-mllvm",
             "-aie-postpipeliner-maxtry-ii=50",
+            # The coalescer rerun after the pre-RA scheduler overlaps more
+            # bfp16 load-FIFO pointers than the two PLFR registers hold
+            # (llvm-aie#1482).
+            "-mllvm",
+            "-aie-premisched-coalescer=false",
         ],
     )
 

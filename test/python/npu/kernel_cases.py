@@ -194,6 +194,7 @@ CASES: list[Case] = [
     Case("reduce_min", calls=16, smoke=True),
     Case("reduce_min", calls=256),
     check("reduce_min", dict(tile_size=16), tag="edge-one-vector"),
+    check("reduce_min", dict(tile_size=64), tag="edge-tiny"),
     Case("reduce_min", _bf16, calls=16, smoke=True),
     Case("reduce_min", _bf16, calls=256),
     check("reduce_min", dict(tile_size=32, dtype=bfloat16), tag="edge-one-vector"),
@@ -202,6 +203,7 @@ CASES: list[Case] = [
     Case("reduce_max", _bf16, calls=16, smoke=True),
     Case("reduce_max", _bf16, calls=256),
     check("reduce_max", dict(tile_size=16), tag="edge-one-vector"),
+    check("reduce_max", dict(tile_size=64), tag="edge-tiny"),
     # float32: amd/IRON's Whisper log-mel takes a clip's largest energy as 96
     # rows of 4000, then the one row of those 96.
     Case("reduce_max", dict(tile_size=4000, dtype=np.float32), calls=16, smoke=True),
@@ -1411,13 +1413,17 @@ CASES: list[Case] = [
     Case("bitwise_and", calls=16, smoke=True),
     check("bitwise_or", dict(line_width=64), tag="edge-one-vector"),
     check("bitwise_and", dict(line_width=64), tag="edge-one-vector"),
+    # Four vectors, under the old runtime-bound minimum-trip promise of 14.
+    check("bitwise_or", dict(line_width=256), tag="edge-tiny"),
+    check("bitwise_and", dict(line_width=256), tag="edge-tiny"),
     *[
         check(
             "threshold",
-            dict(line_width=64),
+            dict(line_width=width),
             scalars=(100, 255, mode),
-            tag=f"edge-one-vector-mode-{mode}",
+            tag=f"{tag}-mode-{mode}",
         )
+        for width, tag in ((64, "edge-one-vector"), (256, "edge-tiny"))
         for mode in range(5)
     ],
     # alpha = beta = 0.5 in Q2.14.
@@ -1436,6 +1442,12 @@ CASES: list[Case] = [
         dict(line_width=32),
         scalars=(8192, 8192, 0),
         tag="edge-one-vector",
+    ),
+    check(
+        "add_weighted",
+        dict(line_width=128),
+        scalars=(8192, 8192, 0),
+        tag="edge-tiny",
     ),
     Case("filter2d", calls=16, smoke=True),
     # Three middle vectors, one under the count the AIE2 pipelined loop needs.
@@ -2164,6 +2176,19 @@ CASES: list[Case] = [
         calls=8,
         scalars=(7, 240, 40, 11, 1),
     ),
+    # One input-channel block: the reduction loop runs zero times; cover
+    # aligned rows (28) and not (7) on both architectures.
+    *[
+        check(
+            name,
+            dict(input_width=w, input_channels=8, output_channels=64),
+            calls=8,
+            scalars=(w, 8, 64, *tail),
+            tag="one-ic-block",
+        )
+        for name, tail in (("bn_conv2dk1_relu", (6,)), ("bn_conv2dk1_skip", (6, 1)))
+        for w in (28, 7)
+    ],
     Case(
         "bn_conv2dk1_skip",
         dict(
@@ -3538,4 +3563,16 @@ CASES += [
         tag="odd-k",
         smoke=True,
     ),
+    # One and two trips of the block loop, which promises at least four; the
+    # count is a constant, so the promise must not change how many run.
+    *[
+        check(
+            "mm_bfp",
+            dict(dim_m=16, dim_k=64, dim_n=n, mixed=mixed),
+            devices=("npu2",),
+            tag="edge-tiny",
+        )
+        for n in (16, 32)
+        for mixed in (False, True)
+    ],
 ]

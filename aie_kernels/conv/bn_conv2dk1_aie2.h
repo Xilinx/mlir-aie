@@ -140,14 +140,18 @@ k1_chunks(const TI *__restrict in, const int8_t *__restrict wts,
   K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++)
     acc[j].mul(k1_load<Aligned, E>(in + (j == N - 1 ? last_off : E * j)), b);
-  AIE_LOOP_MIN_ITERATION_COUNT(Trips)
-  for (int ic = 1; ic < ic_blocks; ic++) {
-    in += row;
-    wts += 64;
-    b = aie::load_v<64>(wts);
-    K1_UNROLL_CHUNKS
-    for (int j = 0; j < N; j++)
-      acc[j].mac(k1_load<Aligned, E>(in + (j == N - 1 ? last_off : E * j)), b);
+  // One input-channel block runs the loop zero times, under the promise.
+  if (Trips > 1 || ic_blocks > 1) {
+    AIE_LOOP_MIN_ITERATION_COUNT(Trips)
+    for (int ic = 1; ic < ic_blocks; ic++) {
+      in += row;
+      wts += 64;
+      b = aie::load_v<64>(wts);
+      K1_UNROLL_CHUNKS
+      for (int j = 0; j < N; j++)
+        acc[j].mac(k1_load<Aligned, E>(in + (j == N - 1 ? last_off : E * j)),
+                   b);
+    }
   }
   K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++) {

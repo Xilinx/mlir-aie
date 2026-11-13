@@ -15,6 +15,7 @@ add_sized/1024x16/bfloat16
 add_sized/2048x16/bfloat16/llama-prefill
 add_sized/256x16/bfloat16/llama-decode
 add_sized/32x4/bfloat16/edge-tiny
+add_weighted/128x4/uint8/line_width=128/edge-tiny
 add_weighted/1920x16/int16/gamma
 add_weighted/1920x16/uint8
 add_weighted/1920x16/uint8/gamma
@@ -42,8 +43,10 @@ axpy/64x4/bfloat16/short-row
 bf16_exp/1024x16/bfloat16
 bf16_exp/1024x256/bfloat16
 bitwise_and/1920x16/uint8
+bitwise_and/256x4/uint8/line_width=256/edge-tiny
 bitwise_and/64x4/uint8/line_width=64/edge-one-vector
 bitwise_or/1920x16/uint8
+bitwise_or/256x4/uint8/line_width=256/edge-tiny
 bitwise_or/64x4/uint8/line_width=64/edge-one-vector
 bn_conv2dk1_i8/2016x8/uint8_int8/input_channels=72/input_width=28/output_channels=40
 bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80
@@ -61,7 +64,9 @@ bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_chann
 bn_conv2dk1_relu/1344x8/int8_uint8/input_channels=24/input_width=56/output_channels=72
 bn_conv2dk1_relu/1568x8/int8_uint8/input_channels=112/input_width=14/output_channels=336
 bn_conv2dk1_relu/1792x8/int8_uint8/input_channels=16/input_width=112/output_channels=64
+bn_conv2dk1_relu/224x8/int8_uint8/input_channels=8/input_width=28/output_channels=64/one-ic-block
 bn_conv2dk1_relu/560x8/int8_uint8/input_channels=80/input_width=7/output_channels=120
+bn_conv2dk1_relu/56x8/int8_uint8/input_channels=8/input_width=7/output_channels=64/one-ic-block
 bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120
 bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/arg1@16
 bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/first-row
@@ -71,6 +76,7 @@ bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=
 bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=1280/weight_chunk_count=9600/mobilenet-mid-row
 bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40
 bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40/arg1@16
+bn_conv2dk1_skip/224x8/uint8_int8/input_channels=8/input_width=28/output_channels=64/one-ic-block
 bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8
 bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8/skip-scale-0
 bn_conv2dk1_skip/2800x8/uint8_int8/input_channels=200/input_width=14/output_channels=80/skip_dtype=int8/skip-scale-0
@@ -79,6 +85,7 @@ bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_chan
 bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8
 bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8/skip-scale-0
 bn_conv2dk1_skip/4032x8/uint8_int8/input_channels=72/input_width=56/output_channels=24
+bn_conv2dk1_skip/56x8/uint8_int8/input_channels=8/input_width=7/output_channels=64/one-ic-block
 bn_conv2dk3/1024x8/int8_uint8/input_channels=16/input_width=64/output_channels=8/weight_output_channels=16/channel-offset
 bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16
 bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16/arg3@32
@@ -435,6 +442,10 @@ mm_activation_epilogue/80x4/float32/gelu-min-trips
 mm_activation_epilogue/80x4/float32/identity-min-trips
 mm_activation_epilogue/80x4/float32/relu-min-trips
 mm_activation_epilogue/80x4/float32/silu-min-trips
+mm_bfp/16x64x16x4/bfloat16/mixed=True/edge-tiny
+mm_bfp/16x64x16x4/bfp16ebs8/mixed=False/edge-tiny
+mm_bfp/16x64x32x4/bfloat16/mixed=True/edge-tiny
+mm_bfp/16x64x32x4/bfp16ebs8/mixed=False/edge-tiny
 mm_bfp/32x24x48x4/bfp16ebs8/odd-k
 mm_bfp/64x32x32x4/bfloat16/mixed=True/non-square
 mm_bfp/64x64x64x16/bfloat16/mixed=True
@@ -518,6 +529,7 @@ reduce_max/64x4/bfloat16/vectorized=False/all-neg-inf
 reduce_max/64x4/bfloat16/vectorized=True/all-neg-inf
 reduce_max/64x4/float32/vectorized=False/all-neg-inf
 reduce_max/64x4/float32/vectorized=True/all-neg-inf
+reduce_max/64x4/int32/edge-tiny
 reduce_max/96x4/float32/whisper-peaks
 reduce_min/1024x16/bfloat16
 reduce_min/1024x16/int32
@@ -525,6 +537,7 @@ reduce_min/1024x256/bfloat16
 reduce_min/1024x256/int32
 reduce_min/16x4/int32/edge-one-vector
 reduce_min/32x4/bfloat16/edge-one-vector
+reduce_min/64x4/int32/edge-tiny
 relu/1024x16/bfloat16
 relu/1024x256/bfloat16
 relu/32x4/bfloat16/edge-tiny
@@ -631,6 +644,11 @@ threshold/1920x16/int16
 threshold/1920x16/uint8
 threshold/1920x16/uint8/tozero-inv
 threshold/1920x16/uint8/trunc
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-0
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-1
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-2
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-3
+threshold/256x4/uint8/line_width=256/edge-tiny-mode-4
 threshold/64x4/uint8/line_width=64/edge-one-vector-mode-0
 threshold/64x4/uint8/line_width=64/edge-one-vector-mode-1
 threshold/64x4/uint8/line_width=64/edge-one-vector-mode-2

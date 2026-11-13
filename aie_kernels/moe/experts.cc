@@ -47,7 +47,7 @@ constexpr uint32_t expert_steps = gate_up_steps + (H / T) * (I / C);
 constexpr uint32_t row_steps = EXPERTS_EXPERTS * expert_steps;
 
 // Lanes a tile row is read in, and lanes of a walk over h or y. AIE2 walks h
-// 16 wide: at 32 Peano 94b320c0 asserts in instruction selection.
+// 16 wide: at 32 Peano asserts in instruction selection (llvm-aie#1372).
 constexpr uint32_t V = C % 32 == 0 ? 32 : 16;
 constexpr uint32_t VI = I % 32 == 0 && !AIE_ARCH_AIE2 ? 32 : 16;
 constexpr uint32_t VH = H % 32 == 0 ? 32 : 16;
