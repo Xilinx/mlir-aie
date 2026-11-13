@@ -971,3 +971,62 @@ module @rtp_release_more {
     }
   }
 }
+
+// -----
+
+// A core passes @in on to both @o1 and @o2, so @in carries two proofs. They
+// are listed by their outputs' structure, not the order the fifos are
+// declared in.
+// CHECK-LABEL: module @two_outputs
+// CHECK: aie.route_endpoint @in__prod__dma(%{{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @o2__cons__dma, input_bytes = 1, output_bytes = 1>, #aie.consumed_by<output = @o1__cons__dma, input_bytes = 1, output_bytes = 1>]
+module @two_outputs {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @o1(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @o2(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c4 = arith.constant 4 : index
+      scf.for %i = %c0 to %c4 step %c1 {
+        %a = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        %b = aie.objectfifo.acquire @o1(Produce, 1) : memref<16xi32>
+        %d = aie.objectfifo.acquire @o2(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @o1(Produce, 1)
+        aie.objectfifo.release @o2(Produce, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// CHECK-LABEL: module @two_outputs_declared_backwards
+// CHECK: aie.route_endpoint @in__prod__dma(%{{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @o2__cons__dma, input_bytes = 1, output_bytes = 1>, #aie.consumed_by<output = @o1__cons__dma, input_bytes = 1, output_bytes = 1>]
+module @two_outputs_declared_backwards {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @o2(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @o1(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c4 = arith.constant 4 : index
+      scf.for %i = %c0 to %c4 step %c1 {
+        %a = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        %b = aie.objectfifo.acquire @o1(Produce, 1) : memref<16xi32>
+        %d = aie.objectfifo.acquire @o2(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @o1(Produce, 1)
+        aie.objectfifo.release @o2(Produce, 1)
+      }
+      aie.end
+    }
+  }
+}

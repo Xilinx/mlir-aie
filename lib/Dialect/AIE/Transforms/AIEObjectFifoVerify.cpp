@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
+#include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -1437,6 +1438,9 @@ struct AIEObjectFifoVerifyPass
     struct Share {
       int64_t in, out, granule;
     };
+    // Proofs are listed by their outputs' structural rank, found once and
+    // only for an input with several.
+    std::optional<DenseMap<Operation *, unsigned>> rank;
     for (auto input : device.getOps<RouteEndpointOp>()) {
       if (input.getBundle() != WireBundle::DMA ||
           !input.getTileLike().isShimTile())
@@ -1570,8 +1574,16 @@ struct AIEObjectFifoVerifyPass
         input.removeConsumedByAttr();
         continue;
       }
+      auto ordered = proofs.takeVector();
+      if (ordered.size() > 1) {
+        if (!rank)
+          rank = StructuralGraph::of(device).rank();
+        llvm::stable_sort(ordered, [&](const auto &a, const auto &b) {
+          return rank->lookup(a.first) < rank->lookup(b.first);
+        });
+      }
       SmallVector<Attribute> attrs;
-      for (auto [output, share] : proofs) {
+      for (auto [output, share] : ordered) {
         int64_t common = std::gcd(share.in, share.out);
         attrs.push_back(ConsumedByAttr::get(
             ctx,
