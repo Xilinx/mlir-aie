@@ -513,7 +513,8 @@ struct AIEObjectFifoAllocatePass
     for (auto pool : pools) {
       if (!poolLocks->needsLocks(pool))
         continue;
-      SmallVector<Operation *> owners = lockOwners(pool);
+      SmallVector<Operation *> owners =
+          LockPlan::lockOwners(device.getTargetModel(), pool);
       for (auto [owner, count] : llvm::zip_equal(
                owners, LockPlan::groupCounts(device.getTargetModel(),
                                              pool.getDepth(), owners.size())))
@@ -549,21 +550,6 @@ struct AIEObjectFifoAllocatePass
       if (failed(check(endpoint)))
         return failure();
     return success();
-  }
-
-  /// The ops whose locks allocation makes for `pool`: with semaphore locks,
-  /// each segment without its pair; otherwise the pool, when it has none.
-  SmallVector<Operation *> lockOwners(ObjectFifoPoolOp pool) {
-    SmallVector<Operation *> owners;
-    if (!semaphoreLocks) {
-      if (!pool.getLocks())
-        owners.push_back(pool);
-      return owners;
-    }
-    for (auto segment : pool.getSegmentOps())
-      if (!(segment.getProduceLock() && segment.getConsumeLock()))
-        owners.push_back(segment);
-    return owners;
   }
 
   void allocateLocks(ObjectFifoPoolOp pool) {

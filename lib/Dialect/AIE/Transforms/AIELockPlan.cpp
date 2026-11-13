@@ -7,6 +7,8 @@
 
 #include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/IntEqClasses.h"
@@ -17,6 +19,20 @@
 #include <set>
 
 using namespace xilinx::AIE;
+
+llvm::SmallVector<mlir::Operation *>
+LockPlan::lockOwners(const AIETargetModel &target, ObjectFifoPoolOp pool) {
+  llvm::SmallVector<mlir::Operation *> owners;
+  if (!target.hasProperty(AIETargetModel::UsesSemaphoreLocks)) {
+    if (!pool.getLocks())
+      owners.push_back(pool);
+    return owners;
+  }
+  for (auto segment : pool.getSegmentOps())
+    if (!(segment.getProduceLock() && segment.getConsumeLock()))
+      owners.push_back(segment);
+  return owners;
+}
 
 LockPlan::Assignment LockPlan::assign(llvm::ArrayRef<Group> groups, Memo *memo,
                                       bool callerOrder) {

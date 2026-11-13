@@ -21,7 +21,13 @@
 #include <unordered_map>
 #include <vector>
 
+namespace mlir {
+class Operation;
+} // namespace mlir
+
 namespace xilinx::AIE {
+
+class ObjectFifoPoolOp;
 
 /// Lock placement shared by aie-objectfifo-allocate and the SA placer, on
 /// plain records.
@@ -122,6 +128,12 @@ public:
   static bool dmaLocalOnly(AIETileType type) {
     return type != AIETileType::MemTile;
   }
+
+  /// The ops whose locks allocation and the SA each make for `pool`: with
+  /// semaphore locks, each segment without its own pair; otherwise the pool,
+  /// when it has none.
+  static llvm::SmallVector<mlir::Operation *>
+  lockOwners(const AIETargetModel &target, ObjectFifoPoolOp pool);
 
   unsigned addTile(Tile tile) {
     tiles.push_back(std::move(tile));
