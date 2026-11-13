@@ -1342,7 +1342,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
                   lines: [['', ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions']]],
                   about: 'every failure the night counted, per device: properties that did not hold, routings that failed or were illegal, mutations answered wrong and corruptions missed' },
                 { id: 'strict_misses', name: 'Strict misses', axis: 'Designs routed only with allow-deadlock-prone', cases: true, hideIfZero: true, lines: [['', ['strict_misses']]],
-                  about: 'designs the router fails without allow-deadlock-prone though a routing without a hold cycle exists, per device; the nightly allows 0.1% of its designs plus 2' }] },
+                  about: 'designs the router fails without allow-deadlock-prone though a routing without a hold cycle exists, per device, over the properties and both mutation runs; only the properties run is gated, at 0.1% of its own designs plus 2' }] },
       { id: 'allocator', section: 'placement', title: 'Buffer allocator model-based tests', short: 'Buffer allocator', failure: 'property',
         passed: 'Every property held.',
         about: 'aie-opt places 5,000 generated designs and 200,000 with per-bank reservations, each built around a layout known to fit, on a GitHub-hosted runner with no NPU: '
@@ -3750,8 +3750,8 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
           missed && tried ? { ...missed, title: `the verifier caught ${killed} of ${tried} corruptions` } : missed,
           figure(cases, device, 'hop_ratio'), figure(cases, device, 'amsels_per_design'), figure(cases, device, 'ms_per_design')] };
       });
-      return rows.length ? figureTable(heads, rows, 'Properties, unrouted, illegal, mutations and corruptions are correctness: any above 0 is a bug. Strict misses are tallied; '
-        + 'the nightly allows 0.1% of its designs plus 2. Hops ÷ known is the route\'s length over '
+      return rows.length ? figureTable(heads, rows, 'Properties, unrouted, illegal, mutations and corruptions are correctness: any above 0 is a bug. Strict misses are tallied '
+        + 'over the properties and both mutation runs; only the properties run is gated, at 0.1% of its own designs plus 2. Hops ÷ known is the route\'s length over '
         + 'the routing the generator built and knows to be legal; time is CPU time on a shared GitHub-hosted runner.') : null;
     }
 
