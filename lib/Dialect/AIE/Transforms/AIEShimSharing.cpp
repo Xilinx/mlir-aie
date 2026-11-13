@@ -503,7 +503,9 @@ bool ShimTransferSpans::isUsed(StringAttr endpoint) const {
 }
 
 StringAttr ShimTransferSpans::overlayEnd(int column) const {
-  return StringAttr::get(context, "ctrlpkt_col" + std::to_string(column));
+  // Typed, so no symbol name (an untyped StringAttr) is ever this end.
+  return StringAttr::get("ctrlpkt_col" + Twine(column),
+                         IndexType::get(context));
 }
 
 bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
