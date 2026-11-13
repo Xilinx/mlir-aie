@@ -941,7 +941,10 @@ def AIEGenerateColumnControlOverlay
        Option<"adaptive", "adaptive", "bool", "true",
               "Place configuration transport around application resources">,
        ListOption<"coverColumns", "cover-columns", "int",
-                  "Additional columns touched by application routing">];
+                  "Additional columns touched by application routing">,
+       Option<"packetSwitched", "packet-sw-objFifos", "bool", "false",
+              "Count route ends with no packet header as packet switched, "
+              "as aie-assign-packet-ids does with this option">];
 }
 
 def AIEAnnotateShimSharing

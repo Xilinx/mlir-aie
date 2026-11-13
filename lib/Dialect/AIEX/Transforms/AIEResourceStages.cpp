@@ -55,6 +55,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   overlay.configuration = ctrlPktOverlay || loadPdiToCtrlPkt;
   overlay.adaptive = adaptiveOverlay;
   overlay.coverColumns = llvm::to_vector(coverColumns);
+  overlay.packetSwitched = packetSwObjFifos;
   pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
   pm.addPass(createAIEImportOverlayPass());
   pm.addPass(createAIEAnnotateShimSharingPass());

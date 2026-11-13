@@ -234,7 +234,7 @@ struct AIEGenerateColumnControlOverlayPass
       return cast<TileLike>(tile).tryGetCol();
     };
     for (DeviceOp device : devices) {
-      ShimMM2SUses uses = shimMM2SUses(device, /*packetSwitched=*/false);
+      ShimMM2SUses uses = shimMM2SUses(device, packetSwitched);
       for (auto &[tile, channels] : uses.circuits)
         if (std::optional<int> col = column(tile))
           fixedCircuits[*col].insert(channels.begin(), channels.end());
