@@ -74,6 +74,11 @@ std::optional<unsigned> getHostBufferArgIndex(BlockArgument arg);
 // The number of host buffers `block`'s arguments take: its memref arguments.
 unsigned getHostBufferCount(Block &block);
 
+// The bytes one step of a BD address field covers on tile (`col`, `row`):
+// a shim NOC BD addresses bytes, others the address-generation granule.
+uint64_t getBdAddressUnit(const AIE::AIETargetModel &targetModel, int col,
+                          int row);
+
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
 // (held in the scratchpad slot referenced by `bdOp`'s
 // `offset_state_table_idx` attribute, in elements of `bufType`) into the

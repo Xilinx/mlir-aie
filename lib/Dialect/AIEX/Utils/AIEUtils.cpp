@@ -203,6 +203,13 @@ memref::GlobalOp AIEX::BlockwriteData::getOrCreate(OpBuilder &builder,
   return global;
 }
 
+uint64_t AIEX::getBdAddressUnit(const AIE::AIETargetModel &targetModel, int col,
+                                int row) {
+  return targetModel.isShimNOCTile(col, row)
+             ? 1
+             : targetModel.getAddressGenGranularity() / 8;
+}
+
 LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
     uint64_t registerAddr, const AIE::AIETargetModel &targetModel, int col,
@@ -220,8 +227,8 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     return bdOp->emitOpError("has no buffer descriptor layout on this tile");
   const AIE::DmaBdField &addressField = layout->bufferOffset;
   // The firmware adds StateTable[idx] * func_arg into the register holding the
-  // address field, which counts bytes on a shim BD and 32-bit words elsewhere.
-  uint64_t unit = targetModel.isShimNOCTile(col, row) ? 1 : 4;
+  // address field.
+  uint64_t unit = getBdAddressUnit(targetModel, col, row);
   uint64_t perElement = uint64_t{elemBytes} << addressField.shift;
   if (perElement % unit || perElement / unit > UINT32_MAX)
     return bdOp->emitOpError("a runtime offset into ")

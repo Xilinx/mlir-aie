@@ -285,11 +285,10 @@ struct AIEDMATasksToNPUPass
     return bd_op;
   }
 
-  /// `lengthWord` is the register word holding the BD's length as the dynamic
-  /// path wrote it, absent when the length is the static one.
+  /// `lengthField` is the value the BD write gave its length field.
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
-                                      AIE::TileOp &tile, OpFoldResult bdId = {},
-                                      Value lengthWord = nullptr) {
+                                      AIE::TileOp &tile, OpFoldResult bdId,
+                                      OpFoldResult lengthField) {
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
     auto col = tile.getCol();
@@ -388,14 +387,12 @@ struct AIEDMATasksToNPUPass
           buf_addr += addrOffset.value();
       }
 
-      // The BD's address field, from the target model's layout. Shim NOC BDs
-      // address bytes; mem and core tile BDs address 32-bit words.
       const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
       if (!layout)
         return bd_op->emitOpError(
             "has no buffer descriptor layout on this tile");
       const AIE::DmaBdField &addrBits = layout->bufferOffset;
-      uint64_t divisor = target_model.isShimNOCTile(col, row) ? 1 : 4;
+      uint64_t divisor = getBdAddressUnit(target_model, col, row);
       uint64_t maxByteAddr = (uint64_t(addrBits.mask()) + 1) * divisor - 1;
       if (buf_addr > maxByteAddr)
         return bd_op->emitOpError("buffer address exceeds the tile's DMA "
@@ -476,11 +473,6 @@ struct AIEDMATasksToNPUPass
     // register value and adds a computed delta to it.
     if (bd_op.getOffsetStateTableIdxAttr()) {
       auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
-      OpFoldResult lengthField =
-          lengthWord ? OpFoldResult(lengthWord)
-                     : builder.getI64IntegerAttr(
-                           bd_op.getLenInBytes() * 8 /
-                           target_model.getAddressGenGranularity());
       if (failed(emitUpdateBdAddressFromOffsetParameter(
               builder, bd_op, bufType, register_addr, target_model, col, row,
               staticByteAddress, lengthField)))
@@ -753,9 +745,10 @@ struct AIEDMATasksToNPUPass
         getBdRegisterBase(builder, loc, target_model, col, row, bdIdOfr);
     NpuBlockWriteValuesOp::create(builder, loc, bdBase, bdWords);
     const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
-    return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr,
-                                 layout ? bdWords[layout->bufferLength.word]
-                                        : Value());
+    return setAddressForSingleBD(
+        builder, bd_op, tile, bdIdOfr,
+        layout ? OpFoldResult(bdWords[layout->bufferLength.word])
+               : OpFoldResult());
   }
 
   LogicalResult
@@ -1060,7 +1053,9 @@ struct AIEDMATasksToNPUPass
         target_model.isShimNOCTile(tile.getCol(), tile.getRow())
             ? builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault())
             : IntegerAttr());
-    if (failed(setAddressForSingleBD(builder, bd_op, tile)))
+    if (failed(setAddressForSingleBD(
+            builder, bd_op, tile, {},
+            builder.getI64IntegerAttr(len_addr_granularity))))
       return failure();
 
     // A length_state_table_idx adds the runtime length to the BD's
