@@ -251,6 +251,21 @@ struct CoreCompilation {
   EdgeWithTypedOutput<File> &optimizedIR;
 };
 
+// Cores that run one program over different buffers compile it once: the
+// first core of each canonical module (canonicalizeCoreIR), arch and stack
+// space runs opt and llc on it, and every core with that same key takes the
+// resulting object, renamed back to its own symbols and sections. The memo
+// key is content-addressed, so one instance owned across every placement
+// attempt lets a later attempt skip recompiling a core whose canonical IR,
+// arch and stack space did not change; main() owns it alongside
+// MeasuredCoreData and passes it to every buildMainGraph call.
+struct SharedCoreObjects {
+  std::mutex mutex;
+  // Canonical module, arch and stack space -> the object; empty on failure.
+  std::map<std::string, std::shared_future<std::string>> objects;
+  std::set<std::string> stems;
+};
+
 // Produce a per-key object (.o) -- these are the core program memories. Both
 // lowering strategies feed this per core; they differ only in how the modules
 // arriving here were produced. We define a chess path and a peano path; the
@@ -266,7 +281,8 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
                     EdgeWithTypedOutput<std::vector<std::string>> &irLinkFiles,
                     EdgeWithTypedOutput<std::string> &stackSpaces,
-                    const std::string &objName) {
+                    const std::string &objName,
+                    const std::shared_ptr<SharedCoreObjects> &shared) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
 
@@ -445,13 +461,6 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
   // first core of each canonical module (canonicalizeCoreIR) runs opt and llc
   // on it; every core then takes that object with the canonical symbols, and
   // the sections named after them, renamed back to its own.
-  struct SharedObjects {
-    std::mutex mutex;
-    // Canonical module, arch and stack space -> the object; empty on failure.
-    std::map<std::string, std::shared_future<std::string>> objects;
-    std::set<std::string> stems;
-  };
-  auto shared = std::make_shared<SharedObjects>();
   bool share = !noShareCoreObjects;
   EdgeWithTypedOutput<Directory> &peanoObject =
       bundle(peanoLinked.out, arches.out, stackSpaces.out)
@@ -977,13 +986,15 @@ static constexpr llvm::StringLiteral kWithSymbolsEdge =
 // `cache` is --device-cache, which the graph uses only when this build's
 // outputs allow it. `keptDevices` are the devices --device-name keeps, or
 // empty to keep all. `measuredCores` receives the probe link's measurements,
-// which placing again charges.
-std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
-                                       std::vector<EdgeBase *> &cutEdges,
-                                       std::vector<EdgeBase *> &checkEdges,
-                                       DeviceCache *cache,
-                                       llvm::StringSet<> keptDevices,
-                                       MeasuredCoreData &measuredCores) {
+// which placing again charges. `sharedObjects` is main()'s one instance, so a
+// later placement attempt's core objects reuse an earlier attempt's where the
+// canonical IR, arch and stack space did not change.
+std::vector<EdgeBase *>
+buildMainGraph(mlir::MLIRContext &context, Graph &g,
+               std::vector<EdgeBase *> &cutEdges,
+               std::vector<EdgeBase *> &checkEdges, DeviceCache *cache,
+               llvm::StringSet<> keptDevices, MeasuredCoreData &measuredCores,
+               const std::shared_ptr<SharedCoreObjects> &sharedObjects) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -1348,11 +1359,11 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       });
   auto perCoreCompilation =
       buildObjectSubgraph(perCoreLowered, perCoreArches, perCoreIRLinkFiles,
-                          perCoreStackSpace, "objects_{0}.o");
+                          perCoreStackSpace, "objects_{0}.o", sharedObjects);
 
   auto unifiedCompilation = buildObjectSubgraph(
       unifiedPerCoreLowered, perCoreArches, perCoreIRLinkFiles,
-      perCoreStackSpace, "objects_{0}.o");
+      perCoreStackSpace, "objects_{0}.o", sharedObjects);
 
   auto compilation = doUnified ? unifiedCompilation : perCoreCompilation;
   auto &objects = compilation.object;
@@ -3153,9 +3164,10 @@ int main(int argc, char **argv) {
     }
   }
   MeasuredCoreData measuredCores;
+  auto sharedObjects = std::make_shared<SharedCoreObjects>();
   std::vector<EdgeBase *> outputs = buildMainGraph(
       context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr,
-      keptDevices, measuredCores);
+      keptDevices, measuredCores, sharedObjects);
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
@@ -3290,7 +3302,7 @@ int main(int argc, char **argv) {
     checkEdges.clear();
     outputs = buildMainGraph(context, *next, cutEdges, checkEdges,
                              deviceCache ? &*deviceCache : nullptr, keptDevices,
-                             measuredCores);
+                             measuredCores, sharedObjects);
     mlir::LogicalResult ran =
         runAttempt(std::move(next), std::make_unique<Engine>(engineOptions));
     attempts.back().placedWith = std::move(placedWith);
