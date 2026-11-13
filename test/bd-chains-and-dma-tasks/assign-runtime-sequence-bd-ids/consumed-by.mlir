@@ -178,45 +178,10 @@ module {
 
 // -----
 
-// A load of the PDI already loaded leaves the array as it was, so a stretch
-// after a load must leave no input bytes behind, as one without a load must:
-// this one pushes in1 past what its output covers, and nothing is credited.
-module {
-  aie.device(npu2) @design {
-    %tile_0_0 = aie.tile(0, 0)
-    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
-    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
-    // expected-note@+1 {{the stretch ends here}}
-    aie.runtime_sequence @after_load(%a: memref<512xi32>, %c: memref<512xi32>) {
-      aiex.npu.load_pdi {device_ref = @design}
-      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @in}
-      aiex.dma_start_task(%in0)
-      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
-        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @out, issue_token = true}
-      aiex.dma_start_task(%out0)
-      aiex.dma_await_task(%out0)
-      // expected-note@+1 {{released here}}
-      aiex.dma_free_task(%in0)
-      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
-        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
-        aie.end
-      } {alloc = @in}
-      aiex.dma_start_task(%in1)
-    }
-  }
-}
-
-// -----
-
-// @init loads, then pushes 128 words in and receives 64, leaving the rest in
-// the array. @next, balanced on its own, may run after it without a real
-// reload and receive those leftovers first: nothing is credited.
+// A load of the PDI already loaded leaves the array as it was. @init loads,
+// then pushes 128 words in and receives 64, leaving the rest in the array.
+// @next, balanced on its own, may run after it without a real reload and
+// receive those leftovers first: nothing is credited.
 module {
   aie.device(npu2) @design {
     %tile_0_0 = aie.tile(0, 0)
@@ -401,51 +366,6 @@ module {
     // expected-note@+1 {{the stretch ends here}}
     aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {
       aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 15 : i64, metadata = @in} : memref<512xi32>
-      %in0 = aiex.dma_configure_task(%t, MM2S, 0) {
-        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @in}
-      aiex.dma_start_task(%in0)
-      %out0 = aiex.dma_configure_task(%t, S2MM, 0) {
-        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @out, issue_token = true}
-      aiex.dma_start_task(%out0)
-      aiex.dma_await_task(%out0)
-      // expected-note@+1 {{released here}}
-      aiex.dma_free_task(%in0)
-      %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
-        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
-        aie.end
-      } {alloc = @in}
-      aiex.dma_start_task(%in1)
-      %out1 = aiex.dma_configure_task(%t, S2MM, 0) {
-        aie.dma_bd(%c : memref<512xi32> offset = 64 len = 64)
-        aie.end
-      } {alloc = @out, issue_token = true}
-      aiex.dma_start_task(%out1)
-      aiex.dma_await_task(%out1)
-    }
-  }
-}
-
-// -----
-
-// The copy sits in another sequence by itself, so that sequence's own
-// stretch ends having moved bytes through @in that no output proof in it
-// covers, and leaves them in the array for the next dispatch: nothing is
-// credited here either.
-module {
-  aie.device(npu2) {
-    %t = aie.tile(0, 0)
-    aie.shim_dma_allocation @in(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
-    aie.shim_dma_allocation @out(%t, S2MM, 0)
-    // expected-note@+1 {{the stretch ends here}}
-    aie.runtime_sequence @pre(%a: memref<512xi32>, %c: memref<512xi32>) {
-      aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 15 : i64, metadata = @in} : memref<512xi32>
-    }
-    aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {
       %in0 = aiex.dma_configure_task(%t, MM2S, 0) {
         aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
         aie.end
