@@ -123,10 +123,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "mlir::ModuleOp"> {
        ListOption<"clSAWalkedFifos", "sa-walked-fifos", "std::string",
                   "ObjectFIFOs whose mem tile pools the SA placer counts as "
                   "walked whole, one buffer each, as allocation lays out "
-                  "the pools a turn-sharing walk takes, as <device>:<fifo>">,
+                  "the pools a turn-sharing walk takes, as "
+                  "@<device>::@<fifo> (MLIR symbol references, quoted where "
+                  "a name needs it)">,
        ListOption<"clSACoreDataSizes", "sa-core-data-sizes", "std::string",
                   "Bytes the SA placer reserves for a core's own sections, "
-                  "as <device>:<core>=<bytes>[@<align>], <core> counting the "
+                  "as @<device>:<core>=<bytes>[@<align>], <core> counting the "
                   "device's aie.core ops in order and <align> the alignment "
                   "the sections start at (1 when absent). A "
                   "core's declared data_size or measured_data_size still "

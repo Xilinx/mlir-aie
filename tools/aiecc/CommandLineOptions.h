@@ -147,19 +147,21 @@ inline cl::opt<double> saEffort(
 inline cl::list<std::string> saWalkedFifos(
     "sa-walked-fifos", cl::CommaSeparated,
     cl::desc("ObjectFIFOs whose mem tile pools the SA placer counts as "
-             "walked whole, as <device>:<fifo>; aiecc adds those allocation "
+             "walked whole, as @<device>::@<fifo>; aiecc adds those allocation "
              "finds no room for "
-             "when it places again, unless this option is given"));
+             "when it places again, unless this option is given. A name "
+             "holding ',' cannot be given here, even quoted"));
 inline cl::list<std::string> saCoreDataSizes(
     "sa-core-data-sizes", cl::CommaSeparated,
     cl::desc("Bytes the SA placer reserves for a core's own sections, as "
-             "<device>:<core>=<bytes>[@<align>] (the device's aie.core ops "
+             "@<device>:<core>=<bytes>[@<align>] (the device's aie.core ops "
              "counted in order; <align> the alignment the sections start at, "
              "1 when absent), unless the core declares data_size or "
              "measured_data_size; aiecc adds what the probe link measured when "
              "a core's "
              "buffers find no room and it places again, unless this option "
-             "is given"));
+             "is given. A device name holding ',' cannot be given here, even "
+             "quoted"));
 inline cl::opt<int64_t> placementBudget(
     "placement-budget",
     cl::desc("Buffer placements aie-assign-buffer-addresses, and the SA "

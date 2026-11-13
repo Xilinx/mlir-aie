@@ -5,15 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %aiecc -n --no-progress --tmpdir %t --placer=sa_placer --get=input_with_symbols.mlir %s 2>&1 | FileCheck %s
+// RUN: %aiecc -n --no-progress --tmpdir %t --placer=sa_placer --get=input_with_symbols.mlir %s 2>&1 | FileCheck %s
 
-// placement_retry_walked's design with a_in named "a:in". Placing again would
-// pass it as <device>:<fifo>, which a name holding ':' (or ',', the list's
-// separator) cannot be; aiecc says so and reports the placement's failure.
+// placement_retry_walked's design with a_in named "a:in". The charge names it
+// as the symbol reference @main::@"a:in", quoted because "a:in" is not a bare
+// identifier, so placing again charges it like any other name.
 // CHECK: note: channel turns walked these objectFIFOs' mem tile pools whole: @main::@b_in, @main::@"a:in"
-// CHECK: aiecc: cannot place again for @main::@"a:in": a name holding ':' or ',' cannot be passed to --sa-walked-fifos or --sa-core-data-sizes
-// CHECK-NOT: placing again
-// CHECK: aiecc: edge 'input_with_symbols.mlir' (key '{{.*}}') failed
+// CHECK: aiecc: placing again with --sa-walked-fifos=@main::@"a:in",@main::@b_in (buffers channel turns walked whole found no room); the messages above are from placement 1
+// CHECK-NOT: error:
+// CHECK: aiecc: placement 2 (--sa-walked-fifos=@main::@"a:in",@main::@b_in) stands
 
 module @turn_walk_colon {
   aie.device(npu2) {

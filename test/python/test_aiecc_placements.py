@@ -79,7 +79,7 @@ def test_failure_locates_the_standing_placement(fails_elsewhere):
     summary = str(fails_elsewhere).split("--- full aiecc log ---")[0]
     assert "could not place buffers" not in summary, summary
     assert "missing_kernel.o" in summary, summary
-    assert "placement 2 (--sa-walked-fifos=main:a_in,main:b_in) stands" in summary
+    assert "placement 2 (--sa-walked-fifos=@main::@a_in,@main::@b_in) stands" in summary
     # Placement 2's error has no location in the design: no frame points at
     # placement 1's allocation error there.
     frames = [f.filename for f in traceback.extract_tb(fails_elsewhere.__traceback__)]

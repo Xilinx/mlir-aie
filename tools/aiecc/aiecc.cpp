@@ -75,6 +75,7 @@
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ThreadPool.h"
@@ -1453,9 +1454,13 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                            llvm::enumerate(device.getOps<CoreOp>()))
                         if (auto bytes = core.getMeasuredDataSize();
                             bytes && !core.getDataSize())
-                          measuredCores.regions[(device.getSymName() + ":" +
-                                                 llvm::Twine(ordinal))
-                                                    .str()] = {
+                          measuredCores
+                              .regions[llvm::formatv(
+                                           "{0}:{1}",
+                                           mlir::FlatSymbolRefAttr::get(
+                                               device.getSymNameAttr()),
+                                           ordinal)
+                                           .str()] = {
                               *bytes,
                               core.getMeasuredDataAlignment().value_or(1)};
                     if (!noMeasureStackSize.getValue() &&
@@ -3372,11 +3377,9 @@ int main(int argc, char **argv) {
                                  xilinx::AIE::kCoreSectionsNote))) {
     Attempt &last = attempts.back();
     // Each charge names its device, and only the devices that failed are
-    // charged, so the others place as they did. Entries are <device>:<name>
-    // in a comma-separated list, which a name holding ':' or ',' would break;
-    // such a name is not charged.
+    // charged, so the others place as they did. Names are written as symbol
+    // references, which quote any name the list's separators would break.
     std::vector<std::string> fifos;
-    std::vector<mlir::Attribute> uncharged;
     llvm::StringSet<> fullDevices;
     for (const RecordedError &error : last.errors) {
       llvm::StringRef message = error.message;
@@ -3384,39 +3387,20 @@ int main(int argc, char **argv) {
         for (const auto &[note, attrs] : error.notes)
           if (llvm::StringRef(note).starts_with(xilinx::AIE::kCoreSectionsNote))
             for (mlir::Attribute attr : attrs)
-              if (auto device = llvm::dyn_cast<mlir::FlatSymbolRefAttr>(attr)) {
-                if (device.getValue().contains(','))
-                  uncharged.push_back(device);
-                else
-                  fullDevices.insert(device.getValue());
-              }
+              if (llvm::isa<mlir::FlatSymbolRefAttr>(attr))
+                fullDevices.insert(llvm::formatv("{0}", attr).str());
       if (!mayWalkAgain || !message.contains(xilinx::AIE::kNoBufferRoom))
         continue;
       // Only the pools the SA counts otherwise than allocation lays them out.
       for (const auto &[note, attrs] : error.notes)
         if (llvm::StringRef(note).starts_with(xilinx::AIE::kTurnWalkedNote))
           for (mlir::Attribute attr : attrs)
-            if (auto name = llvm::dyn_cast<mlir::SymbolRefAttr>(attr)) {
-              llvm::StringRef device = name.getRootReference().getValue();
-              llvm::StringRef fifo = name.getLeafReference().getValue();
-              if (device.contains(',') || fifo.contains(',') ||
-                  fifo.contains(':')) {
-                uncharged.push_back(name);
-                continue;
-              }
-              std::string entry = (device + ":" + fifo).str();
+            if (llvm::isa<mlir::SymbolRefAttr>(attr)) {
+              std::string entry = llvm::formatv("{0}", attr).str();
               if (!llvm::is_contained(saWalkedFifos, entry) &&
                   !llvm::is_contained(fifos, entry))
                 fifos.push_back(entry);
             }
-    }
-    if (!uncharged.empty()) {
-      auto log = endProgressLine();
-      llvm::errs() << "aiecc: cannot place again for ";
-      llvm::interleaveComma(uncharged, llvm::errs());
-      llvm::errs() << ": a name holding ':' or ',' cannot be passed to "
-                      "--sa-walked-fifos or --sa-core-data-sizes\n";
-      break;
     }
     // A core's measurement keeps its largest value, so the charges only grow
     // and the attempts end.

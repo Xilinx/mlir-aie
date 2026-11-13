@@ -13,11 +13,11 @@
 // fixes @d0 and fails on @d1 alone, which charging cannot address: that
 // failure is placement 2's own, and it stands.
 // CHECK: note: channel turns walked these objectFIFOs' mem tile pools whole: @d0::@b_in, @d0::@a_in
-// CHECK: aiecc: placing again with --sa-walked-fifos=d0:a_in,d0:b_in (buffers channel turns walked whole found no room); the messages above are from placement 1
+// CHECK: aiecc: placing again with --sa-walked-fifos=@d0::@a_in,@d0::@b_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // CHECK: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @d1::@a_in
 // CHECK-NOT: channel turns walked
 // CHECK-NOT: no placement
-// CHECK: aiecc: placement 2 (--sa-walked-fifos=d0:a_in,d0:b_in) stands
+// CHECK: aiecc: placement 2 (--sa-walked-fifos=@d0::@a_in,@d0::@b_in) stands
 // CHECK: aiecc: edge 'input_with_symbols.mlir' (key '{{.*}}') failed
 
 module @walked_then_unrelated {

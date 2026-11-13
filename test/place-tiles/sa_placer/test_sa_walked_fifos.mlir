@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-walked-fifos=main:a_in" --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-walked-fifos=@main::@a_in" --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
 // RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %s 2>&1 | FileCheck %s --check-prefix=DIAG
 
 // The mem tiles of columns 0 and 1 hold two 1 KiB holes each. Allocation

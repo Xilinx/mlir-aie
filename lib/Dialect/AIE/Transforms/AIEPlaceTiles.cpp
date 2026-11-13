@@ -10,6 +10,8 @@
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 
+#include "mlir/AsmParser/AsmParser.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -71,31 +73,39 @@ struct AIEPlaceTilesPass
   AIEPlaceTilesPass(const AIEPlaceTilesOptions &options)
       : AIEPlaceTilesBase(options) {}
 
-  // Parses the SA's charges once, before any device is placed.
+  // Parses the SA's charges once, before any device is placed. Names are
+  // symbol references, so any name can be written.
   LogicalResult initialize(MLIRContext *context) override {
     walked.clear();
     coreSizes.clear();
+    auto parseSymbol = [&](StringRef text) {
+      ScopedDiagnosticHandler quiet(context,
+                                    [](Diagnostic &) { return success(); });
+      return dyn_cast_or_null<SymbolRefAttr>(parseAttribute(text, context));
+    };
     for (StringRef entry : clSAWalkedFifos) {
-      auto [name, fifo] = entry.rsplit(':');
-      if (name.empty() || fifo.empty() || name == entry)
+      SymbolRefAttr fifo = parseSymbol(entry);
+      if (!fifo || fifo.getNestedReferences().size() != 1)
         return emitError(UnknownLoc::get(context), "sa-walked-fifos entry '")
-               << entry << "' is not <device>:<fifo>";
-      walked.push_back({name.str(), fifo.str()});
+               << entry << "' is not @<device>::@<fifo>";
+      walked.push_back(
+          {fifo.getRootReference().str(), fifo.getLeafReference().str()});
     }
     for (StringRef entry : clSACoreDataSizes) {
       auto [core, charge] = entry.rsplit('=');
       auto [name, ordinal] = core.rsplit(':');
       auto [bytes, alignment] = charge.split('@');
+      auto device = dyn_cast_or_null<FlatSymbolRefAttr>(parseSymbol(name));
       unsigned index;
       int64_t size;
       int64_t align = 1;
-      if (name.empty() || ordinal.getAsInteger(10, index) ||
+      if (!device || ordinal.getAsInteger(10, index) ||
           bytes.getAsInteger(10, size) || size < 0 ||
           (charge.contains('@') && (alignment.getAsInteger(10, align) ||
                                     align <= 0 || !llvm::isPowerOf2_64(align))))
         return emitError(UnknownLoc::get(context), "sa-core-data-sizes entry '")
-               << entry << "' is not <device>:<core>=<bytes>[@<align>]";
-      coreSizes.push_back({name.str(), index, size, align});
+               << entry << "' is not @<device>:<core>=<bytes>[@<align>]";
+      coreSizes.push_back({device.getValue().str(), index, size, align});
     }
     return success();
   }

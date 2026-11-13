@@ -9,10 +9,11 @@
 // RUN: %aiecc --no-progress --tmpdir %t --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s
 
 // placement_retry_core_data's design on a device named "m=n": its core sizes
-// are charged as m=n:<core>=<bytes>, which reads from the right.
-// CHECK: aiecc: placing again with --sa-core-data-sizes=m=n:0=0,m=n:1=28672@16 (a core's buffers found no room beside its own sections); the messages above are from placement 1
+// are charged as the symbol reference @"m=n":<core>=<bytes>, quoted because
+// "m=n" is not a bare identifier.
+// CHECK: aiecc: placing again with --sa-core-data-sizes=@"m=n":0=0,@"m=n":1=28672@16 (a core's buffers found no room beside its own sections); the messages above are from placement 1
 // CHECK-NOT: error:
-// CHECK: aiecc: placement 2 (--sa-core-data-sizes=m=n:0=0,m=n:1=28672@16) stands
+// CHECK: aiecc: placement 2 (--sa-core-data-sizes=@"m=n":0=0,@"m=n":1=28672@16) stands
 
 module @core_data_retry {
   aie.device(npu2) @"m=n" {

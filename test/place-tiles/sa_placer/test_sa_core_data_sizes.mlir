@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s --check-prefix=ESTIMATE
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-core-data-sizes=main:1=28672" %s | FileCheck %s --check-prefix=MEASURED
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-core-data-sizes=@main:1=28672" %s | FileCheck %s --check-prefix=MEASURED
 
 // With its estimate of %c's own sections, the SA places %c by the shim's
 // column, holding x's buffers beside them. Given the 28 KiB a build measured
