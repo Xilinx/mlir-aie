@@ -209,7 +209,7 @@ class HRXHostRuntime(HostRuntime):
         # libhrx builds the amdxdna XADX package and derives the patch table
         # from the XAie transaction internally, so we just hand it the raw
         # artifacts. The transaction is the raw insts.bin TXN words; for an ELF
-        # input (aiecc --aie-generate-elf) we extract .ctrltext (the TXN verbatim)
+        # input (aiecc --get-elf) we extract .ctrltext (the TXN verbatim)
         # so libhrx still sees the BLOCKWRITE/DDR_PATCH ops it patches from.
         if insts_data[:4] == b"\x7fELF":
             insts_bytes = control_code_from_elf(insts_data).tobytes()

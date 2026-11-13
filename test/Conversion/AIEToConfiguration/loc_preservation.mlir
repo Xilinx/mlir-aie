@@ -25,7 +25,7 @@ aie.device(npu1_1col) {
 } loc(#device_loc)
 
 // runtime_sequence is synthesized on demand and inherits the device loc.
-// CHECK-DAG: aie.runtime_sequence @configure() {{[{][[:space:]]*$}}
+// CHECK-DAG: aie.runtime_sequence @configure() attributes {aie.generated_configure} {{[{][[:space:]]*$}}
 
 // At least one synthesized control_packet carries the CoreOp's NameLoc —
 // produced by AIERTControl::addCoreEnable's TxnLocBracket around the

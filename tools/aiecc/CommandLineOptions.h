@@ -730,8 +730,8 @@ inline bool resolveOptions(bool resuming = false) {
   // Disambiguate the full-ELF control packet flow and the standalone
   // artifact flows.
   if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
-    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
-                    "together also requires --load-pdi-to-ctrl-pkt\n";
+    llvm::errs() << "aiecc: --get-full-elf and --get-ctrlpkt together also "
+                    "require --load-pdi-to-ctrl-pkt\n";
     return false;
   }
 

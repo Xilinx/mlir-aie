@@ -13,12 +13,15 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Matchers.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 
+#include <bitset>
 #include <map>
 #include <set>
 #include <type_traits>
@@ -49,6 +52,39 @@ static constexpr uint32_t cert_page_limit = 8192;
 static constexpr uint32_t cert_job_start_cost = 8;
 static constexpr uint32_t cert_job_end_cost = 4;
 
+// True if `seq` holds its device's generated configuration, i.e. carries the
+// aie.generated_configure tag, either from convert-aie-to-transaction or from
+// tagConfigureByName.
+static bool isGeneratedConfigure(AIE::RuntimeSequenceOp seq) {
+  return AIE::AIEDialect::GeneratedConfigureAttrHelper(seq.getContext())
+      .isAttrPresent(seq);
+}
+
+// Hand-written IR may have no tag: there the sequence named `configure` is the
+// configuration. Tag it, unless a sequence of the device is already tagged (the
+// generated one was then named `configure0`, and `configure` is the user's).
+// Runs on every device before any sequence is converted, so the choice does
+// not depend on conversion order.
+static void tagConfigureByName(AIE::DeviceOp device) {
+  auto seqs = device.getBody()->getOps<AIE::RuntimeSequenceOp>();
+  if (llvm::any_of(seqs, isGeneratedConfigure))
+    return;
+  for (auto seq : seqs)
+    if (seq.getSymName() == "configure") {
+      AIE::AIEDialect::GeneratedConfigureAttrHelper(device.getContext())
+          .setAttr(seq, UnitAttr::get(device.getContext()));
+      return;
+    }
+}
+
+// The generated configuration sequence of `device`, or null if it has none.
+static AIE::RuntimeSequenceOp findGeneratedConfigure(AIE::DeviceOp device) {
+  for (auto seq : device.getBody()->getOps<AIE::RuntimeSequenceOp>())
+    if (isGeneratedConfigure(seq))
+      return seq;
+  return nullptr;
+}
+
 // Returns the PDI id to use for a cert.load_pdi that references `deviceSymName`
 // within `parentDevice`. If a load_pdi for that symbol already exists, its id
 // is reused so repeated loads of the same PDI share an id; otherwise a fresh id
@@ -78,9 +114,9 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
   matchAndRewrite(AIE::RuntimeSequenceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto symName = op.getSymName();
+    bool isConfigure = isGeneratedConfigure(op);
     uint32_t newJobId = 1;
-    if (symName != "configure") {
+    if (!isConfigure) {
       uint32_t maxJobId = 1;
       op->getParentOp()->walk([&](AIEX::CertJobOp certJobOp) {
         maxJobId = std::max(maxJobId, certJobOp.getJobId());
@@ -96,7 +132,7 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
 
     // Tag the implicit configuration job so a later step can force it to be the
     // first page on uC0 and keep it out of user implicit pages.
-    if (symName == "configure")
+    if (isConfigure)
       jobOp->setAttr("cert.configure", rewriter.getUnitAttr());
 
     // Clone runtime sequence body into job
@@ -521,17 +557,13 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
 
     // Find the "configure" sequence content from the referenced device
     // It could be either:
-    // 1. Still a RuntimeSequenceOp named "configure" (if that device hasn't
+    // 1. Still the generated configuration sequence (if that device hasn't
     // been processed yet)
     // 2. Already converted to cert.page/cert.job (if that device was processed
     // first)
 
-    AIE::RuntimeSequenceOp configureSeq = nullptr;
-    referencedDevice.walk([&](AIE::RuntimeSequenceOp seq) {
-      if (seq.getSymName() == "configure") {
-        configureSeq = seq;
-      }
-    });
+    AIE::RuntimeSequenceOp configureSeq =
+        findGeneratedConfigure(referencedDevice);
 
     if (configureSeq) {
       // Clone operations from the "configure" runtime_sequence
@@ -599,6 +631,121 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
   }
 };
 
+// The blockwrite that loads the BD an address_patch patches: the nearest
+// preceding blockwrite, when it targets the patched BD.
+static AIEX::NpuBlockWriteOp
+findPatchedBlockWrite(AIEX::NpuAddressPatchOp patch) {
+  const auto &tm = AIE::getTargetModel(patch);
+  uint32_t addr = patch.getAddr();
+  int col = (addr >> tm.getColumnShift()) & 0x1f;
+  int row = (addr >> tm.getRowShift()) & 0x1f;
+  if (!tm.isValidTile({col, row}))
+    return {};
+  for (Block::iterator it(patch); it != patch->getBlock()->begin();) {
+    auto blockWrite = dyn_cast<AIEX::NpuBlockWriteOp>(*--it);
+    if (!blockWrite)
+      continue;
+    if (blockWrite.getAddress() + tm.getDmaBdAddressOffset(col, row) != addr)
+      return {};
+    return blockWrite;
+  }
+  return {};
+}
+
+// An address_patch writes buffer address + arg_plus into a BD register, but
+// cert.apply_offset_57 adds the buffer address to the BD template in memory.
+// So before conversion the patched template word must hold arg_plus, and the
+// template must belong to its blockwrite alone: dma-to-npu shares identical
+// templates between BDs, and a shared one would accumulate every BD's address.
+static LogicalResult prepareAddressPatchTemplates(AIE::DeviceOp device) {
+  LogicalResult result = success();
+  SymbolTable symbols(device);
+  // Count each global's symbol uses once, then keep the counts current as
+  // getters are added and erased. Asking SymbolTable per patch walks the whole
+  // device each time, which is quadratic in the number of patched BDs. With no
+  // counts (an op with unknown symbol uses), every patched template is copied.
+  std::optional<llvm::DenseMap<StringAttr, unsigned>> symbolUseCounts;
+  if (auto uses = SymbolTable::getSymbolUses(&device.getRegion())) {
+    symbolUseCounts.emplace();
+    for (const SymbolTable::SymbolUse &use : *uses)
+      ++(*symbolUseCounts)[use.getSymbolRef().getRootReference()];
+  }
+  SmallVector<AIEX::NpuAddressPatchOp> patches;
+  device.walk([&](AIEX::NpuAddressPatchOp patch) { patches.push_back(patch); });
+  for (AIEX::NpuAddressPatchOp patch : patches) {
+    AIEX::NpuBlockWriteOp blockWrite = findPatchedBlockWrite(patch);
+    if (!blockWrite)
+      continue;
+    auto getGlobal = dyn_cast_or_null<memref::GetGlobalOp>(
+        blockWrite.getData().getDefiningOp());
+    if (!getGlobal)
+      continue;
+    auto global = symbols.lookup<memref::GlobalOp>(getGlobal.getName());
+    if (!global)
+      continue;
+    std::optional<Attribute> initialValue = global.getInitialValue();
+    auto words = initialValue ? dyn_cast<DenseIntElementsAttr>(*initialValue)
+                              : DenseIntElementsAttr();
+    if (!words)
+      continue;
+
+    if (!patch.getArgIdx()) {
+      patch.emitError("cert lowering requires an address_patch with arg_idx");
+      result = failure();
+      continue;
+    }
+    APInt argPlus;
+    if (!matchPattern(patch.getArgPlus(), m_ConstantInt(&argPlus))) {
+      patch.emitError("cert lowering requires a constant arg_plus: "
+                      "apply_offset_57 cannot add a runtime offset");
+      result = failure();
+      continue;
+    }
+    // An i32 arg_plus is unsigned, so any value fits; a negative i64 has 64
+    // active bits and is rejected.
+    if (argPlus.getActiveBits() > 32) {
+      patch.emitError("arg_plus ")
+          << argPlus.getSExtValue()
+          << " does not fit the BD's 32-bit address word";
+      result = failure();
+      continue;
+    }
+    unsigned word = (patch.getAddr() - blockWrite.getAddress()) / 4;
+    if (word >= words.getNumElements())
+      continue;
+
+    // Give this blockwrite a private template if anything else uses it,
+    // whether through another getter or through this one (after CSE).
+    if (!symbolUseCounts ||
+        symbolUseCounts->lookup(global.getSymNameAttr()) != 1 ||
+        !getGlobal->hasOneUse()) {
+      OpBuilder builder(global);
+      auto copy = cast<memref::GlobalOp>(builder.clone(*global));
+      // insert renames the copy, so count it under its new name.
+      StringAttr copyName = symbols.insert(copy);
+      OpBuilder atBlockWrite(blockWrite);
+      auto privateGet =
+          memref::GetGlobalOp::create(atBlockWrite, getGlobal.getLoc(),
+                                      getGlobal.getType(), copy.getSymName());
+      blockWrite.getDataMutable().assign(privateGet);
+      if (symbolUseCounts)
+        (*symbolUseCounts)[copyName] = 1;
+      if (getGlobal->use_empty()) {
+        if (symbolUseCounts)
+          --(*symbolUseCounts)[global.getSymNameAttr()];
+        getGlobal->erase();
+      }
+      global = copy;
+    }
+
+    auto values = llvm::to_vector(words.getValues<APInt>());
+    values[word] = argPlus.zextOrTrunc(values[word].getBitWidth());
+    global.setInitialValueAttr(
+        DenseIntElementsAttr::get(words.getType(), values));
+  }
+  return result;
+}
+
 struct NpuAddressPatchToCertApplyOffset57
     : OpConversionPattern<AIEX::NpuAddressPatchOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -606,42 +753,18 @@ struct NpuAddressPatchToCertApplyOffset57
   LogicalResult
   matchAndRewrite(AIEX::NpuAddressPatchOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // find the previous blockwrite operation
-    Block::iterator it(op);
-    while (it != op->getBlock()->begin()) {
-      --it;
-      auto blockWriteOp = dyn_cast<AIEX::NpuBlockWriteOp>(*it);
-      if (!blockWriteOp)
-        continue;
-
-      const auto &tm = AIE::getTargetModel(op);
-      uint32_t addr = op.getAddr();
-      int col = (addr >> tm.getColumnShift()) & 0x1f;
-      int row = (addr >> tm.getRowShift()) & 0x1f;
-      if (!tm.isValidTile({col, row}))
-        return failure();
-
-      // if it's not a matching blockwrite, give up.
-      if (blockWriteOp.getAddress() + tm.getDmaBdAddressOffset(col, row) !=
-          addr)
-        break;
-
-      Value data = blockWriteOp.getData();
-      auto getGlobalOp = dyn_cast<memref::GetGlobalOp>(data.getDefiningOp());
-      if (!getGlobalOp)
-        break;
-
-      // replace the address with the new address
-      std::optional<uint32_t> argIdx = op.getArgIdx();
-      if (!argIdx)
-        break;
-      rewriter.setInsertionPoint(blockWriteOp);
-      rewriter.replaceOpWithNewOp<AIEX::CertApplyOffset57Op>(
-          op, getGlobalOp.getName(), 1, *argIdx);
-      return success();
-    }
-
-    return failure();
+    AIEX::NpuBlockWriteOp blockWriteOp = findPatchedBlockWrite(op);
+    std::optional<uint32_t> argIdx = op.getArgIdx();
+    if (!blockWriteOp || !argIdx)
+      return failure();
+    auto getGlobalOp =
+        dyn_cast<memref::GetGlobalOp>(blockWriteOp.getData().getDefiningOp());
+    if (!getGlobalOp)
+      return failure();
+    rewriter.setInsertionPoint(blockWriteOp);
+    rewriter.replaceOpWithNewOp<AIEX::CertApplyOffset57Op>(
+        op, getGlobalOp.getName(), 1, *argIdx);
+    return success();
   }
 };
 
@@ -866,6 +989,9 @@ struct AIENpuToCertPass
       }
     }
 
+    for (auto dev : devices)
+      tagConfigureByName(dev);
+
     // Process main device first (named "main" or specified by --device-name)
     // so referenced devices' "configure" sequences can be found before they
     // get converted to cert.job
@@ -1027,13 +1153,9 @@ struct AIENpuToCertPass
           if (!refDevice)
             continue;
 
-          // Find "configure" runtime sequence
-          AIE::RuntimeSequenceOp configureSeq = nullptr;
-          refDevice.walk([&](AIE::RuntimeSequenceOp seq) {
-            if (seq.getSymName() == "configure") {
-              configureSeq = seq;
-            }
-          });
+          // Find the generated configuration sequence
+          AIE::RuntimeSequenceOp configureSeq =
+              findGeneratedConfigure(refDevice);
 
           if (!configureSeq)
             continue;
@@ -1114,6 +1236,9 @@ struct AIENpuToCertPass
     p0.insert<RuntimeSequenceToCertJob>(&getContext());
 
     if (failed(applyPartialConversion(currentDevice, target, std::move(p0))))
+      return signalPassFailure();
+
+    if (failed(prepareAddressPatchTemplates(currentDevice)))
       return signalPassFailure();
 
     target.addIllegalOp<AIEX::NpuAddressPatchOp>();
@@ -1883,18 +2008,9 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
            "a job-boundary cut needs a preceding job with content, else the "
            "earlier page is empty and the split makes no progress");
 
-    // NOTE: the device-wide job-id shift below only keeps job ids unique per
-    // page; job_id is a label, not an order, so it does not affect
-    // emission/execution order, which is textual. A device-wide job-id renumber
-    // is left for a follow-up. A job-boundary cut creates no new job -- every
-    // job keeps its id, just on a different page -- so there is nothing to
-    // renumber and the walk is skipped.
-    if (!jobBoundaryCut)
-      op->getParentOfType<AIE::DeviceOp>().walk([&](AIEX::CertJobOp certJobOp) {
-        if (certJobOp.getJobId() > split_job.getJobId())
-          certJobOp.setJobId(certJobOp.getJobId() + 1);
-      });
-
+    // The second half of a split job takes the next ID, which may collide
+    // with another job on its page; allocateJobIds resolves that after all
+    // splitting is done.
     auto cloneJobRange = [&](AIEX::CertJobOp sourceJob, uint32_t jobId,
                              Block::iterator begin, Block::iterator end) {
       auto newJobOp = AIEX::CertJobOp::create(rewriter, loc, jobId);
@@ -2148,6 +2264,39 @@ static void lowerPagePlacementToGroups(AIE::DeviceOp dev) {
   }
 }
 
+// The firmware indexes job contexts by job_id % 64, and a page's jobs finish
+// before the next page starts. Keep each page's noncolliding IDs and move the
+// colliding ones to free slots.
+static LogicalResult allocateJobIds(AIE::DeviceOp device) {
+  WalkResult result = device.walk([&](AIEX::CertPageOp page) {
+    std::bitset<AIEX::CertJobOp::NumSlots> used;
+    SmallVector<AIEX::CertJobOp> collisions;
+    unsigned count = 0;
+    for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
+      unsigned slot = job.getJobId() % AIEX::CertJobOp::NumSlots;
+      if (used.test(slot))
+        collisions.push_back(job);
+      used.set(slot);
+      ++count;
+    }
+    if (count > AIEX::CertJobOp::NumSlots) {
+      page.emitError() << "cert.page has " << count << " jobs, exceeding the "
+                       << AIEX::CertJobOp::NumSlots
+                       << " firmware job slots; reduce the jobs on this page";
+      return WalkResult::interrupt();
+    }
+    unsigned slot = 0;
+    for (auto job : collisions) {
+      while (used.test(slot))
+        ++slot;
+      job.setJobId(slot);
+      used.set(slot);
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
 struct AIECertPagesPass
     : xilinx::AIEX::impl::AIECertPagesBase<AIECertPagesPass> {
   void runOnOperation() override {
@@ -2189,6 +2338,9 @@ struct AIECertPagesPass
       signalPassFailure();
     if (splitError)
       signalPassFailure();
+
+    if (failed(allocateJobIds(getOperation())))
+      return signalPassFailure();
 
     // Add the merge pattern for CertUcDmaWriteDesSyncOps
     RewritePatternSet p3(&getContext());

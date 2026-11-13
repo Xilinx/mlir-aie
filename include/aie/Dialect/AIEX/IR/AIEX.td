@@ -874,8 +874,11 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
 }
 
 // WRITE32
-def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
+def AIE_NpuWrite32Op
+    : AIEX_Op<
+          "npu.write32", [DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
   let summary = "write32 operator";
+  let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -890,12 +893,14 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
     compile-time-known values or pass runtime sequence values for
     runtime-parameterized sequences.
 
-    If 'buffer' is present then 'address' is interpreted as an offset into the
-    aie.buffer with symbol name 'buffer'.
-    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    If 'buffer' is present then 'address' must be constant and is interpreted
+    as a 32-bit word offset into the aie.buffer with symbol name 'buffer'.
+    The write must fit the buffer and its tile's data memory, and its resolved
+    byte address must be 4-byte aligned. The buffer need not have an assigned
+    address yet; placement-dependent bounds are checked once it does.
+    Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
     into the memory space of aie.tile(column, row).
-    If 'buffer' is not present and 'column' and 'row' are not present then
-    'address' is interpreted as a full 32-bit address in the AIE array.
+    Otherwise, 'address' is a full 32-bit byte address in the AIE array.
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
@@ -905,9 +910,12 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
 }
 
 // MASKWRITE
-def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
+def AIE_NpuMaskPollOp
+    : AIEX_Op<
+          "npu.maskpoll", [DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
   let summary =
       "Block the runtime sequence until a masked 32-bit register matches";
+  let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value, I32:$mask,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -927,9 +935,10 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
     that never becomes true therefore surfaces as a dispatch timeout rather
     than hanging forever.
 
-    Address interpretation matches `npu.maskwrite32`: an offset into 'buffer'
-    if present, else an offset into aie.tile('column', 'row') if those are
-    present, else a full 32-bit array address.
+    Address interpretation and the buffer bounds check match
+    `npu.maskwrite32`: an offset into 'buffer' if present, else an offset into
+    aie.tile('column', 'row') if those are present, else a full 32-bit array
+    address.
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
@@ -938,8 +947,11 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
   }];
 }
 
-def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
+def AIE_NpuMaskWrite32Op
+    : AIEX_Op<"npu.maskwrite32", [DeclareOpInterfaceMethods<
+                                     NamedOpUserOpInterface>]> {
   let summary = "Write a masked 32-bit value to the AIE array";
+  let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value, I32:$mask,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -954,12 +966,15 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
     compile-time-known values or pass runtime sequence values for
     runtime-parameterized sequences.
 
-    If 'buffer' is present then 'address' is interpreted as an offset into the
-    aie.buffer with symbol name 'buffer'.
-    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    If 'buffer' is present then 'address' must be constant and is interpreted
+    as a 32-bit word offset into the aie.buffer with symbol name 'buffer'.
+    The addressed word must fit the buffer and its tile's data memory, and its
+    resolved byte address must be 4-byte aligned, regardless of the mask.
+    The buffer need not have an assigned address yet; placement-dependent
+    bounds are checked once it does.
+    Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
     into the memory space of aie.tile(column, row).
-    If 'buffer' is not present and 'column' and 'row' are not present then
-    'address' is interpreted as a full 32-bit address in the AIE array.
+    Otherwise, 'address' is a full 32-bit byte address in the AIE array.
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
@@ -969,8 +984,11 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
 }
 
 // BLOCKWRITE
-def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
+def AIE_NpuBlockWriteOp
+    : AIEX_Op<"npu.blockwrite", [DeclareOpInterfaceMethods<
+                                    NamedOpUserOpInterface>]> {
   let summary = "blockwrite operator";
+  let hasVerifier = 1;
   let arguments = (ins UI32Attr:$address, AnyMemRef:$data,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -980,12 +998,15 @@ def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
   }];
   let description = [{
     blockwrite operator writes the data from the memref 'data' to the AIE array.
-    If 'buffer' is present then 'address' is interpreted as an offset into the
-    aie.buffer with symbol name 'buffer'.
-    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    If 'buffer' is present then 'address' is interpreted as a 32-bit word offset
+    into the aie.buffer with symbol name 'buffer'. The payload must have a
+    static, fixed-size extent with 32-bit elements. The write must fit the
+    buffer and its tile's data memory, and its resolved byte address must be
+    4-byte aligned. The buffer need not have an assigned address yet;
+    placement-dependent bounds are checked once it does.
+    Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
     into the memory space of aie.tile(column, row).
-    If 'buffer' is not present and 'column' and 'row' are not present then
-    'address' is interpreted as a full 32-bit address in the AIE array.
+    Otherwise, 'address' is a full 32-bit byte address in the AIE array.
   }];
   let extraClassDeclaration = [{
     // `names` resolves a referenced buffer without a scan of the device.
@@ -1253,15 +1274,22 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   let description = [{
     The control_packet operation represents a low-level AIE control packet header
     and payload.
+
+    `opcode` is 0 (write), 1 (read), or 2 (write with response); 3 is
+    reserved. A write carries its payload in `data`. A read carries no `data`;
+    `length` gives the number of words to read, at most 4. A write payload may
+    be longer than 4 words: `aie-legalize-control-packet` splits it.
   }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
 
     /// Most words -- data payload, or read length when there is no data --
     /// one packet can carry on the wire (the header's beat count field is 2
-    /// bits). Enforced where the header is packed, not here -- see
-    /// AIETranslateControlPacketsToUI32Vec.
+    /// bits). The verifier bounds read lengths; write payloads are bounded
+    /// where the header is packed (AIETranslateControlPacketsToUI32Vec), since
+    /// `aie-legalize-control-packet` splits them first.
     static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }
