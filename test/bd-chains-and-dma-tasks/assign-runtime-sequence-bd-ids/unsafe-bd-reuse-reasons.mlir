@@ -157,7 +157,7 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%next)
       %out1 = aiex.dma_configure_task(%t, S2MM, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, the bytes its awaited transfers moved times 2, 256, fall short of the bytes the input moved up to this transfer times 1, 256 + 256 x @n, for some parameter values}}
+        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, the bytes its awaited transfers moved times 2, 256, fall short of the bytes the input moved up to this transfer times 1, 256 + 256*@n, for some parameter values}}
         aie.dma_bd(%c : memref<4096xi32> offset = 64 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 32 : i32}
         aie.end
       } {alloc = @out, issue_token = true}
@@ -358,7 +358,7 @@ module {
       aiex.dma_free_task(%in0)
       aiex.dma_free_task(%in1)
       %in2 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{through @o1, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes times 1, 64 + 64 x @a + 64 x @b, against output bytes times 1, 0 + 64 x @a); through @o2, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes times 1, 64 + 64 x @a + 64 x @b, against output bytes times 1, 0 + 64 x @b). No one output's proof covers the input: it moves more than each proves alone, by how much depending on the runtime parameters @b, @a}}
+        // expected-warning@+1 {{through @o1, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes, 64 + 64*@a + 64*@b, against output bytes, 64*@a); through @o2, a stretch of @s can end having moved more through the input than the output proves taken, so the next dispatch's counts do not start clean (input bytes, 64 + 64*@a + 64*@b, against output bytes, 64*@b). No one output's proof covers the input: it moves more than each proves alone, by how much depending on the runtime parameters @b, @a}}
         aie.dma_bd(%x : memref<4096xi32> offset = 2048 len = 16)
         aie.end
       } {alloc = @in}

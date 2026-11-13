@@ -1344,16 +1344,30 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     });
   }
 
-  // Prints `bytes` scaled by `scale` as "c + k x @param ...".
+  // Prints `bytes` scaled by `scale` as "c + k*@param + ...", dropping a zero
+  // constant unless nothing else would print, and a coefficient of 1.
   void printVolume(llvm::raw_ostream &os, const Volume &bytes, int64_t scale,
                    AIE::RuntimeSequenceOp seq) {
     auto constant = bytes.find(-1);
-    os << (constant == bytes.end() ? 0 : constant->second * scale);
+    int64_t constantValue =
+        constant == bytes.end() ? 0 : constant->second * scale;
+    bool hasTerm = llvm::any_of(
+        bytes, [](const auto &term) { return term.first >= 0 && term.second; });
+    bool printed = false;
+    if (constantValue || !hasTerm) {
+      os << constantValue;
+      printed = true;
+    }
     for (const auto &term : bytes) {
       if (term.first < 0 || !term.second)
         continue;
-      os << " + " << term.second * scale << " x ";
+      if (printed)
+        os << " + ";
+      int64_t coefficient = term.second * scale;
+      if (coefficient != 1)
+        os << coefficient << "*";
       printParameter(os, term.first, seq);
+      printed = true;
     }
   }
 
@@ -1442,14 +1456,19 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                       "parameter without min_value >= 0)";
                 note = "the transfer";
               } else {
+                bool scaled = proof.getInputBytes() != proof.getOutputBytes();
                 os << "a stretch of @" << other.getSymName()
                    << " can end having moved more through the input than the "
                       "output proves taken, so the next dispatch's counts do "
-                      "not start clean (input bytes times "
-                   << proof.getOutputBytes() << ", ";
+                      "not start clean (input bytes";
+                if (scaled)
+                  os << " times " << proof.getOutputBytes();
+                os << ", ";
                 printVolume(os, verdict.in, proof.getOutputBytes(), other);
-                os << ", against output bytes times " << proof.getInputBytes()
-                   << ", ";
+                os << ", against output bytes";
+                if (scaled)
+                  os << " times " << proof.getInputBytes();
+                os << ", ";
                 printVolume(os, verdict.out, proof.getInputBytes(), other);
                 os << ")";
                 ++excess;

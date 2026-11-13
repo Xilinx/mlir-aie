@@ -154,7 +154,7 @@ module {
       // expected-note@+1 {{released here}}
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
-        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, the bytes its awaited transfers moved, less the part of an object of the join the proof passes (256 bytes) they may end in, times 1, -255 + 128 x @n, fall short of the bytes the input moved up to this transfer times 2, 0 + 128 x @n, for some parameter values}}
+        // expected-warning@+1 {{The compiler cannot prove that transfer finished: through @out, the bytes its awaited transfers moved, less the part of an object of the join the proof passes (256 bytes) they may end in, times 1, -255 + 128*@n, fall short of the bytes the input moved up to this transfer times 2, 128*@n, for some parameter values}}
         aie.dma_bd(%a : memref<4096xi32> offset = 2048 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 16 : i32}
         aie.end
       } {alloc = @in}
