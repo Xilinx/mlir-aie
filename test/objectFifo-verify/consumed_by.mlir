@@ -199,51 +199,6 @@ module @window_across_passes {
 
 // -----
 
-// The input feeds one core and the output comes from another, which takes
-// the first core's output ahead of each of its own releases, as the first
-// takes the input ahead of each of its: the chain ties them one to one.
-
-// CHECK-LABEL: module @other_core
-// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
-module @other_core {
-  aie.device(npu2_1col) {
-    %shim = aie.tile(0, 0)
-    %core2 = aie.tile(0, 2)
-    %core3 = aie.tile(0, 3)
-    aie.objectfifo @in(%shim, {%core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @mid(%core2, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out(%core3, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.core(%core2) {
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
-        %m = aie.objectfifo.acquire @mid(Produce, 1) : memref<16xi32>
-        aie.objectfifo.release @in(Consume, 1)
-        aie.objectfifo.release @mid(Produce, 1)
-        scf.yield
-      }
-      aie.end
-    }
-    aie.core(%core3) {
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        %m = aie.objectfifo.acquire @mid(Consume, 1) : memref<16xi32>
-        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
-        aie.objectfifo.release @mid(Consume, 1)
-        aie.objectfifo.release @out(Produce, 1)
-        scf.yield
-      }
-      aie.end
-    }
-  }
-}
-
-// -----
-
 // A broadcast input reaches two cores, and only one of them produces the
 // output. A byte that core has taken has left the shim, which is all the BD
 // ids need, whatever the other core does with its copy.
@@ -620,8 +575,11 @@ module @join {
 
 // -----
 
-// As @other_core, with objects halving at the first core: the output proves
-// the input two bytes for each it receives.
+// The input feeds one core and the output comes from another, which takes
+// the first core's output ahead of each of its own releases, as the first
+// takes the input ahead of each of its: the chain ties them one to one.
+// Objects halve at the first core, so the output proves the input two bytes
+// for each it receives.
 
 // CHECK-LABEL: module @two_cores
 // CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
