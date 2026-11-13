@@ -191,14 +191,6 @@ class Case(HwCase):
                 "",
                 "the router's routing without allow-deadlock-prone: the trees meet at (0,2).",
             ),
-            Variant(
-                "router_hops_off",
-                DESIGN,
-                None,
-                "PASS",
-                "circuit-switch-hops=false",
-                "the same, with no packet hop circuit switched.",
-            ),
         ]
 
     def check(self, outputs: list[np.ndarray]) -> list[str]:

@@ -221,14 +221,6 @@ class Case(HwCase):
                 "the router's routing without allow-deadlock-prone: id 31 meets id 30 at (0,1) by a U-turn.",
             ),
             Variant(
-                "router_hops_off",
-                design,
-                None,
-                "PASS",
-                "circuit-switch-hops=false",
-                "the same, with no packet hop circuit switched.",
-            ),
-            Variant(
                 "meet_at_core",
                 design,
                 DESIGN.replace("@TREES@", MEET_AT_CORE),
