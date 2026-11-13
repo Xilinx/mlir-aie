@@ -122,7 +122,9 @@ LockPlan::Assignment LockPlan::assign(llvm::ArrayRef<Group> groups, Memo *memo,
       if (memo) {
         Memo::Outcome outcome{packing, blocked, {}};
         if (packing == Packing::Found)
+          // Every group's tile is set when pack() returns Found.
           for (auto [tilesOf, tile] : llvm::zip(eligible, packed))
+            // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
             outcome.offsets.push_back(llvm::find(tilesOf, *tile) -
                                       tilesOf.begin());
         memo->record(std::move(key), hash, std::move(outcome));
@@ -133,8 +135,9 @@ LockPlan::Assignment LockPlan::assign(llvm::ArrayRef<Group> groups, Memo *memo,
       result.failed.reset();
       used = before;
       for (auto [group, tile] : llvm::zip(groups, result.tiles))
-        if (tiles[*tile].at)
-          used[*tiles[*tile].at] += group.count;
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        if (std::optional<TileID> at = tiles[*tile].at)
+          used[*at] += group.count;
       return result;
     }
     result.stopped = packing == Packing::Stopped;
@@ -159,8 +162,9 @@ LockPlan::Assignment LockPlan::assign(llvm::ArrayRef<Group> groups, Memo *memo,
     result.tiles[group].reset();
   };
   for (auto [group, tile] : llvm::enumerate(result.tiles))
-    if (tile && tiles[*tile].at)
-      members[*tiles[*tile].at].push_back(group);
+    if (tile)
+      if (std::optional<TileID> at = tiles[*tile].at)
+        members[*at].push_back(group);
   auto slots = [&](TileID at) {
     return (static_cast<int>(target.getNumLocks(at.col, at.row)) -
             before.lookup(at)) /
@@ -201,8 +205,9 @@ LockPlan::Assignment LockPlan::assign(llvm::ArrayRef<Group> groups, Memo *memo,
   }
   used = before;
   for (std::optional<unsigned> tile : result.tiles)
-    if (tile && tiles[*tile].at)
-      used[*tiles[*tile].at] += count;
+    if (tile)
+      if (std::optional<TileID> at = tiles[*tile].at)
+        used[*at] += count;
   result.failed.reset();
   for (auto [group, tile] : llvm::enumerate(result.tiles)) {
     if (tile)
@@ -338,7 +343,7 @@ LockPlan::pack(llvm::ArrayRef<Group> groups,
       llvm::SmallVector<unsigned> at;
       for (unsigned position : own)
         at.push_back(llvm::find(local, position) - local.begin());
-      auto kind = llvm::find_if(kinds, [&](const Kind &k) {
+      auto *kind = llvm::find_if(kinds, [&, group = group](const Kind &k) {
         return k.count == groups[group].count && k.reach == at;
       });
       if (kind == kinds.end()) {
@@ -458,7 +463,7 @@ LockPlan::pack(llvm::ArrayRef<Group> groups,
       // Groups of one count fill at most as many positions as are left of
       // them, so only that many positions may do better with them.
       int bound = wasted;
-      for (auto kind = kinds.begin(); kind != kinds.end();) {
+      for (auto *kind = kinds.begin(); kind != kinds.end();) {
         int count = kind->count, copies = 0;
         for (; kind != kinds.end() && kind->count == count; ++kind)
           copies += kind->members.size() - taken[kind - kinds.begin()];
@@ -586,9 +591,10 @@ LockPlan::pack(llvm::ArrayRef<Group> groups,
     }
     for (auto [kind, k] : llvm::enumerate(kinds))
       for (auto [group, position] : llvm::zip(k.members, where[kind]))
-        chosen[group] = *llvm::find_if(eligible[group], [&](unsigned tile) {
-          return tiles[tile].at == positions[position];
-        });
+        chosen[group] = *llvm::find_if(
+            eligible[group], [&, position = position](unsigned tile) {
+              return tiles[tile].at == positions[position];
+            });
   }
   return anyStopped ? Packing::Stopped : Packing::Found;
 }
