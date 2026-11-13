@@ -1,9 +1,0 @@
-<map id="Token2LockLowering" name="Token2LockLowering">
-<area shape="rect" id="Node000001" title=" " alt="" coords="322,91,477,119"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="21,5,179,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="194,29,247,37,299,49,342,68,379,91,374,91,339,72,297,54,246,42,195,35"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,74,195,136"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="210,102,323,104,319,106,211,108"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="8,160,192,239"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="206,164,355,119,350,120,207,169"/>
-</map>

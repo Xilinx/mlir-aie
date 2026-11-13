@@ -1,7 +1,0 @@
-<map id="ConvertMulFToAIEVecMulElemOpPattern" name="ConvertMulFToAIEVecMulElemOpPattern">
-<area shape="rect" id="Node000001" title=" " alt="" coords="47,123,266,168"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,164,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="107,61,146,122,140,123,104,65"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="188,14,269,42"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="215,53,172,124,168,121,210,55"/>
-</map>
