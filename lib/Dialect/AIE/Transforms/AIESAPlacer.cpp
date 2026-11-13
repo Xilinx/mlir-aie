@@ -2781,11 +2781,13 @@ LogicalResult SAPlacer::generateInitialPlacement() {
           TileID at = pool[(next + i) % pool.size()];
           if (isLegalPosition(op, at))
             pos = at;
-          else if (!named && satisfiesConstraints(op, at))
+          else if (!named && satisfiesConstraints(op, at) &&
+                   namedClash(op, namedAt(op, at)))
             named = at;
         }
         if (!pos && named)
-          return emitNamedClash(op, *named, namedAt(op, *named));
+          if (auto clash = namedClash(op, namedAt(op, *named)))
+            return emitNamedClash(op, *named, *clash);
         if (!pos)
           return cast<LogicalTileOp>(op).emitError(
               "no available physical tile for placement");

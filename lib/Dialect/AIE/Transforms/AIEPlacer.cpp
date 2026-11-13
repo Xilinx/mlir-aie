@@ -1917,9 +1917,10 @@ Placer::namedClash(Operation *tile, ArrayRef<Operation *> others) const {
   return std::nullopt;
 }
 
-LogicalResult Placer::emitNamedClash(Operation *tile, TileID at,
-                                     ArrayRef<Operation *> others) const {
-  auto [other, named] = *namedClash(tile, others);
+LogicalResult Placer::emitNamedClash(
+    Operation *tile, TileID at,
+    std::pair<Operation *, std::pair<int, int>> clash) const {
+  auto [other, named] = clash;
   auto [output, channel] = named;
   StringRef dir = output ? "MM2S" : "S2MM";
   InFlightDiagnostic diag =
@@ -2488,7 +2489,8 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
             targetCol, availability.nonCompTiles, numInputChannels,
             numOutputChannels, logicalTile.getTileType(), logicalTile,
             /*withinBudgets=*/false, /*apartByName=*/false))
-      return emitNamedClash(logicalTile, *named, overlayTilesAt.lookup(*named));
+      if (auto clash = namedClash(logicalTile, overlayTilesAt.lookup(*named)))
+        return emitNamedClash(logicalTile, *named, *clash);
     AIETileType requestedType = logicalTile.getTileType();
     StringRef tileTypeName = stringifyAIETileType(requestedType);
     auto diag = logicalTile.emitError();

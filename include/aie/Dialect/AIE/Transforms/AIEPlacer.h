@@ -451,10 +451,10 @@ protected:
   namedClash(mlir::Operation *tile,
              llvm::ArrayRef<mlir::Operation *> others) const;
   // Reports that `tile` can take no tile of its type, because the one at
-  // `at` with room for it holds `others`, which name a channel it names.
+  // `at` with room for it holds `clash`, a tile op naming a channel it names.
   mlir::LogicalResult
   emitNamedClash(mlir::Operation *tile, TileID at,
-                 llvm::ArrayRef<mlir::Operation *> others) const;
+                 std::pair<mlir::Operation *, std::pair<int, int>> clash) const;
 
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
