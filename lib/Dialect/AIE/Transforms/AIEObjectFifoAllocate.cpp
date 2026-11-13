@@ -1727,6 +1727,11 @@ struct AIEObjectFifoAllocatePass
       circuitPeerCache[dma] = circuitPeer(dma);
       poolEnds[dma.getPoolOp()].push_back(dma);
     }
+    auto endsOf = [&](Operation *pool) -> ArrayRef<ObjectFifoDmaEndpointOp> {
+      auto it = poolEnds.find(pool);
+      return it == poolEnds.end() ? ArrayRef<ObjectFifoDmaEndpointOp>()
+                                  : it->second;
+    };
     // Each circuit destination's one sender, a broadcast's included, and the
     // ends a circuit joins to the shim alone, which wait on the host only.
     DenseMap<Operation *, ObjectFifoDmaEndpointOp> senderOf;
@@ -1836,7 +1841,7 @@ struct AIEObjectFifoAllocatePass
         auto wholePool = [&](ObjectFifoDmaEndpointOp peer) {
           bool drains = peer.drains();
           return peer.getSegments() &&
-                 llvm::all_of(poolEnds.lookup(peer.getPoolOp()), [&](auto end) {
+                 llvm::all_of(endsOf(peer.getPoolOp()), [&](auto end) {
                    return end.drains() != drains ||
                           llvm::is_contained(peers, end);
                  });
@@ -1854,7 +1859,7 @@ struct AIEObjectFifoAllocatePass
           SmallPtrSet<Operation *, 8> seen;
           for (ObjectFifoDmaEndpointOp at = peer; !core;) {
             SmallVector<ObjectFifoDmaEndpointOp> across;
-            for (ObjectFifoDmaEndpointOp end : poolEnds.lookup(at.getPoolOp()))
+            for (ObjectFifoDmaEndpointOp end : endsOf(at.getPoolOp()))
               if (end.drains() != at.drains())
                 across.push_back(end);
             if (!seen.insert(at).second || across.size() != 1) {
