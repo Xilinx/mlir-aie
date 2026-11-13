@@ -1624,18 +1624,34 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       onMemTile ? targetModel.getMaxChannelNumForAdjacentMemTile(*col, *row)
                 : 0;
   if (onMemTile && static_cast<uint32_t>(getChannel()) >= adjacentChannels) {
+    auto isNonLocal = [&](AIE::TileLike tile) {
+      // Pinned logical and physical tiles can denote the same location. Defer
+      // the check until placement if the resource's coordinates are unknown.
+      auto resourceCol = tile.tryGetCol();
+      auto resourceRow = tile.tryGetRow();
+      return resourceCol && resourceRow &&
+             (*resourceCol != *col || *resourceRow != *row);
+    };
     body.walk([&](Operation *op) {
       Operation *nonLocal = nullptr;
       StringRef what;
       if (auto bd = dyn_cast<AIE::DMABDOp>(op)) {
         auto buffer = bd.getBuffer().getDefiningOp<AIE::BufferOp>();
-        if (buffer && buffer.getTile() != getTile()) {
+        if (buffer && isNonLocal(buffer.getTileLike())) {
           nonLocal = buffer;
           what = "buffer";
         }
       } else if (auto useLock = dyn_cast<AIE::UseLockOp>(op)) {
-        AIE::LockOp lock = useLock.getLockOp();
-        if (lock && lock.getTile() != getTile()) {
+        auto lock = useLock.getLock().getDefiningOp<AIE::LockOp>();
+        if (!lock) {
+          useLock.emitOpError()
+              << "requires a lock defined by aie.lock in a task on memtile DMA "
+                 "channel "
+              << getChannel();
+          result = failure();
+          return;
+        }
+        if (isNonLocal(lock.getTileLike())) {
           nonLocal = lock;
           what = "lock";
         }

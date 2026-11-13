@@ -70,3 +70,60 @@ aie.device(npu1_2col) {
     }
   }
 }
+
+// -----
+
+// A constant is not a lock operation.
+aie.device(npu1_2col) {
+  %tile = aie.tile(0, 1)
+  %buf = aie.buffer(%tile) : memref<16xi32>
+  aie.runtime_sequence() {
+    %task = aiex.dma_configure_task(%tile, MM2S, 4) {
+      %lock = arith.constant 0 : index
+      %c1 = arith.constant 1 : i32
+      // expected-error@+1 {{'aie.use_lock' op requires a lock defined by aie.lock in a task on memtile DMA channel 4}}
+      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A block argument has no defining operation.
+aie.device(npu1_2col) {
+  %tile = aie.tile(0, 1)
+  %buf = aie.buffer(%tile) : memref<16xi32>
+  aie.runtime_sequence(%lock : index) {
+    %task = aiex.dma_configure_task(%tile, MM2S, 5) {
+      %c1 = arith.constant 1 : i32
+      // expected-error@+1 {{'aie.use_lock' op requires a lock defined by aie.lock in a task on memtile DMA channel 5}}
+      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Pinned logical tiles at different coordinates still use non-local resources.
+aie.device(npu1_2col) {
+  %tile = aie.tile(0, 1)
+  %logical = aie.logical_tile<MemTile>(1, 1)
+  // expected-note@+1 {{buffer}}
+  %buf = aie.buffer(%tile) : memref<16xi32>
+  // expected-note@+1 {{lock}}
+  %lock = aie.lock(%tile, 0) {init = 1 : i32}
+  aie.runtime_sequence() {
+    %task = aiex.dma_configure_task(%logical, MM2S, 4) {
+      %c1 = arith.constant 1 : i32
+      // expected-error@+1 {{'aie.use_lock' op is in a task on memtile DMA channel 4 and attempts to access a non-local lock; only channels below 4 reach neighbouring tiles}}
+      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      // expected-error@+1 {{'aie.dma_bd' op is in a task on memtile DMA channel 4 and attempts to access a non-local buffer; only channels below 4 reach neighbouring tiles}}
+      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    }
+  }
+}
