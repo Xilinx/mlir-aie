@@ -17,6 +17,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <map>
+
 using namespace mlir;
 
 namespace xilinx {
@@ -137,6 +139,39 @@ inline constexpr int64_t kRunsForever = (int64_t{1} << 24) - 2;
 // between the op and the core, an `scf.if`, a loop with dynamic bounds or one
 // meant to run forever, a block reached by branching, makes it unknown.
 std::optional<int64_t> staticExecutions(Operation *op);
+
+// Bytes as a linear form in a sequence's scratchpad parameters, each at least
+// 0: the constant at key -1, each parameter's coefficient at its state-table
+// index.
+using Volume = std::map<int64_t, int64_t>;
+
+// Whether a * scaleA <= b * scaleB whatever values the parameters take.
+bool atMost(const Volume &a, int64_t scaleA, const Volume &b, int64_t scaleB);
+
+// Whether `bytes` is a multiple of `granule` (when nonzero) whatever values the
+// parameters take.
+bool wholeGranules(const Volume &bytes, int64_t granule);
+
+// Why the bytes a shim input sent may not all be proven taken by the bytes its
+// consumed_by output received.
+enum class Unbalanced {
+  No,
+  // A push of either moves bytes no count follows: a parameter not held
+  // non-negative, a chain, or a loop of a dynamic-pool sequence.
+  Unsized,
+  // Other traffic shares their channels.
+  Traffic,
+  // The input moves more than the output proves taken.
+  Excess,
+  // The output may end partway through an object of the join its proof
+  // passes, whose later segments it has then taken less of.
+  PartGranule,
+};
+
+// Whether `in` bytes sent through a shim input are all taken once `out` bytes
+// came through `proof`'s output: No, PartGranule or Excess.
+Unbalanced balanceUnder(AIE::ConsumedByAttr proof, const Volume &in,
+                        const Volume &out);
 
 // `device:sequence`, the name a host runs `seq` by.
 std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);

@@ -13,6 +13,9 @@
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/CheckedArithmetic.h"
+#include "llvm/Support/MathExtras.h"
+
+#include <set>
 
 using namespace mlir;
 using namespace xilinx;
@@ -328,6 +331,40 @@ std::optional<int64_t> AIEX::staticExecutions(Operation *op) {
     count = *product;
   }
   return count;
+}
+
+// Every parameter is at least 0, so it is enough to compare the terms one by
+// one, a term missing from either side counting as 0.
+bool AIEX::atMost(const Volume &a, int64_t scaleA, const Volume &b,
+                  int64_t scaleB) {
+  std::set<int64_t> keys;
+  for (const auto &term :
+       llvm::concat<const std::pair<const int64_t, int64_t>>(a, b))
+    keys.insert(term.first);
+  for (int64_t key : keys) {
+    auto x = a.find(key), y = b.find(key);
+    int64_t lhs = 0, rhs = 0;
+    if ((x != a.end() && llvm::MulOverflow(x->second, scaleA, lhs)) ||
+        (y != b.end() && llvm::MulOverflow(y->second, scaleB, rhs)) ||
+        lhs > rhs)
+      return false;
+  }
+  return true;
+}
+
+bool AIEX::wholeGranules(const Volume &bytes, int64_t granule) {
+  return !granule || llvm::all_of(bytes, [&](const auto &term) {
+    return term.second % granule == 0;
+  });
+}
+
+AIEX::Unbalanced AIEX::balanceUnder(AIE::ConsumedByAttr proof, const Volume &in,
+                                    const Volume &out) {
+  if (!wholeGranules(out, proof.getGranuleBytes()))
+    return Unbalanced::PartGranule;
+  if (!atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
+    return Unbalanced::Excess;
+  return Unbalanced::No;
 }
 
 std::string AIEX::scratchpadCommandName(AIE::RuntimeSequenceOp seq) {
