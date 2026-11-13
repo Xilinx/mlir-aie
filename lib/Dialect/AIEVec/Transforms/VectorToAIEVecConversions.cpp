@@ -51,6 +51,64 @@ using namespace xilinx::aievec;
 // Utility functions
 //===----------------------------------------------------------------------===//
 
+// A scalar i32 -> i8/i16 trunci's [clamp] chain as one SRS: the value
+// before the clamp, the sign of the saturation (1 signed, 0 unsigned) and the
+// clamp's ops, if any. nullopt if the clamp is not the destination type's
+// full range.
+struct ScalarSRSChain {
+  Value source;
+  int32_t sign;
+  arith::MinSIOp minOp;
+  arith::MaxSIOp maxOp;
+};
+static std::optional<ScalarSRSChain>
+matchScalarSRSChain(arith::TruncIOp truncOp) {
+  auto dstIntType = dyn_cast<IntegerType>(truncOp.getOut().getType());
+  if (!dstIntType)
+    return std::nullopt;
+  unsigned dstBits = dstIntType.getWidth();
+  if (dstBits != 8 && dstBits != 16)
+    return std::nullopt;
+  auto srcIntType = dyn_cast<IntegerType>(truncOp.getIn().getType());
+  if (!srcIntType || srcIntType.getWidth() != 32)
+    return std::nullopt;
+
+  // Walk backward through optional clamp chain
+  Value source = truncOp.getIn();
+  arith::MinSIOp minOp = nullptr;
+  arith::MaxSIOp maxOp = nullptr;
+  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+    if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
+      minOp = minsiOp;
+      maxOp = maxsiOp;
+      source = maxOp.getLhs();
+    }
+  } else if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+    if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
+      maxOp = maxsiOp;
+      minOp = minsiOp;
+      source = minOp.getLhs();
+    }
+  }
+  if (!minOp || !maxOp)
+    return ScalarSRSChain{source, 1, nullptr, nullptr};
+
+  // A clamp must be a valid saturation range
+  std::optional<int64_t> loVal = getConstantIntValue(maxOp.getRhs());
+  std::optional<int64_t> hiVal = getConstantIntValue(minOp.getRhs());
+  if (!loVal || !hiVal)
+    return std::nullopt;
+  uint64_t one = 1ULL;
+  int64_t unsignedHi = static_cast<int64_t>((one << dstBits) - 1);
+  int64_t signedLo = -static_cast<int64_t>(one << (dstBits - 1));
+  int64_t signedHi = static_cast<int64_t>((one << (dstBits - 1)) - 1);
+  if (*loVal == 0 && *hiVal == unsignedHi)
+    return ScalarSRSChain{source, 0, minOp, maxOp};
+  if (*loVal == signedLo && *hiVal == signedHi)
+    return ScalarSRSChain{source, 1, minOp, maxOp};
+  return std::nullopt;
+}
+
 // Check if a TruncIOp is part of a shrsi+[clamp]+trunc chain that can be
 // lowered to a compound SRS pattern. Only returns true for chains that the
 // ShiftClampTruncToSRSPattern rewrite will actually match:
@@ -60,6 +118,11 @@ using namespace xilinx::aievec;
 // Does NOT return true for a single min or max without a matching pair,
 // to avoid marking trunci illegal when no rewrite can handle it.
 static bool isSRSCompoundCandidate(arith::TruncIOp trunciOp) {
+  // LowerScalarShiftClampTruncToSRS converts fewer scalar chains than match
+  // the shapes below.
+  if (!isa<VectorType>(trunciOp.getType()) && !matchScalarSRSChain(trunciOp))
+    return false;
+
   Value source = trunciOp.getIn();
 
   // Case 1: direct shrsi → trunci
@@ -4764,81 +4827,22 @@ struct ShiftClampTruncToSRSPattern : OpConversionPattern<arith::TruncIOp> {
 struct LowerScalarShiftClampTruncToSRS : OpConversionPattern<arith::TruncIOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  // Try to extract a scalar integer constant value from a Value.
-  static std::optional<int64_t> getScalarConstantValue(Value val) {
-    auto defOp = val.getDefiningOp<arith::ConstantOp>();
-    if (!defOp)
-      return std::nullopt;
-    auto intAttr = dyn_cast<IntegerAttr>(defOp.getValue());
-    if (!intAttr)
-      return std::nullopt;
-    return intAttr.getInt();
-  }
-
   LogicalResult
   matchAndRewrite(arith::TruncIOp truncOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     // Only match scalar types (vector compound pattern handles vectors)
-    Type dstType = truncOp.getOut().getType();
-    if (isa<VectorType>(dstType))
+    if (isa<VectorType>(truncOp.getOut().getType()))
       return failure();
-
-    auto dstIntType = dyn_cast<IntegerType>(dstType);
-    if (!dstIntType)
+    std::optional<ScalarSRSChain> chain = matchScalarSRSChain(truncOp);
+    if (!chain)
       return failure();
-
+    Value source = chain->source;
+    int32_t sign = chain->sign;
+    arith::MinSIOp minOp = chain->minOp;
+    arith::MaxSIOp maxOp = chain->maxOp;
+    auto srcIntType = cast<IntegerType>(truncOp.getIn().getType());
+    auto dstIntType = cast<IntegerType>(truncOp.getOut().getType());
     unsigned dstBits = dstIntType.getWidth();
-    if (dstBits != 8 && dstBits != 16)
-      return failure();
-
-    auto srcIntType = dyn_cast<IntegerType>(truncOp.getIn().getType());
-    if (!srcIntType || srcIntType.getWidth() != 32)
-      return failure();
-
-    // Walk backward through optional clamp chain
-    Value source = truncOp.getIn();
-    int32_t sign = 1; // default: signed
-
-    arith::MinSIOp minOp = nullptr;
-    arith::MaxSIOp maxOp = nullptr;
-
-    if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
-      if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
-        minOp = minsiOp;
-        maxOp = maxsiOp;
-        source = maxOp.getLhs();
-      }
-    } else if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
-      if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
-        maxOp = maxsiOp;
-        minOp = minsiOp;
-        source = minOp.getLhs();
-      }
-    }
-
-    // If we found a clamp, verify it's a valid saturation range
-    if (minOp && maxOp) {
-      auto loVal = getScalarConstantValue(maxOp.getRhs());
-      auto hiVal = getScalarConstantValue(minOp.getRhs());
-      if (!loVal || !hiVal)
-        return failure();
-
-      if (dstBits == 0 || dstBits > 63)
-        return failure();
-      uint64_t one = 1ULL;
-      int64_t unsignedLo = 0;
-      int64_t unsignedHi = static_cast<int64_t>((one << dstBits) - 1);
-      int64_t signedLo = -static_cast<int64_t>(one << (dstBits - 1));
-      int64_t signedHi = static_cast<int64_t>((one << (dstBits - 1)) - 1);
-
-      if (*loVal == unsignedLo && *hiVal == unsignedHi) {
-        sign = 0; // unsigned saturation
-      } else if (*loVal == signedLo && *hiVal == signedHi) {
-        sign = 1; // signed saturation
-      } else {
-        return failure();
-      }
-    }
 
     // Now source should be the shrsi result, or any i32 value for clamp-only
     Location loc = truncOp.getLoc();
