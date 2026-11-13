@@ -1757,8 +1757,9 @@ def AIE_DMABdPoolPopOp
     (`std::nullopt`).
 
     With `id`, it takes that ID out of the pool for the rest of the sequence
-    and returns it: something outside the pool programs that ID, such as an
-    `aiex.npu.dma_memcpy_nd`, so the pool must never hand it out.
+    and returns it: something outside the pool programs that ID, a static DMA
+    program or an `aiex.npu.dma_memcpy_nd`, so the pool must never hand it
+    out. `aie-lower-dynamic-bd-pool` emits one for each such ID.
   }];
 
   let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,

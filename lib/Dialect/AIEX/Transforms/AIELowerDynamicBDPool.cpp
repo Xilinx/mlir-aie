@@ -671,9 +671,10 @@ struct AIELowerDynamicBDPoolPass
                             warnUnsafeBdReuse, effectOf);
   }
 
-  // An aiex.npu.dma_memcpy_nd programs its BD id on its tile outside the pool,
-  // so every pool of that tile holding the id gives it up for the sequence.
-  void reserveCopyIds(AIE::RuntimeSequenceOp seq, SymbolTable &symbols) {
+  // A static DMA program or an aiex.npu.dma_memcpy_nd programs its BD id on
+  // its tile outside the pool, so every pool of that tile holding the id gives
+  // it up for the sequence.
+  void reserveTakenIds(AIE::RuntimeSequenceOp seq, SymbolTable &symbols) {
     std::set<std::tuple<int, int, uint32_t, uint32_t>> pools;
     std::set<std::tuple<int, int, uint32_t>> reserved;
     seq.walk([&](DMABdPoolPopOp pop) {
@@ -682,20 +683,23 @@ struct AIELowerDynamicBDPoolPass
       if (std::optional<uint32_t> id = pop.getId())
         reserved.insert({pop.getColumn(), pop.getRow(), *id});
     });
-    std::set<std::tuple<int, int, uint32_t>> copies;
+    if (pools.empty())
+      return;
+    std::set<std::tuple<int, int, uint32_t>> taken;
+    for (AIE::DmaBody program : getOperation().getOps<AIE::DmaBody>())
+      for (uint32_t id : AIE::getAssignedBdIds(program))
+        taken.insert({program.getTileID().col, program.getTileID().row, id});
     seq.walk([&](NpuDmaMemcpyNdOp copy) {
       auto allocation = symbols.lookup<AIE::ShimDMAAllocationOp>(
           copy.getMetadata().getRootReference());
       if (AIE::TileOp tile = allocation ? allocation.getTileOp() : nullptr)
-        copies.insert({tile.getCol(), tile.getRow(),
-                       static_cast<uint32_t>(copy.getId())});
+        taken.insert({tile.getCol(), tile.getRow(),
+                      static_cast<uint32_t>(copy.getId())});
     });
-    if (pools.empty() || copies.empty())
-      return;
     OpBuilder b = OpBuilder::atBlockBegin(&seq.getBody().front());
     for (auto [col, row, begin, end] : pools)
-      for (auto [copyCol, copyRow, id] : copies)
-        if (copyCol == col && copyRow == row && id >= begin && id < end &&
+      for (auto [takenCol, takenRow, id] : taken)
+        if (takenCol == col && takenRow == row && id >= begin && id < end &&
             !reserved.count({col, row, id}))
           DMABdPoolPopOp::create(b, seq.getLoc(), b.getI32Type(), col, row,
                                  begin, end, b.getI32IntegerAttr(id));
@@ -706,11 +710,11 @@ struct AIELowerDynamicBDPoolPass
     SymbolTable symbols(device);
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
-      // A pop with an id withholds a copy's BD id from the pool. Every exit
+      // A pop with an id withholds a taken BD id from the pool. Every exit
       // from this sequence's body runs it, whether or not the lowering below
       // grew new pools (carryIdsThroughLoop, computeMetadata) for it to see.
       auto finish = [&](WalkResult result) {
-        reserveCopyIds(seq, symbols);
+        reserveTakenIds(seq, symbols);
         return result;
       };
 
