@@ -1090,22 +1090,36 @@ struct AIEObjectFifoAllocatePass
         return bdRoom(tileOf(endpoint), pinnedCol, pinnedRow,
                       *endpoint.getRouteChannel(), demand);
       };
-      RouteEndpoint deepest;
+      // The ends short of BD ids, the most demanding first.
+      SmallVector<RouteEndpoint> starved;
       for (RouteEndpoint endpoint : onTile)
-        if (roomOf(endpoint) < 0 &&
-            (!deepest || bdsOf(endpoint) > bdsOf(deepest)))
-          deepest = endpoint;
-      assert(deepest && "bdRoom and planBDChannels weigh the same BD ids");
+        if (roomOf(endpoint) < 0)
+          starved.push_back(endpoint);
+      assert(!starved.empty() &&
+             "bdRoom and planBDChannels weigh the same BD ids");
+      llvm::stable_sort(starved, [&](RouteEndpoint a, RouteEndpoint b) {
+        return std::make_tuple(bdsOf(b), structuralRank.lookup(a)) <
+               std::make_tuple(bdsOf(a), structuralRank.lookup(b));
+      });
+      RouteEndpoint deepest = starved.front();
       channelFailure = deepest;
       bdShortfall = true;
       if (!diagnose)
         return failure();
-      return deepest->emitOpError("needs ")
-             << bdsOf(deepest) << " buffer descriptors, but pinned "
-             << stringifyDMAChannelDir(deepest.getRouteDirection())
-             << " DMA channel " << *deepest.getRouteChannel()
-             << " of its tile has " << roomOf(deepest) + bdsOf(deepest)
-             << " left beside the ends on the channels sharing its BD ids";
+      InFlightDiagnostic diag =
+          deepest->emitOpError("needs ")
+          << bdsOf(deepest) << " buffer descriptors, but pinned "
+          << stringifyDMAChannelDir(deepest.getRouteDirection())
+          << " DMA channel " << *deepest.getRouteChannel()
+          << " of its tile has " << roomOf(deepest) + bdsOf(deepest)
+          << " left beside the ends on the channels sharing its BD ids";
+      for (RouteEndpoint other : llvm::drop_begin(starved))
+        diag.attachNote(other->getLoc())
+            << "this end, on pinned "
+            << stringifyDMAChannelDir(other.getRouteDirection())
+            << " DMA channel " << *other.getRouteChannel() << ", needs "
+            << bdsOf(other) << " of them too";
+      return diag;
     }
 
     // Endpoints reaching a spilled buffer draw from a restricted channel

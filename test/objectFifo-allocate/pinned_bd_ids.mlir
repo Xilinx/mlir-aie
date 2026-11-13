@@ -14,7 +14,8 @@
 // RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate --aie-objectfifo-lower-dmas --aie-objectfifo-lower-cores --aie-objectfifo-erase-pools --aie-assign-lock-ids --aie-assign-bd-ids --verify-diagnostics %s -o /dev/null
 
 // Two out-of-order fifos share pinned S2MM 0 with 14 BDs each, and neither
-// pool can be walked.
+// pool can be walked. The error lands on one end by structure and notes the
+// other, whichever is declared first.
 module @shared_out_of_order {
   // expected-remark@+1 {{could not find a spill-aware allocation}}
   aie.device(npu2) {
@@ -23,7 +24,33 @@ module @shared_out_of_order {
     %m = aie.tile(0, 1)
     // expected-error@+1 {{needs 14 buffer descriptors, but pinned S2MM DMA channel 0 of its tile has 10 left beside the ends on the channels sharing its BD ids}}
     aie.objectfifo @fa(%a, {%m}, [2, 14]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>, out_of_order = true>, iter_count = 1 : i32, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+    // expected-note@+1 {{this end, on pinned S2MM DMA channel 0, needs 14 of them too}}
     aie.objectfifo @fb(%b, {%m}, [2, 14]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>, out_of_order = true>, iter_count = 1 : i32, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %0 = aie.objectfifo.acquire @fa(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @fa(Produce, 1)
+      aie.end
+    }
+    aie.core(%b) {
+      %0 = aie.objectfifo.acquire @fb(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @fb(Produce, 1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+module @shared_out_of_order_fb_first {
+  // expected-remark@+1 {{could not find a spill-aware allocation}}
+  aie.device(npu2) {
+    %a = aie.tile(0, 2)
+    %b = aie.tile(1, 2)
+    %m = aie.tile(0, 1)
+    // expected-note@+1 {{this end, on pinned S2MM DMA channel 0, needs 14 of them too}}
+    aie.objectfifo @fb(%b, {%m}, [2, 14]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>, out_of_order = true>, iter_count = 1 : i32, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+    // expected-error@+1 {{needs 14 buffer descriptors, but pinned S2MM DMA channel 0 of its tile has 10 left beside the ends on the channels sharing its BD ids}}
+    aie.objectfifo @fa(%a, {%m}, [2, 14]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>, out_of_order = true>, iter_count = 1 : i32, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
     aie.core(%a) {
       %0 = aie.objectfifo.acquire @fa(Produce, 1) : memref<16xi32>
       aie.objectfifo.release @fa(Produce, 1)
