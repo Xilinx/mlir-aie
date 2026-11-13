@@ -257,9 +257,35 @@ static std::optional<Value> getSourceOfWideningOp(Value src) {
   return std::optional<Value>();
 }
 
-// Whether the f32 vector `src` holds bf16 values: it is widened from bf16, or
-// a constant that is exact in bf16.
+// The bf16 scalar that the f32 vector `src` splats, where `src` is a splat
+// of a scalar widened from bf16, possibly already lowered to aievec
+// broadcasts; else null.
+static Value getSplatOfWidenedBF16(Value src) {
+  src = skipShapeCastRoundTrip(src);
+  if (auto concatOp = src.getDefiningOp<aievec::ConcatOp>()) {
+    auto parts = concatOp.getSources();
+    if (parts.empty() || !llvm::all_equal(parts))
+      return {};
+    src = parts.front();
+  }
+  Value scalar;
+  if (auto bcastOp = src.getDefiningOp<vector::BroadcastOp>())
+    scalar = bcastOp.getSource();
+  else if (auto bcastOp = src.getDefiningOp<aievec::BroadcastScalarOp>())
+    scalar = bcastOp.getSource();
+  if (!scalar || isa<VectorType>(scalar.getType()))
+    return {};
+  if (auto extFOp = scalar.getDefiningOp<arith::ExtFOp>())
+    if (extFOp.getIn().getType().isBF16())
+      return extFOp.getIn();
+  return {};
+}
+
+// Whether the f32 vector `src` holds bf16 values: it is widened from bf16, a
+// splat of a scalar widened from bf16, or a constant that is exact in bf16.
 static bool holdsBF16(Value src) {
+  if (getSplatOfWidenedBF16(src))
+    return true;
   if (auto wideSrc = getSourceOfWideningOp(src))
     return getElementTypeOrSelf(wideSrc->getType()).isBF16();
   DenseFPElementsAttr dense;
@@ -276,10 +302,12 @@ static bool holdsBF16(Value src) {
 // narrowed where it is used rather than folded to a bf16 constant, so it does
 // not occupy a vector register outside the code that uses it.
 static Value getBF16Source(OpBuilder &builder, Location loc, Value src) {
-  if (auto wideSrc = getSourceOfWideningOp(src))
-    return *wideSrc;
   auto bf16Type = VectorType::get(cast<VectorType>(src.getType()).getShape(),
                                   builder.getBF16Type());
+  if (Value scalar = getSplatOfWidenedBF16(src))
+    return vector::BroadcastOp::create(builder, loc, bf16Type, scalar);
+  if (auto wideSrc = getSourceOfWideningOp(src))
+    return *wideSrc;
   auto shift =
       arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0));
   return aievec::SRSOp::create(builder, loc, bf16Type, src, shift);

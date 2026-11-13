@@ -702,6 +702,9 @@ static APFloat roundedToBF16(APFloat v) {
 
 // True if `val` is an f32 vector whose elements are all bf16 values.
 static bool holdsBF16(Value val) {
+  // a splat of a scalar widened from bf16
+  if (auto bcastOp = val.getDefiningOp<vector::BroadcastOp>())
+    val = bcastOp.getSource();
   if (auto extfOp = val.getDefiningOp<arith::ExtFOp>())
     return getElementTypeOrSelf(extfOp.getIn().getType()).isBF16();
   DenseFPElementsAttr dense;
@@ -901,6 +904,31 @@ struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
       Value lhs = roundToBF16(rewriter, loc, mulOp.getLhs());
       Value rhs = roundToBF16(rewriter, loc, mulOp.getRhs());
       rewriter.replaceOpWithNewOp<vector::FMAOp>(op, lhs, rhs, acc);
+      rewriter.eraseOp(mulOp);
+      return success();
+    }
+    return failure();
+  }
+};
+
+/// Pattern to fold an f32 multiply of two bf16 values into the add that is
+/// its only user, as a vector.fma. The product of two bf16 values is exact in
+/// f32, so the fused op rounds as the two ops do.
+struct FuseExactMulAddFPattern : public OpRewritePattern<arith::AddFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::AddFOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isF32Vector(op.getType()))
+      return failure();
+    for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
+                                   std::pair(op.getRhs(), op.getLhs())}) {
+      auto mulOp = mulOperand.getDefiningOp<arith::MulFOp>();
+      if (!mulOp || !mulOp->hasOneUse() || !holdsBF16(mulOp.getLhs()) ||
+          !holdsBF16(mulOp.getRhs()))
+        continue;
+      rewriter.replaceOpWithNewOp<vector::FMAOp>(op, mulOp.getLhs(),
+                                                 mulOp.getRhs(), acc);
       rewriter.eraseOp(mulOp);
       return success();
     }
@@ -1119,7 +1147,8 @@ struct CanonicalizeVectorForAIEVecPass
       patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
       if (targetInfo->isAIE2P())
-        patterns.add<FlattenVectorIterArgsPattern>(context);
+        patterns.add<FlattenVectorIterArgsPattern, FuseExactMulAddFPattern>(
+            context);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
