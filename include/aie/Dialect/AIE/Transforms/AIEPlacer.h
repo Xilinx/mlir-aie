@@ -108,9 +108,6 @@ struct TileAvailability {
   llvm::DenseMap<TileID, StreamDemand> streamsUsed;
   // The logical tiles placed here whose runtime tasks take BD ids.
   llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> runtimeBdTiles;
-  // DMA channels, as (output, index), that flows of the logical tiles placed
-  // here name by index.
-  llvm::DenseMap<TileID, llvm::DenseSet<std::pair<int, int>>> namedChannelsUsed;
 
   void removeTile(TileID tile, AIETileType type);
 };
@@ -305,7 +302,8 @@ public:
     // Adds (`sign` 1) or removes (-1) `end` at `at`. Returns `sign` when the
     // end takes or frees its channel there, 0 when other ends hold it too.
     int place(TileID at, const PinnedChannels::End &end, int sign);
-    // The channels at `at` holding two ends that cannot share them.
+    // The channels at `at` holding two ends that cannot share them, or
+    // claimed by two tile ops.
     int clashes(TileID at) const;
     // The (input, output) channels `ends`, one tile op's, pin that `at`
     // holds already; nothing when one of them clashes there.
@@ -447,6 +445,22 @@ protected:
   void collectOverlayUses(DeviceOp device);
   // The tile ops overlayUses names.
   llvm::SmallVector<mlir::Operation *> overlayTileOps() const;
+
+  // DMA channels, as (output, index), that each tile op's flows, claims and
+  // route ends name by index (flowChannelDemand).
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+      namedChannels;
+  // A tile op among `others` naming a channel `tile` names too, with that
+  // channel. Two such tile ops cannot share a physical tile: their programs
+  // or flows would drive one channel.
+  std::optional<std::pair<mlir::Operation *, std::pair<int, int>>>
+  namedClash(mlir::Operation *tile,
+             llvm::ArrayRef<mlir::Operation *> others) const;
+  // Reports that `tile` can take no tile of its type, because the one at
+  // `at` with room for it holds `others`, which name a channel it names.
+  mlir::LogicalResult
+  emitNamedClash(mlir::Operation *tile, TileID at,
+                 llvm::ArrayRef<mlir::Operation *> others) const;
 
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
@@ -606,12 +620,14 @@ private:
 
   // targetCol == nullopt means no routing anchor is known, so candidates are
   // ranked by DMA load rather than by distance to a column. `withinBudgets`
-  // also requires fitsStreamAndBdBudgets.
+  // also requires fitsStreamAndBdBudgets; `apartByName` requires that no
+  // tile op there names a channel `logicalTile` names (namedClash).
   std::optional<TileID>
   findTileWithCapacity(std::optional<int> targetCol,
                        llvm::ArrayRef<TileID> tiles, int requiredInputChannels,
                        int requiredOutputChannels, AIETileType requestedType,
-                       mlir::Operation *logicalTile, bool withinBudgets);
+                       mlir::Operation *logicalTile, bool withinBudgets,
+                       bool apartByName = true);
 
   // Diagnosis for a failed findTileWithCapacity() call. `findTileWithCapacity`
   // scans every tile of `requestedType` on the device -- `targetCol` orders
@@ -672,11 +688,6 @@ private:
   llvm::DenseMap<mlir::Operation *,
                  llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
       claimsOf;
-
-  // DMA channels, as (output, index), that each logical tile's flows name by
-  // index. Two logical tiles naming the same one cannot share a physical tile.
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
-      namedChannels;
 
   // True if `tile`'s stream ports and BDs still fit `logicalTile`'s demand on
   // top of what earlier placements use.
@@ -1162,10 +1173,6 @@ private:
     bool output;
   };
   llvm::SmallVector<RouteEndInfo> routeEnds;
-  // DMA channels, as (output, index), that each tile's flows and claims name
-  // by index.
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
-      namedChannels;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
   // The DMA ends of each mem tile, logical or physical, and the BD ids each
   // takes, as the split will make them.
@@ -1463,6 +1470,11 @@ private:
   void initBoundingBoxes();
   double estimateInitialTemperature(int numSamples);
   bool isLegalPosition(mlir::Operation *tile, TileID pos) const;
+  // The tile ops at `pos`, but `tile` and `leaving`, that name a channel by
+  // index, for namedClash().
+  llvm::SmallVector<mlir::Operation *>
+  namedAt(mlir::Operation *tile, TileID pos,
+          mlir::Operation *leaving = nullptr) const;
   int64_t computeTileMemoryWeight(mlir::Operation *tile) const;
   void printPlacementStats(int64_t elapsedMs) const;
 };

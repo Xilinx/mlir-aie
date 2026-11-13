@@ -400,7 +400,19 @@ bool SAPlacer::isLegalPosition(Operation *tile, TileID pos) const {
       return false;
   }
 
-  return satisfiesConstraints(tile, pos);
+  return satisfiesConstraints(tile, pos) &&
+         !namedClash(tile, namedAt(tile, pos));
+}
+
+SmallVector<Operation *> SAPlacer::namedAt(Operation *tile, TileID pos,
+                                           Operation *leaving) const {
+  SmallVector<Operation *> here;
+  if (!namedChannels.contains(tile))
+    return here;
+  for (auto &[other, named] : namedChannels)
+    if (other != tile && other != leaving && positionOf(other) == pos)
+      here.push_back(other);
+  return here;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2048,7 +2060,9 @@ bool SAPlacer::generateMove(
       // Swap: both tiles must accept each other's position.
       if (tileTypes[occupant] != type)
         continue;
-      if (!satisfiesConstraints(occupant, currentPos))
+      if (!satisfiesConstraints(occupant, currentPos) ||
+          namedClash(tile, namedAt(tile, targetPos, occupant)) ||
+          namedClash(occupant, namedAt(occupant, currentPos, tile)))
         continue;
       moves.clear();
       moves.push_back({tile, targetPos});
@@ -2758,28 +2772,32 @@ LogicalResult SAPlacer::generateInitialPlacement() {
     }
     llvm::sort(sortedMemTiles, byMemWeightDesc);
 
-    for (auto *op : sortedMemTiles) {
-      if (availMem.empty())
-        return cast<LogicalTileOp>(op).emitError(
-            "no available physical tile for placement");
-      TileID pos = availMem[memIdx % availMem.size()];
-      memIdx++;
-      currentPlacement[op] = pos;
-      movableTiles.push_back(op);
-    }
-
-    for (auto *op : shimTiles) {
-      if (availShim.empty())
-        return cast<LogicalTileOp>(op).emitError(
-            "no available physical tile for placement");
-      TileID pos = availShim[shimIdx % availShim.size()];
-      shimIdx++;
-      if (!isLegalPosition(op, pos))
-        return cast<LogicalTileOp>(op).emitError(
-            "no available physical tile for placement");
-      currentPlacement[op] = pos;
-      movableTiles.push_back(op);
-    }
+    // Each takes the next legal position of its pool, round robin.
+    auto placeIn = [&](ArrayRef<Operation *> ops, ArrayRef<TileID> pool,
+                       size_t &next) -> LogicalResult {
+      for (Operation *op : ops) {
+        std::optional<TileID> pos, named;
+        for (size_t i = 0; i < pool.size() && !pos; ++i) {
+          TileID at = pool[(next + i) % pool.size()];
+          if (isLegalPosition(op, at))
+            pos = at;
+          else if (!named && satisfiesConstraints(op, at))
+            named = at;
+        }
+        if (!pos && named)
+          return emitNamedClash(op, *named, namedAt(op, *named));
+        if (!pos)
+          return cast<LogicalTileOp>(op).emitError(
+              "no available physical tile for placement");
+        next++;
+        currentPlacement[op] = *pos;
+        movableTiles.push_back(op);
+      }
+      return success();
+    };
+    if (failed(placeIn(sortedMemTiles, availMem, memIdx)) ||
+        failed(placeIn(shimTiles, availShim, shimIdx)))
+      return failure();
   }
 
   return success();

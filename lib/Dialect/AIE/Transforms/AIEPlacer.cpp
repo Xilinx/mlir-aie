@@ -271,8 +271,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       updateChannelUsage(at, DmaDir::In, in);
     if (out)
       updateChannelUsage(at, DmaDir::Out, out);
-    for (auto named : namedChannels.lookup(placed))
-      availability.namedChannelsUsed[at].insert(named);
     overlayTilesAt[at].push_back(placed);
     for (const PinnedChannels::End &end : pinnedEnds.lookup(placed))
       pinsAt.place(at, end, 1);
@@ -1797,6 +1795,12 @@ int Placer::PinnedChannelUse::place(TileID at, const PinnedChannels::End &end,
 }
 
 int Placer::PinnedChannelUse::clashes(TileID at) const {
+  auto claimsClash = [](ArrayRef<DMAChannelAnalysis::ChannelClaim> claims) {
+    return llvm::any_of(claims,
+                        [&](const DMAChannelAnalysis::ChannelClaim &claim) {
+                          return claim.tile != claims.front().tile;
+                        });
+  };
   int count = 0;
   for (auto it = placed.lower_bound(
            std::make_tuple(at.col, at.row, std::numeric_limits<int>::min(), 0));
@@ -1811,7 +1815,8 @@ int Placer::PinnedChannelUse::clashes(TileID at) const {
                  !ends[j].movesByDma) &&
                 rule->whyApart(ends[i], ends[j]).has_value();
     if (auto held = claimed.find(it->first); held != claimed.end())
-      clash = clash || llvm::any_of(ends, [&](const PinnedChannels::End &end) {
+      clash = clash || claimsClash(held->second) ||
+              llvm::any_of(ends, [&](const PinnedChannels::End &end) {
                 return llvm::any_of(
                     held->second,
                     [&](const DMAChannelAnalysis::ChannelClaim &claim) {
@@ -1820,6 +1825,12 @@ int Placer::PinnedChannelUse::clashes(TileID at) const {
               });
     count += clash;
   }
+  for (auto it = claimed.lower_bound(
+           std::make_tuple(at.col, at.row, std::numeric_limits<int>::min(), 0));
+       it != claimed.end() && std::get<0>(it->first) == at.col &&
+       std::get<1>(it->first) == at.row;
+       ++it)
+    count += !placed.count(it->first) && claimsClash(it->second);
   return count;
 }
 
@@ -1860,6 +1871,40 @@ Placer::PinnedChannelUse::sendingAt(TileID at) const {
     if (std::get<3>(it->first))
       llvm::append_range(sending[std::get<2>(it->first)], it->second);
   return sending;
+}
+
+std::optional<std::pair<Operation *, std::pair<int, int>>>
+Placer::namedClash(Operation *tile, ArrayRef<Operation *> others) const {
+  auto mine = namedChannels.find(tile);
+  if (mine == namedChannels.end())
+    return std::nullopt;
+  for (Operation *other : others) {
+    auto theirs = namedChannels.find(other);
+    if (other == tile || theirs == namedChannels.end())
+      continue;
+    for (std::pair<int, int> named : mine->second)
+      if (llvm::is_contained(theirs->second, named))
+        return std::make_pair(other, named);
+  }
+  return std::nullopt;
+}
+
+LogicalResult Placer::emitNamedClash(Operation *tile, TileID at,
+                                     ArrayRef<Operation *> others) const {
+  auto [other, named] = *namedClash(tile, others);
+  auto [output, channel] = named;
+  StringRef dir = output ? "MM2S" : "S2MM";
+  InFlightDiagnostic diag =
+      tile->emitError()
+      << "names " << dir << " channel " << channel << ", as a tile op on ("
+      << at.col << ", " << at.row << ") does, and each "
+      << stringifyAIETileType(targetModel->getTileType(at.col, at.row))
+      << " with room for it holds a tile op naming one of its channels; tile "
+         "ops whose DMA programs or flows name one channel cannot share a "
+         "physical tile, so give one of them another channel";
+  diag.attachNote(other->getLoc())
+      << "the tile op naming " << dir << " channel " << channel;
+  return diag;
 }
 
 void Placer::collectOverlayUses(DeviceOp device) {
@@ -2398,6 +2443,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
       std::optional<std::pair<int, int>> held =
           pinsAt.heldAt(tile, pinnedEnds.lookup(logicalTile));
       if ((colConstraint && col != *colConstraint) || !held ||
+          namedClash(logicalTile, overlayTilesAt.lookup(tile)) ||
           !fitsSharingShim(tile, logicalTile,
                            {numInputChannels - held->first,
                             numOutputChannels - held->second}))
@@ -2410,6 +2456,11 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     }
   }
   if (!maybeTile) {
+    if (std::optional<TileID> named = findTileWithCapacity(
+            targetCol, availability.nonCompTiles, numInputChannels,
+            numOutputChannels, logicalTile.getTileType(), logicalTile,
+            /*withinBudgets=*/false, /*apartByName=*/false))
+      return emitNamedClash(logicalTile, *named, overlayTilesAt.lookup(*named));
     AIETileType requestedType = logicalTile.getTileType();
     StringRef tileTypeName = stringifyAIETileType(requestedType);
     auto diag = logicalTile.emitError();
@@ -2567,7 +2618,8 @@ void SequentialPlacer::recordShimEnds(TileID tile, Operation *logicalTile) {
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     std::optional<int> targetCol, llvm::ArrayRef<TileID> tiles,
     int requiredInputChannels, int requiredOutputChannels,
-    AIETileType requestedType, Operation *logicalTile, bool withinBudgets) {
+    AIETileType requestedType, Operation *logicalTile, bool withinBudgets,
+    bool apartByName) {
   // Choose a physical tile by lexicographic minimum of
   //   (|col - targetCol| + broadcast pressure, current load, col, row).
   // A memtile's extra broadcast destinations penalize sharing its bandwidth,
@@ -2599,9 +2651,8 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
       continue;
     if (withinBudgets && !fitsStreamAndBdBudgets(logicalTile, tile))
       continue;
-    if (llvm::any_of(namedChannels.lookup(logicalTile), [&](auto named) {
-          return availability.namedChannelsUsed[tile].contains(named);
-        }))
+    if (apartByName &&
+        namedClash(logicalTile, overlayTilesAt.lookup(tile)).has_value())
       continue;
     int dist = targetCol ? std::abs(tile.col - *targetCol) : 0;
     if (requestedType == AIETileType::MemTile &&
@@ -3030,8 +3081,6 @@ bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
 void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
                                               TileID tile) {
   broadcastFanoutUsed[tile] += broadcastFanout.lookup(logicalTile);
-  for (auto named : namedChannels.lookup(logicalTile))
-    availability.namedChannelsUsed[tile].insert(named);
   overlayTilesAt[tile].push_back(logicalTile);
   for (const PinnedChannels::End &end : pinnedEnds.lookup(logicalTile))
     pinsAt.place(tile, end, 1);

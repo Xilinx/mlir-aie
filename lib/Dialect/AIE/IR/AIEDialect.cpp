@@ -3528,6 +3528,39 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   return success();
 }
 
+// Rejects two DMA programs on one tile starting the same channel: each would
+// queue its own chain on it, and the later never runs behind an endless one.
+static LogicalResult verifyNoSharedProgramChannels(DeviceOp device) {
+  std::map<std::tuple<Operation *, int, int, DMAChannelDir, int>,
+           std::pair<DMAStartOp, Operation *>>
+      starts;
+  for (DmaBody program : device.getOps<DmaBody>()) {
+    Operation *tile = cast<TileElement>(*program).getTile().getDefiningOp();
+    auto like = dyn_cast_or_null<TileLike>(tile);
+    std::optional<int> col = like ? like.tryGetCol() : std::nullopt;
+    std::optional<int> row = like ? like.tryGetRow() : std::nullopt;
+    Operation *key = col && row ? nullptr : tile;
+    for (DMAStartOp start : program.getDmaBody().getOps<DMAStartOp>()) {
+      if (start.getEndpoint())
+        continue;
+      auto [it, added] =
+          starts.try_emplace({key, col.value_or(-1), row.value_or(-1),
+                              start.getChannelDir(), start.getChannelIndex()},
+                             start, program);
+      if (added || it->second.second == program)
+        continue;
+      InFlightDiagnostic diag =
+          start.emitOpError()
+          << stringifyDMAChannelDir(start.getChannelDir()) << " channel "
+          << start.getChannelIndex()
+          << " is started by another DMA program on this tile too";
+      diag.attachNote(it->second.first.getLoc()) << "the other start is here";
+      return failure();
+    }
+  }
+  return success();
+}
+
 // Rejects two aie.flows into one port and a packet flow sharing an endpoint
 // with an aie.flow: a circuit sends every word from its source, packets
 // included, and its destination takes words from nothing else.
@@ -3763,6 +3796,8 @@ LogicalResult DeviceOp::verify() {
   if (failed(verifyNoDuplicatePacketFlows(*this)))
     return failure();
   if (failed(verifyNoSharedCircuitPorts(*this)))
+    return failure();
+  if (failed(verifyNoSharedProgramChannels(*this)))
     return failure();
   if (failed(verifyNoSharedCircuitViaEgresses(*this))) {
     return failure();
