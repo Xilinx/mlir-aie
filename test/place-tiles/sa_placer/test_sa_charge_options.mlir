@@ -20,7 +20,7 @@
 // WALKED-NOT: error:
 // SIZES: error: sa-core-data-sizes entry '@d0:x=1' is not @<device>:<core>=<bytes>[@<align>]
 // SIZES-NOT: error:
-// DEVICE: error: SA placer charges name no device @dx
+// DEVICE: error: sa-walked-fifos or sa-core-data-sizes names no device @dx
 // DEVICE-NOT: error:
 // FIFO: error: sa-walked-fifos names no objectFIFO @y in @d1
 // CORE: error: sa-core-data-sizes names core 1 of @d1, which has 1 cores

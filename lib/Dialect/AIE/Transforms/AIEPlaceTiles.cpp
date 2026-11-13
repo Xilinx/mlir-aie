@@ -169,7 +169,9 @@ struct AIEPlaceTilesPass
           named.push_back(name);
         for (StringRef name : named)
           if (!devices.contains(name)) {
-            device.emitError("SA placer charges name no device @") << name;
+            device.emitError(
+                "sa-walked-fifos or sa-core-data-sizes names no device @")
+                << name;
             return failure();
           }
       }

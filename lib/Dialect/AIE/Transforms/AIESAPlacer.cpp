@@ -442,8 +442,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     return;
   TileID prodPos = *prodAt;
   const FifoEndTypes &types = fifoEndTypes[fifoIdx];
-  bool prodIsShim = types.producer == AIETileType::ShimNOCTile ||
-                    types.producer == AIETileType::ShimPLTile;
+  bool prodIsShim = isShimEndType(types.producer);
 
   // A fifo that already has an aie.objectfifo.allocate keeps its shared-memory
   // objects on that delegate tile.
@@ -493,8 +492,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     if (!consAt)
       continue;
     TileID consPos = *consAt;
-    bool consIsShim = types.consumers[ci] == AIETileType::ShimNOCTile ||
-                      types.consumers[ci] == AIETileType::ShimPLTile;
+    bool consIsShim = isShimEndType(types.consumers[ci]);
 
     using SharedMemory = AIETargetModel::SharedMemory;
     SharedMemory shared = fb.forcesDMA
@@ -702,8 +700,7 @@ int SAPlacer::computeMemoryPressure() const {
 
   for (auto &[tilePos, used] : currentMemUsage) {
     auto tileType = targetModel->getTileType(tilePos.col, tilePos.row);
-    if (tileType == AIETileType::ShimNOCTile ||
-        tileType == AIETileType::ShimPLTile)
+    if (targetModel->isShimNOCorPLTile(tilePos.col, tilePos.row))
       continue;
     int64_t capacity =
         (tileType == AIETileType::MemTile) ? memTileCapacity : coreCapacity;
@@ -1249,9 +1246,6 @@ SAPlacer::lockGroups() const {
   auto isCore = [](std::optional<AIETileType> type) {
     return type == AIETileType::CoreTile;
   };
-  auto isShim = [](std::optional<AIETileType> type) {
-    return type == AIETileType::ShimNOCTile || type == AIETileType::ShimPLTile;
-  };
   // A pool on an end's tile serves that end's core, if it uses the fifo, and
   // the tile's DMA.
   auto endUsers = [&](TileID at, bool core, std::optional<AIETileType> type) {
@@ -1300,15 +1294,15 @@ SAPlacer::lockGroups() const {
         add(users, 1, fb.sharedDepth);
         continue;
       }
-      if (!prodPool && !prodLinked && !isShim(types.producer) &&
+      if (!prodPool && !prodLinked && !isShimEndType(types.producer) &&
           !fb.linkSharedProd && fb.producerEnd) {
         prodPool = true;
         if (heldLocks(fb.producerDepth))
           add(endUsers(*prodPos, fb.producerCore, types.producer), 1,
               fb.producerDepth);
       }
-      if (!consLinked && !isShim(types.consumers[ci]) && fb.consumerEnds[ci] &&
-          !fb.unsynchronized)
+      if (!consLinked && !isShimEndType(types.consumers[ci]) &&
+          fb.consumerEnds[ci] && !fb.unsynchronized)
         add(endUsers(*consPos, fb.consumerCore[ci], types.consumers[ci]), 1,
             fb.consumerDepths[ci]);
     }
@@ -2213,7 +2207,7 @@ LogicalResult SAPlacer::place(DeviceOp device) {
   initializeSAState();
   // Phase 5: SA main loop (skip if nothing to optimize).
   runSAMainLoop();
-  // Phase 6: Restore best, generate allocates, merge mem/shim, stats.
+  // Phase 6: Restore best, generate allocates, stats.
   return finalizePlacement(device);
 }
 
@@ -2505,10 +2499,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
       auto like = dyn_cast_or_null<TileLike>(tile);
       if (!like)
         return false;
-      AIETileType type = like.getTileType();
-      return type == AIETileType::ShimNOCTile || type == AIETileType::ShimPLTile
-                 ? !ofOp.getPlio()
-                 : planned;
+      return isShimEndType(like.getTileType()) ? !ofOp.getPlio() : planned;
     };
     if (drawsChannel(fb.producerTile, fb.producerEnd.has_value()))
       fb.producerPin = PinnedChannels::endOf(ofOp, std::nullopt);

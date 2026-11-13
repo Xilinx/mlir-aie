@@ -347,10 +347,10 @@ public:
 
   // The gates objectFIFO allocation will share receiving shim ends by: the
   // #aie.consumed_by proofs aie-objectfifo-verify finds on a copy of the
-  // design with every fifo between two tiles moved by DMA. Placing a fifo
-  // on shared memory instead keeps each such proof (see the commit that adds
-  // this), so these never promise a turn allocation refuses. Empty when the
-  // copy does not verify.
+  // design with every fifo between two tiles moved by DMA. Placing a fifo on
+  // shared memory instead keeps every proof the DMA-moved copy has, so these
+  // never promise a turn allocation refuses. Empty when the copy does not
+  // verify.
   static llvm::DenseMap<mlir::StringAttr,
                         llvm::SmallVector<ShimTransferSpans::Gate>>
   provenShimGates(DeviceOp device);
@@ -415,9 +415,7 @@ public:
 protected:
   // Whether the control overlay takes an MM2S channel on `tile`.
   int overlayChannels(TileID tile) const {
-    return controlOverlay && tile.row == 0 &&
-           targetModel->getTileType(tile.col, tile.row) ==
-               AIETileType::ShimNOCTile;
+    return controlOverlay && targetModel->isShimNOCTile(tile.col, tile.row);
   }
   // The control overlay's MM2S channel on shim tile `at`, where
   // aie-generate-column-control-overlay puts it: channel 0, or with
@@ -914,10 +912,11 @@ private:
 //
 // 2. Resource penalty (hard, blocks legality): penalizes MemTile buffer
 //    overflow, core tile overflow, DMA channel overuse, BD count
-//    overuse, and fifo ends that can't reach their allocate's delegate.
+//    overuse, fifo ends that can't reach their allocate's delegate, and
+//    locks LockPlan cannot place at the current positions.
 //
 // 3. Cascade penalty (hard, blocks legality): penalizes cascade put/get
-//    pairs that aren't adjacent.
+//    pairs and shared-memory pairs that aren't adjacent.
 //
 // 4. Memory pressure (soft, guides optimization): quadratic penalty when
 //    tile utilization exceeds a threshold.
@@ -1046,9 +1045,10 @@ struct NetInfo {
 //
 // Uses HPWL (half-perimeter wire length) cost with incremental bounding-box
 // updates. Nets are derived from ObjectFifo producer/consumer connectivity.
-// All tile types (compute, mem, shim) participate in SA moves. After SA
-// converges, a merge pass collapses mem/shim logical tiles that landed in the
-// same column onto a shared physical tile when DMA capacity permits.
+// All tile types (compute, mem, shim) participate in SA moves, and a move can
+// put two mem/shim logical tiles on the same physical tile directly: the cost
+// terms (currentMemUsage, currentDMAUsage, ...) charge the shared position,
+// not a separate merge step.
 class SAPlacer : public Placer {
 public:
   explicit SAPlacer(unsigned seed = 0, SAConfig config = {})
@@ -1060,6 +1060,13 @@ public:
   int getFinalLockGroups() const { return finalLockGroups; }
   int getFinalLockPenalty() const { return finalLockPenalty; }
   bool getFinalLockStopped() const { return finalLockStopped; }
+
+  // Whether a fifo end of `type` sits on either shim tile kind: allocation
+  // moves such an end's objects by DMA rather than pooling them with a mem
+  // or core tile's.
+  static bool isShimEndType(std::optional<AIETileType> type) {
+    return type == AIETileType::ShimNOCTile || type == AIETileType::ShimPLTile;
+  }
 
 private:
   // Configuration
