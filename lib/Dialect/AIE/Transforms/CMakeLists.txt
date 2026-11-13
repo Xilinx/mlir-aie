@@ -32,6 +32,7 @@ add_mlir_dialect_library(
   AIEHoistVectorTransferPointers.cpp
   AIEDMAChannelAnalysis.cpp
   AIEAssignPacketIds.cpp
+  AIELockPlan.cpp
   AIEObjectFifoAllocate.cpp
   AIECheckAgainstImage.cpp
   AIEObjectFifoLowerDMAs.cpp
