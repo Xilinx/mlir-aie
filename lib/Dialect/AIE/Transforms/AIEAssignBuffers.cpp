@@ -484,7 +484,6 @@ static int getBankContaining(int64_t addr, int numBanks,
 struct BankAwareContext {
   int numBanks;
   uint32_t tileAlignBitWidth;
-  uint32_t maxVecAlignBits;
   ArrayRef<MemoryRun> bankLimits;
   int64_t maxDataMemorySize;
   MemoryRun stackRun;
@@ -1346,10 +1345,10 @@ TileLayout xilinx::AIE::layoutTile(const TileLayoutProblem &problem,
     occupancy.markOccupied(stackRun.start,
                            std::min(stackRun.end(), problem.maxDataMemorySize));
   }
-  BankAwareContext ctx{problem.numBanks,          problem.tileAlignBitWidth,
-                       problem.maxVecAlignBits,   bankLimits,
-                       problem.maxDataMemorySize, stackRun,
-                       problem.hasCore,           problem.buffers};
+  BankAwareContext ctx{problem.numBanks, problem.tileAlignBitWidth,
+                       bankLimits,       problem.maxDataMemorySize,
+                       stackRun,         problem.hasCore,
+                       problem.buffers};
 
   RequiredBanks requiredBanks;
   SmallVector<size_t> preAllocatedBuffers;
