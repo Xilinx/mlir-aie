@@ -15,6 +15,7 @@
 #include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SmallBitVector.h"
 
 #include <array>
 #include <deque>
@@ -408,9 +409,18 @@ public:
     llvm::DenseMap<mlir::Operation *, Peak> peaks;
     llvm::DenseMap<TileID, mlir::Operation *> placed;
     const AIETargetModel *targetModel = nullptr;
+    // Each shim in `peaks` by index: its tasks, and per sequence the places
+    // of its events, so a shortfall replays only the shims sharing a tile.
+    struct Shim {
+      mlir::Operation *op;
+      llvm::SmallVector<unsigned> tasks;
+      llvm::SmallVector<llvm::SmallVector<unsigned>> events;
+    };
+    llvm::SmallVector<Shim> shims;
+    llvm::DenseMap<mlir::Operation *, unsigned> indexOf;
     // Every shim tile lays out its BD ids alike, so the answer depends only on
     // which shims share one.
-    mutable std::map<std::vector<mlir::Operation *>, int> shortfallOf;
+    mutable llvm::DenseMap<llvm::SmallBitVector, int> shortfallOf;
   };
 
 protected:
@@ -1346,8 +1356,11 @@ private:
   // The tile ops overlayUses names, which the overlay's channel weighs where
   // they are.
   llvm::SmallVector<mlir::Operation *> overlayTiles;
-  // A shim tile is also charged for the runtime BD ids its LTOs' tasks lack.
+  // A shim tile is also charged for the runtime BD ids its LTOs' tasks lack:
+  // that charge at each shim position, and what the last move overwrote.
   RuntimeBdIds runtimeBdIds;
+  llvm::DenseMap<TileID, int> runtimeBdAt;
+  llvm::SmallVector<std::pair<TileID, int>> runtimeBdUndo;
 
   // Cascade
   Adjacency cascadeAdjacency;
@@ -1424,6 +1437,9 @@ private:
   int computeDMAChannelPenalty();
   /// With `bdIds`, sets it to the part a shim tile's runtime BD ids take.
   int computeTileDMAPenalty(TileID tilePos, int *bdIds = nullptr) const;
+  /// Charges `pos` for the runtime BD ids the shims there lack, in
+  /// runtimeBdAt, noting what it overwrote in runtimeBdUndo.
+  void chargeRuntimeBds(TileID pos);
   /// Fills `bdShortfallAt` and returns the penalty it gives.
   int computeBDCountPenalty();
   int computeDelegatePenalty(

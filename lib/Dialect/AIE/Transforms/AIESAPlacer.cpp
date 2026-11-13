@@ -660,6 +660,12 @@ void SAPlacer::initResourceTracking() {
     if (std::optional<TileID> pos = positionOf(tile))
       for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
         pinUse.claim(*pos, claim, 1);
+  runtimeBdAt.clear();
+  for (auto &[shim, peak] : runtimeBdIds.users())
+    if (std::optional<TileID> pos = positionOf(shim);
+        pos && !runtimeBdAt.contains(*pos))
+      chargeRuntimeBds(*pos);
+  runtimeBdUndo.clear();
 
   spillTiles.clear();
   for (auto &[op, _] : memTileEnds)
@@ -1615,20 +1621,24 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos, int *bdIds) const {
     }
     penalty += std::max(0, used[dir] - max[dir]) * config.dmaPenaltyPerChannel;
   }
-  if (targetModel->getTileType(tilePos.col, tilePos.row) ==
-      AIETileType::ShimNOCTile) {
-    SmallVector<Operation *> onTile;
-    for (auto &[lt, peak] : runtimeBdIds.users())
-      if (auto at = currentPlacement.find(lt);
-          at != currentPlacement.end() && at->second == tilePos)
-        onTile.push_back(lt);
-    int ids =
-        runtimeBdIds.shortfall(onTile, tilePos) * config.dmaPenaltyPerChannel;
-    penalty += ids;
-    if (bdIds)
-      *bdIds = ids;
-  }
+  int ids = runtimeBdAt.lookup(tilePos);
+  penalty += ids;
+  if (bdIds)
+    *bdIds = ids;
   return penalty;
+}
+
+void SAPlacer::chargeRuntimeBds(TileID pos) {
+  if (targetModel->getTileType(pos.col, pos.row) != AIETileType::ShimNOCTile)
+    return;
+  SmallVector<Operation *> onTile;
+  for (auto &[lt, peak] : runtimeBdIds.users())
+    if (auto at = currentPlacement.find(lt);
+        at != currentPlacement.end() && at->second == pos)
+      onTile.push_back(lt);
+  int &at = runtimeBdAt[pos];
+  runtimeBdUndo.push_back({pos, at});
+  at = runtimeBdIds.shortfall(onTile, pos) * config.dmaPenaltyPerChannel;
 }
 
 int SAPlacer::computeDMAChannelPenalty() {
@@ -2016,6 +2026,11 @@ int SAPlacer::updateResourcePenalty(
       if (auto it = currentPlacement.find(end); it != currentPlacement.end())
         dmaTouched.insert(it->second);
   }
+  runtimeBdUndo.clear();
+  for (auto &[op, oldPos] : oldPlacements)
+    if (runtimeBdIds.uses(op))
+      for (TileID pos : {oldPos, currentPlacement[op]})
+        chargeRuntimeBds(pos);
   dmaUndo.clear();
   for (TileID tile : dmaTouched) {
     int &at = dmaPenaltyAt[tile];
@@ -3057,6 +3072,8 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     dmaPenalty = oldDMA;
     for (auto &[tile, at] : dmaUndo)
       dmaPenaltyAt[tile] = at;
+    for (auto &[pos, at] : llvm::reverse(runtimeBdUndo))
+      runtimeBdAt[pos] = at;
     for (auto &[tile, at] : llvm::reverse(bdUndo))
       bdShortfallAt[tile] = at;
     for (auto &[pos, bytes, count] : llvm::reverse(coreFifoLog)) {

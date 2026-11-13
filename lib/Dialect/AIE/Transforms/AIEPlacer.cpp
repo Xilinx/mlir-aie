@@ -3031,18 +3031,37 @@ Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
   for (auto &[shim, peak] : peaks)
     if (auto tile = dyn_cast<TileOp>(shim))
       placed[{tile.getCol(), tile.getRow()}] = shim;
+
+  auto shimAt = [&](Operation *shim) -> Shim & {
+    auto [entry, fresh] = indexOf.try_emplace(shim, shims.size());
+    if (fresh)
+      shims.push_back(
+          {shim, {}, SmallVector<SmallVector<unsigned>>(sequences.size())});
+    return shims[entry->second];
+  };
+  for (auto program : device.getOps<ShimDMAOp>())
+    if (Operation *shim = shimOf(program.getTile().getDefiningOp()))
+      shimAt(shim);
+  for (auto [index, task] : llvm::enumerate(tasks))
+    shimAt(task.owner).tasks.push_back(index);
+  for (auto [sequence, events] : llvm::enumerate(sequences))
+    for (auto [at, event] : llvm::enumerate(events))
+      shimAt(tasks[event.first].owner).events[sequence].push_back(at);
 }
 
 int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
                                     TileID tile) const {
-  std::vector<Operation *> key;
+  llvm::SmallBitVector key(shims.size());
   int live = 0;
   bool constrained = false;
   auto add = [&](Operation *shim) {
     auto peak = peaks.find(shim);
-    if (peak == peaks.end() || llvm::is_contained(key, shim))
+    if (peak == peaks.end())
       return;
-    key.push_back(shim);
+    unsigned index = indexOf.lookup(shim);
+    if (key.test(index))
+      return;
+    key.set(index);
     live += peak->second.live;
     constrained |= peak->second.constrained;
   };
@@ -3054,7 +3073,6 @@ int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
   if (!constrained &&
       live <= static_cast<int>(targetModel->getNumBDs(tile.col, tile.row)))
     return 0;
-  llvm::sort(key);
   auto [cached, added] = shortfallOf.try_emplace(key, 0);
   if (!added)
     return cached->second;
@@ -3063,14 +3081,14 @@ int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
   // aie-assign-bd-ids: runtime-pinned ids are reserved, then static BDs take
   // theirs.
   BdIdGenerator assigned(tile.col, tile.row, *targetModel);
-  for (const Task &task : tasks)
-    if (llvm::binary_search(key, task.owner))
-      for (std::optional<uint32_t> pinned : task.bdIds)
+  for (unsigned shim : key.set_bits())
+    for (unsigned task : shims[shim].tasks)
+      for (std::optional<uint32_t> pinned : tasks[task].bdIds)
         if (pinned && !assigned.bdIdAlreadyAssigned(*pinned))
           assigned.assignBdId(*pinned);
   SmallVector<uint32_t> staticIds;
-  for (Operation *shim : key) {
-    StaticBds bds = statics.lookup(shim);
+  for (unsigned shim : key.set_bits()) {
+    StaticBds bds = statics.lookup(shims[shim].op);
     for (uint32_t id : bds.pinned) {
       if (assigned.bdIdAlreadyAssigned(id)) {
         ++missing;
@@ -3080,24 +3098,27 @@ int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
       staticIds.push_back(id);
     }
   }
-  for (Operation *shim : key)
-    for (int i = 0, e = statics.lookup(shim).unpinned; i < e; ++i) {
+  for (unsigned shim : key.set_bits())
+    for (int i = 0, e = statics.lookup(shims[shim].op).unpinned; i < e; ++i) {
       if (std::optional<uint32_t> id = assigned.nextBdId(0))
         staticIds.push_back(*id);
       else
         ++missing;
     }
 
-  for (const auto &events : sequences) {
+  for (auto [sequence, events] : llvm::enumerate(sequences)) {
     BdIdGenerator ids(tile.col, tile.row, *targetModel);
     for (uint32_t id : staticIds)
       ids.assignBdId(id);
+    SmallVector<unsigned> mine;
+    for (unsigned shim : key.set_bits())
+      llvm::append_range(mine, shims[shim].events[sequence]);
+    llvm::sort(mine);
     DenseMap<unsigned, SmallVector<uint32_t>> held;
     DenseSet<uint32_t> copied;
-    for (auto [index, configured] : events) {
+    for (unsigned at : mine) {
+      auto [index, configured] = events[at];
       const Task &task = tasks[index];
-      if (!llvm::binary_search(key, task.owner))
-        continue;
       if (task.copy) {
         // Copies reprogram their id at once, so they share it.
         uint32_t id = *task.bdIds.front();
