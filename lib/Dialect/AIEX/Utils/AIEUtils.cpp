@@ -367,6 +367,16 @@ AIEX::Unbalanced AIEX::balanceUnder(AIE::ConsumedByAttr proof, const Volume &in,
   return Unbalanced::No;
 }
 
+bool AIEX::namesFifo(Operation *op, StringRef fifo,
+                     SymbolTableCollection &symbols) {
+  auto uses = SymbolTable::getSymbolUses(op);
+  return uses && llvm::any_of(*uses, [&](const SymbolTable::SymbolUse &use) {
+           auto end = dyn_cast_or_null<AIE::RouteEndpoint>(
+               symbols.lookupNearestSymbolFrom(op, use.getSymbolRef()));
+           return end && end.getFifoName() == fifo;
+         });
+}
+
 std::string AIEX::scratchpadCommandName(AIE::RuntimeSequenceOp seq) {
   auto device = seq->getParentOfType<AIE::DeviceOp>();
   return (device.getSymName() + ":" + seq.getSymName()).str();

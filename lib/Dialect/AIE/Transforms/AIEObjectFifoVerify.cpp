@@ -897,16 +897,9 @@ struct AIEObjectFifoVerifyPass
       }
       auto [it, inserted] = launchesByFifo.try_emplace(*fifo);
       if (inserted) {
-        for (auto seq : device.getOps<RuntimeSequenceOp>()) {
-          auto uses = SymbolTable::getSymbolUses(seq.getOperation());
-          if (uses && llvm::any_of(*uses, [&](auto use) {
-                auto end = dyn_cast_or_null<RouteEndpoint>(
-                    symbolTables.lookupNearestSymbolFrom(seq,
-                                                         use.getSymbolRef()));
-                return end && end.getFifoName() == *fifo;
-              }))
+        for (auto seq : device.getOps<RuntimeSequenceOp>())
+          if (AIEX::namesFifo(seq, *fifo, symbolTables))
             it->second.push_back(seq);
-        }
         if (it->second.empty())
           llvm::append_range(it->second, device.getOps<RuntimeSequenceOp>());
       }

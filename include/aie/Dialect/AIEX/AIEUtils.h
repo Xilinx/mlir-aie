@@ -173,6 +173,10 @@ enum class Unbalanced {
 Unbalanced balanceUnder(AIE::ConsumedByAttr proof, const Volume &in,
                         const Volume &out);
 
+// Whether `op`, or an op nested in it, names a route end of the objectFIFO
+// `fifo` by symbol.
+bool namesFifo(Operation *op, StringRef fifo, SymbolTableCollection &symbols);
+
 // `device:sequence`, the name a host runs `seq` by.
 std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);
 
