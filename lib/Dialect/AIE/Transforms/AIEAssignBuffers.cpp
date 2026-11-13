@@ -625,8 +625,10 @@ static LogicalResult recordRequiredBank(size_t i, const BankAwareContext &ctx,
   return success();
 }
 
-static void printMemMap(TileOp tile, ArrayRef<BufferOp> allocatedBuffers,
-                        ArrayRef<BufferOp> preAllocatedBuffers, int numBanks,
+static void printMemMap(TileOp tile, ArrayRef<BufferOp> buffers,
+                        ArrayRef<std::optional<std::pair<int64_t, int>>> at,
+                        ArrayRef<size_t> preAllocated,
+                        ArrayRef<size_t> allocated, int numBanks,
                         ArrayRef<MemoryRun> bankLimits, MemoryRun stackRun) {
   InFlightDiagnostic error = tile.emitWarning(
       "Not all requested buffers fit in the available memory.\n");
@@ -644,39 +646,40 @@ static void printMemMap(TileOp tile, ArrayRef<BufferOp> allocatedBuffers,
     note << "\t(aiecc measured this core's stack requirement as " << *measured
          << " bytes)\n";
   }
-  for (int i = 0; i < numBanks; i++) {
-    note << "\t" << "bank : " << i << "\t" << "0x"
-         << llvm::utohexstr(bankLimits[i].start) << "-0x"
-         << llvm::utohexstr(bankLimits[i].end() - 1) << "\n";
+  for (int bank = 0; bank < numBanks; bank++) {
+    note << "\t" << "bank : " << bank << "\t" << "0x"
+         << llvm::utohexstr(bankLimits[bank].start) << "-0x"
+         << llvm::utohexstr(bankLimits[bank].end() - 1) << "\n";
     // Under whichever bank holds it, rather than always under bank 0.
-    if (stackRun.size > 0 && bankLimits[i].contains(stackRun.start)) {
+    if (stackRun.size > 0 && bankLimits[bank].contains(stackRun.start)) {
       printbuffer("(stack)", stackRun.start, stackRun.size);
     }
     // This runs on the failure path, where some buffers have no address yet.
     // A mem_bank-only buffer appears in both lists -- it is pre-allocated in
     // the sense that its bank was given, but this pass still chose its address
     // -- so listing it once takes a filter.
-    SmallPtrSet<Operation *, 8> listed;
-    auto printPlaced = [&](ArrayRef<BufferOp> buffers) {
-      for (auto buffer : buffers) {
-        auto addrOpt = buffer.getAddress();
-        auto memBankOpt = buffer.getMemBank();
-        if (!addrOpt || !memBankOpt || *memBankOpt != i ||
-            !listed.insert(buffer).second) {
+    llvm::DenseSet<size_t> listed;
+    auto printPlaced = [&](ArrayRef<size_t> indices) {
+      for (size_t index : indices) {
+        if (!at[index] || at[index]->second != bank ||
+            !listed.insert(index).second) {
           continue;
         }
+        BufferOp buffer = buffers[index];
+        int64_t address = at[index]->first;
         int64_t size = buffer.getAllocationSize();
         // Listed under its start bank. A buffer too big for one bank straddles,
         // so its range can extend past the bank printed above it.
         std::string suffix;
-        if (*addrOpt + size > bankLimits[i].end()) {
-          suffix = (" (straddles into bank " + llvm::Twine(i + 1) + ")").str();
+        if (address + size > bankLimits[bank].end()) {
+          suffix =
+              (" (straddles into bank " + llvm::Twine(bank + 1) + ")").str();
         }
-        printbuffer(mapLabel(buffer), *addrOpt, size, suffix);
+        printbuffer(mapLabel(buffer), address, size, suffix);
       }
     };
-    printPlaced(preAllocatedBuffers);
-    printPlaced(allocatedBuffers);
+    printPlaced(preAllocated);
+    printPlaced(allocated);
   }
 }
 
@@ -1397,20 +1400,6 @@ TileLayout xilinx::AIE::layoutTile(const TileLayoutProblem &problem,
   return layout;
 }
 
-// Rolls back what the allocator wrote, and leaves a mem_bank the user requested
-// in place.
-static void deAllocationBuffers(SmallVectorImpl<BufferOp> &buffers,
-                                ArrayRef<TileLayoutBuffer> requested) {
-  for (auto [buffer, request] : llvm::zip_equal(buffers, requested)) {
-    buffer->removeAttr("address");
-    if (request.memBank) {
-      buffer.setMemBank(request.memBank);
-    } else {
-      buffer->removeAttr("mem_bank");
-    }
-  }
-}
-
 static LogicalResult allocateTile(TileOp tile, int64_t budget,
                                   TileLayoutStats &stats) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
@@ -1473,18 +1462,6 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
     buffers[layout.failed].emitOpError(layout.message);
     return failure();
   }
-  for (auto [buffer, at] : llvm::zip_equal(buffers, layout.at)) {
-    if (at) {
-      buffer.setAddress(at->first);
-      buffer.setMemBank(at->second);
-    }
-  }
-  auto opsOf = [&](ArrayRef<size_t> indices) {
-    return llvm::map_to_vector(indices, [&](size_t i) { return buffers[i]; });
-  };
-  SmallVector<BufferOp> allocatedBuffers = opsOf(layout.allocated);
-  SmallVector<TileLayoutBuffer> allocatedRequests = llvm::map_to_vector(
-      layout.allocated, [&](size_t i) { return problem.buffers[i]; });
   MemoryRun stackRun = problem.stackRun;
   if (layout.stackStart)
     stackRun.start = *layout.stackStart;
@@ -1505,7 +1482,6 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
             << " bytes, but no contiguous aligned space remains within allowed "
                "banks "
             << banks.front() << " and " << banks.back();
-        deAllocationBuffers(allocatedBuffers, allocatedRequests);
         return failure();
       }
       int bank = banks.front();
@@ -1521,7 +1497,6 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
             << bank << ", but only " << layout.freeInFailedBank << " of "
             << bankCapacity << " bytes are free there";
       }
-      deAllocationBuffers(allocatedBuffers, allocatedRequests);
       return failure();
     }
     InFlightDiagnostic diag = failed.emitOpError(kNoTileRoom)
@@ -1542,13 +1517,17 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
                            "so a layout may exist that it did not reach (raise "
                            "it with placement-budget)";
     }
-    // Print before rollback, while the addresses are still set.
-    printMemMap(tile, allocatedBuffers, opsOf(layout.preAllocated),
+    printMemMap(tile, buffers, layout.at, layout.preAllocated, layout.allocated,
                 problem.numBanks, bankLimits, stackRun);
-    deAllocationBuffers(allocatedBuffers, allocatedRequests);
     return failure();
   }
 
+  for (auto [buffer, at] : llvm::zip_equal(buffers, layout.at)) {
+    if (at) {
+      buffer.setAddress(at->first);
+      buffer.setMemBank(at->second);
+    }
+  }
   sortBuffersByAddress(buffers);
   // Every placement came from free space in the tile, so overflow cannot happen
   // here. The stack and overlap checks remain as a backstop.
