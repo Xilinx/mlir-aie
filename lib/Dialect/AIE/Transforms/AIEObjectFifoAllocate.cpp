@@ -15,6 +15,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
@@ -1587,15 +1588,10 @@ struct AIEObjectFifoAllocatePass
   /// through `fifo` before any wait: a turn chain waiting on that fifo's
   /// objects then waits on nothing the host does after the array has moved.
   bool hostMovesFirst(StringAttr fifo) {
+    SymbolTableCollection symbols;
     for (auto seq : device.getOps<RuntimeSequenceOp>()) {
       auto names = [&](Operation *op) {
-        auto uses = SymbolTable::getSymbolUses(op);
-        return fifo && uses && llvm::any_of(*uses, [&](auto use) {
-                 auto end = dyn_cast_or_null<RouteEndpoint>(
-                     SymbolTable::lookupNearestSymbolFrom(seq,
-                                                          use.getSymbolRef()));
-                 return end && end.getFifoName() == fifo.getValue();
-               });
+        return fifo && AIEX::namesFifo(op, fifo.getValue(), symbols);
       };
       auto waits = [](Operation *op) {
         return isa<AIEX::NpuDmaWaitOp, AIEX::DMAAwaitTaskOp, AIEX::NpuSyncOp,
