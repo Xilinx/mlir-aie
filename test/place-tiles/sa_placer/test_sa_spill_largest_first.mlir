@@ -11,13 +11,7 @@
 // whole: one 302080-byte buffer that fits only at home, ahead of @big's
 // objects. With 64 bytes less room at home, neither fits it.
 
-// RUN: not aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectFifo-stateful-transform %s 2>/dev/null | FileCheck %s
-// RUN: not aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectFifo-stateful-transform %s 2>&1 >/dev/null | FileCheck %s --check-prefix=DIAG
-
-// DIAG-NOT: {{warning|error}}
-// DIAG: warning: SA placer's resource estimate is over capacity
-// DIAG: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity
-// DIAG-NOT: {{warning|error}}
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL: module @fits
 // CHECK: %[[M0:.*]] = aie.tile(0, 1)
@@ -46,6 +40,7 @@ module @fits {
 // -----
 
 module @does_not_fit {
+  // expected-warning @below {{SA placer's resource estimate is over capacity}}
   aie.device(npu2_2col) {
     %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
     %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
@@ -55,6 +50,7 @@ module @does_not_fit {
     %r1 = aie.buffer(%m1) : memref<324288xi8>
     aie.objectfifo @big(%s0, {%m0}, [2 : i32, 2 : i32]) : !aie.objectfifo<memref<100032xi8>>
     aie.objectfifo @big_out(%m0, {%s0}, 2 : i32) : !aie.objectfifo<memref<100032xi8>>
+    // expected-error @below {{could not place buffers in accessible memory with available capacity}}
     aie.objectfifo.link [@big] -> [@big_out] ([] [])
     aie.objectfifo @small_a(%s1, {%m0}, 9 : i32) : !aie.objectfifo<memref<3072xi8>>
     aie.objectfifo @small_b(%s1, {%m0}, 9 : i32) : !aie.objectfifo<memref<3072xi8>>
