@@ -905,6 +905,7 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
       componentOf.empty() ? 0 : *llvm::max_element(componentOf) + 1;
   SmallVector<Walk> walk(positions.size(), nullptr);
   int64_t unplaced = 0;
+  bool anyOverfull = false;
   for (unsigned component = 0; component < components; ++component) {
     SmallVector<unsigned> members;
     for (auto [i, c] : llvm::enumerate(componentOf))
@@ -961,6 +962,7 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
     }
     DMAChannelAnalysis::WalkChoice choice;
     choice.sets.assign(members.size(), 0);
+    anyOverfull |= needed > room;
     if (needed <= room)
       choice = DMAChannelAnalysis::searchWalkProduct(bytes, places, 1);
     if (!choice.placed)
@@ -974,7 +976,8 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
       for (unsigned member : members)
         charged->push_back(positions[member].at);
   }
-  if (unplaced && !anyWalked) {
+  // An overfull component fails the whole-device attempt too.
+  if (unplaced && !anyWalked && !anyOverfull) {
     SmallVector<unsigned> all =
         llvm::to_vector(llvm::seq<unsigned>(0, positions.size()));
     auto split = shapes(all, SmallVector<Walk>(positions.size(), nullptr));
