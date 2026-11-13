@@ -734,8 +734,7 @@ int SAPlacer::computeDelegatePenalty() const {
       continue;
     std::optional<TileID> linkPos = positionOf(fb.linkTile);
     bool home = ObjectFifoCreateOp::allocatedHome(
-                    *targetModel, *prodPos, *consPos, *delegatePos, linkPos)
-                    .has_value();
+        *targetModel, *prodPos, *consPos, *delegatePos, linkPos);
     if (home ? fb.fitsLinkPool : fb.allocateFallsBackToDMA)
       continue;
     if (home) {
