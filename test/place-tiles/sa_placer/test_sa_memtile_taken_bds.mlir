@@ -15,7 +15,7 @@
 // and pinned runtime ids hold, as aie-objectfifo-allocate does: before, it
 // planned as if every id were free and placed the design without a word.
 // SA:    warning: SA placer's resource estimate is over capacity
-// ALLOC: error: 'aie.objectfifo.dma_endpoint' op needs 1 buffer descriptors, but no choice of channels fits
+// ALLOC: error: 'aie.objectfifo.dma_endpoint' op needs 1 buffer descriptors, but the tile's
 
 module @memtile_hand_bds {
   aie.device(npu2) {

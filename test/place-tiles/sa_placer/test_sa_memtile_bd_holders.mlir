@@ -98,7 +98,7 @@ module @pinned_holder {
 // Hand program on an unplaced logical tile without fifo ends, on a one-column
 // device: both mem tiles share (0, 1), so the ids run out and the SA says so.
 // SA:  warning: SA placer's resource estimate is over capacity
-// ALLOC: error: 'aie.objectfifo.dma_endpoint' op needs 1 buffer descriptors, but no choice of channels fits
+// ALLOC: error: 'aie.objectfifo.dma_endpoint' op needs 1 buffer descriptors, but the tile's
 
 module @shared_position {
   aie.device(npu2_1col) {
