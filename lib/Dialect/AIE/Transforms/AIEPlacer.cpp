@@ -2192,10 +2192,18 @@ Placer::provenShimGates(DeviceOp device) {
        ShimTransferSpans::provenGates(clone, [](RouteEndpointOp endpoint) {
          return endpoint.getFifoNameAttr();
        }))
-    for (const ShimTransferSpans::Gate &gate : proven)
+    for (const ShimTransferSpans::Gate &gate : proven) {
+      ConsumedByAttr proof = gate.proof;
+      FlatSymbolRefAttr device = proof.getDevice();
       gates[StringAttr::get(ctx, fifo.getValue())].push_back(
-          {StringAttr::get(ctx, gate.input.getValue()), gate.inputBytes,
-           gate.outputBytes, gate.granuleBytes});
+          {StringAttr::get(ctx, gate.input.getValue()),
+           ConsumedByAttr::get(
+               ctx, FlatSymbolRefAttr::get(ctx, proof.getOutput().getValue()),
+               proof.getInputBytes(), proof.getOutputBytes(),
+               proof.getGranuleBytes(),
+               device ? FlatSymbolRefAttr::get(ctx, device.getValue())
+                      : FlatSymbolRefAttr())});
+    }
   return gates;
 }
 
