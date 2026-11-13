@@ -14,6 +14,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/IntEqClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -525,23 +526,17 @@ private:
       llvm::sort(reach[group]);
     }
 
-    llvm::SmallVector<unsigned> component(positions.size());
-    for (unsigned position : llvm::seq<unsigned>(0, positions.size()))
-      component[position] = position;
-    std::function<unsigned(unsigned)> root = [&](unsigned position) {
-      return component[position] == position
-                 ? position
-                 : component[position] = root(component[position]);
-    };
+    llvm::IntEqClasses component(positions.size());
     for (auto [group, own] : llvm::enumerate(reach))
       if (!chosen[group])
         for (unsigned position : own)
-          component[root(position)] = root(own.front());
+          component.join(position, own.front());
+    component.compress();
 
     bool anyStopped = false;
-    llvm::SmallVector<bool> seen(positions.size(), false);
+    llvm::SmallVector<bool> seen(component.getNumClasses(), false);
     for (unsigned first : llvm::seq<unsigned>(0, positions.size())) {
-      unsigned top = root(first);
+      unsigned top = component[first];
       if (seen[top])
         continue;
       seen[top] = true;
@@ -549,7 +544,7 @@ private:
       bool stopped = false;
       llvm::SmallVector<unsigned> local;
       for (unsigned position : llvm::seq<unsigned>(0, positions.size()))
-        if (root(position) == top)
+        if (component[position] == top)
           local.push_back(position);
       std::vector<int> room;
       for (unsigned position : local) {
@@ -567,7 +562,7 @@ private:
       };
       llvm::SmallVector<Kind> kinds;
       for (auto [group, own] : llvm::enumerate(reach)) {
-        if (chosen[group] || own.empty() || root(own.front()) != top)
+        if (chosen[group] || own.empty() || component[own.front()] != top)
           continue;
         llvm::SmallVector<unsigned> at;
         for (unsigned position : own)
@@ -816,7 +811,7 @@ private:
           continue;
         }
         for (auto [group, own] : llvm::enumerate(reach))
-          if (!chosen[group] && !own.empty() && root(own.front()) == top)
+          if (!chosen[group] && !own.empty() && component[own.front()] == top)
             blocked.push_back(group);
         return Packing::None;
       }

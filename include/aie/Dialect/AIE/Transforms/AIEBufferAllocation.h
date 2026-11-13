@@ -12,14 +12,13 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/IntEqClasses.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 
-#include <functional>
-#include <map>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -191,22 +190,23 @@ memTileSpillNeighbours(const AIETargetModel &target, TileID home) {
 inline llvm::SmallVector<unsigned>
 memTileSpillComponents(const AIETargetModel &target,
                        llvm::ArrayRef<TileID> homes) {
-  std::map<std::pair<int, int>, std::pair<int, int>> root;
-  std::function<std::pair<int, int>(std::pair<int, int>)> find =
-      [&](std::pair<int, int> tile) {
-        auto [it, added] = root.try_emplace(tile, tile);
-        if (it->second == tile)
-          return tile;
-        return it->second = find(it->second);
-      };
-  for (TileID home : homes)
+  llvm::DenseMap<TileID, unsigned> index;
+  llvm::IntEqClasses eq;
+  auto indexOf = [&](TileID tile) {
+    auto [it, fresh] = index.try_emplace(tile, index.size());
+    if (fresh)
+      eq.grow(index.size());
+    return it->second;
+  };
+  for (TileID home : homes) {
+    unsigned at = indexOf(home);
     for (TileID neighbour : memTileSpillNeighbours(target, home))
-      root[find({neighbour.col, neighbour.row})] = find({home.col, home.row});
-  std::map<std::pair<int, int>, unsigned> ids;
+      eq.join(indexOf(neighbour), at);
+  }
+  eq.compress();
   llvm::SmallVector<unsigned> component;
   for (TileID home : homes)
-    component.push_back(
-        ids.try_emplace(find({home.col, home.row}), ids.size()).first->second);
+    component.push_back(eq[indexOf(home)]);
   return component;
 }
 
@@ -288,19 +288,14 @@ public:
   /// Buffers whose tiles reach no tile in common place independently, so
   /// each such component is searched on its own, with its own kRetries.
   bool place(llvm::ArrayRef<Buffer> buffers) {
-    llvm::SmallVector<unsigned> root(tiles.size());
-    std::iota(root.begin(), root.end(), 0);
-    auto find = [&](unsigned tile) {
-      while (root[tile] != tile)
-        tile = root[tile] = root[root[tile]];
-      return tile;
-    };
+    llvm::IntEqClasses eq(tiles.size());
     for (const Buffer &buffer : buffers)
       for (unsigned neighbour : buffer.neighbours)
-        root[find(neighbour)] = find(buffer.home);
+        eq.join(neighbour, buffer.home);
+    eq.compress();
     llvm::MapVector<unsigned, llvm::SmallVector<unsigned>> components;
     for (auto [index, buffer] : llvm::enumerate(buffers))
-      components[find(buffer.home)].push_back(index);
+      components[eq[buffer.home]].push_back(index);
 
     llvm::SmallVector<unsigned> placedOn(buffers.size(), 0);
     size_t firstFailed = buffers.size();
