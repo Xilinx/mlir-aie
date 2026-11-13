@@ -3442,6 +3442,7 @@ int main(int argc, char **argv) {
     if (!fifos.empty()) {
       for (std::string &entry : fifos)
         saWalkedFifos.push_back(entry);
+      llvm::sort(saWalkedFifos);
       why.emplace_back("buffers channel turns walked whole found no room");
     }
     if (grew) {

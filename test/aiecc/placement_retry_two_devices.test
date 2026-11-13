@@ -13,9 +13,9 @@
 // a_in is not walked and its first placement allocates. Only @d0 places
 // again: the charge names @d0's a_in, and @d1 keeps the placement it has
 // when compiled alone.
-// RETRY: aiecc: placing again with --sa-walked-fifos=d0:b_in,d0:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
+// RETRY: aiecc: placing again with --sa-walked-fifos=d0:a_in,d0:b_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // RETRY-NOT: error:
-// RETRY: aiecc: placement 2 (--sa-walked-fifos=d0:b_in,d0:a_in) stands
+// RETRY: aiecc: placement 2 (--sa-walked-fifos=d0:a_in,d0:b_in) stands
 // CHECK-LABEL: aie.device(npu2) @d0
 // CHECK: %a_in__cons__buf0 = aie.buffer(%mem_tile_2_1)
 // CHECK-LABEL: aie.device(npu2) @d1

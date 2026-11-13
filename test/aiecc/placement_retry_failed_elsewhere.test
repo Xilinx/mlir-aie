@@ -14,14 +14,14 @@
 // kernel object does not exist). That placement stands: aiecc says so and
 // reports its failed edge, and its reproducer places as it did.
 // CHECK: could not place buffers
-// CHECK: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
+// CHECK: aiecc: placing again with --sa-walked-fifos=main:a_in,main:b_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // CHECK-NOT: could not place buffers
 // CHECK-NOT: no placement
 // lld says "unable to find" for an INPUT() path not rooted at "/" (Windows).
 // CHECK: {{(cannot open|unable to find)}} {{.*}}missing_kernel.o
-// CHECK: aiecc: placement 2 (--sa-walked-fifos=main:b_in,main:a_in) stands
+// CHECK: aiecc: placement 2 (--sa-walked-fifos=main:a_in,main:b_in) stands
 // CHECK: aiecc: edge 'probeElfs_{0}.elf' (key '{{.*}}') failed
-// REPEAT: "--sa-walked-fifos=main:b_in,main:a_in"
+// REPEAT: "--sa-walked-fifos=main:a_in,main:b_in"
 
 module @turn_walk_link {
   aie.device(npu2) {
