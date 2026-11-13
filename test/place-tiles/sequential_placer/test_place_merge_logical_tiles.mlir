@@ -16,12 +16,13 @@
 // RUN: aie-opt --split-input-file --aie-place-tiles='merge-logical-tiles=true' %s | FileCheck %s --check-prefix=MERGE
 // RUN: aie-opt --split-input-file --aie-place-tiles='merge-logical-tiles=false' %s | FileCheck %s --check-prefix=NOMERGE
 
-// Two ShimNOC LTOs each carrying one packet flow to a different core.
-// The placer dedups channel requirements by (LTO, channel), so each LTO
-// reports needing only 1 output channel; with merging on, both fit on one
-// physical shim. With merging off, each gets its own.
+// Two ShimNOC LTOs each carrying one packet flow to a core of column 0, out
+// of different channels. The placer dedups channel requirements by (LTO,
+// channel), so each LTO reports needing only 1 output channel; with merging
+// on, both fit on one physical shim. With merging off, each gets its own.
 
 // MERGE-LABEL:   @two_shim_packet_flows
+// MERGE-NOT:     aie.tile(1, 0)
 // MERGE:         aie.tile(0, 0)
 // MERGE-NOT:     aie.tile(1, 0)
 
@@ -34,13 +35,13 @@ module @two_shim_packet_flows {
     %shim_a = aie.logical_tile<ShimNOCTile>(?, ?)
     %shim_b = aie.logical_tile<ShimNOCTile>(?, ?)
     %core_a = aie.tile(0, 2)
-    %core_b = aie.tile(1, 2)
+    %core_b = aie.tile(0, 3)
     aie.packet_flow(0) {
       aie.packet_source<%shim_a, DMA : 0>
       aie.packet_dest<%core_a, DMA : 0>
     }
     aie.packet_flow(1) {
-      aie.packet_source<%shim_b, DMA : 0>
+      aie.packet_source<%shim_b, DMA : 1>
       aie.packet_dest<%core_b, DMA : 0>
     }
   }
@@ -51,6 +52,7 @@ module @two_shim_packet_flows {
 // Same idea for memtiles. Merging on -> one memtile col; off -> spread.
 
 // MERGE-LABEL:   @two_memtile_flows
+// MERGE-NOT:     aie.tile(1, 1)
 // MERGE:         aie.tile(0, 1)
 // MERGE-NOT:     aie.tile(1, 1)
 
@@ -63,9 +65,9 @@ module @two_memtile_flows {
     %mem_a = aie.logical_tile<MemTile>(?, ?)
     %mem_b = aie.logical_tile<MemTile>(?, ?)
     %core_a = aie.tile(0, 2)
-    %core_b = aie.tile(1, 2)
+    %core_b = aie.tile(0, 3)
     aie.flow(%mem_a, DMA : 0, %core_a, DMA : 0)
-    aie.flow(%mem_b, DMA : 0, %core_b, DMA : 0)
+    aie.flow(%mem_b, DMA : 1, %core_b, DMA : 0)
   }
 }
 
@@ -74,10 +76,10 @@ module @two_memtile_flows {
 // Mixing both LTO types: 2 shim + 2 memtile. Each pair behaves as above.
 
 // MERGE-LABEL:   @mixed_shim_memtile
+// MERGE-NOT:     aie.tile(1, {{[01]}})
 // MERGE-DAG:     aie.tile(0, 0)
 // MERGE-DAG:     aie.tile(0, 1)
-// MERGE-NOT:     aie.tile(1, 0)
-// MERGE-NOT:     aie.tile(1, 1)
+// MERGE-NOT:     aie.tile(1, {{[01]}})
 
 // NOMERGE-LABEL: @mixed_shim_memtile
 // NOMERGE-DAG:   aie.tile(0, 0)
@@ -91,11 +93,11 @@ module @mixed_shim_memtile {
     %mem_a = aie.logical_tile<MemTile>(?, ?)
     %mem_b = aie.logical_tile<MemTile>(?, ?)
     %core_a = aie.tile(0, 2)
-    %core_b = aie.tile(1, 2)
+    %core_b = aie.tile(0, 3)
     aie.flow(%shim_a, DMA : 0, %mem_a, DMA : 0)
     aie.flow(%mem_a, DMA : 1, %core_a, DMA : 0)
-    aie.flow(%shim_b, DMA : 0, %mem_b, DMA : 0)
-    aie.flow(%mem_b, DMA : 1, %core_b, DMA : 0)
+    aie.flow(%shim_b, DMA : 1, %mem_b, DMA : 1)
+    aie.flow(%mem_b, DMA : 0, %core_b, DMA : 0)
   }
 }
 
