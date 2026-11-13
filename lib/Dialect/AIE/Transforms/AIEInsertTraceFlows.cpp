@@ -770,6 +770,12 @@ struct AIEInsertTraceFlowsPass
         }
       }
 
+      const RegisterInfo *timerReg = targetModel.lookupRegister(
+          "Timer_Control", info.tile.getTileID(), isMemTrace);
+      if (!timerReg)
+        return info.traceOp.emitError(
+            "Failed to lookup Timer_Control register");
+
       std::string broadcastEventName;
       if (info.tile.isShimTile()) {
         broadcastEventName =
@@ -786,11 +792,6 @@ struct AIEInsertTraceFlowsPass
                                  << broadcastEventName << "'";
         return failure();
       }
-      const RegisterInfo *timerReg = targetModel.lookupRegister(
-          "Timer_Control", info.tile.getTileID(), isMemTrace);
-      if (!timerReg)
-        return info.traceOp.emitError(
-            "Failed to lookup Timer_Control register");
       const BitFieldInfo *resetField = timerReg->getField("Reset_Event");
       if (!resetField)
         return info.traceOp.emitError(
