@@ -609,45 +609,13 @@ struct AIELowerDynamicBDPoolPass
   // A sequence lowered here keeps its scf.for rolled, so the static allocator
   // skips it. Guard while task metadata is available; aie-dma-to-npu later
   // checks the combined pushes from tasks, memcpy and channel rearm operations.
-  void guardQueueDepth(AIE::RuntimeSequenceOp seq) {
+  void guardQueueDepth(AIE::RuntimeSequenceOp seq, SymbolTable &symbols) {
     const AIE::AIETargetModel &tm =
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
     auto effectOf = [&](Operation *op) -> QueueEffect {
-      if (auto push = dyn_cast<NpuPushQueueOp>(op))
-        return QueueEffect::push({static_cast<int>(push.getColumn()),
-                                  static_cast<int>(push.getRow()),
-                                  static_cast<int>(push.getDirection()),
-                                  static_cast<int>(push.getChannel())},
-                                 push.getIssueToken());
-      if (auto sync = dyn_cast<NpuSyncOp>(op)) {
-        if (auto key = syncChannelKey(sync))
-          return QueueEffect::await(*key);
-        return {};
-      }
-      if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-        auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
-            seq->getParentOfType<AIE::DeviceOp>(),
-            copy.getMetadata().getRootReference());
-        if (allocation)
-          if (AIE::TileOp tile = allocation.getTileOp())
-            return QueueEffect::push(
-                DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
-                                     allocation.getChannelIndex()),
-                copy.getIssueToken() ||
-                    allocation.getChannelDir() == AIE::DMAChannelDir::S2MM);
-        return {};
-      }
-      if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
-        auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
-            seq->getParentOfType<AIE::DeviceOp>(), wait.getSymbol());
-        if (allocation)
-          if (AIE::TileOp tile = allocation.getTileOp())
-            return QueueEffect::await(
-                DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
-                                     allocation.getChannelIndex()));
-        return {};
-      }
+      if (isa<NpuPushQueueOp, NpuSyncOp, NpuDmaMemcpyNdOp, NpuDmaWaitOp>(op))
+        return rawQueueEffect(op, symbols);
       DMAConfigureTaskOp cfg;
       Value task;
       bool isConfigure = false;
@@ -705,7 +673,7 @@ struct AIELowerDynamicBDPoolPass
 
   // An aiex.npu.dma_memcpy_nd programs its BD id on its tile outside the pool,
   // so every pool of that tile holding the id gives it up for the sequence.
-  void reserveCopyIds(AIE::RuntimeSequenceOp seq) {
+  void reserveCopyIds(AIE::RuntimeSequenceOp seq, SymbolTable &symbols) {
     std::set<std::tuple<int, int, uint32_t, uint32_t>> pools;
     std::set<std::tuple<int, int, uint32_t>> reserved;
     seq.walk([&](DMABdPoolPopOp pop) {
@@ -716,8 +684,8 @@ struct AIELowerDynamicBDPoolPass
     });
     std::set<std::tuple<int, int, uint32_t>> copies;
     seq.walk([&](NpuDmaMemcpyNdOp copy) {
-      auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
-          getOperation(), copy.getMetadata().getRootReference());
+      auto allocation = symbols.lookup<AIE::ShimDMAAllocationOp>(
+          copy.getMetadata().getRootReference());
       if (AIE::TileOp tile = allocation ? allocation.getTileOp() : nullptr)
         copies.insert({tile.getCol(), tile.getRow(),
                        static_cast<uint32_t>(copy.getId())});
@@ -735,13 +703,14 @@ struct AIELowerDynamicBDPoolPass
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
+    SymbolTable symbols(device);
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
       // A copy's id is withheld from every pool this sequence draws from
       // whether or not THIS pass does any lowering here: a hand-written pop
       // reaches neither early return below, and bd_pool_reserve is a no-op
       // where no pool, or no colliding copy, exists.
-      reserveCopyIds(seq);
+      reserveCopyIds(seq, symbols);
 
       bool hasRuntimeCF = false;
       seq.walk([&](Operation *op) {
@@ -850,10 +819,10 @@ struct AIELowerDynamicBDPoolPass
       // queue on a design that is already being rejected just buries the
       // error. Guard before erasing the frees above -- it still needs to see
       // them, resolved through originConfigure, to check reuse safety.
-      guardQueueDepth(seq);
+      guardQueueDepth(seq, symbols);
       for (Operation *op : toErase)
         op->erase();
-      reserveCopyIds(seq);
+      reserveCopyIds(seq, symbols);
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())

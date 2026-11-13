@@ -85,41 +85,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // constant at key -1, each parameter's coefficient at its state-table index.
   using Volume = std::map<int64_t, int64_t>;
 
-  // The channel a raw push, an aiex.npu.push_queue or aiex.npu.dma_memcpy_nd,
-  // queues on, and whether it issues a token.
-  static std::optional<std::pair<DmaQueueModel::ChannelKey, bool>>
-  otherPush(Operation *op) {
-    std::optional<DmaQueueModel::ChannelKey> key = rawPushChannel(op);
-    if (!key)
-      return std::nullopt;
-    if (auto push = dyn_cast<NpuPushQueueOp>(op))
-      return std::make_pair(*key, push.getIssueToken());
-    return std::make_pair(
-        *key, cast<NpuDmaMemcpyNdOp>(op).getIssueToken() ||
-                  (*key)[2] == static_cast<int>(AIE::DMAChannelDir::S2MM));
-  }
-
-  // The channel a raw push, an aiex.npu.push_queue or aiex.npu.dma_memcpy_nd,
-  // queues on, whether or not it issues a token.
-  static std::optional<DmaQueueModel::ChannelKey>
-  rawPushChannel(Operation *op) {
-    if (auto push = dyn_cast<NpuPushQueueOp>(op))
-      return DmaQueueModel::ChannelKey{static_cast<int>(push.getColumn()),
-                                       static_cast<int>(push.getRow()),
-                                       static_cast<int>(push.getDirection()),
-                                       static_cast<int>(push.getChannel())};
-    if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-      auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
-          op->getParentOfType<AIE::DeviceOp>(),
-          copy.getMetadata().getRootReference());
-      if (allocation)
-        if (AIE::TileOp tile = allocation.getTileOp())
-          return DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
-                                      allocation.getChannelIndex());
-    }
-    return std::nullopt;
-  }
-
   // Whether `op` writes array registers raw, at an address it does not fix or
   // over one of `keys`' task queues, so pushing a task no count sees.
   static bool writesQueue(Operation *op,
@@ -154,21 +119,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
       return queue >= *first && queue < *first + bytes;
     });
-  }
-
-  static std::optional<DmaQueueModel::ChannelKey>
-  otherAwaitChannel(Operation *op) {
-    if (auto sync = dyn_cast<NpuSyncOp>(op))
-      return syncChannelKey(sync);
-    if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
-      auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
-          op->getParentOfType<AIE::DeviceOp>(), wait.getSymbol());
-      if (allocation)
-        if (AIE::TileOp tile = allocation.getTileOp())
-          return DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
-                                      allocation.getChannelIndex());
-    }
-    return std::nullopt;
   }
 
   // The BD ids each device's static DMAs take, by tile. Generators restart
@@ -380,15 +330,16 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         }
         tokens--;
         queue.awaitToken(key);
-      } else if (auto key = otherAwaitChannel(op)) {
+      } else if (QueueEffect raw = rawQueueEffect(op, *symbols);
+                 raw.kind == QueueEffect::Kind::Await) {
         // A raw wait may consume a token from a push this count cannot see,
         // such as a raw register write. Do not diagnose those here, but never
         // reuse a token already consumed by one.
-        avail[*key] = std::max(0, avail[*key] - 1);
-        queue.awaitToken(*key);
-      } else if (auto push = otherPush(op)) {
-        avail[push->first] += push->second;
-        queue.push(push->first, push->second);
+        avail[raw.key] = std::max(0, avail[raw.key] - 1);
+        queue.awaitToken(raw.key);
+      } else if (raw.kind == QueueEffect::Kind::Push) {
+        avail[raw.key] += raw.issuesToken;
+        queue.push(raw.key, raw.issuesToken);
       }
       return WalkResult::advance();
     });
@@ -589,7 +540,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                << " buffer descriptor ID " << id
                << (isForbidden ? " while the task may run; "
                                : " until it is retired: ");
-          if (otherPush(copy)->second)
+          if (rawQueueEffect(copy, *symbols).issuesToken)
             note << "wait for it (aiex.npu.sync or aiex.npu.dma_wait on its "
                     "channel, consuming its token).";
           else
@@ -1050,9 +1001,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return volume;
   }
 
-  // The device's shim allocations, by name; a task names one of its own
-  // device's.
-  llvm::DenseMap<StringAttr, AIE::ShimDMAAllocationOp> allocationsByName;
+  // The device's symbols; a task names one of its own device's allocations.
+  // runOnOperation sets it before visiting any op.
+  std::optional<SymbolTable> symbols;
   // Each output's proofs, with the input that holds each.
   llvm::DenseMap<
       Operation *,
@@ -1062,15 +1013,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // The shim allocation `cfg` was configured for, when substitution kept it.
   AIE::ShimDMAAllocationOp allocationOf(DMAConfigureTaskOp cfg) {
     FlatSymbolRefAttr alloc = cfg.getAllocAttr();
-    return alloc ? allocationsByName.lookup(alloc.getAttr()) : nullptr;
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    return alloc ? symbols->lookup<AIE::ShimDMAAllocationOp>(alloc.getAttr())
+                 : nullptr;
   }
 
   // The shim allocation `copy` moves through.
   AIE::ShimDMAAllocationOp allocationOf(NpuDmaMemcpyNdOp copy) {
     if (!copy)
       return nullptr;
-    return AIE::ShimDMAAllocationOp::getForSymbol(
-        getOperation(), copy.getMetadata().getRootReference());
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    return symbols->lookup<AIE::ShimDMAAllocationOp>(
+        copy.getMetadata().getRootReference());
   }
 
   // A shim allocation's pushes since the latest load, in program order, with
@@ -1172,10 +1126,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       ArrayRef<AIE::ShimDMAAllocationOp> inputs,
       ArrayRef<AIE::ShimDMAAllocationOp> outputs, AIE::ConsumedByAttr proof,
       bool byChannel = false, Verdict *at = nullptr) {
-    DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(
-        input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
-    DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
-        output.getTileOp(), output.getChannelDir(), output.getChannelIndex());
+    DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(input);
+    DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(output);
     auto fromLoad = dyn_cast_or_null<NpuLoadPdiOp>(from);
     AIE::DeviceOp loaded = fromLoad ? loadedBy(fromLoad) : getOperation();
     bool counting = !from;
@@ -1215,8 +1167,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
       AIE::ShimDMAAllocationOp allocation =
           cfg ? allocationOf(cfg) : allocationOf(copy);
-      std::optional<DmaQueueModel::ChannelKey> channel =
-          cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
+      std::optional<DmaQueueModel::ChannelKey> channel;
+      if (cfg)
+        channel = channelOf(cfg);
+      else if (QueueEffect raw = rawQueueEffect(op, *symbols);
+               raw.kind == QueueEffect::Kind::Push)
+        channel = raw.key;
       bool circuit = byChannel && allocation && !allocation.getPacket();
       bool isInput =
           llvm::is_contained(inputs, allocation) ||
@@ -1272,11 +1228,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::DeviceOp loaded = last ? loadedBy(last) : AIE::DeviceOp();
     if (!loaded || loaded == getOperation())
       return success();
-    auto channelOfAllocation = [](AIE::ShimDMAAllocationOp allocation) {
-      return DmaQueueModel::keyOf(allocation.getTileOp(),
-                                  allocation.getChannelDir(),
-                                  allocation.getChannelIndex());
-    };
     SmallVector<std::tuple<AIE::ShimDMAAllocationOp, AIE::ShimDMAAllocationOp,
                            Unbalanced>>
         unbalanced;
@@ -1293,14 +1244,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         for (auto copy : getOperation().getOps<AIE::ShimDMAAllocationOp>()) {
           ArrayAttr copied = copy.getConsumedByAttr();
           if (!copied ||
-              channelOfAllocation(copy) != channelOfAllocation(input))
+              DmaQueueModel::keyOf(copy) != DmaQueueModel::keyOf(input))
             continue;
           for (auto cp : copied.getAsRange<AIE::ConsumedByAttr>())
             if (proofDevice(cp) == loaded)
-              if (AIE::ShimDMAAllocationOp out =
-                      allocationsByName.lookup(cp.getOutput().getAttr());
+              // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+              if (auto out = symbols->lookup<AIE::ShimDMAAllocationOp>(
+                      cp.getOutput().getAttr());
                   out &&
-                  channelOfAllocation(out) == channelOfAllocation(output)) {
+                  DmaQueueModel::keyOf(out) == DmaQueueModel::keyOf(output)) {
                 inputs.push_back(copy);
                 outputs.push_back(out);
               }
@@ -1314,10 +1266,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     }
     // Every unbalanced pair, by its channels rather than declaration order.
     llvm::stable_sort(unbalanced, [&](const auto &a, const auto &b) {
-      return std::pair(channelOfAllocation(std::get<0>(a)),
-                       channelOfAllocation(std::get<1>(a))) <
-             std::pair(channelOfAllocation(std::get<0>(b)),
-                       channelOfAllocation(std::get<1>(b)));
+      return std::pair(DmaQueueModel::keyOf(std::get<0>(a)),
+                       DmaQueueModel::keyOf(std::get<1>(a))) <
+             std::pair(DmaQueueModel::keyOf(std::get<0>(b)),
+                       DmaQueueModel::keyOf(std::get<1>(b)));
     });
     for (auto [input, output, why] : unbalanced) {
       auto diag = last.emitOpError()
@@ -1368,8 +1320,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (!configured || proofDevice(proof) != configured)
         continue;
       auto inPushes = pushesByAllocation.find(input);
-      DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(
-          input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
+      DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(input);
       if (inPushes == pushesByAllocation.end() ||
           !leavesNothing(input, output, proof))
         continue;
@@ -1493,8 +1444,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     llvm::interleave(
         proofs.getAsRange<AIE::ConsumedByAttr>(), os,
         [&](AIE::ConsumedByAttr proof) {
-          AIE::ShimDMAAllocationOp output =
-              allocationsByName.lookup(proof.getOutput().getAttr());
+          auto output = symbols->lookup<AIE::ShimDMAAllocationOp>(
+              proof.getOutput().getAttr());
           os << "through " << proof.getOutput() << ", ";
           if (!output) {
             os << "that output is not in this device";
@@ -2072,15 +2023,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     loopingStarts.clear();
     nonNegativeByIndex.clear();
     balancedPairs.clear();
-    allocationsByName.clear();
     proofsByOutput.clear();
-    for (auto allocation : device.getOps<AIE::ShimDMAAllocationOp>())
-      allocationsByName[allocation.getSymNameAttr()] = allocation;
+    symbols.emplace(device);
     for (auto input : device.getOps<AIE::ShimDMAAllocationOp>())
       if (ArrayAttr proofs = input.getConsumedByAttr())
         for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>())
-          if (AIE::ShimDMAAllocationOp output =
-                  allocationsByName.lookup(proof.getOutput().getAttr()))
+          if (auto output = symbols->lookup<AIE::ShimDMAAllocationOp>(
+                  proof.getOutput().getAttr()))
             proofsByOutput[output].push_back({input, proof});
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
@@ -2158,22 +2107,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               noteAwaited(channelOf(cfg));
           if (failed(recycleTask(await.getTask(), await, /*isAwait=*/true)))
             return WalkResult::interrupt();
-        } else if (auto key = otherAwaitChannel(op)) {
-          noteAwaited(*key);
-          if (failed(recycleCompletedTasks(op)))
-            return WalkResult::interrupt();
         } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
           if (failed(recycleTask(freeOp.getTask(), freeOp, /*isAwait=*/false)))
             return WalkResult::interrupt();
           frees.push_back(freeOp);
-        } else if (auto push = otherPush(op)) {
+        } else if (QueueEffect raw = rawQueueEffect(op, *symbols);
+                   raw.kind == QueueEffect::Kind::Await) {
+          noteAwaited(raw.key);
+          if (failed(recycleCompletedTasks(op)))
+            return WalkResult::interrupt();
+        } else if (raw.kind == QueueEffect::Kind::Push) {
           auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
           AIE::ShimDMAAllocationOp allocation = allocationOf(copy);
-          notePush(push->first, DMAConfigureTaskOp{}, push->second, op,
+          notePush(raw.key, DMAConfigureTaskOp{}, raw.issuesToken, op,
                    allocation, copy ? copyVolume(copy) : std::nullopt);
           if (copy) {
-            if (failed(
-                    holdCopy(copy, push->first, pushCount - 1, push->second)))
+            if (failed(holdCopy(copy, raw.key, pushCount - 1, raw.issuesToken)))
               return WalkResult::interrupt();
             if (reallocate)
               return WalkResult::interrupt();

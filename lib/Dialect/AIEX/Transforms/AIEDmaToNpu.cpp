@@ -869,20 +869,6 @@ public:
   }
 };
 
-// What a push or a sync does to its channel at their common representation.
-static QueueEffect queueEffectOf(Operation *op) {
-  if (auto push = dyn_cast<NpuPushQueueOp>(op))
-    return QueueEffect::push({static_cast<int>(push.getColumn()),
-                              static_cast<int>(push.getRow()),
-                              static_cast<int>(push.getDirection()),
-                              static_cast<int>(push.getChannel())},
-                             push.getIssueToken());
-  if (auto sync = dyn_cast<NpuSyncOp>(op))
-    if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
-      return QueueEffect::await(*key);
-  return {};
-}
-
 // Count all task starts at their common representation, after memcpy lowering
 // but before pushes become register writes. This includes starts lowered by
 // dma-tasks-to-npu and compiler-generated channel rearm pushes, and so every
@@ -890,6 +876,10 @@ static QueueEffect queueEffectOf(Operation *op) {
 static LogicalResult checkQueueDepth(AIE::DeviceOp device,
                                      bool enforceQueueDepth) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
+  SymbolTable symbols(device);
+  auto queueEffectOf = [&](Operation *op) {
+    return rawQueueEffect(op, symbols);
+  };
   std::set<DmaQueueModel::ChannelKey> awaited;
   SmallVector<SyncCover> mayAwait;
   device.walk([&](Operation *op) {

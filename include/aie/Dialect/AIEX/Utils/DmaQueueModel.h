@@ -52,6 +52,12 @@ public:
             static_cast<int>(channel)};
   }
 
+  /// The channel of a shim allocation on a placed tile.
+  static ChannelKey keyOf(AIE::ShimDMAAllocationOp allocation) {
+    return keyOf(allocation.getTileOp(), allocation.getChannelDir(),
+                 allocation.getChannelIndex());
+  }
+
   /// One channel's queue: its pushes not yet known to have completed, oldest
   /// first, each true when it issues a completion token.
   struct ChannelState {
@@ -372,6 +378,41 @@ struct QueueEffect {
     return {Kind::Free, key, false, task};
   }
 };
+
+/// What a push or an await that names no task does to its channel: an
+/// aiex.npu.push_queue; an aiex.npu.dma_memcpy_nd through the placed shim
+/// allocation its metadata names, which always issues a token on S2MM (its
+/// lowering sets one); an aiex.npu.sync syncChannelKey pins down; an
+/// aiex.npu.dma_wait on a placed shim allocation. Ignore for anything else.
+inline QueueEffect rawQueueEffect(mlir::Operation *op,
+                                  mlir::SymbolTable &symbols) {
+  if (auto push = mlir::dyn_cast<NpuPushQueueOp>(op))
+    return QueueEffect::push({static_cast<int>(push.getColumn()),
+                              static_cast<int>(push.getRow()),
+                              static_cast<int>(push.getDirection()),
+                              static_cast<int>(push.getChannel())},
+                             push.getIssueToken());
+  if (auto sync = mlir::dyn_cast<NpuSyncOp>(op)) {
+    if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
+      return QueueEffect::await(*key);
+    return {};
+  }
+  auto copy = mlir::dyn_cast<NpuDmaMemcpyNdOp>(op);
+  auto wait = mlir::dyn_cast<NpuDmaWaitOp>(op);
+  if (!copy && !wait)
+    return {};
+  auto allocation = symbols.lookup<AIE::ShimDMAAllocationOp>(
+      copy ? copy.getMetadata().getRootReference()
+           : wait.getSymbolAttr().getAttr());
+  if (!allocation || !allocation.getTileOp())
+    return {};
+  DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(allocation);
+  if (wait)
+    return QueueEffect::await(key);
+  return QueueEffect::push(key, copy.getIssueToken() ||
+                                    allocation.getChannelDir() ==
+                                        AIE::DMAChannelDir::S2MM);
+}
 
 /// Completion is distinct from queue occupancy: Task_Queue_Size excludes the
 /// running task. Task identities are path-local and renamed at joins, so a
