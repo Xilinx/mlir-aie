@@ -722,10 +722,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   return success();
 }
 
-static LogicalResult
-verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
-                                 std::optional<int64_t> moved,
-                                 AIE::ObjectFifoCreateOp fifo);
+static LogicalResult verifyTransferCoversWholeObjects(
+    Operation *transfer, SymbolRefAttr alloc, std::optional<int64_t> moved,
+    AIE::ObjectFifoCreateOp fifo, SymbolTableCollection &symbols);
 
 // The verifier-owned collection shares the device symbol table across memcpy
 // checks without retaining allocation pointers between verification calls.
@@ -754,8 +753,9 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   if (dev)
     if (auto fifo = symbolTable.lookupSymbolIn<AIE::ObjectFifoCreateOp>(
             dev, getMetadata().getRootReference());
-        fifo && failed(verifyTransferCoversWholeObjects(
-                    *this, getMetadata(), getStaticBytesStreamed(), fifo)))
+        fifo &&
+        failed(verifyTransferCoversWholeObjects(
+            *this, getMetadata(), getStaticBytesStreamed(), fifo, symbolTable)))
       return failure();
   auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
@@ -1790,10 +1790,9 @@ std::optional<int64_t> AIEX::NpuDmaMemcpyNdOp::getStaticBytesStreamed() {
 // Several transfers may share an object (concatenating host buffers into it, or
 // splitting it across them), so it is the runtime sequence's static total
 // through the fifo that must stop at a BD boundary.
-static LogicalResult
-verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
-                                 std::optional<int64_t> moved,
-                                 AIE::ObjectFifoCreateOp fifo) {
+static LogicalResult verifyTransferCoversWholeObjects(
+    Operation *transfer, SymbolRefAttr alloc, std::optional<int64_t> moved,
+    AIE::ObjectFifoCreateOp fifo, SymbolTableCollection &symbols) {
   if (fifo.getPadDimensions() || fifo.usesStream())
     return success();
   if (!moved || *moved == 0)
@@ -1816,12 +1815,24 @@ verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
   // one per tile when links on several tiles read a broadcast.
   SmallVector<Value> linkTiles;
   SmallVector<BdChain> chains;
-  if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
+  auto device = fifo->getParentOfType<AIE::DeviceOp>();
+  auto resolve = [&](ArrayAttr refs) {
+    std::vector<AIE::ObjectFifoCreateOp> fifos;
+    for (Attribute ref : refs)
+      if (auto name = dyn_cast<FlatSymbolRefAttr>(ref))
+        if (auto linked = symbols.lookupSymbolIn<AIE::ObjectFifoCreateOp>(
+                device, name.getAttr()))
+          fifos.push_back(linked);
+    return fifos;
+  };
+  auto self = FlatSymbolRefAttr::get(fifo.getSymNameAttr());
+  if (device)
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
-      std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
-      std::vector<AIE::ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
-      if (!llvm::is_contained(ins, fifo) && !llvm::is_contained(outs, fifo))
+      if (!llvm::is_contained(link.getFifoIns(), self) &&
+          !llvm::is_contained(link.getFifoOuts(), self))
         continue;
+      std::vector<AIE::ObjectFifoCreateOp> ins = resolve(link.getFifoIns());
+      std::vector<AIE::ObjectFifoCreateOp> outs = resolve(link.getFifoOuts());
       std::optional<Value> sharedTile = link.getOptionalSharedTile();
       if (ins.empty() || outs.empty() || !sharedTile)
         return success();
@@ -2009,7 +2020,7 @@ LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
           })
           .Case([&](AIE::ObjectFifoCreateOp fifo) {
             return verifyTransferCoversWholeObjects(
-                *this, getAlloc(), getStaticBytesStreamed(), fifo);
+                *this, getAlloc(), getStaticBytesStreamed(), fifo, symbolTable);
           })
           .Default([&](Operation *) -> LogicalResult {
             return emitOpError() << getAlloc()
