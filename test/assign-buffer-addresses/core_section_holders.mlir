@@ -70,7 +70,7 @@ module @prebaked_small_holder {
 module @core_data_wrong_size {
   aie.device(npu2_1col) {
     %t = aie.tile(0, 2)
-    // expected-error@+1 {{does not match the 8000-byte reservation core (0, 2) makes for its own sections}}
+    // expected-error@+1 {{has the name or role of core (0, 2)'s 8000-byte section reservation but not its extent; remove it and let this pass create it}}
     %r = aie.buffer(%t) {sym_name = "mine", core_data} : memref<16xi8>
     aie.core(%t) { aie.end } {data_size = 8000 : i32}
   }

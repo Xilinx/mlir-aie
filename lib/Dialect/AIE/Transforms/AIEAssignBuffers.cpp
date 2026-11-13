@@ -85,12 +85,9 @@ static StringRef mapLabel(BufferOp buffer) {
   return buffer.name().getValue();
 }
 
-// Give each extent a core's own sections hold (CoreOp::getSectionReservations)
-// an aie.buffer, so placement fits around it: the data region as one more
-// extent; the room a bank's pinned static data will need, held before
-// unconstrained buffers take it; and a prebaked `elf_file` core's runs, pinned
-// at the addresses its image already uses. Idempotent: this pass runs
-// standalone and inside larger pipelines.
+// Gives each CoreOp::getSectionReservations extent an aie.buffer so placement
+// fits around it. Idempotent: this pass runs standalone and inside larger
+// pipelines.
 static LogicalResult materializeCoreSections(DeviceOp device) {
   using Kind = CoreSectionReservation::Kind;
   OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
@@ -130,9 +127,10 @@ static LogicalResult materializeCoreSections(DeviceOp device) {
           clash = buffer;
       });
       if (clash) {
-        return clash.emitOpError("does not match the ")
-               << held.bytes << "-byte reservation core (" << tile.getCol()
-               << ", " << tile.getRow() << ") makes for its own sections";
+        return clash.emitOpError("has the name or role of core (")
+               << tile.getCol() << ", " << tile.getRow() << ")'s " << held.bytes
+               << "-byte section reservation but not its extent; remove it "
+                  "and let this pass create it";
       }
       builder.setInsertionPoint(core);
       auto type = MemRefType::get({held.bytes}, builder.getI8Type());
@@ -506,10 +504,12 @@ static void placeBuffer(size_t i, int64_t startAddr, int bank,
 }
 
 // Fails `layout` on buffer `i` with `message`.
-static void failPin(TileLayout &layout, size_t i, const llvm::Twine &message) {
+static LogicalResult failPin(TileLayout &layout, size_t i,
+                             const llvm::Twine &message) {
   layout.status = TileLayout::Status::BadPin;
   layout.failed = i;
   layout.message = message.str();
+  return failure();
 }
 
 // Places a buffer carrying an explicit `address`, and checks that the space is
@@ -528,21 +528,19 @@ static FailureOr<bool> checkAndAddBufferWithAddress(size_t i,
   int64_t addr = *buffer.address;
   int64_t measuredAlign = buffer.sectionAlignBytes;
   if (addr % measuredAlign != 0) {
-    failPin(layout, i,
-            "data reservation address must be aligned to " +
-                llvm::Twine(measuredAlign) +
-                " bytes to satisfy its measured section alignment");
-    return failure();
+    return failPin(layout, i,
+                   "data reservation address must be aligned to " +
+                       llvm::Twine(measuredAlign) +
+                       " bytes to satisfy its measured section alignment");
   }
 
   // A pinned address must satisfy the bus width. The stricter vector alignment
   // applies to the addresses this pass chooses.
   if (buffer.aligned && addr % (ctx.tileAlignBitWidth / 8) != 0) {
-    failPin(layout, i,
-            "address attribute value must be aligned to " +
-                llvm::Twine(ctx.tileAlignBitWidth) +
-                " bits when the aligned attribute is set");
-    return failure();
+    return failPin(layout, i,
+                   "address attribute value must be aligned to " +
+                       llvm::Twine(ctx.tileAlignBitWidth) +
+                       " bits when the aligned attribute is set");
   }
 
   int bank = getBankContaining(addr, ctx.numBanks, ctx.bankLimits);
@@ -552,18 +550,16 @@ static FailureOr<bool> checkAndAddBufferWithAddress(size_t i,
     if (buffer.size == 0 && addr == ctx.bankLimits.back().end()) {
       bank = ctx.numBanks - 1;
     } else {
-      failPin(layout, i,
-              "address attribute does not fall within any bank range");
-      return failure();
+      return failPin(layout, i,
+                     "address attribute does not fall within any bank range");
     }
   }
 
   int64_t endAddr = addr + buffer.size;
   if (endAddr > occupancy.size()) {
-    failPin(layout, i,
-            "address attribute would place the buffer past the end of the "
-            "tile's memory");
-    return failure();
+    return failPin(layout, i,
+                   "address attribute would place the buffer past the end of "
+                   "the tile's memory");
   }
 
   int lastBank = buffer.size == 0 ? bank
@@ -572,25 +568,23 @@ static FailureOr<bool> checkAndAddBufferWithAddress(size_t i,
   for (int touched = bank; !buffer.spaceBanks.empty() && touched <= lastBank;
        ++touched) {
     if (!llvm::is_contained(buffer.spaceBanks, touched)) {
-      failPin(layout, i,
-              "address attribute places the buffer in bank " +
-                  llvm::Twine(touched) +
-                  ", which is excluded by its memory space");
-      return failure();
+      return failPin(layout, i,
+                     "address attribute places the buffer in bank " +
+                         llvm::Twine(touched) +
+                         ", which is excluded by its memory space");
     }
   }
   if (buffer.memBank && *buffer.memBank != bank) {
-    failPin(layout, i,
-            "address attribute lies in bank " + llvm::Twine(bank) +
-                ", but mem_bank requests bank " + llvm::Twine(*buffer.memBank));
-    return failure();
+    return failPin(layout, i,
+                   "address attribute lies in bank " + llvm::Twine(bank) +
+                       ", but mem_bank requests bank " +
+                       llvm::Twine(*buffer.memBank));
   }
 
   // Only a real collision is invalid. The hardware lets a buffer straddle a
   // bank boundary, so a pinned buffer may extend past `bank`.
   if (!occupancy.isRangeFree(addr, endAddr)) {
-    failPin(layout, i, "would override allocated address");
-    return failure();
+    return failPin(layout, i, "would override allocated address");
   }
 
   placeBuffer(i, addr, bank, ctx, occupancy, layout);
@@ -609,16 +603,15 @@ static LogicalResult recordRequiredBank(size_t i, const BankAwareContext &ctx,
   const TileLayoutBuffer &buffer = ctx.buffers[i];
   if (buffer.memBank &&
       (*buffer.memBank < 0 || *buffer.memBank >= ctx.numBanks)) {
-    failPin(layout, i, "mem_bank attribute value is out of range");
-    return failure();
+    return failPin(layout, i, "mem_bank attribute value is out of range");
   }
   SmallVector<int, 2> banks = buffer.spaceBanks;
   if (buffer.memBank)
     banks = {*buffer.memBank};
   if (!banks.empty()) {
     if (banks.back() >= ctx.numBanks) {
-      failPin(layout, i, "memory space requests a bank that does not exist");
-      return failure();
+      return failPin(layout, i,
+                     "memory space requests a bank that does not exist");
     }
     requiredBanks[i] = std::move(banks);
   }
@@ -990,8 +983,6 @@ private:
     for (size_t done : placed) {
       const auto &at = layout.at[done];
       assert(at && "placed buffer must have an address and bank");
-      if (!at)
-        continue;
       auto [address, bank] = *at;
       deepestLayout.push_back({done, Placement{address, bank, 0, 0, 0, 0}});
     }
