@@ -518,14 +518,11 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
     bool holdsInitialContents = ownerIsOutput;
     if (std::optional<ObjectFifoAllocateOp> alloc = owner.getAllocate();
         alloc && !ownerIsOutput)
-      holdsInitialContents =
-          ObjectFifoCreateOp::allocatedHome(
-              device.getTargetModel(), owner.getProducerTileOp().getTileID(),
-              cast<TileOp>(owner.getConsumerTiles()[0].getDefiningOp())
-                  .getTileID(),
-              alloc->getDelegateTileOp().getTileID(),
-              cast<TileOp>(sharedTile->getDefiningOp()).getTileID())
-              .has_value();
+      holdsInitialContents = ObjectFifoCreateOp::allocatedHome(
+          device.getTargetModel(), owner.getProducerTileOp().getTileID(),
+          cast<TileOp>(owner.getConsumerTiles()[0].getDefiningOp()).getTileID(),
+          alloc->getDelegateTileOp().getTileID(),
+          cast<TileOp>(sharedTile->getDefiningOp()).getTileID());
 
     auto pool = createPool(linkLocation(linkOp), name, *sharedTile, depth,
                            elemType, owner, extents, holdsInitialContents,
