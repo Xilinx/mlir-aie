@@ -20,20 +20,11 @@
 //
 // aie-split-long-repeats has already made every start exactly one queue push.
 //
-// Before allocating, the pass also checks the per-channel hardware resources a
-// sequence can exhaust (see verifyChannelUsage): task-completion-token (TCT)
-// imbalance -- an await with no matching issue_token push on its channel would
-// deadlock the host -- and DMA task-queue overflow, where more transfers are
-// pushed onto a channel than its queue holds. On the straight-line IR the
-// allocator sees, both are single-pass per-channel counts. What an await here
-// proves relies on checkTokensConsumed (DmaQueueModel.h).
-//
-// With reclaim-bds, when a tile runs out of ids, the pass takes them back from
-// a started task that was never released (see reclaimFor) rather than failing:
-// from one a status poll already proves finished, or else by inserting a poll
-// that does. Only allocations that would fail change, so a sequence that fits
-// compiles to the same instructions either way. It is opt-in because the poll
-// never returns if the task's completion depends on a later push.
+// The per-channel resource checks before allocation (see the pass
+// description) are verifyChannelUsage, a single-pass per-channel count on the
+// straight-line IR; what an await there proves relies on checkTokensConsumed
+// (DmaQueueModel.h). reclaim-bds's "status poll already proves finished, or
+// one inserted to" is reclaimFor.
 //
 //===----------------------------------------------------------------------===//
 
