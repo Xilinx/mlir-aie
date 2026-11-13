@@ -975,28 +975,35 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
       pinnedEnds.lookup(logicalTile.getOperation());
   std::optional<std::pair<int, int>> held = pinsAt.heldAt(tile, pins);
   if (!held) {
+    llvm::stable_sort(
+        pins, [](const PinnedChannels::End &a, const PinnedChannels::End &b) {
+          return std::make_pair(a.sends, a.channel) <
+                 std::make_pair(b.sends, b.channel);
+        });
+    [[maybe_unused]] bool reported = false;
     for (PinnedChannels::End end : pins) {
       if (std::optional<PinnedChannels::End> other =
               pinsAt.clashWith(tile, end)) {
         std::optional<std::string> why = pinnedRule.whyApart(end, *other);
-        return end.fifo.emitError()
-               << "pins " << (end.sends ? "MM2S" : "S2MM") << " channel "
-               << end.channel << " of tile (" << tile.col << ", " << tile.row
-               << "), which @" << other->fifo.getSymName()
-               << " pins there too, but " << (why ? *why : "they clash");
-      }
-      if (std::optional<DMAChannelAnalysis::ChannelClaim> claim =
-              pinsAt.claimWith(tile, end)) {
+        end.fifo.emitError()
+            << "pins " << (end.sends ? "MM2S" : "S2MM") << " channel "
+            << end.channel << " of tile (" << tile.col << ", " << tile.row
+            << "), which @" << other->fifo.getSymName()
+            << " pins there too, but " << (why ? *why : "they clash");
+        reported = true;
+      } else if (std::optional<DMAChannelAnalysis::ChannelClaim> claim =
+                     pinsAt.claimWith(tile, end)) {
         auto diag = end.fifo.emitError()
                     << "pins " << (end.sends ? "MM2S" : "S2MM") << " channel "
                     << end.channel << " of tile (" << tile.col << ", "
                     << tile.row << "), which another op holds";
         diag.attachNote(claim->owner->getLoc()) << "held here";
-        return diag;
+        reported = true;
       }
     }
-    llvm_unreachable(
-        "heldAt reports only a clash clashWith or claimWith finds");
+    assert(reported &&
+           "heldAt reports only a clash clashWith or claimWith finds");
+    return failure();
   }
   inChannels -= held->first;
   outChannels -= held->second;
