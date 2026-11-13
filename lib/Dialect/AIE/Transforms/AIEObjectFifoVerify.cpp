@@ -915,7 +915,38 @@ struct AIEObjectFifoVerifyPass
   /// are checked: one block, and no loop that may run forever. A fifo an
   /// `aiex.dma_channel_reset_for` re-arms in every runtime sequence that moves
   /// data through it gets its locks back each launch.
-  LogicalResult verifyHeldAtEnd(DeviceOp device) {
+  LogicalResult verifyHeldAtEnd(DeviceOp device,
+                                SymbolTableCollection &symbolTables) {
+    // The sequences that fill or drain a fifo by name must each re-arm it;
+    // where none names it (a link fills it), every sequence must. Every
+    // fifo needs this at most once across however many cores hold it.
+    llvm::DenseMap<StringRef, SmallVector<RuntimeSequenceOp>> launchesByFifo;
+    std::optional<SmallVector<RuntimeSequenceOp>> allLaunches;
+    auto launchesOf = [&](std::optional<StringRef> fifo)
+        -> const SmallVector<RuntimeSequenceOp> & {
+      if (!fifo) {
+        if (!allLaunches)
+          allLaunches.emplace(
+              llvm::to_vector(device.getOps<RuntimeSequenceOp>()));
+        return *allLaunches;
+      }
+      auto [it, inserted] = launchesByFifo.try_emplace(*fifo);
+      if (inserted) {
+        for (auto seq : device.getOps<RuntimeSequenceOp>()) {
+          auto uses = SymbolTable::getSymbolUses(seq.getOperation());
+          if (uses && llvm::any_of(*uses, [&](auto use) {
+                auto end = dyn_cast_or_null<RouteEndpoint>(
+                    symbolTables.lookupNearestSymbolFrom(seq,
+                                                         use.getSymbolRef()));
+                return end && end.getFifoName() == *fifo;
+              }))
+            it->second.push_back(seq);
+        }
+        if (it->second.empty())
+          llvm::append_range(it->second, device.getOps<RuntimeSequenceOp>());
+      }
+      return it->second;
+    };
     for (auto core : device.getOps<CoreOp>()) {
       Region &body = core.getBody();
       if (!body.hasOneBlock())
@@ -937,40 +968,25 @@ struct AIEObjectFifoVerifyPass
         firstAcquire.insert({acquire.getObjFifoName(), acquire});
       });
       for (auto &[name, acquire] : firstAcquire) {
+        std::optional<int64_t> held = heldAfter(body.front(), name, 0);
+        if (!held || *held == 0)
+          continue;
         auto endpoint =
-            SymbolTable::lookupNearestSymbolFrom<ObjectFifoCoreEndpointOp>(
+            symbolTables.lookupNearestSymbolFrom<ObjectFifoCoreEndpointOp>(
                 device, acquire.getObjFifoNameAttr());
         ObjectFifoPoolOp pool = endpoint ? endpoint.getPoolOp() : nullptr;
         std::optional<StringRef> fifo =
             pool ? pool.getFifoName() : std::nullopt;
         auto rearms =
             fifo ? poolLocks->rearms().find(*fifo) : poolLocks->rearms().end();
-        // The sequences that fill or drain the fifo by name must each re-arm
-        // it; where none names it (a link fills it), every sequence must.
-        SmallVector<RuntimeSequenceOp> launches;
-        for (auto seq : device.getOps<RuntimeSequenceOp>()) {
-          auto uses = SymbolTable::getSymbolUses(seq.getOperation());
-          if (fifo && uses && llvm::any_of(*uses, [&](auto use) {
-                auto end = dyn_cast_or_null<RouteEndpoint>(
-                    SymbolTable::lookupNearestSymbolFrom(seq,
-                                                         use.getSymbolRef()));
-                return end && end.getFifoName() == *fifo;
-              }))
-            launches.push_back(seq);
-        }
-        if (launches.empty())
-          llvm::append_range(launches, device.getOps<RuntimeSequenceOp>());
         bool rearmedEveryLaunch =
             rearms != poolLocks->rearms().end() &&
-            llvm::all_of(launches, [&](RuntimeSequenceOp seq) {
+            llvm::all_of(launchesOf(fifo), [&](RuntimeSequenceOp seq) {
               return llvm::any_of(rearms->second, [&](auto reset) {
                 return reset->getParentOp() == seq;
               });
             });
         if (pool && (!poolLocks->needsLocks(pool) || rearmedEveryLaunch))
-          continue;
-        std::optional<int64_t> held = heldAfter(body.front(), name, 0);
-        if (!held || *held == 0)
           continue;
         InFlightDiagnostic diag =
             core.emitOpError("ends with ")
@@ -1689,7 +1705,8 @@ struct AIEObjectFifoVerifyPass
         failed(verifyFanIn(device, symbolTables)) ||
         failed(verifyOverRelease(device)) ||
         failed(verifyTransferBudgets(device)) ||
-        failed(verifyHeldAtEnd(device)) || failed(verifyAdvances(device)) ||
+        failed(verifyHeldAtEnd(device, symbolTables)) ||
+        failed(verifyAdvances(device)) ||
         failed(verifyDispatchVolumes(device)) ||
         failed(verifyOutOfOrderPools(device))) {
       return signalPassFailure();
