@@ -1093,6 +1093,14 @@ SequentialPlacer::buildChannelRequirements(
     pinnedEnds[tile].push_back(*end);
     return counted.insert(pinnedRule.share(*end)).second;
   };
+  // An end takes a channel of its own when the fifo moves by DMA: a shim's
+  // unless it is a PLIO, any other one the split gives a DMA end.
+  auto dmaEnd = [](ObjectFifoCreateOp fifo, std::optional<unsigned> consumer,
+                   Operation *tile) {
+    auto like = dyn_cast_or_null<TileLike>(tile);
+    return like && like.isShimTile() ? !fifo.getPlio()
+                                     : fifo.plannedDmaEnd(consumer).has_value();
+  };
 
   // Count channels for every ObjectFifo, omitting only the link-tile side of
   // linked fifos. The off-link-tile endpoint still needs DMA: a shim that
@@ -1126,6 +1134,7 @@ SequentialPlacer::buildChannelRequirements(
 
       // Linked consumers and shared channels are counted separately.
       if (consumerOp && !llvm::is_contained(linkConsumers, consumerOp) &&
+          dmaEnd(ofOp, consumerIndex, consumerOp) &&
           drawsChannel(ofOp, consumerIndex, consumerOp))
         channelRequirements[consumerOp].first++; // input++
 
@@ -1136,6 +1145,7 @@ SequentialPlacer::buildChannelRequirements(
     // producer IS the link tile of an outgoing linked dest fifo, or it shares
     // an already-counted shared channel).
     if (producerNeedsDMA && producerOp && !skipProducerSide &&
+        dmaEnd(ofOp, std::nullopt, producerOp) &&
         drawsChannel(ofOp, std::nullopt, producerOp))
       channelRequirements[producerOp].second++; // output++
   }
@@ -1166,8 +1176,9 @@ SequentialPlacer::buildChannelRequirements(
           numOutputChannels += drawsChannel(fifo, std::nullopt, linkTileOp);
           continue;
         }
-        for (auto [index, consumer] : llvm::enumerate(fifo.getConsumerTiles()))
-          if (consumer.getDefiningOp() == linkTileOp)
+        for (unsigned index = 0, e = fifo.getConsumerTiles().size(); index < e;
+             ++index)
+          if (fifo.getConsumerLink(index) == linkOp)
             numInputChannels += drawsChannel(fifo, index, linkTileOp);
       }
     if (linkOp.isMerge())
