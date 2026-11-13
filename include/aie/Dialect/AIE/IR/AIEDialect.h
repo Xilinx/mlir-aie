@@ -546,6 +546,10 @@ bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 int64_t paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
                    llvm::ArrayRef<BDPadLayoutAttr> pads, int64_t fallback);
 
+// Bytes one value of `type` takes under `layout`.
+int64_t getMemRefSizeInBytes(mlir::MemRefType type,
+                             const mlir::DataLayout &layout);
+
 // The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
 // dimensions (outermost first) and its length in elements: none when it
 // becomes one linear transfer, else its size-1 dimensions dropped. nullopt

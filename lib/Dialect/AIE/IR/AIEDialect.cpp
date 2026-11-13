@@ -1003,11 +1003,13 @@ LogicalResult ObjectFifoPoolOp::verify() {
   return success();
 }
 
+int64_t xilinx::AIE::getMemRefSizeInBytes(MemRefType type,
+                                          const DataLayout &layout) {
+  return type.getNumElements() * layout.getTypeSize(type.getElementType());
+}
+
 int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
-  MemRefType elemType = getElemType();
-  DataLayout layout = DataLayout::closest(*this);
-  return elemType.getNumElements() *
-         layout.getTypeSize(elemType.getElementType());
+  return getMemRefSizeInBytes(getElemType(), DataLayout::closest(*this));
 }
 
 std::vector<ObjectFifoSegmentOp> ObjectFifoPoolOp::getSegmentOps() {
@@ -2284,7 +2286,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
   DataLayout layout = DataLayout::closest(*this);
   auto objectBytes = [&](Type fifoType) -> int64_t {
     MemRefType type = cast<AIEObjectFifoType>(fifoType).getElementType();
-    return type.getNumElements() * layout.getTypeSize(type.getElementType());
+    return getMemRefSizeInBytes(type, layout);
   };
   auto ordered = [](ObjectFifoCreateOp fifo, bool drains) {
     return !fifo.getOutOfOrder() && (!drains || !fifo.usesPushQueue());
@@ -4817,9 +4819,8 @@ int64_t BufferOp::getSectionAlignment() {
 }
 
 int64_t BufferOp::getAllocationSize() {
-  auto type = llvm::cast<MemRefType>(getType());
-  DataLayout dataLayout = DataLayout::closest(getOperation());
-  return type.getNumElements() * dataLayout.getTypeSize(type.getElementType());
+  return getMemRefSizeInBytes(llvm::cast<MemRefType>(getType()),
+                              DataLayout::closest(getOperation()));
 }
 
 LogicalResult BufferOp::verify() {
