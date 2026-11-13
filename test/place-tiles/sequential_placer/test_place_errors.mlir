@@ -270,21 +270,6 @@ module @cascade_chain_unsatisfiable {
 
 // -----
 
-// A pinned south-to-north cascade: the verifier rejects the direction the
-// cascade ports cannot take before placement runs (rows increase upward).
-module @cascade_pinned_wrong_direction {
-  aie.device(npu1) {
-    // CHECK: error: 'aie.cascade_flow' op source tile must be to the North or West of the destination tile
-    %dst = aie.logical_tile<CoreTile>(0, 5)
-    %src = aie.logical_tile<CoreTile>(0, 4)
-    aie.cascade_flow(%src, %dst)
-    aie.core(%src) { aie.end }
-    aie.core(%dst) { aie.end }
-  }
-}
-
-// -----
-
 // Partial constraint (col=0) is incompatible with pinned src at (1,3).
 // Exercises candidate-filter rejection (col-0 tiles exist, none satisfy).
 module @cascade_partial_constraint_unsatisfiable {

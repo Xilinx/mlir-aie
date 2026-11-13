@@ -118,3 +118,14 @@ aie.device(xcvc1902) {
   %t23 = aie.tile(2, 3)
   aie.cascade_flow(%t13, %t23)
 }
+
+// -----
+
+// Pinned logical tiles are held to the same direction rule.
+// CHECK: error{{.*}}'aie.cascade_flow' op source tile must be to the North or West of the destination tile
+
+aie.device(npu1) {
+  %dst = aie.logical_tile<CoreTile>(0, 5)
+  %src = aie.logical_tile<CoreTile>(0, 4)
+  aie.cascade_flow(%src, %dst)
+}
