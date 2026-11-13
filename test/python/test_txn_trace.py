@@ -509,14 +509,14 @@ class TestLoweredTiles:
     def test_memtile_bd_id_and_padding_compare(self, device):
         bd = f"{MEM_ND} {PAD}"
         low = lowered(device, task("mem", "MM2S", 0, bd, 2))
-        high = lowered(device, task("mem", "MM2S", 0, bd, 41))
+        high = lowered(device, task("mem", "MM2S", 0, bd, 22))
         assert compare(low, high) == []
-        unpadded = lowered(device, task("mem", "MM2S", 0, MEM_ND, 41))
+        unpadded = lowered(device, task("mem", "MM2S", 0, MEM_ND, 22))
         assert compare(high, unpadded)
 
     def test_memtile_contiguous_nd_equals_linear(self, device):
         linear = lowered(
-            device, task("mem", "S2MM", 1, "%mbuf : memref<1024xi32> len = 512", 20)
+            device, task("mem", "S2MM", 1, "%mbuf : memref<1024xi32> len = 512", 28)
         )
         nd = lowered(
             device,
@@ -526,7 +526,7 @@ class TestLoweredTiles:
                 1,
                 "%mbuf : memref<1024xi32> len = 512 sizes = [2, 16, 16] "
                 "strides = [256, 16, 1]",
-                20,
+                28,
             ),
         )
         assert compare(linear, nd) == []
@@ -538,7 +538,7 @@ class TestLoweredTiles:
                 1,
                 "%mbuf : memref<1024xi32> len = 512 sizes = [2, 16, 16] "
                 "strides = [256, 32, 1]",
-                20,
+                28,
             ),
         )
         assert compare(linear, strided)
