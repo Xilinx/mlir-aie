@@ -1621,6 +1621,76 @@ getRoutingPipeline(mlir::MLIRContext *ctx) {
   return pm;
 }
 
+// Splits a store of two vectors' concatenation into a store of each vector
+// (looking through bitcasts). The backend folds a conversion whose result is
+// stored whole into a converting store (vst.conv); a concatenation of
+// conversions would be a shuffle and a plain store instead.
+struct SplitConcatStoresPass
+    : public mlir::PassWrapper<SplitConcatStoresPass,
+                               mlir::OperationPass<mlir::ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SplitConcatStoresPass)
+  static mlir::Value stripBitcasts(mlir::Value v) {
+    while (auto bc = v.getDefiningOp<mlir::LLVM::BitcastOp>()) {
+      if (!mlir::isa<mlir::VectorType>(bc.getArg().getType()))
+        break;
+      v = bc.getArg();
+    }
+    return v;
+  }
+  void runOnOperation() override {
+    llvm::SmallVector<mlir::LLVM::StoreOp> stores;
+    getOperation().walk([&](mlir::LLVM::StoreOp st) {
+      if (!st.getVolatile_() &&
+          st.getOrdering() == mlir::LLVM::AtomicOrdering::not_atomic)
+        stores.push_back(st);
+    });
+    for (auto st : stores) {
+      auto sh = stripBitcasts(st.getValue())
+                    .getDefiningOp<mlir::LLVM::ShuffleVectorOp>();
+      if (!sh || sh.getV1().getType() != sh.getV2().getType())
+        continue;
+      auto vt = mlir::dyn_cast<mlir::VectorType>(sh.getV1().getType());
+      if (!vt || vt.getRank() != 1 || vt.isScalable())
+        continue;
+      int64_t n = vt.getNumElements();
+      auto mask = sh.getMask();
+      if (int64_t(mask.size()) != 2 * n)
+        continue;
+      bool concat = true;
+      for (int64_t i = 0; i < 2 * n; ++i)
+        concat &= mask[i] == i;
+      if (!concat)
+        continue;
+      // Each half must occupy whole bytes to be stored on its own.
+      if (!vt.getElementType().isIntOrFloat() ||
+          vt.getElementType().getIntOrFloatBitWidth() % 8)
+        continue;
+      uint64_t elemBytes = vt.getElementType().getIntOrFloatBitWidth() / 8;
+      int64_t half = vt.getNumElements() * elemBytes;
+      mlir::OpBuilder b(st);
+      mlir::Location loc = st.getLoc();
+      // An alignment both halves have: dividing the original (or, without
+      // one, the element size) and the offset of the second half.
+      uint64_t align = st.getAlignment().value_or(elemBytes);
+      uint64_t halfAlign =
+          std::min<uint64_t>(align, uint64_t(half) & -uint64_t(half));
+      mlir::Value lo = stripBitcasts(sh.getV1());
+      mlir::Value hi = stripBitcasts(sh.getV2());
+      if (lo.getType() != hi.getType()) {
+        lo = sh.getV1();
+        hi = sh.getV2();
+      }
+      mlir::LLVM::StoreOp::create(b, loc, lo, st.getAddr(), halfAlign);
+      auto i8 = mlir::IntegerType::get(&getContext(), 8);
+      mlir::Value next = mlir::LLVM::GEPOp::create(
+          b, loc, st.getAddr().getType(), i8, st.getAddr(),
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(half)});
+      mlir::LLVM::StoreOp::create(b, loc, hi, next, halfAlign);
+      st.erase();
+    }
+  }
+};
+
 // Per-core LLVM-lowering pipeline. Destructive: extracts the CoreOp at
 // (col, row) and removes the `aie.device` wrapper. col/row=-1 means
 // "all cores" (unified mode). `optLevel` >= 3 adds
@@ -1682,6 +1752,8 @@ getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
   pm->addPass(mlir::createUBToLLVMConversionPass());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
+  pm->addPass(std::make_unique<SplitConcatStoresPass>());
+  pm->addPass(mlir::createCanonicalizerPass());
   return pm;
 }
 

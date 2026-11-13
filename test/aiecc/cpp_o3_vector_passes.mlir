@@ -51,13 +51,14 @@
 // VEC-IR: vector.store %{{.*}}, %{{.*}}[%c0] : memref<1024xi32, #ptr.generic_space>, vector<64xi32>
 // VEC-IR: ptr.ptr_add %{{.*}}, %c256 :
 
-// With the split, the two halves are loaded separately and one shuffle
-// concatenates the ups results.
+// With the split, the two halves are loaded separately, and each ups result
+// is stored as it is (a store of their concatenation is two stores).
 // VEC-LL-NOT: shufflevector
-// VEC-LL: call {{.*}}@llvm.aie2p.acc32.v32.I512.ups
+// VEC-LL: %[[LO:.*]] = call {{.*}}@llvm.aie2p.acc32.v32.I512.ups
 // VEC-LL-NOT: shufflevector
-// VEC-LL: call {{.*}}@llvm.aie2p.acc32.v32.I512.ups
-// VEC-LL: shufflevector
+// VEC-LL: %[[HI:.*]] = call {{.*}}@llvm.aie2p.acc32.v32.I512.ups
+// VEC-LL: store <32 x i32> %[[LO]]
+// VEC-LL: store <32 x i32> %[[HI]]
 // VEC-LL-NOT: shufflevector
 
 module {
