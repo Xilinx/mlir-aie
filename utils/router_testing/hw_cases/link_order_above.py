@@ -2,15 +2,15 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Packets queued each behind the next on links one arbiter ordered.
+"""Packets that queue behind each other on links one arbiter grants.
 
 Cores (1,2) and (1,3) send id 16 to (2,3) and (3,4); core (2,4) sends two
 packets with id 20 from both its DMA channels to (2,2), (2,3) and (3,4). Id
-20's two sources merge at (2,4) and meet id 16's tree at (2,3), whose arbiter
-grants every packet the links below it in one order, so packets queued each
-behind the next on them make no cycle. The receivers forward the packets they
-get to the host.
-Reduced from router_properties.py npu1 seed 207471827, moved to npu2.
+20's two sources merge at (2,4) and meet id 16's tree at (2,3). That
+switchbox's arbiter grants the links below it to one packet at a time, so
+packets that queue behind each other on those links wait in its one order
+and cannot wait on each other in a cycle. The receivers forward the packets
+they get to the host.
 """
 
 import numpy as np

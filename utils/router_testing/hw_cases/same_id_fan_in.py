@@ -9,8 +9,6 @@ two packets with id 24, one from each DMA channel, to (0,4), the memtile and
 (2,2). The trees come down column 2 on channels of their own and meet only
 at the memtile's S2MM 0. The receivers forward the packets they get to the
 host.
-Reduced from router_mutation.py's id-reuse mutation of router_properties.py
-npu1 seed 207460302, moved to npu2.
 """
 
 import numpy as np

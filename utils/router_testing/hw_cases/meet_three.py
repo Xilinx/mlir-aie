@@ -6,9 +6,8 @@
 
 Cores (0,2) and (0,4) send id 3 and core (0,3) id 12 into the memtile (0,1)
 and core (0,5), which forward the three packets they get to the host. The
-trees meet at (0,2), whose tree leaves by South:3 and North:2: (0,3)'s comes
-in from the north, and (0,4)'s, which the north leaves no other way in for,
-from the east by way of column 1.
+trees meet at (0,2), whose tree leaves by South:0 and North:3: (0,3)'s comes
+in from the north, and (0,4)'s from the east by way of column 1.
 """
 
 import numpy as np

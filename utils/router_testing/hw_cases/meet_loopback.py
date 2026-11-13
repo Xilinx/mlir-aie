@@ -7,9 +7,9 @@
 The memtile (0,1) sends what core (0,2) made as id 18 to its own S2MM 2,
 (0,3) and (0,5); core (0,4) sends its own data as id 28 to the same three.
 Trees with ids of their own into receivers they share wait on each other
-there, so they meet, and the meeting takes id 28 into all three, the port id
-18 comes back into included. Each receiver forwards both packets to the host.
-Reduced from router_properties.py npu1 seed 207461204, moved to npu2.
+there, so they meet, and the meeting takes id 28 into all three, including
+the memtile's S2MM 2, where id 18 loops back in. Each receiver forwards both
+packets to the host.
 """
 
 import numpy as np

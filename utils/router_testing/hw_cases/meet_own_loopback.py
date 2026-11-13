@@ -10,7 +10,6 @@ same two. The trees meet either at (0,1), id 31 coming down and turning back
 up with id 30, or at (0,2), id 30 going up and turning back down with id 31
 into the port it was sent from. The memtile and (0,2) forward the packets
 they get to the host.
-Reduced from router_properties.py npu1 seed 207470648, moved to npu2.
 """
 
 import numpy as np
