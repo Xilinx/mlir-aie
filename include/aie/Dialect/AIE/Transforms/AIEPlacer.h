@@ -266,7 +266,8 @@ public:
     // With `packetSwitched`, an end asking for no packet header gets one.
     PinnedChannels(const AIETargetModel &targetModel, bool packetSwitched)
         : targetModel(&targetModel), packetSwitched(packetSwitched) {}
-    // The end of `fifo` that pins a DMA channel, if it does.
+    // The end `fifo` pins a DMA channel by, if it does: the producer when
+    // `consumer` is null, otherwise that consumer.
     static std::optional<End> endOf(ObjectFifoCreateOp fifo,
                                     std::optional<unsigned> consumer);
     // Why `a` and `b`, pinning one channel of one tile, cannot share it;
@@ -310,8 +311,8 @@ public:
     // The channels at `at` holding two ends that cannot share them, or
     // claimed by two tile ops.
     int clashes(TileID at) const;
-    // The (input, output) channels `ends`, one tile op's, pin that `at`
-    // holds already; nothing when one of them clashes there.
+    // The (input, output) channels of one tile op's `ends` that `at` already
+    // holds; nothing when one of them clashes there.
     std::optional<std::pair<int, int>>
     heldAt(TileID at, llvm::ArrayRef<PinnedChannels::End> ends) const;
     // An end at `at` that `end` cannot share its channel with, if any.
@@ -414,17 +415,17 @@ public:
 
 protected:
   // Whether the control overlay takes an MM2S channel on `tile`.
-  int overlayChannels(TileID tile) const {
+  bool overlayChannels(TileID tile) const {
     return controlOverlay && targetModel->isShimNOCTile(tile.col, tile.row);
   }
-  // The control overlay's MM2S channel on shim tile `at`, where
-  // aie-generate-column-control-overlay puts it: channel 0, or with
-  // `adaptiveOverlay` any one, that no circuit-switched end pins and that
-  // overlayUses of the tile ops at `at` (`tilesHere`) finds no circuit on,
-  // fewest packet-switched ends first. The pinned ends there share it when
-  // ShimTransferSpans finds each apart from the overlay; otherwise allocation
-  // refuses them, and the overlay does not `fit`. `extra` are a tile op's
-  // pinned ends about to join `pins`'.
+  // The control overlay's MM2S channel on shim tile `at`, as
+  // aie-generate-column-control-overlay picks it: channel 0, or, with
+  // `adaptiveOverlay`, whichever channel no circuit-switched end pins and
+  // overlayUses finds no circuit on for the tile ops at `at` (`tilesHere`),
+  // preferring the one with fewest packet-switched ends. Pinned ends on that
+  // channel share it with the overlay when ShimTransferSpans proves each is
+  // apart from it; otherwise allocation refuses those pins, and the overlay
+  // does not `fit`. `extra` is a tile op's pinned ends about to join `pins`.
   struct OverlayFit {
     bool fits = true;
     // The MM2S channels it adds: none on a pinned channel it shares.
@@ -441,7 +442,6 @@ protected:
   // serves (its target's), at the tiles they sit on now.
   ShimMM2SUses overlayUses;
   void collectOverlayUses(DeviceOp device);
-  // The tile ops overlayUses names.
   llvm::SmallVector<mlir::Operation *> overlayTileOps() const;
 
   // flowChannelDemand's `named`, by tile op.
@@ -1253,16 +1253,17 @@ private:
     int64_t stackAlignBytes = 1;
   };
   llvm::DenseMap<mlir::Operation *, CoreTileContents> coreContents;
-  // The objectFIFO buffers on each core tile by size, the changes to them
-  // since the last accepted move, for undo, and their net change in the
-  // current one.
+  // The objectFIFO buffers on each core tile, by size.
   llvm::DenseMap<TileID, std::map<int64_t, int>> coreFifoBuffers;
+  // Charges chargeCoreFifo applied since the last accepted move, for undo.
   llvm::SmallVector<std::tuple<TileID, int64_t, int>> coreFifoLog;
+  // Each core tile's net charge change in the current move.
   llvm::DenseMap<TileID, std::map<int64_t, int>> coreFifoChange;
-  // coreUnplaced of each core tile, the tiles whose ops a move changed, and
-  // what the last move overwrote.
+  // coreUnplaced of each core tile.
   llvm::DenseMap<TileID, int64_t> coreUnplacedAt;
+  // The tiles whose ops the current move changed.
   llvm::DenseSet<TileID> coreDirty;
+  // What the last move overwrote in coreUnplacedAt.
   llvm::SmallVector<std::pair<TileID, int64_t>> coreUndo;
   // The core overflow penalty, kept while no tile it reads changes, and the
   // overflowing tiles it was computed for.
@@ -1291,13 +1292,12 @@ private:
   // allocator lays them out.
   llvm::MapVector<mlir::Operation *, llvm::SmallVector<BufferAllocation>>
       memTileFixed;
-  // The BD ids the mem tile ends at each position are short of, what the
-  // last move overwrote in it, and the shortfall of each set of logical tiles
-  // sharing a position, by its tiles in order. A variable link's depth
-  // changes what ends its participants plan there, so every cache below that
-  // reads a position's ends or buffers also keys on every variable link's
-  // depth, not the tiles' positions alone.
+  // A variable link's depth changes what ends its participants plan there,
+  // so every cache below that reads a position's ends or buffers also keys
+  // on every variable link's depth, not the tiles' positions alone.
+  // The BD ids the mem tile ends at each position are short of.
   llvm::DenseMap<TileID, int64_t> bdShortfallAt;
+  // What the last move overwrote in bdShortfallAt.
   llvm::SmallVector<std::pair<TileID, int64_t>> bdUndo;
   using WalkSets =
       llvm::SmallVector<llvm::SmallVector<std::pair<mlir::Operation *, int>>>;
@@ -1306,15 +1306,17 @@ private:
     WalkSets sets;
     llvm::SmallVector<int64_t> bytes;
   };
+  // The shortfall of each set of logical tiles sharing a position, by its
+  // tiles in order.
   LRUCache<
       std::tuple<TileID, std::vector<mlir::Operation *>, std::vector<int64_t>>,
       BDShortfall>
       bdShortfallOf{1u << 16};
-  /// The bytes the spill search leaves unplaced in one spill component, by its
-  /// tiles' contents and each mem tile's walk set (bdShortfallAt's comment).
+  // The bytes the spill search leaves unplaced in one spill component, by its
+  // tiles' contents and each mem tile's walk set, keyed as bdShortfallOf is.
   LRUCache<std::vector<uintptr_t>, int64_t> unplacedOf{1u << 16};
-  /// The spill penalty, by where every mem tile's holders sit
-  /// (bdShortfallAt's comment).
+  // The spill penalty, by where every mem tile's holders sit, keyed as
+  // bdShortfallOf is.
   LRUCache<std::vector<int64_t>, int> spillPenaltyOf{1u << 14};
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
@@ -1392,7 +1394,9 @@ private:
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
   int computeMemSpilloverPenalty();
   int computeCoreOverflowPenalty() const;
-  /// Charges `count` objectFIFO buffers of `bytes` to the core tile at `pos`.
+  /// No-op off a core tile. Tracks the charge for undo (coreFifoLog) and
+  /// incremental coreUnplaced recomputation (coreFifoChange) alongside the
+  /// running total.
   void chargeCoreFifo(TileID pos, int64_t bytes, int count);
   /// The bytes assign-buffer-addresses' layout (layoutTile) leaves unplaced
   /// on the core tile at `pos`, with `added` objectFIFO buffers more and

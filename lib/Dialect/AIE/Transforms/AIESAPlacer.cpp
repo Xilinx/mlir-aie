@@ -221,7 +221,8 @@ void SAPlacer::buildRouteModel(
       continue;
     staticBufferSizes[tileOp] += pool.getObjectSizeInBytes() * pool.getDepth();
   }
-  // Ends already split take the BD ids they count; other DMA ends a channel.
+  // Ends already split count the BD ids they take; other DMA ends only hold
+  // a channel.
   for (auto endpoint : device.getOps<RouteEndpoint>()) {
     auto tile = dyn_cast_or_null<TileLike>(endpoint.getTile().getDefiningOp());
     if (endpoint.getRouteBundle() != WireBundle::DMA || !tile ||
@@ -566,10 +567,10 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       }
     }
 
-    // DMA contribution: a fifo shared memory does not carry runs through the
-    // DMAs, back to its own tile as well. An end takes a channel of its own
-    // unless it is a stream port, a PLIO, or a merge's or dispatch's
-    // participant whose shared end another took.
+    // DMA contribution: a fifo that shared memory carries does not run
+    // through the DMAs, back to its own tile as well. An end takes a channel
+    // of its own unless it is a stream port, a PLIO, or a merge's or
+    // dispatch's participant whose shared end another took.
     if (!isSharedMem) {
       bool plio = cast<ObjectFifoCreateOp>(fb.fifoOp).getPlio();
       if (consIsShim ? !plio : fb.consumerEnds[ci].has_value())
@@ -981,7 +982,7 @@ int SAPlacer::computeMemSpilloverPenalty() {
   return penalty;
 }
 
-// In position order: room one tile is lent is gone for the next, so the
+// In position order: room that one tile is lent is gone for the next, so the
 // order decides the outcome and must not follow the map's hashing.
 SmallVector<TileID> SAPlacer::overflowingCoreTiles() const {
   SmallVector<TileID> tiles;
@@ -1644,9 +1645,10 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
         break;
       }
   }
-  // Bounded, since tiles meet at positions in more ways than a design has.
-  // Every tile at the position holds what its programs take; a tile with
-  // fixed coordinates is only ever here, so the list keys the position too.
+  // Bounded, since tiles meet at positions in more ways than a design has
+  // positions. Every tile at the position holds what its programs take; a tile
+  // with fixed coordinates is only ever here, so the list keys the position
+  // too.
   SmallVector<Operation *> holders(tiles);
   for (Operation *tile : logicalMemTiles)
     if (auto at = currentPlacement.find(tile);
@@ -1809,7 +1811,7 @@ int SAPlacer::computePairingPenalty() const {
 void SAPlacer::generateAllocates() {
   DenseSet<size_t> emittedFifoIndices;
 
-  // Case A: the moves planCoreFit plans.
+  // Case A: the moves that planCoreFit plans.
   DenseMap<TileID, std::map<int64_t, int>> lent;
   for (TileID tilePos : overflowingCoreTiles()) {
     SmallVector<std::pair<size_t, TileID>> moves;
