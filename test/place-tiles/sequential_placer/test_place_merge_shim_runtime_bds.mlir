@@ -12,10 +12,11 @@
 // @in_a holds 12 at once and @in_b 8. The placer keeps them on separate shims.
 // With a single column there is no other shim: the merge goes ahead and
 // aie-assign-runtime-sequence-bd-ids reports the overflow, as before.
-// @aligned_head: @in_a's 13 tasks and @in_b's one fit 16 ids by count, but
-// @in_b's start takes its repeat count from a parameter, so its head id must
-// be a multiple of 4, and all four are @in_a's. The placer hands ids out as
-// the BD-id pass does and keeps the shims apart.
+// @aligned_head: @in_a's three split tasks and one whole-object task take 13
+// ids, and with @in_b's one they fit 16 by count, but @in_b's start takes its
+// repeat count from a parameter, so its head id must be a multiple of 4, and
+// all four are @in_a's. The placer hands ids out as the BD-id pass does and
+// keeps the shims apart.
 
 // RUN: aie-opt --split-input-file --aie-place-tiles %s | FileCheck %s
 // RUN: not aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s | FileCheck %s --check-prefix=LOWER
@@ -154,10 +155,10 @@ module @aligned_head {
     %core_b = aie.logical_tile<CoreTile>(0, 3)
     %shim_a = aie.logical_tile<ShimNOCTile>(?, ?)
     %shim_b = aie.logical_tile<ShimNOCTile>(?, ?)
-    aie.objectfifo @in_a(%shim_a, {%core_a}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @in_a(%shim_a, {%core_a}, 2 : i32) : !aie.objectfifo<memref<4096xbf16>>
     aie.objectfifo @in_b(%shim_b, {%core_b}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.core(%core_a) {
-      %0 = aie.objectfifo.acquire @in_a(Consume, 1) : memref<64xi32>
+      %0 = aie.objectfifo.acquire @in_a(Consume, 1) : memref<4096xbf16>
       aie.objectfifo.release @in_a(Consume, 1)
       aie.end
     }
@@ -166,72 +167,27 @@ module @aligned_head {
       aie.objectfifo.release @in_b(Consume, 1)
       aie.end
     }
-    aie.runtime_sequence(%a: memref<1024xi32>, %b: memref<64xi32>) {
+    aie.runtime_sequence(%a: memref<16777216xbf16>, %b: memref<64xi32>) {
       %ta0 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 0 len = 64)
+        aie.dma_bd(%a : memref<16777216xbf16> offset = 0 len = 524288 sizes = [4, 128, 64, 64] strides = [4194304, 64, 8192, 1])
         aie.end
-      } {issue_token = true}
+      } {issue_token = true, repeat_count = 3 : i32}
       aiex.dma_start_task(%ta0)
       %ta1 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 64 len = 64)
+        aie.dma_bd(%a : memref<16777216xbf16> offset = 64 len = 524288 sizes = [4, 128, 64, 64] strides = [4194304, 64, 8192, 1])
         aie.end
-      } {issue_token = true}
+      } {issue_token = true, repeat_count = 3 : i32}
       aiex.dma_start_task(%ta1)
       %ta2 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 128 len = 64)
+        aie.dma_bd(%a : memref<16777216xbf16> offset = 128 len = 524288 sizes = [4, 128, 64, 64] strides = [4194304, 64, 8192, 1])
         aie.end
-      } {issue_token = true}
+      } {issue_token = true, repeat_count = 3 : i32}
       aiex.dma_start_task(%ta2)
       %ta3 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 192 len = 64)
+        aie.dma_bd(%a : memref<16777216xbf16> offset = 0 len = 4096)
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%ta3)
-      %ta4 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 256 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta4)
-      %ta5 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 320 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta5)
-      %ta6 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 384 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta6)
-      %ta7 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 448 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta7)
-      %ta8 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 512 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta8)
-      %ta9 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 576 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta9)
-      %ta10 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 640 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta10)
-      %ta11 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 704 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta11)
-      %ta12 = aiex.dma_configure_task_for @in_a {
-        aie.dma_bd(%a : memref<1024xi32> offset = 768 len = 64)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ta12)
       %tb = aiex.dma_configure_task_for @in_b {
         aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
         aie.end
@@ -241,15 +197,6 @@ module @aligned_head {
       aiex.dma_await_task(%ta1)
       aiex.dma_await_task(%ta2)
       aiex.dma_await_task(%ta3)
-      aiex.dma_await_task(%ta4)
-      aiex.dma_await_task(%ta5)
-      aiex.dma_await_task(%ta6)
-      aiex.dma_await_task(%ta7)
-      aiex.dma_await_task(%ta8)
-      aiex.dma_await_task(%ta9)
-      aiex.dma_await_task(%ta10)
-      aiex.dma_await_task(%ta11)
-      aiex.dma_await_task(%ta12)
       aiex.dma_await_task(%tb)
     }
   }
