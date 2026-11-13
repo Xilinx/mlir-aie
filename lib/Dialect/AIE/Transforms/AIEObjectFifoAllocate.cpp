@@ -108,6 +108,8 @@ struct AIEObjectFifoAllocatePass
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
   Operation *lockAccessFailure = nullptr;
+  /// The pool whose lock group the packing search was stopped on.
+  ObjectFifoPoolOp lockSearchStoppedOn;
   /// See LockPlan::groupCounts for what this changes.
   bool semaphoreLocks = false;
   bool walkSearchStopped = false;
@@ -486,6 +488,7 @@ struct AIEObjectFifoAllocatePass
         ranked.push_back(indexOf(tile->getResult(0)));
     SmallVector<LockPlan::Group> groups;
     SmallVector<Operation *> groupOps;
+    SmallVector<ObjectFifoPoolOp> groupPools;
     auto add = [&](ObjectFifoPoolOp pool, Operation *group, int count) {
       SmallVector<unsigned> buffers;
       for (Value tile : bufferPlacements[pool])
@@ -504,6 +507,7 @@ struct AIEObjectFifoAllocatePass
           LockPlan::group(count, indexOf(lockPlacement(pool, group)),
                           localPools.contains(pool), buffers, users, ranked));
       groupOps.push_back(group);
+      groupPools.push_back(pool);
     };
     for (auto pool : pools) {
       if (!poolLocks->needsLocks(pool))
@@ -519,6 +523,7 @@ struct AIEObjectFifoAllocatePass
       Operation *group = groupOps[*assignment.failed];
       const LockPlan::Placed &missed = assignment.failure;
       lockSearchStopped = assignment.stopped;
+      lockSearchStoppedOn = groupPools[*assignment.failed];
       lockFailure = missed.full ? tileValues[*missed.full] : Value();
       if (!missed.reachable && !lockUsers[group].empty())
         lockAccessFailure = lockUsers[group].front();
@@ -2783,11 +2788,18 @@ struct AIEObjectFifoAllocatePass
           llvm::interleaveComma(walked, note);
         }
       } else if (failed(planLocks(pools))) {
-        if (lockSearchStopped)
-          device.emitOpError("could not decide whether the locks fit: the "
-                             "lock packing search stopped after ")
+        if (lockSearchStopped) {
+          InFlightDiagnostic error =
+              lockSearchStoppedOn.emitOpError(
+                  "could not decide whether the locks fit: the lock packing "
+                  "search stopped after ")
               << LockPlan::kPackBudget << " steps";
-        else if (lockAccessFailure)
+          if (std::optional<StringRef> fifo = lockSearchStoppedOn.getFifoName())
+            error << " for objectFIFO "
+                  << SymbolRefAttr::get(
+                         device.getSymNameAttr(),
+                         {FlatSymbolRefAttr::get(device.getContext(), *fifo)});
+        } else if (lockAccessFailure)
           lockAccessFailure->emitOpError("cannot access pool locks");
         else
           lockFailure.getDefiningOp()->emitOpError(
