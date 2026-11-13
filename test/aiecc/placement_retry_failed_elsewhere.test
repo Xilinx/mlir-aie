@@ -17,7 +17,8 @@
 // CHECK: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // CHECK-NOT: could not place buffers
 // CHECK-NOT: no placement
-// CHECK: cannot open {{.*}}missing_kernel.o
+// lld says "unable to find" for an INPUT() path not rooted at "/" (Windows).
+// CHECK: {{(cannot open|unable to find)}} {{.*}}missing_kernel.o
 // CHECK: aiecc: placement 2 (--sa-walked-fifos=main:b_in,main:a_in) stands
 // CHECK: aiecc: edge 'probeElfs_{0}.elf' (key '{{.*}}') failed
 // REPEAT: "--sa-walked-fifos=main:b_in,main:a_in"
