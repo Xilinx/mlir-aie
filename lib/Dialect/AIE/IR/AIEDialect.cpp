@@ -3604,9 +3604,8 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
       continue;
     llvm::sort(sources);
     llvm::sort(dests);
-    int idBits =
-        llvm::Log2_32_Ceil(device.getTargetModel().getMaxPacketId() + 1);
-    int mask = packetFlow.getMask().value_or((1 << idBits) - 1);
+    int mask = packetFlow.getMask().value_or(
+        device.getTargetModel().getPacketIdMask());
     auto [it, inserted] = packetFlowSeen.try_emplace(
         {packetFlow.IDInt(), mask, std::move(sources), std::move(dests)},
         packetFlow);
