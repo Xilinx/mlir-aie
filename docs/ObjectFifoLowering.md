@@ -472,6 +472,16 @@ once the shim has read its data, up to about 1580 words before they have
 entered the stream (measured on npu2), so awaiting it proves nothing about a
 later transfer queued behind it.
 
+When a sequence returns, whether an `aiex.run` callee or a whole dispatch, its
+sending ends are taken to be done by those contracts, not by analysis. A later
+sequence's end that takes turns on the channel queues behind any words the
+earlier sequence's tasks left in the shim, so the earlier sequence's receivers
+must take those words without anything a later sequence issues. Awaiting a
+sequence's fills before it returns is what makes reusing their buffer
+descriptor ids safe: a task freed without an await may still be running, and
+reprogramming its ids changes it underneath, which
+`--aie-assign-runtime-sequence-bd-ids` warns about.
+
 A receiving end's turns also depend on the array, not just on the host: a shim
 S2MM channel writes whatever arrives into the task it is running, so if the
 array sent a receiving end's words during another end's turn, they would land
