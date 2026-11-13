@@ -21,27 +21,32 @@
 
 namespace xilinx::AIE {
 
-/// Shim endpoint lifetimes, including calls to self-contained runtime
-/// sequences. MM2S transfers conservatively remain live until their sequence
-/// returns. A receiving channel writes whatever arrives into the task it runs,
-/// so a receiving end shares only by explicit permission or where the array
-/// cannot send its words outside its turn: its senders wait on a gate the host
-/// fills only after the end before it is awaited, and each sequence drains all
-/// that gate lets them send.
-// The shim MM2S channels the ends of `device` name, by tile op, as
-// aie-generate-column-control-overlay weighs them for its overlay's channel:
-// those a circuit-switched route end, flow, allocation or shim mux holds, and
-// on each the packet-switched route ends, by name, and packet flows. A route
-// asking for no packet header is packet switched with `packetSwitched`.
+/// The shim MM2S channels `device`'s overlay weighs, for
+/// aie-generate-column-control-overlay. A route asking for no packet header
+/// counts as packet switched with `packetSwitched`. Defined in
+/// AIEGenerateColumnControlOverlay.cpp.
 struct ShimMM2SUses {
+  /// Channels a circuit-switched route end, flow, allocation or shim mux
+  /// holds, per shim tile op.
   llvm::DenseMap<mlir::Operation *, llvm::SmallSet<int, 2>> circuits;
+  /// Packet-switched route ends, by name, per (tile, channel).
   llvm::DenseMap<std::pair<mlir::Operation *, int>,
                  llvm::SmallVector<mlir::StringAttr>>
       packetEnds;
+  /// Packet flows per (tile, channel).
   llvm::DenseMap<std::pair<mlir::Operation *, int>, unsigned> packetFlows;
 };
 ShimMM2SUses shimMM2SUses(DeviceOp device, bool packetSwitched);
 
+/// Shim endpoint lifetimes, including calls to self-contained runtime
+/// sequences. MM2S transfers conservatively remain live until their sequence
+/// returns; a callee's return and a dispatch boundary are themselves taken as
+/// the end of its sends, by the aiex.run and hardware-context contracts, not
+/// by anything this analysis computes. A receiving channel writes whatever
+/// arrives into the task it runs, so a receiving end shares only by explicit
+/// permission or where the array cannot send its words outside its turn: its
+/// senders wait on a gate the host fills only after the end before it is
+/// awaited, and each sequence drains all that gate lets them send.
 class ShimTransferSpans {
 public:
   /// A shim end a runtime sequence transfers through.
@@ -139,10 +144,10 @@ public:
     llvm::SmallVector<llvm::SmallVector<unsigned>> groups;
   };
 
-  /// Plans `ends` (keys as apart() takes them), named `names` as the
-  /// channels in `shared` list them: each channel in order takes, in order,
-  /// the ends its list names that are apart from those it took before; the
-  /// rest group as groups() groups them. Indices are into `ends`.
+  /// Plans `ends` (keyed as apart() takes keys); `names[i]` is how `shared`'s
+  /// lists name `ends[i]`. Each channel in `shared`, in order, takes the ends
+  /// its list names that are apart from those it already took; the rest
+  /// group as groups() groups them. Indices are into `ends`.
   Plan plan(llvm::ArrayRef<mlir::StringAttr> ends,
             llvm::ArrayRef<mlir::StringAttr> names,
             llvm::ArrayRef<SharedChannel> shared) const;

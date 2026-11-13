@@ -283,7 +283,7 @@ public:
 
   /// Places `buffers` in order on top of what the tiles hold. On success each
   /// buffer's tile is in `chosen`; otherwise `failed` is the buffer that fit
-  /// nowhere with the fewest buffers left after it, and `unplacedBytes` the
+  /// nowhere with the most buffers left after it, and `unplacedBytes` the
   /// bytes of it and those.
   /// Buffers whose tiles reach no tile in common place independently, so
   /// each such component is searched on its own, with its own kRetries.

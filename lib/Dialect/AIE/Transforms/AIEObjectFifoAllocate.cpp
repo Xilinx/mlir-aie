@@ -1588,8 +1588,6 @@ struct AIEObjectFifoAllocatePass
     return walkedAny;
   }
 
-  /// The other end of the one route naming `endpoint`, when that route is a
-  /// circuit between two objectFIFO DMA endpoints.
   /// Whether, in every runtime sequence, the host issues each transfer
   /// through `fifo` before any wait: a turn chain waiting on that fifo's
   /// objects then waits on nothing the host does after the array has moved.
@@ -1641,6 +1639,8 @@ struct AIEObjectFifoAllocatePass
     return true;
   }
 
+  /// The other end of the one route naming `endpoint`, when that route is a
+  /// circuit between two objectFIFO DMA endpoints.
   ObjectFifoDmaEndpointOp circuitPeer(ObjectFifoDmaEndpointOp endpoint) {
     ObjectFifoDmaEndpointOp peer;
     StringRef name = endpoint.getSymName();
