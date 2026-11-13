@@ -1392,8 +1392,12 @@ private:
                       llvm::SmallVector<int64_t> *walkBytes = nullptr);
   /// The mem tiles at `position`, in memTileEnds order.
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
-  int computeMemSpilloverPenalty();
-  int computeCoreOverflowPenalty() const;
+  // Each penalty term below with a `charged` argument also appends to it the
+  // positions of the tiles it charges, for finalizePlacement's notes.
+  int computeMemSpilloverPenalty(
+      llvm::SmallVectorImpl<TileID> *charged = nullptr);
+  int computeCoreOverflowPenalty(
+      llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
   /// No-op off a core tile. Tracks the charge for undo (coreFifoLog) and
   /// incremental coreUnplaced recomputation (coreFifoChange) alongside the
   /// running total.
@@ -1418,10 +1422,12 @@ private:
   llvm::DenseSet<TileID> coreOverflowReads() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();
-  int computeTileDMAPenalty(TileID tilePos) const;
+  /// With `bdIds`, sets it to the part a shim tile's runtime BD ids take.
+  int computeTileDMAPenalty(TileID tilePos, int *bdIds = nullptr) const;
   /// Fills `bdShortfallAt` and returns the penalty it gives.
   int computeBDCountPenalty();
-  int computeDelegatePenalty() const;
+  int computeDelegatePenalty(
+      llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
   /// Plans the pools of the links `depths` names for the depths it gives
   /// them, and their participants' ends; a link already at its given depth
   /// keeps its plans. Every other variable link's tiles must not have moved
@@ -1429,7 +1435,9 @@ private:
   void replanLinks(llvm::ArrayRef<std::pair<unsigned, int64_t>> depths);
   /// Charges each lock LockPlan cannot place at the current positions (see
   /// lockGroups). Sets `stopped`, when given, to whether its search stopped.
-  int computeLockPenalty(bool *stopped = nullptr) const;
+  int computeLockPenalty(
+      bool *stopped = nullptr,
+      llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
   /// The lock groups aie-objectfifo-allocate gives the pools the split makes
   /// where the tiles sit now: how many locks each takes
   /// (LockPlan::groupCounts) and the tiles using them, a compute tile's DMA
@@ -1439,12 +1447,17 @@ private:
   lockGroups() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
-  int computeAdjacencyPenalty(const Adjacency &adj,
-                              llvm::ArrayRef<std::pair<int, int>> validOffsets,
-                              int weight) const;
+  int computeAdjacencyPenalty(
+      const Adjacency &adj, llvm::ArrayRef<std::pair<int, int>> validOffsets,
+      int weight, llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
   /// Cascade neighbours placed apart, and shared-memory ends placed on
   /// tiles sharing no memory module, by how far.
-  int computePairingPenalty() const;
+  int computePairingPenalty(
+      llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
+  /// Attaches to `diag` one note per nonzero penalty term: its name, its
+  /// penalty and the positions it charges, anchored on a tile op at the
+  /// first.
+  void explainPenalties(mlir::InFlightDiagnostic &diag);
   /// Core tiles over local memory, in position order.
   llvm::SmallVector<TileID> overflowingCoreTiles() const;
   void generateAllocates();

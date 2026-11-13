@@ -720,7 +720,7 @@ int SAPlacer::computeMemoryPressure() const {
 // Otherwise it moves a link's participant that does not own the link's pool by
 // DMA, and rejects any other allocate. A fifo that shares a link's pool must
 // fit it, or ObjectFifoAllocateOp's verifier rejects the placement.
-int SAPlacer::computeDelegatePenalty() const {
+int SAPlacer::computeDelegatePenalty(SmallVectorImpl<TileID> *charged) const {
   int penalty = 0;
   for (const auto &fb : fifoBuffers) {
     std::optional<TileID> delegatePos = positionOf(fb.delegate);
@@ -737,6 +737,8 @@ int SAPlacer::computeDelegatePenalty() const {
       continue;
     if (home) {
       penalty += config.delegateWeightPerDist;
+      if (charged)
+        charged->append({*delegatePos, *prodPos, *consPos});
       continue;
     }
     for (std::optional<TileID> held : {delegatePos, linkPos}) {
@@ -748,6 +750,8 @@ int SAPlacer::computeDelegatePenalty() const {
         int dist =
             std::abs(held->col - end.col) + std::abs(held->row - end.row);
         penalty += config.delegateWeightPerDist * std::max(dist - 1, 1);
+        if (charged)
+          charged->append({*held, end});
       }
     }
   }
@@ -756,7 +760,7 @@ int SAPlacer::computeDelegatePenalty() const {
 
 // Charges by the KB what MemTileSpillSearch, in the allocator's attempt order,
 // cannot place.
-int SAPlacer::computeMemSpilloverPenalty() {
+int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
   std::vector<int64_t> key;
   auto keyPosition = [&](Operation *op) {
     std::optional<TileID> at = positionOf(op);
@@ -771,7 +775,7 @@ int SAPlacer::computeMemSpilloverPenalty() {
     keyPosition(tile);
   for (const VariableLink &variable : variableLinks)
     key.push_back(variable.depth);
-  if (const int *known = spillPenaltyOf.find(key))
+  if (const int *known = charged ? nullptr : spillPenaltyOf.find(key))
     return *known;
 
   SmallVector<MemTileSpillSearch::Tile> tiles;
@@ -966,6 +970,9 @@ int SAPlacer::computeMemSpilloverPenalty() {
                          ? nullptr
                          : &positions[member].sets[set];
     unplaced += last;
+    if (charged && last)
+      for (unsigned member : members)
+        charged->push_back(positions[member].at);
   }
   if (unplaced && !anyWalked) {
     SmallVector<unsigned> all =
@@ -978,7 +985,8 @@ int SAPlacer::computeMemSpilloverPenalty() {
       unplaced = 0;
   }
   int penalty = ((unplaced + 1023) / 1024) * config.memPenaltyPerKB;
-  spillPenaltyOf.insert(key, penalty);
+  if (!charged)
+    spillPenaltyOf.insert(key, penalty);
   return penalty;
 }
 
@@ -1219,15 +1227,19 @@ SAPlacer::planCoreFit(TileID pos,
   return coreUnplaced(pos, lent.lookup(pos), removed);
 }
 
-int SAPlacer::computeCoreOverflowPenalty() const {
+int SAPlacer::computeCoreOverflowPenalty(
+    SmallVectorImpl<TileID> *charged) const {
   int penalty = 0;
   // Room a neighbour gives one overflowing tile is gone for the next, as
   // generateAllocates hands it out.
   DenseMap<TileID, std::map<int64_t, int>> lent;
   for (TileID tilePos : overflowingCoreTiles()) {
     int64_t unresolved = planCoreFit(tilePos, lent, nullptr);
-    if (unresolved > 0)
-      penalty += ((unresolved + 1023) / 1024) * config.memPenaltyPerKB;
+    if (unresolved <= 0)
+      continue;
+    penalty += ((unresolved + 1023) / 1024) * config.memPenaltyPerKB;
+    if (charged)
+      charged->push_back(tilePos);
   }
   return penalty;
 }
@@ -1319,7 +1331,8 @@ SAPlacer::lockGroups() const {
   return groups;
 }
 
-int SAPlacer::computeLockPenalty(bool *stopped) const {
+int SAPlacer::computeLockPenalty(bool *stopped,
+                                 SmallVectorImpl<TileID> *charged) const {
   if (stopped)
     *stopped = false;
   // Each group taking its locks at home always fits there.
@@ -1359,7 +1372,7 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
   // occupied positions a group may take: those its first user reaches, or
   // every one for a group without users. Placed tiles' locks never move.
   // Recording stops after a long run of misses, where moves seldom revisit.
-  bool recording = lockVerdictMissRun < kLockVerdictMissRun;
+  bool recording = !charged && lockVerdictMissRun < kLockVerdictMissRun;
   std::vector<int64_t> key;
   auto known = lockVerdicts.end();
   if (recording) {
@@ -1416,11 +1429,17 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
   int penalty = 0;
   for (auto &[tile, locks] : fixedLocks)
     if (std::optional<TileID> at = positionOf(tile))
-      if (!plan.reserve(tileAt(*at), locks))
+      if (!plan.reserve(tileAt(*at), locks)) {
         penalty += locks * config.dmaPenaltyPerChannel;
+        if (charged)
+          charged->push_back(*at);
+      }
   for (auto &[at, locks] : placedLocks)
-    if (!plan.reserve(tileAt(at), locks))
+    if (!plan.reserve(tileAt(at), locks)) {
       penalty += locks * config.dmaPenaltyPerChannel;
+      if (charged)
+        charged->push_back(at);
+    }
   SmallVector<unsigned> ranked;
   for (TileID at : positions)
     ranked.push_back(tileAt(at));
@@ -1466,9 +1485,15 @@ int SAPlacer::computeLockPenalty(bool *stopped) const {
       plan.assign(planned, &lockMemo, /*callerOrder=*/false);
   if (stopped)
     *stopped = assignment.stopped;
-  for (auto [group, tile] : llvm::zip(planned, assignment.tiles))
-    if (!tile)
-      penalty += group.count * config.dmaPenaltyPerChannel;
+  for (auto [group, tile, grouped] :
+       llvm::zip(planned, assignment.tiles, groups)) {
+    if (tile)
+      continue;
+    penalty += group.count * config.dmaPenaltyPerChannel;
+    if (charged)
+      for (auto [at, localOnly] : grouped.second)
+        charged->push_back(at);
+  }
 #ifdef EXPENSIVE_CHECKS
   assert((known == lockVerdicts.end() ||
           known->second == std::pair(penalty, assignment.stopped)) &&
@@ -1553,7 +1578,7 @@ void SAPlacer::replanLinks(ArrayRef<std::pair<unsigned, int64_t>> depths) {
   }
 }
 
-int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
+int SAPlacer::computeTileDMAPenalty(TileID tilePos, int *bdIds) const {
   auto usage = currentDMAUsage.lookup(tilePos);
   auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
   SmallVector<Operation *> tilesHere;
@@ -1594,8 +1619,11 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
       if (auto at = currentPlacement.find(lt);
           at != currentPlacement.end() && at->second == tilePos)
         onTile.push_back(lt);
-    penalty +=
+    int ids =
         runtimeBdIds.shortfall(onTile, tilePos) * config.dmaPenaltyPerChannel;
+    penalty += ids;
+    if (bdIds)
+      *bdIds = ids;
   }
   return penalty;
 }
@@ -1762,7 +1790,7 @@ int SAPlacer::computeBDCountPenalty() {
 
 int SAPlacer::computeAdjacencyPenalty(
     const Adjacency &adj, ArrayRef<std::pair<int, int>> validOffsets,
-    int weight) const {
+    int weight, SmallVectorImpl<TileID> *charged) const {
   int penalty = 0;
   for (auto [first, second] : adj.edges) {
     auto firstIt = currentPlacement.find(first.getOperation());
@@ -1780,16 +1808,19 @@ int SAPlacer::computeAdjacencyPenalty(
                  std::abs(secondPos.row - (firstPos.row + dr));
       minDist = std::min(minDist, dist);
     }
-    if (minDist > 0)
-      penalty += weight * minDist;
+    if (minDist == 0)
+      continue;
+    penalty += weight * minDist;
+    if (charged)
+      charged->append({firstPos, secondPos});
   }
   return penalty;
 }
 
-int SAPlacer::computePairingPenalty() const {
+int SAPlacer::computePairingPenalty(SmallVectorImpl<TileID> *charged) const {
   int penalty =
       computeAdjacencyPenalty(cascadeAdjacency, targetModel->getCascadeSteps(),
-                              config.cascadeWeightPerDist);
+                              config.cascadeWeightPerDist, charged);
   for (auto [first, second] : sharedMemAdjacency.edges) {
     auto firstIt = currentPlacement.find(first.getOperation());
     auto secondIt = currentPlacement.find(second.getOperation());
@@ -1801,6 +1832,8 @@ int SAPlacer::computePairingPenalty() const {
       continue;
     int distance = std::abs(a.col - b.col) + std::abs(a.row - b.row);
     penalty += config.sharedMemWeightPerDist * std::max(1, distance - 1);
+    if (charged)
+      charged->append({a, b});
   }
   return penalty;
 }
@@ -3148,18 +3181,82 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
   int finalPairing = computePairingPenalty();
   int finalDelegate = computeDelegatePenalty();
   if (finalPairing != 0 || finalDelegate != 0) {
-    device.emitError("SA placer failed to find a legal placement (cascade and "
-                     "shared memory penalty=")
+    InFlightDiagnostic diag =
+        device.emitError("SA placer failed to find a legal placement (cascade "
+                         "and shared memory penalty=")
         << finalPairing << ", delegate penalty=" << finalDelegate
         << "); try increasing --sa-effort";
+    explainPenalties(diag);
     return failure();
   }
-  if (int estimated = getResourcePenalty() - finalDelegate; estimated != 0)
-    device.emitWarning("SA placer's resource estimate is over capacity "
-                       "(penalty=")
+  if (int estimated = getResourcePenalty() - finalDelegate; estimated != 0) {
+    InFlightDiagnostic diag =
+        device.emitWarning("SA placer's resource estimate is over capacity "
+                           "(penalty=")
         << estimated
         << "); later passes check exactly, and increasing --sa-effort may help";
+    explainPenalties(diag);
+  }
 
   result = currentPlacement;
   return success();
+}
+
+void SAPlacer::explainPenalties(InFlightDiagnostic &diag) {
+  SmallVector<TileID> spill, core, locks, channels, bds, delegates, pairing;
+  int spillPenalty = computeMemSpilloverPenalty(&spill);
+  int corePenalty = computeCoreOverflowPenalty(&core);
+  int lockPenalty = computeLockPenalty(nullptr, &locks);
+  int channelPenalty = 0;
+  int bdPenalty = computeBDCountPenalty();
+  for (auto &[at, ids] : bdShortfallAt)
+    if (ids)
+      bds.push_back(at);
+  for (auto &[at, _] : currentDMAUsage) {
+    int ids = 0;
+    int penalty = computeTileDMAPenalty(at, &ids);
+    if (penalty != ids) {
+      channelPenalty += penalty - ids;
+      channels.push_back(at);
+    }
+    if (ids) {
+      bdPenalty += ids;
+      bds.push_back(at);
+    }
+  }
+  int delegatePenalty = computeDelegatePenalty(&delegates);
+  int pairingPenalty = computePairingPenalty(&pairing);
+
+  // The tuner reads these names.
+  std::tuple<StringRef, int, SmallVector<TileID> &> terms[] = {
+      {"memory spillover", spillPenalty, spill},
+      {"core overflow", corePenalty, core},
+      {"locks", lockPenalty, locks},
+      {"DMA channels", channelPenalty, channels},
+      {"BD ids", bdPenalty, bds},
+      {"delegates", delegatePenalty, delegates},
+      {"cascade and shared memory pairing", pairingPenalty, pairing}};
+  for (auto &[term, penalty, tiles] : terms) {
+    if (!penalty)
+      continue;
+    llvm::sort(tiles);
+    tiles.erase(llvm::unique(tiles), tiles.end());
+    Operation *anchor = nullptr;
+    auto consider = [&](Operation *op) {
+      if (!anchor || collected.rank.lookup(op) < collected.rank.lookup(anchor))
+        anchor = op;
+    };
+    if (!tiles.empty()) {
+      for (auto &[op, at] : currentPlacement)
+        if (at == tiles.front())
+          consider(op);
+      for (Operation *op : physicalTiles.lookup(tiles.front()))
+        consider(op);
+    }
+    Diagnostic &note =
+        anchor ? diag.attachNote(anchor->getLoc()) : diag.attachNote();
+    note << term << " penalty=" << penalty;
+    for (auto [i, at] : llvm::enumerate(tiles))
+      note << (i ? ", " : " on ") << "(" << at.col << ", " << at.row << ")";
+  }
 }
