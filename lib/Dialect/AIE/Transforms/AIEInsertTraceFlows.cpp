@@ -770,13 +770,6 @@ struct AIEInsertTraceFlowsPass
         }
       }
 
-      // Compute timer control address
-      std::optional<uint32_t> timerCtrlAddr =
-          computeTimerCtrlAddress(info.tile, targetModel, isMemTrace);
-      if (!timerCtrlAddr)
-        return info.traceOp.emitError(
-            "Failed to lookup Timer_Control register");
-
       std::string broadcastEventName;
       if (info.tile.isShimTile()) {
         broadcastEventName =
@@ -810,7 +803,8 @@ struct AIEInsertTraceFlowsPass
 
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(),
-          AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *timerCtrlAddr),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                  timerReg->offset),
           AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
                                   *timerCtrlValue),
           nullptr, builder.getI32IntegerAttr(col),
@@ -892,8 +886,7 @@ struct AIEInsertTraceFlowsPass
             targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.assignedId());
         if (!ctrlIdValue)
           return shimInfo.shimTile.emitError(
-              "Controller ID does not fit in the "
-              "Controller_ID field");
+              "Controller ID does not fit in the Controller_ID field");
         auto ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);
         if (!ctrlIdMask)
           return shimInfo.shimTile.emitError(
@@ -926,13 +919,11 @@ struct AIEInsertTraceFlowsPass
             targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
         if (!tokenValue)
           return shimInfo.shimTile.emitError(
-              "Enable_Token_Issue does not fit in the "
-              "field of " +
+              "Enable_Token_Issue does not fit in the field of " +
               llvm::Twine(taskQueueRegName));
         if (!bdIdValue)
           return shimInfo.shimTile.emitError(
-              "BD ID does not fit in the Start_BD_ID "
-              "field of " +
+              "BD ID does not fit in the Start_BD_ID field of " +
               llvm::Twine(taskQueueRegName));
         uint32_t queueValue = *tokenValue | *bdIdValue;
         xilinx::AIEX::NpuWrite32Op::create(
@@ -953,11 +944,6 @@ struct AIEInsertTraceFlowsPass
           return shimInfo.shimTile.emitError(
               "Failed to lookup USER_EVENT_1 event");
 
-        std::optional<uint32_t> shimTimerCtrlAddr =
-            computeTimerCtrlAddress(shimInfo.shimTile, targetModel, false);
-        if (!shimTimerCtrlAddr)
-          return shimInfo.shimTile.emitError(
-              "Failed to lookup shim Timer_Control");
         const RegisterInfo *shimTimerReg = targetModel.lookupRegister(
             "Timer_Control", shimInfo.shimTile.getTileID(), false);
         if (!shimTimerReg)
@@ -977,7 +963,7 @@ struct AIEInsertTraceFlowsPass
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
-                                    *shimTimerCtrlAddr),
+                                    shimTimerReg->offset),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
                                     *shimTimerCtrlValue),
             nullptr, builder.getI32IntegerAttr(shimCol),
@@ -1095,18 +1081,6 @@ private:
       regName = (channel == 0) ? "DMA_MM2S_0_Ctrl" : "DMA_MM2S_1_Ctrl";
     }
     const RegisterInfo *reg = tm.lookupRegister(regName, shimTile.getTileID());
-    if (!reg)
-      return std::nullopt;
-    return reg->offset;
-  }
-
-  // Compute timer control address based on tile type
-  std::optional<uint32_t> computeTimerCtrlAddress(TileOp tile,
-                                                  const AIETargetModel &tm,
-                                                  bool isMemTrace) {
-    // Use register database to lookup Timer_Control for the appropriate module
-    const RegisterInfo *reg =
-        tm.lookupRegister("Timer_Control", tile.getTileID(), isMemTrace);
     if (!reg)
       return std::nullopt;
     return reg->offset;
