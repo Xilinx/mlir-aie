@@ -2090,7 +2090,14 @@ Placer::provenShimGates(DeviceOp device) {
       usedCores.insert({tile.getCol(), tile.getRow()});
   DenseMap<AIETileType, unsigned> turn;
   OpBuilder builder(clone.getBody(), clone.getBody()->begin());
-  for (auto lt : llvm::to_vector(clone.getOps<LogicalTileOp>())) {
+  // Pinned tiles first, so a tile free to go anywhere never takes the one a
+  // pin needs; then in collectOperations' structural order.
+  SmallVector<LogicalTileOp> logicalTiles =
+      collectOperations(clone).logicalTiles;
+  llvm::stable_sort(logicalTiles, [](LogicalTileOp a, LogicalTileOp b) {
+    return !a.tryGetCol() + !a.tryGetRow() < !b.tryGetCol() + !b.tryGetRow();
+  });
+  for (LogicalTileOp lt : logicalTiles) {
     SmallVector<TileID> fits;
     for (int col = 0; col < target.columns(); ++col)
       for (int row = 0; row < target.rows(); ++row)
