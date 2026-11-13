@@ -41,33 +41,3 @@ module @overlay_one_column {
     }
   }
 }
-
-// -----
-
-// Without a control packet the overlay shares a channel with an input.
-// CHECK-LABEL: module @overlay_full_shim
-// CHECK: aie.tile(0, 0)
-module @overlay_full_shim {
-  aie.device(npu2_1col) {
-    %s = aie.logical_tile<ShimNOCTile>(?, ?)
-    %c = aie.logical_tile<CoreTile>(?, ?)
-    aie.objectfifo @in0(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @in1(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.core(%c) {
-      %a = aie.objectfifo.acquire @in0(Consume, 1) : memref<16xi32>
-      %b = aie.objectfifo.acquire @in1(Consume, 1) : memref<16xi32>
-      %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @in0(Consume, 1)
-      aie.objectfifo.release @in1(Consume, 1)
-      aie.objectfifo.release @out(Produce, 1)
-      aie.end
-    }
-    aie.runtime_sequence(%x : memref<16xi32>, %y : memref<16xi32>, %z : memref<16xi32>) {
-      aiex.npu.dma_memcpy_nd(%x[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in0, id = 0 : i64} : memref<16xi32>
-      aiex.npu.dma_memcpy_nd(%y[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in1, id = 1 : i64} : memref<16xi32>
-      aiex.npu.dma_memcpy_nd(%z[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out, id = 2 : i64, issue_token = true} : memref<16xi32>
-      aiex.npu.dma_wait {symbol = @out}
-    }
-  }
-}

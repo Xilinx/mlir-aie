@@ -6,12 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --aie-place-tiles='ctrl-pkt-overlay=true' %s | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=1 ctrl-pkt-overlay=true' %s | FileCheck %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1 ctrl-pkt-overlay=true' %s | FileCheck %s
 
-// test_sa_ctrl_pkt_overlay.mlir's @overlay_full_shim: the control overlay
-// shares a shim MM2S channel with an input never in flight with its control
-// packets. The placers count the overlay's channel as an end no fifo is,
-// whatever the fifo is named, so one named @ctrlpkt_col0 places alike.
+// Without a control packet, the control overlay shares a shim MM2S channel
+// with an input never in flight with its control packets. The placers count
+// the overlay's channel as an end no fifo is, whatever the fifo is named, so
+// one named @ctrlpkt_col0 places alike.
 // CHECK-LABEL: module @named_in0
 // CHECK: aie.tile(0, 0)
 // CHECK-LABEL: module @named_like_overlay
