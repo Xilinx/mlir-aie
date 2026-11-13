@@ -36,53 +36,29 @@ module @granule_unproven_turns {
     aie.objectfifo @in2(%s2, {%c3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out2(%c3, {%s2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%c0) {
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        %i = aie.objectfifo.acquire @ina(Consume, 1) : memref<32xi32>
-        %o = aie.objectfifo.acquire @a(Produce, 1) : memref<32xi32>
-        aie.objectfifo.release @ina(Consume, 1)
-        aie.objectfifo.release @a(Produce, 1)
-        scf.yield
-      }
+      %i = aie.objectfifo.acquire @ina(Consume, 1) : memref<32xi32>
+      %o = aie.objectfifo.acquire @a(Produce, 1) : memref<32xi32>
+      aie.objectfifo.release @ina(Consume, 1)
+      aie.objectfifo.release @a(Produce, 1)
       aie.end
     }
     aie.core(%c1) {
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        %i = aie.objectfifo.acquire @inb(Consume, 1) : memref<32xi32>
-        %o = aie.objectfifo.acquire @b(Produce, 1) : memref<32xi32>
-        aie.objectfifo.release @inb(Consume, 1)
-        aie.objectfifo.release @b(Produce, 1)
-        scf.yield
-      }
+      %i = aie.objectfifo.acquire @inb(Consume, 1) : memref<32xi32>
+      %o = aie.objectfifo.acquire @b(Produce, 1) : memref<32xi32>
+      aie.objectfifo.release @inb(Consume, 1)
+      aie.objectfifo.release @b(Produce, 1)
       aie.end
     }
     aie.core(%c2) {
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        %o = aie.objectfifo.acquire @out1(Produce, 1) : memref<16xi32>
-        aie.objectfifo.release @out1(Produce, 1)
-        scf.yield
-      }
+      %o = aie.objectfifo.acquire @out1(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @out1(Produce, 1)
       aie.end
     }
     aie.core(%c3) {
-      scf.while : () -> () {
-        %true = arith.constant true
-        scf.condition(%true)
-      } do {
-        %i = aie.objectfifo.acquire @in2(Consume, 1) : memref<16xi32>
-        %o = aie.objectfifo.acquire @out2(Produce, 1) : memref<16xi32>
-        aie.objectfifo.release @in2(Consume, 1)
-        aie.objectfifo.release @out2(Produce, 1)
-        scf.yield
-      }
+      %i = aie.objectfifo.acquire @in2(Consume, 1) : memref<16xi32>
+      %o = aie.objectfifo.acquire @out2(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in2(Consume, 1)
+      aie.objectfifo.release @out2(Produce, 1)
       aie.end
     }
     aie.runtime_sequence @seq0(%x: memref<64xi32>, %y: memref<32xi32>, %z: memref<96xi32>) {
