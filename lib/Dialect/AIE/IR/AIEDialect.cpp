@@ -1055,7 +1055,7 @@ bool ObjectFifoPoolOp::canWalkWhole() {
          llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
                       [&](ObjectFifoDmaEndpointOp end) {
                         auto dims = end.getDimensions();
-                        return end.getPoolOp() != *this ||
+                        return end.getPool() != getSymName() ||
                                (!end.getDispatch() && !end.getOutOfOrder() &&
                                 end.getReleaseStrategy() !=
                                     ObjectFifoRelease::PushQueue &&
@@ -2000,10 +2000,11 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
 //===----------------------------------------------------------------------===//
 
 std::optional<ObjectFifoLinkOp> ObjectFifoCreateOp::getLink() {
-  auto names = [&](auto fifos) { return llvm::is_contained(fifos, *this); };
+  auto self = FlatSymbolRefAttr::get(getSymNameAttr());
   for (ObjectFifoLinkOp link :
        (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
-    if (names(link.getInputObjectFifos()) || names(link.getOutputObjectFifos()))
+    if (llvm::is_contained(link.getFifoIns(), self) ||
+        llvm::is_contained(link.getFifoOuts(), self))
       return link;
   return std::nullopt;
 }
@@ -2038,11 +2039,18 @@ ObjectFifoCreateOp::allocatedHome(const AIETargetModel &target, TileID producer,
 }
 
 bool ObjectFifoCreateOp::allocateFallsBackToDMA() {
+  auto self = FlatSymbolRefAttr::get(getSymNameAttr());
+  bool linked = false;
   for (ObjectFifoLinkOp link :
-       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
+    if (!llvm::is_contained(link.getFifoIns(), self) &&
+        !llvm::is_contained(link.getFifoOuts(), self))
+      continue;
     if (link.getOptionalSharedTile() && link.getPoolOwner() == *this)
       return false;
-  return getLink().has_value();
+    linked = true;
+  }
+  return linked;
 }
 
 LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
@@ -2149,8 +2157,8 @@ std::optional<StringRef> ObjectFifoCreateOp::pushQueueRefusal() {
     return StringRef("push_queue requires a sending DMA on a core tile with "
                      "core-issued task support");
   bool hasRelease = false;
-  for (CoreOp core : device.getOps<CoreOp>())
-    if (core.getTile() == getProducerTile())
+  for (Operation *user : getProducerTile().getUsers())
+    if (auto core = dyn_cast<CoreOp>(user))
       core.walk([&](ObjectFifoReleaseOp release) {
         hasRelease |= release.getObjectFifo() == *this &&
                       release.getPort() == ObjectFifoPort::Produce;
@@ -2214,8 +2222,8 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
   ObjectFifoPort port =
       consumer ? ObjectFifoPort::Consume : ObjectFifoPort::Produce;
   int maxAcquire = 0;
-  for (CoreOp core : (*this)->getParentOfType<DeviceOp>().getOps<CoreOp>())
-    if (core.getTile() == tile)
+  for (Operation *user : tile.getUsers())
+    if (auto core = dyn_cast<CoreOp>(user))
       core.walk([&](ObjectFifoAcquireOp acquire) {
         if (acquire.getObjectFifo() == *this && acquire.getPort() == port)
           maxAcquire = std::max(maxAcquire, acquire.acqNumber());
@@ -2228,10 +2236,11 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
 }
 
 ObjectFifoLinkOp ObjectFifoCreateOp::getProducerLink() {
+  auto self = FlatSymbolRefAttr::get(getSymNameAttr());
   for (ObjectFifoLinkOp link :
        (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
-    if (link.getOptionalSharedTile() == getProducerTile() &&
-        llvm::is_contained(link.getOutputObjectFifos(), *this))
+    if (llvm::is_contained(link.getFifoOuts(), self) &&
+        link.getOptionalSharedTile() == getProducerTile())
       return link;
   return {};
 }
@@ -2240,10 +2249,11 @@ ObjectFifoLinkOp ObjectFifoCreateOp::getConsumerLink(unsigned consumer) {
   auto consumers = getConsumerTiles();
   Value tile = consumers[consumer];
   size_t earlier = llvm::count(consumers.take_front(consumer), tile);
+  auto self = FlatSymbolRefAttr::get(getSymNameAttr());
   for (ObjectFifoLinkOp link :
        (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
-    if (link.getOptionalSharedTile() == tile &&
-        llvm::is_contained(link.getInputObjectFifos(), *this) && earlier-- == 0)
+    if (llvm::is_contained(link.getFifoIns(), self) &&
+        link.getOptionalSharedTile() == tile && earlier-- == 0)
       return link;
   return {};
 }
@@ -2426,7 +2436,8 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   // pool, which a core fills or drains one pool object per acquire. Whether
   // it shares depends on where its tiles are placed.
   std::optional<ObjectFifoLinkOp> linked = objFifo.getLink();
-  if (LinkPoolMisfit misfit = objFifo.linkPoolMisfit();
+  if (LinkPoolMisfit misfit =
+          linked ? objFifo.linkPoolMisfit() : LinkPoolMisfit::None;
       linked && misfit != LinkPoolMisfit::None) {
     ObjectFifoLinkOp link = *linked;
     auto producer = dyn_cast<TileOp>(objFifo.getProducerTile().getDefiningOp());
