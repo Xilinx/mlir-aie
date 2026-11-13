@@ -13,10 +13,11 @@
 // land on different tiles and the ids fit. Seeds 1, 5 and 7 put both on
 // (0, 0) without that term.
 
-// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1})' %s | FileCheck %s
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1})' %s -o %t
+// RUN: FileCheck %s --input-file=%t
 // RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=5})' %s | FileCheck %s
 // RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=7})' %s | FileCheck %s
-// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s | FileCheck %s --check-prefix=IDS
+// RUN: aie-opt --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %t | FileCheck %s --check-prefix=IDS
 // RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sequential_placer},aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s | FileCheck %s --check-prefix=IDS
 
 // CHECK:     aie.objectfifo @in_a(%[[A:shim_noc_tile_[0-9]+_0]],

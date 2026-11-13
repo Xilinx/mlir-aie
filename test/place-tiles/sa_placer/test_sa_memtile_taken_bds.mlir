@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=SA
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>/dev/null | not aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate -o /dev/null 2>&1 | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t 2> %t.err
+// RUN: FileCheck %s --check-prefix=SA --input-file=%t.err
+// RUN: not aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %t -o /dev/null 2>&1 | FileCheck %s --check-prefix=ALLOC
 
 // The mem tile's own DMA program chains 24 BDs on S2MM 0 and 24 on MM2S 1,
 // every BD id the tile has, so the objectFIFO link through it has none left.

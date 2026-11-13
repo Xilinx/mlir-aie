@@ -5,13 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform))' %t | FileCheck %s --check-prefix=ALLOC
 
 // @p and @q are equally deep and one walk fits (0, 1)'s BD ids. The SA and
 // allocation walk the same one, @p (smaller objects), however the fifos are
 // written; @q's objects then fit split across (0, 1) and (1, 1).
-// CHECK-NOT: warning: SA placer's resource estimate is over capacity
 // ALLOC-LABEL: @p_first
 // ALLOC-DAG: aie.buffer(%mem_tile_0_1) {sym_name = "p__cons__buf0"} : memref<4096xi32>
 // ALLOC-DAG: aie.buffer(%{{.*}}) {sym_name = "q__cons__buf15"} : memref<1024xi32>

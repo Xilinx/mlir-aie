@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t 2> %t.err
+// RUN: FileCheck %s --input-file=%t.err
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform))' %t | FileCheck %s --check-prefix=ALLOC
 
 // Walk sets are searched per spill component, every choice of sets for its
 // mem tiles in order of bytes walked, until its buffers place, however the

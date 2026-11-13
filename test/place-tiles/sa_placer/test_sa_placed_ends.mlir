@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=STATS
-// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform,aie-assign-buffer-addresses))' %s -o /dev/null
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o %t 2> %t.err
+// RUN: FileCheck %s --input-file=%t
+// RUN: FileCheck %s --check-prefix=STATS --input-file=%t.err
+// RUN: aie-opt --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform,aie-assign-buffer-addresses))' %t -o /dev/null
 
 // The SA charges a fifo whose producer sits on a placed tile, and that
 // tile's own buffers and stack. @p holds 50 KB, so @f's two 12 KB objects

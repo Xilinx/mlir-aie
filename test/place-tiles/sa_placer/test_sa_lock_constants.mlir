@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o /dev/null 2>&1 | FileCheck %s
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o %t 2> %t.err
+// RUN: FileCheck %s --input-file=%t.err
+// RUN: aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-assign-packet-ids --aie-objectfifo-allocate %t | FileCheck %s --check-prefix=ALLOC
 
 // The SA asks PoolLocks' rule of the pools the split makes. @w's producer
 // pool starts full of its one initial object and nothing fills it again,

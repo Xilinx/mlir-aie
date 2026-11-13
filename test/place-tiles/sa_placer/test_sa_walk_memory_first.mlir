@@ -5,15 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform))' %s | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform))' %t | FileCheck %s --check-prefix=ALLOC
 
 // (0, 1) holds 60 BD ids' worth of ends, so one of @y (one end) and @x (a
 // link, two ends), equally deep, is walked whole. The SA and allocation pick
 // the same one in either written order: first the pool with smaller objects,
 // since @x whole (160 KB) fits on no tile while too few BD ids would only
 // walk another; with objects alike, the pool whose ends take more BD ids.
-// CHECK-NOT: warning: SA placer's resource estimate is over capacity
 
 // ALLOC-LABEL: @small_first_yx
 // ALLOC-DAG: {sym_name = "y__buf0"} : memref<2560xi32>

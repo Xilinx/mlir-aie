@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform,aie-assign-buffer-addresses))' %s -o /dev/null
+// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t
+// RUN: FileCheck %s --input-file=%t
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform,aie-assign-buffer-addresses))' %t -o /dev/null
 
 // The SA sizes a core's memory as aie-assign-buffer-addresses does, so what
 // does not fit goes to a neighbor (objectfifo.allocate) before buffers are

@@ -5,10 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t
+// RUN: FileCheck %s --input-file=%t
 // RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=3" %s | FileCheck %s
 // RUN: aie-opt --aie-place-tiles %s | FileCheck %s
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %t | FileCheck %s --check-prefix=ALLOC
 // RUN: aie-opt --aie-place-tiles %s | aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate | FileCheck %s --check-prefix=ALLOC
 
 // The physical mem tile (0, 1) runs a program on S2MM 0-4 and is the link

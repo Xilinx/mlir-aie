@@ -5,15 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=QUIET --allow-empty
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
 
 // Core (1, 3) overflows with two fifos of its own, @x (2 x 16 KiB) and @y
 // (1 x 32 KiB), the same 32 KiB in all. (0, 3) has room for either, (1, 2)
 // only for @x's two 16 KiB buffers. The SA moves the one with the larger
 // objects first, so @y takes (0, 3) and @x (1, 2), with nothing over
 // capacity, whichever is declared first.
-// QUIET-NOT: warning
 // CHECK-LABEL: module @x_first
 // CHECK-DAG: aie.objectfifo.allocate @x(%tile_1_2)
 // CHECK-DAG: aie.objectfifo.allocate @y(%tile_0_3)

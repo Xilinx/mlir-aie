@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate | FileCheck %s
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate | FileCheck %s --check-prefix=NOLOCK
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate -o %t
+// RUN: FileCheck %s --input-file=%t
+// RUN: FileCheck %s --check-prefix=NOLOCK --input-file=%t
 
 // (1, 1) is too full for @a_in's objects, which spill to a mem tile
 // allocation creates at (2, 1). The core reads three fifos over two input

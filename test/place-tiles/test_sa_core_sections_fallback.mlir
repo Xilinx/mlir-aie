@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=3" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses | FileCheck %s --check-prefix=ADDR
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t
+// RUN: FileCheck %s --input-file=%t
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles="placer=sa_placer sa-seed=3" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %t | FileCheck %s --check-prefix=ADDR
 
 // The SA charges a core's own sections as assign-buffer-addresses reserves
 // them: data_size, then measured_data_size, then nothing. The producer (0, 3)
@@ -17,7 +18,6 @@
 // producer's sections, moved the fifo to the consumer with an allocate, and
 // addressing failed ("buffer "small" needs 2048 bytes and this tile has no
 // room left"). The same holds with the cores physical or pinned logical.
-// CHECK-NOT: over capacity
 // CHECK-NOT: aie.objectfifo.allocate
 
 // ADDR-LABEL: module @physical

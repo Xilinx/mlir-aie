@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=STATS
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform))' %s -o /dev/null
+// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o %t 2> %t.err
+// RUN: FileCheck %s --input-file=%t
+// RUN: FileCheck %s --check-prefix=STATS --input-file=%t.err
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform))' %t -o /dev/null
 
 // The SA counts the locks aie-objectfifo-allocate can place. @a at (0, 2)
 // needs 32 locks and reaches only rows 2 and 3; @b next to it at row 3 needs

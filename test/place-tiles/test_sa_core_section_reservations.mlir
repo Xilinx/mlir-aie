@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=2" %s | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WARN
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t
+// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t 2> %t.err
+// RUN: FileCheck %s --input-file=%t
+// RUN: FileCheck %s --check-prefix=WARN --input-file=%t.err
 // RUN: not aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %t 2>&1 >/dev/null | FileCheck %s --check-prefix=ADDR
 
 // The SA charges each core what assign-buffer-addresses reserves for its own

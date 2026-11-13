@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>/dev/null | not aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate 2>&1 | FileCheck %s --check-prefix=ALLOC
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=SA
+// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t 2> %t.err
+// RUN: FileCheck %s --check-prefix=SA --input-file=%t.err
+// RUN: not aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %t 2>&1 | FileCheck %s --check-prefix=ALLOC
 
 // A mem tile's own DMA program holds all 48 of its BD ids; the objectFIFO link
 // runs through another, unplaced mem tile. Wherever the SA puts the link's

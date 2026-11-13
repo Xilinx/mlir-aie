@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o /dev/null 2>&1 | FileCheck %s
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --aie-objectfifo-allocate | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o %t 2> %t.err
+// RUN: FileCheck %s --input-file=%t.err
+// RUN: aie-opt --aie-objectfifo-allocate %t | FileCheck %s --check-prefix=ALLOC
 
 // Pools already in the input take their locks as aie-objectfifo-allocate
 // gives them: one group per segment, used by the endpoints selecting it.

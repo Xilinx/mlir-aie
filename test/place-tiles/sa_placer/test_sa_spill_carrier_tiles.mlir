@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s 2>&1 | FileCheck %s --check-prefix=SA --implicit-check-not=warning
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate | FileCheck %s --check-prefix=ALLOC
+// RUN: aie-opt --verify-diagnostics --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t
+// RUN: FileCheck %s --check-prefix=SA --input-file=%t
+// RUN: aie-opt --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %t | FileCheck %s --check-prefix=ALLOC
 
 // A mem tile whose only DMA work is a runtime task with a pinned BD id shares
 // the one-column device's mem tile position with an objectFIFO link. Its ids

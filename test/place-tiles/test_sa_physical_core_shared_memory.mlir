@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t
+// RUN: FileCheck %s --input-file=%t
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=3" %s | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s | aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses | FileCheck %s --check-prefix=ADDR
+// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %t | FileCheck %s --check-prefix=ADDR
 
 // A shared-memory fifo between the physical core (0, 3) and a logical core
 // keeps its objects on whichever tile the SA charged them to, which is the
