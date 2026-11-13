@@ -65,3 +65,23 @@ func.func @sitofp_v64_i16_bf16(%v: vector<64xi16>) -> vector<64xbf16> {
   %r = arith.sitofp %v : vector<64xi16> to vector<64xbf16>
   return %r : vector<64xbf16>
 }
+
+// uitofp: the input's sign bit flipped (u ^ 0x8000 is u - 32768 as signed),
+// the same sequence, and a magic constant 32768 smaller, 2^23 + 32768, in f32.
+// CHECK-LABEL: @uitofp_v32_i16_bf16(
+// CHECK-SAME:  %[[A:.*]]: vector<32xi16>
+func.func @uitofp_v32_i16_bf16(%v: vector<32xi16>) -> vector<32xbf16> {
+  // CHECK-DAG:  %[[MAGIC_U:.*]] = arith.constant dense<0x4B008000> : vector<32xf32>
+  // CHECK-DAG:  %[[FLIP:.*]] = arith.constant dense<-32768> : vector<32xi16>
+  // CHECK:  %[[MAGIC_F:.*]] = aievec.ups %{{.*}} : vector<32xbf16>, vector<32xf32>
+  // CHECK:  %[[MAGIC_I:.*]] = aievec.cast %[[MAGIC_F]] {isResAcc = true} : vector<32xf32>, vector<32xi32>
+  // CHECK:  %[[X:.*]] = arith.xori %[[A]], %[[FLIP]] : vector<32xi16>
+  // CHECK:  %[[V_I:.*]] = aievec.ups %[[X]] {{.*}} : vector<32xi16>, vector<32xi32>
+  // CHECK:  %[[SUM_I:.*]] = aievec.add_elem %[[V_I]], %[[MAGIC_I]] : vector<32xi32>
+  // CHECK:  %[[SUM_F:.*]] = aievec.cast %[[SUM_I]] {isResAcc = true} : vector<32xi32>, vector<32xf32>
+  // CHECK:  %[[DIFF:.*]] = aievec.sub_elem %[[SUM_F]], %[[MAGIC_U]] : vector<32xf32>
+  // CHECK:  %[[BF:.*]] = aievec.srs %[[DIFF]], {{.*}} : vector<32xf32>, i32, vector<32xbf16>
+  %r = arith.uitofp %v : vector<32xi16> to vector<32xbf16>
+  // CHECK: return %[[BF]] : vector<32xbf16>
+  return %r : vector<32xbf16>
+}

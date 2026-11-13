@@ -3892,9 +3892,15 @@ using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
 //
 // Lane width 16 or 32 maps directly to the native AIE2P 256/1024-bit
 // accumulator. 64 splits into two 32-wide halves and concats the results.
-struct LowerVectorSIToFPI16BF16AIE2pPattern
-    : OpConversionPattern<arith::SIToFPOp> {
-  using OpConversionPattern<arith::SIToFPOp>::OpConversionPattern;
+//
+// arith.uitofp takes u ^ 0x8000, which as a signed value is u - 32768,
+// through the same sequence, and subtracts a magic constant 32768 smaller,
+// 2^23 + 32768, as an f32 vector (bf16 has no such value).
+template <typename SrcOpTy>
+struct LowerVectorIntToFPI16BF16AIE2pPattern : OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+  static constexpr bool isSigned = std::is_same_v<SrcOpTy, arith::SIToFPOp>;
 
   static Value emitMagicSiToFp(ConversionPatternRewriter &rewriter,
                                Location loc, Value srcI16, unsigned lanes) {
@@ -3917,14 +3923,26 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
         aievec::UPSOp::create(rewriter, loc, vecF32, magicBF16Vec);
     Value magicAccI = aievec::CastOp::create(rewriter, loc, vecI32, magicAccF,
                                              /*isResAcc=*/true);
+    if (!isSigned) {
+      Value flip = arith::ConstantOp::create(
+          rewriter, loc, vecI16,
+          DenseElementsAttr::get(vecI16, rewriter.getI16IntegerAttr(
+                                             static_cast<int16_t>(0x8000))));
+      srcI16 = arith::XOrIOp::create(rewriter, loc, srcI16, flip);
+    }
     Value vAccI = aievec::UPSOp::create(rewriter, loc, vecI32, srcI16);
     // on the accumulator, where the operands are
     Value vSumI =
         aievec::AddElemOp::create(rewriter, loc, vecI32, vAccI, magicAccI);
     Value vSumAccF = aievec::CastOp::create(rewriter, loc, vecF32, vSumI,
                                             /*isResAcc=*/true);
+    Value subtrahend = magicAccF;
+    if (!isSigned)
+      subtrahend = arith::ConstantOp::create(
+          rewriter, loc, vecF32,
+          DenseElementsAttr::get(vecF32, rewriter.getF32FloatAttr(8421376.0f)));
     Value vDiffAccF =
-        aievec::SubElemOp::create(rewriter, loc, vecF32, vSumAccF, magicAccF);
+        aievec::SubElemOp::create(rewriter, loc, vecF32, vSumAccF, subtrahend);
     Value shiftCst =
         arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
     return aievec::SRSOp::create(rewriter, loc, vecBF16, vDiffAccF, shiftCst)
@@ -3932,7 +3950,7 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
   }
 
   LogicalResult
-  matchAndRewrite(arith::SIToFPOp op, OpAdaptor adaptor,
+  matchAndRewrite(SrcOpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcTy = dyn_cast<VectorType>(adaptor.getIn().getType());
     auto dstTy = dyn_cast<VectorType>(op.getType());
@@ -3977,6 +3995,10 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
     return success();
   }
 };
+using LowerVectorSIToFPI16BF16AIE2pPattern =
+    LowerVectorIntToFPI16BF16AIE2pPattern<arith::SIToFPOp>;
+using LowerVectorUIToFPI16BF16AIE2pPattern =
+    LowerVectorIntToFPI16BF16AIE2pPattern<arith::UIToFPOp>;
 
 // Match `arith.extui (vector.bitcast %x : vector<Mxi8> to vector<2Mxi4>)
 // to vector<2Mxi8>` and replace with `aievec.unpack %x` directly on the
@@ -5319,7 +5341,8 @@ populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns) {
   // bf16. Higher benefit than the generic per-lane scalarise pattern; runs
   // on AIE2 too but only fires when the legality predicate marks the op
   // illegal (currently AIE2P only).
-  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern>(patterns.getContext(),
+  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern,
+               LowerVectorUIToFPI16BF16AIE2pPattern>(patterns.getContext(),
                                                      /*benefit=*/3);
   // clang-format on
 }
