@@ -10,7 +10,7 @@
 // pattern emits the classic "magic constant" sequence used by aie_api
 // (see detail/aie2p/elementary.hpp) on top of existing aievec ops:
 //
-//   UPS(int16 -> acc32) -> add(magic.as_acc32) -> cast(acc32 -> accfloat)
+//   UPS(int16 -> acc32) -> add_elem(magic.as_acc32) -> cast(acc32 -> accfloat)
 //   -> sub(magic.as_accfloat) -> SRS(accfloat -> bf16)
 //
 // 64-wide inputs are split into two 32-wide halves via vector.shuffle.
@@ -27,14 +27,8 @@ func.func @sitofp_v32_i16_bf16(%v: vector<32xi16>) -> vector<32xbf16> {
   // CHECK:  %[[MAGIC_F:.*]] = aievec.ups %[[BC]] {{.*}} : vector<32xbf16>, vector<32xf32>
   // CHECK:  %[[MAGIC_I:.*]] = aievec.cast %[[MAGIC_F]] {isResAcc = true} : vector<32xf32>, vector<32xi32>
   // CHECK:  %[[V_I:.*]] = aievec.ups %[[A]] {{.*}} : vector<32xi16>, vector<32xi32>
-  // The 1024-bit integer add is done as two 512-bit halves.
-  // CHECK:  %[[V_I0:.*]] = aievec.ext %[[V_I]] {index = 0 : i8} : vector<32xi32>, vector<16xi32>
-  // CHECK:  %[[MAGIC_I0:.*]] = aievec.ext %[[MAGIC_I]] {index = 0 : i8} : vector<32xi32>, vector<16xi32>
-  // CHECK:  %[[SUM_I0:.*]] = arith.addi %[[V_I0]], %[[MAGIC_I0]] : vector<16xi32>
-  // CHECK:  %[[V_I1:.*]] = aievec.ext %[[V_I]] {index = 1 : i8} : vector<32xi32>, vector<16xi32>
-  // CHECK:  %[[MAGIC_I1:.*]] = aievec.ext %[[MAGIC_I]] {index = 1 : i8} : vector<32xi32>, vector<16xi32>
-  // CHECK:  %[[SUM_I1:.*]] = arith.addi %[[V_I1]], %[[MAGIC_I1]] : vector<16xi32>
-  // CHECK:  %[[SUM_I:.*]] = aievec.concat %[[SUM_I0]], %[[SUM_I1]] : vector<16xi32>, vector<32xi32>
+  // The integer add is on the accumulator, all 32 lanes at once.
+  // CHECK:  %[[SUM_I:.*]] = aievec.add_elem %[[V_I]], %[[MAGIC_I]] : vector<32xi32>
   // CHECK:  %[[SUM_F:.*]] = aievec.cast %[[SUM_I]] {isResAcc = true} : vector<32xi32>, vector<32xf32>
   // CHECK:  %[[DIFF:.*]] = aievec.sub_elem %[[SUM_F]], %[[MAGIC_F]] : vector<32xf32>
   // CHECK:  %[[BF:.*]] = aievec.srs %[[DIFF]], {{.*}} : vector<32xf32>, i32, vector<32xbf16>
@@ -47,7 +41,7 @@ func.func @sitofp_v32_i16_bf16(%v: vector<32xi16>) -> vector<32xbf16> {
 // CHECK-LABEL: @sitofp_v16_i16_bf16
 func.func @sitofp_v16_i16_bf16(%v: vector<16xi16>) -> vector<16xbf16> {
   // CHECK:  aievec.ups %{{.*}} : vector<16xi16>, vector<16xi32>
-  // CHECK:  arith.addi %{{.*}}, %{{.*}} : vector<16xi32>
+  // CHECK:  aievec.add_elem %{{.*}}, %{{.*}} : vector<16xi32>
   // CHECK:  aievec.cast %{{.*}} {isResAcc = true} : vector<16xi32>, vector<16xf32>
   // CHECK:  aievec.sub_elem %{{.*}}, %{{.*}} : vector<16xf32>
   // CHECK:  aievec.srs %{{.*}} : vector<16xf32>, i32, vector<16xbf16>

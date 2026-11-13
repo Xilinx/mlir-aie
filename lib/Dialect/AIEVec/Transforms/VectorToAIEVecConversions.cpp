@@ -3918,7 +3918,9 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
     Value magicAccI = aievec::CastOp::create(rewriter, loc, vecI32, magicAccF,
                                              /*isResAcc=*/true);
     Value vAccI = aievec::UPSOp::create(rewriter, loc, vecI32, srcI16);
-    Value vSumI = arith::AddIOp::create(rewriter, loc, vAccI, magicAccI);
+    // on the accumulator, where the operands are
+    Value vSumI =
+        aievec::AddElemOp::create(rewriter, loc, vecI32, vAccI, magicAccI);
     Value vSumAccF = aievec::CastOp::create(rewriter, loc, vecF32, vSumI,
                                             /*isResAcc=*/true);
     Value vDiffAccF =
