@@ -759,6 +759,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "43358372080",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43358372080",
+   "date": "2026-11-13T03:21:06+00:00",
+   "commit": {
+    "id": "afa0aeedff446643902f356958a14b34ad4b95b1",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/afa0aeedff446643902f356958a14b34ad4b95b1",
+    "message": "[AIEVec] Parse aie-target in one place and reject unknown targets in AIEVec-to-LLVM (#4046)",
+    "timestamp": "2026-11-12T17:03:08Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "afa0aeedff",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
