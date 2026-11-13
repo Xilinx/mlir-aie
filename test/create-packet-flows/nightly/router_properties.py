@@ -5783,24 +5783,15 @@ def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=No
         + (["--split-input-file"] if split else [])
         + ["-"]
     )
-    crashed = None
-    for _ in range(2):
-        timeout = max(0.0, end - time.monotonic())
-        try:
-            p = subprocess.run(
-                cmd, input=text, capture_output=True, text=True, timeout=timeout
-            )
-        except subprocess.TimeoutExpired:
-            if crashed is not None:
-                return crashed
-            return subprocess.CompletedProcess(
-                cmd, TIMEOUT, "", f"timeout after {timeout}s"
-            )
-        # The binary may be relinked under us; a crash is worth one retry.
-        if p.returncode >= 0:
-            break
-        crashed = p
-    return p
+    timeout = max(0.0, end - time.monotonic())
+    try:
+        return subprocess.run(
+            cmd, input=text, capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            cmd, TIMEOUT, "", f"timeout after {timeout}s"
+        )
 
 
 TIMEOUT = -1000

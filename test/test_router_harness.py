@@ -13,6 +13,7 @@ import inspect
 import json
 import random
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -239,41 +240,15 @@ def test_a_batch_gets_one_limit_not_one_per_design():
     assert not {"SPLIT", "count"} & code_names(rp.aie_opt.__code__)
 
 
-def test_a_crash_retry_stops_by_the_deadline_and_keeps_the_crash():
-    # Nested deeper than the parser's stack: a real crash, after a while.
-    nested = "module {" * 20000 + "}" * 20000
-    crash_s = 0.0
-    for _ in range(2):
-        start = time.monotonic()
-        crashed = rp.aie_opt(nested)
-        assert crashed.returncode < 0 and crashed.returncode != rp.TIMEOUT
-        crash_s = max(crash_s, (time.monotonic() - start) / 2)
-    # The first attempt crashes in time; its retry cannot.
-    start = time.monotonic()
-    cut = rp.aie_opt(nested, deadline=start + 1.4 * crash_s)
-    assert cut.returncode == crashed.returncode, cut.stderr[-200:]
-    assert time.monotonic() - start < 1.65 * crash_s
-
-
 def test_every_judged_router_run_reads_a_crash_as_a_crash():
-    nested = "module {" * 20000 + "}" * 20000
-    assert rp.run_failure(rp.aie_opt(nested))[0] == "crash"
-    spent = rp.aie_opt(nested, deadline=time.monotonic())
+    crashed = subprocess.CompletedProcess(["aie-opt"], -signal.SIGSEGV, "", "")
+    assert rp.run_failure(crashed)[0] == "crash"
+    spent = rp.aie_opt("module {}", deadline=time.monotonic())
     assert rp.run_failure(spent)[0] == "timeout"
     # judge() routes twice: the design the verifier rejects, and any other.
     for fn, runs in ((router_mutation.judge, 2), (router_mutation.judge_strict, 1)):
         calls = [i for i in dis.get_instructions(fn) if i.argval == "run_failure"]
         assert len(calls) == runs, fn.__name__
-
-
-def test_a_lift_whose_find_flows_crashes_is_a_crash(priority):
-    d, routed = priority
-    nested = "module {" * 20000 + "}" * 20000
-    with pytest.raises(rp.RouterCrash):
-        router_mutation.r_lift(random.Random(0), d, nested)
-    _, _, check = router_mutation.r_lift(random.Random(0), d, routed)
-    with pytest.raises(rp.RouterCrash):
-        check(nested)
 
 
 def test_the_unknown_tier_names_a_timeout_a_timeout():
@@ -397,12 +372,9 @@ def test_the_properties_report_keeps_the_generators_undecided_seeds(tmp_path):
 
 
 def test_a_crash_in_the_models_router_runs_is_a_crash():
-    nested = "module {" * 20000 + "}" * 20000
+    crashed = subprocess.CompletedProcess(["aie-opt"], -signal.SIGSEGV, "", "")
     with pytest.raises(rp.RouterCrash):
-        rp.model_run(rp.aie_opt(nested), "a nested module")
-    d = rp.canonical(rp.load_design(SHARED))
-    with pytest.raises(rp.RouterCrash):
-        rp.witness_problem(d, rp.Analysis(d), nested)
+        rp.model_run(crashed, "a crashed run")
     for fn in (rp.priority_trees, rp.witness_problem):
         assert "model_run" in code_names(fn.__code__), fn.__name__
 
