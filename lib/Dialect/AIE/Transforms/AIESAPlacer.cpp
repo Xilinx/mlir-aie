@@ -2485,9 +2485,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     // Compute buffer element size (producer side)
     auto fifoType = llvm::cast<AIEObjectFifoType>(ofOp.getElemType());
     auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
-    int64_t producerBytes =
-        elemType.getNumElements() *
-        static_cast<int64_t>(dataLayout.getTypeSize(elemType.getElementType()));
+    int64_t producerBytes = getMemRefSizeInBytes(elemType, dataLayout);
     auto prodLike = dyn_cast_or_null<TileLike>(prodOp);
     AIETileType prodType =
         prodLike ? prodLike.getTileType() : AIETileType::CoreTile;
@@ -2500,9 +2498,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     if (auto consType = ofOp.getConsumerElemType()) {
       auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
       auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
-      consumerBytes = consMemref.getNumElements() *
-                      static_cast<int64_t>(
-                          dataLayout.getTypeSize(consMemref.getElementType()));
+      consumerBytes = getMemRefSizeInBytes(consMemref, dataLayout);
     }
     // One size serves every consumer, so align it for a core tile if any
     // consumer is one.
