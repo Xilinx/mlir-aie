@@ -1077,9 +1077,10 @@ private:
   llvm::DenseMap<mlir::Operation *, AIETileType> tileTypes;
   llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
   llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
-  // Locks the design already places on each logical tile, and on each
-  // placed tile; placed tiles take lock groups too.
-  llvm::DenseMap<mlir::Operation *, int> fixedLocks;
+  // Locks the design already places on each logical tile, in the order
+  // collectOperations ranks the tiles, and on each placed tile; placed tiles
+  // take lock groups too.
+  llvm::MapVector<mlir::Operation *, int> fixedLocks;
   llvm::DenseMap<TileID, int> placedLocks;
   llvm::SmallVector<TileID> placedTiles;
   // The lock groups of pools already in the input, read as

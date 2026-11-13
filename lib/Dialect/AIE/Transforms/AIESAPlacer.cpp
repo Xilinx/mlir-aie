@@ -2265,11 +2265,12 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
       coreContents[tile].buffers.push_back(buffer);
   }
 
+  for (LogicalTileOp tile : logicalTiles)
+    for (Operation *user : tile->getUsers())
+      if (isa<LockOp>(user))
+        ++fixedLocks[tile];
   device.walk([&](LockOp lock) {
-    Operation *tileOp = lock.getTile().getDefiningOp();
-    if (isa_and_nonnull<LogicalTileOp>(tileOp))
-      ++fixedLocks[tileOp];
-    else if (auto placed = dyn_cast_or_null<TileOp>(tileOp))
+    if (auto placed = dyn_cast_or_null<TileOp>(lock.getTile().getDefiningOp()))
       ++placedLocks[placed.getTileID()];
   });
   for (auto tile : device.getOps<TileOp>())
