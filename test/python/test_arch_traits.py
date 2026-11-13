@@ -26,7 +26,7 @@ from aie.iron.device import from_name
 from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import config
 from aie.utils.compile.remarks import compile_command, kernel_builds
-from aie.utils.compile.utils import resolve_target_arch
+from aie.utils.compile.utils import kernel_compile_jobs, resolve_target_arch
 from aie.utils.hostruntime import set_current_device
 
 
@@ -113,6 +113,6 @@ def test_every_kernel_builds_from_its_portable_branch(arch, tmp_path, monkeypatc
         errors = [line for line in p.stderr.splitlines() if "error:" in line]
         return None if p.returncode == 0 else f"{name}: " + "\n".join(errors)
 
-    with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 1) as pool:
+    with concurrent.futures.ThreadPoolExecutor(kernel_compile_jobs()) as pool:
         failed = [f for f in pool.map(one, enumerate(builds)) if f]
     assert not failed, "\n".join(failed)

@@ -97,7 +97,7 @@ from aie.utils import bfp, config
 from aie.utils.bfp import dtype_name
 
 from .readobj import linked
-from .utils import cxx_core_compile_command
+from .utils import cxx_core_compile_command, kernel_compile_jobs
 
 PASSES = "pipeliner|aie-hardware-loops|aie-asm-printer|aie-multi-slot-pseudo"
 REMARK_FLAGS = [
@@ -1208,8 +1208,9 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--jobs",
         type=int,
-        default=os.cpu_count() or 1,
-        help="concurrent Peano compiles; the records do not depend on it",
+        default=kernel_compile_jobs(),
+        help="concurrent Peano compiles (default: AIE_KERNEL_COMPILE_JOBS, else "
+        "cores); the records do not depend on it",
     )
     ap.add_argument(
         "--annotate",

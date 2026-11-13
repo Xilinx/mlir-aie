@@ -20,7 +20,6 @@ an already-checked symbol (a tile-size define) is not compiled again.
 """
 
 import concurrent.futures
-import os
 import sys
 from pathlib import Path
 
@@ -30,6 +29,7 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import Trace
 from aie.utils import config
 from aie.utils.compile.remarks import entry_symbol, kernel_builds, trace_shape
+from aie.utils.compile.utils import kernel_compile_jobs
 from aie.utils.hostruntime import set_current_device
 
 sys.path.insert(0, str(Path(__file__).parent / "npu"))
@@ -87,7 +87,7 @@ def classified(request, tmp_path_factory):
         cell.mkdir()
         return trace_shape(ef, target, cell)
 
-    with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 1) as pool:
+    with concurrent.futures.ThreadPoolExecutor(kernel_compile_jobs()) as pool:
         shapes = list(pool.map(one, enumerate(builds)))
     return target, [(name, ef, shape) for (name, ef), shape in zip(builds, shapes)]
 
