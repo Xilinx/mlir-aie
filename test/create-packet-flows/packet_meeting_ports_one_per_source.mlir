@@ -5,16 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" --verify-diagnostics %s | FileCheck %s
 
 // Cores (0, 2) and (0, 4) send id 3 and core (0, 3) id 12 into the memtile and
-// core (0, 5), so the three trees meet at (0, 2), whose tree leaves by South:3
-// and North:2. Both others are cheapest into (0, 2) by North:3, but there the
+// core (0, 5), so the three trees meet at (0, 2), whose tree leaves by South:0
+// and North:3. Both others are cheapest into (0, 2) by North:3, but there the
 // second only shares the first's way in, not meeting it; it takes another
-// slave port, by way of column 1.
+// slave port, East:0, by way of column 1.
+
+// CHECK-LABEL: aie.switchbox(%tile_0_2)
+// CHECK:         %[[MEET:.*]] = aie.amsel<0> (0)
+// CHECK:         aie.masterset(South : 0, %[[MEET]])
+// CHECK:         aie.masterset(North : 3, %[[MEET]])
+// CHECK:         aie.packet_rules(North : 3) {
+// CHECK-NEXT:      aie.rule(31, 12, %[[MEET]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(East : 0) {
+// CHECK-NEXT:      aie.rule(31, 3, %[[MEET]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(DMA : 0) {
+// CHECK-NEXT:      aie.rule(31, 3, %[[MEET]])
 
 module {
   aie.device(npu2) {

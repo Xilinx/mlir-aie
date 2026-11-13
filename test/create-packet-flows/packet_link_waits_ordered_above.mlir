@@ -5,10 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
 
 // Id 20's two sources at (2, 4) merge there and meet id 16's tree at (2, 3),
 // whose arbiter 0 grants every packet of both ids the links below it in one

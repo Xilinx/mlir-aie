@@ -5,18 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" --verify-diagnostics %s | FileCheck %s
 
 // Ten circuit flows and packets 3 and 13 fill the twelve channels from row 3
 // to row 2. The id 28 trees from (2, 1) DMA:3 and (2, 2) DMA:1 share two
 // receivers, so they meet; (2, 2) DMA:1's id 14 conflicts with (2, 1) DMA:3,
-// so it leaves as a part of its own and the trees meet at (2, 1), below the
-// boundary. Trunking id 28 north to meet and coming back down takes a
-// thirteenth channel.
-// Reduced from router_mutation.py npu1 seed 207460330 (port-cap).
+// so it leaves as a part of its own and the trees meet at (2, 2), below the
+// boundary. Trunking id 28 north across it to meet and coming back down would
+// take a thirteenth channel.
+
+// CHECK-LABEL: aie.switchbox(%tile_2_2)
+// CHECK:         %[[OWN:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[MEET:.*]] = aie.amsel<1> (0)
+// CHECK:         aie.masterset(South : 1, %[[MEET]])
+// CHECK:         aie.masterset(North : 2, %[[MEET]])
+// CHECK:         aie.packet_rules(South : 1) {
+// CHECK-NEXT:      aie.rule(31, 28, %[[MEET]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(DMA : 1) {
+// CHECK-NEXT:      aie.rule(31, 28, %[[MEET]])
+// CHECK-NEXT:      aie.rule(31, 14, %[[OWN]])
 
 module {
   aie.device(npu1_3col) {

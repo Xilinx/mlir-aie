@@ -5,16 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" --verify-diagnostics %s | FileCheck %s
 
 // Id 3 from (0, 3) DMA:1 and (0, 0) DMA:0 reaches two receivers both send to,
 // so the trees meet. (0, 3) DMA:1 also sends ids 4 and 20, which conflict with
 // (0, 0)'s id 3, so they leave (0, 3) as parts of their own and the trees
-// meet on id 3 alone.
-// Reduced from router_mutation.py npu1 seed 207380308 (multi-source).
+// meet at (0, 3) on id 3 alone.
+
+// CHECK-LABEL: aie.switchbox(%tile_0_3)
+// CHECK:         %[[MEET:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[ID20:.*]] = aie.amsel<1> (0)
+// CHECK:         %[[ID4:.*]] = aie.amsel<2> (0)
+// CHECK:         aie.packet_rules(South : 1) {
+// CHECK-NEXT:      aie.rule(31, 3, %[[MEET]])
+// CHECK-NEXT:    }
+// CHECK:         aie.packet_rules(DMA : 1) {
+// CHECK-NEXT:      aie.rule(31, 3, %[[MEET]])
+// CHECK-NEXT:      aie.rule(31, 20, %[[ID20]])
+// CHECK-NEXT:      aie.rule(31, 4, %[[ID4]])
 
 module {
   aie.device(npu1_1col) {

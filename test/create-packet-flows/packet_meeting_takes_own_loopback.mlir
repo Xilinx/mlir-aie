@@ -5,11 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" --verify-diagnostics %s | FileCheck %s
 
 // Ids 30 and 31 both reach (0, 2) Core:0 and (0, 1) DMA:3, which id 30 is
 // sent from. Id 30 goes up to (0, 2) and meets the tree of id 31 there, by a

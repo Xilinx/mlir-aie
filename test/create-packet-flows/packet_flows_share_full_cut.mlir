@@ -5,16 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" --verify-diagnostics %s | FileCheck %s
 
 // Eleven circuit flows and packets 3 and 13 cross from row 3 to row 2, which
 // has twelve channels, so the two packet flows, which go to different
 // receivers, have to share one. Packet trees route first, so the overuse is
 // left on circuit-only links; the packets crossing the same boundary still
-// take part, and the router shares channels between them.
+// take part, and the router shares one channel, (2, 3) South:0, between them.
+
+// CHECK-LABEL: aie.switchbox(%tile_2_3)
+// CHECK:         %[[CUT:.*]] = aie.amsel<0> (0)
+// CHECK:         aie.masterset(South : 0, %[[CUT]])
+// CHECK:         aie.packet_rules(North : 2) {
+// CHECK-NEXT:      aie.rule(31, 13, %[[CUT]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(DMA : 1) {
+// CHECK-NEXT:      aie.rule(31, 3, %[[CUT]])
 
 module {
   aie.device(npu1_3col) {

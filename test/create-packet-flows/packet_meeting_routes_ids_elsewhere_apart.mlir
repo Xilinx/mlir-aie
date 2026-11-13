@@ -5,16 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" --verify-diagnostics %s | FileCheck %s
 
 // Id 31 from (0, 3) Core:0 and ids 6 and 18 from (0, 5) DMA:1 reach (0, 2)
 // Core:0 and (0, 4) DMA:1 both, so the trees meet. (0, 5) DMA:1 also sends
 // id 19 back into itself, which conflicts with id 31, so id 19 leaves as a
-// part of its own and the rest of the tree meets id 31's.
-// Reduced from router_properties.py npu1 seed 0.
+// part of its own and the rest of the tree meets id 31's at (0, 3).
+
+// CHECK-LABEL: aie.switchbox(%tile_0_5)
+// CHECK:         %[[REST:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[OWN:.*]] = aie.amsel<1> (0)
+// CHECK:         aie.masterset(DMA : 1, %[[OWN]])
+// CHECK:         aie.packet_rules(DMA : 1) {
+// CHECK-NEXT:      aie.rule(11, 2, %[[REST]])
+// CHECK-NEXT:      aie.rule(31, 19, %[[OWN]])
+// CHECK-LABEL: aie.switchbox(%tile_0_3)
+// CHECK:         %[[MEET:.*]] = aie.amsel<1> (0)
+// CHECK:         aie.packet_rules(South : 2) {
+// CHECK-NEXT:      aie.rule(31, 18,
+// CHECK-NEXT:      aie.rule(31, 6, %[[MEET]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(Core : 0) {
+// CHECK-NEXT:      aie.rule(31, 31, %[[MEET]])
 
 module {
   aie.device(npu1_1col) {

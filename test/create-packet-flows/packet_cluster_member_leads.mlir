@@ -5,16 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" --verify-diagnostics %s | FileCheck %s
 
 // Id 6 from (0, 1) DMA:3 and id 15 from (1, 2) Core:0 and (0, 4) DMA:0 reach
 // (0, 0) DMA:1 and (1, 2) DMA:0 all, so the three trees have to meet. With
 // (0, 1) DMA:3's tree routed first they find no switchbox to meet at that
-// keeps them out of a hold cycle; with (0, 4) DMA:0's first they do.
-// Reduced from router_properties.py npu1 seed 207460169.
+// keeps them out of a hold cycle; with (0, 4) DMA:0's first they meet at
+// (0, 2).
+
+// CHECK-LABEL: aie.switchbox(%tile_0_2)
+// CHECK:         %[[ID6:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[ID15:.*]] = aie.amsel<0> (1)
+// CHECK:         aie.masterset(South : 3, %[[ID6]], %[[ID15]])
+// CHECK:         aie.masterset(East : 2, %[[ID6]], %[[ID15]])
+// CHECK:         aie.packet_rules(North : 2) {
+// CHECK-NEXT:      aie.rule(31, 15, %[[ID15]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(East : 2) {
+// CHECK-NEXT:      aie.rule(31, 15, %[[ID15]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(South : 3) {
+// CHECK-NEXT:      aie.rule(31, 6, %[[ID6]])
 
 module {
   aie.device(npu1_2col) {

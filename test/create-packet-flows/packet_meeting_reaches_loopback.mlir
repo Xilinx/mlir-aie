@@ -5,16 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOERR --allow-empty
-
-// NOERR-NOT: {{warning|error}}
+// RUN: aie-opt --aie-create-pathfinder-flows --verify-diagnostics %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" --verify-diagnostics %s | FileCheck %s
 
 // Ids 28 and 18 reach the same three receivers, one of them (0, 1) DMA:2,
 // which id 18 is sent from and comes straight back into through the (0, 1)
 // switchbox. The tree of id 28 meets the tree of id 18 at (0, 1), which
 // takes it into all three, the port id 18 sends itself on included.
-// Reduced from router_properties.py npu1 seed 207461204.
+
+// CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
+// CHECK:         %[[MEET:.*]] = aie.amsel<0> (0)
+// CHECK:         aie.masterset(DMA : 2, %[[MEET]])
+// CHECK:         aie.masterset(North : 1, %[[MEET]])
+// CHECK:         aie.packet_rules(DMA : 2) {
+// CHECK-NEXT:      aie.rule(31, 18, %[[MEET]])
+// CHECK-NEXT:    }
+// CHECK-NEXT:    aie.packet_rules(North : 1) {
+// CHECK-NEXT:      aie.rule(31, 28, %[[MEET]])
 
 module {
   aie.device(npu1_1col) {
