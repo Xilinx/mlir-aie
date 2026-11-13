@@ -17,6 +17,7 @@ module @copy_over_static_bd {
     aie.shim_dma(%s0) {
         aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        // expected-note@+1 {{the static program's buffer descriptor is here}}
         aie.dma_bd(%sb : memref<8xi32> offset = 0 len = 4)
         aie.next_bd ^end
       ^end:
@@ -24,7 +25,7 @@ module @copy_over_static_bd {
     }
     aie.shim_dma_allocation @ctrl(%s0, MM2S, 1)
     aie.runtime_sequence @seq(%pkts : memref<?xi32>) {
-      // expected-error@+1 {{Specified buffer descriptor ID 0 is already in use. Release the earlier task first: aiex.dma_await_task waits for hardware completion before its BDs are reusable. aiex.dma_free_task also releases them but does NOT wait, so it is only safe when some other synchronization already guarantees that task has finished (see programming_guide/section-2/section-2d/DMATasks.md).}}
+      // expected-error@+1 {{programs buffer descriptor ID 0, which a static DMA program on tile (0,0) already uses; give the copy another ID}}
       aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrl} : memref<?xi32>
       aiex.npu.dma_wait {symbol = @ctrl}
     }

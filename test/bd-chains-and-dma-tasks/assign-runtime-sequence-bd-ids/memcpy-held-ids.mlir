@@ -391,7 +391,7 @@ module @tokenless_copy_named {
       // expected-note@+1 {{the copy is here}}
       aiex.npu.dma_memcpy_nd(%pkts[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, metadata = @ctrl} : memref<?xi32>
       aiex.npu.dma_wait {symbol = @ctrl}
-      // expected-error@+1 {{Give the task another ID, or retire the copy first: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      // expected-error@+1 {{Give the task another ID, or retire the copy first: it issues no token: set issue_token = true and wait for it, or await a later token-issuing transfer on its channel.}}
       %t = aiex.dma_configure_task_for @in {
         aie.dma_bd(%x : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32}
         aie.end
@@ -548,7 +548,7 @@ module @tokenless_copy_reused {
       // expected-note@+2 {{the earlier copy is here}}
       // expected-note@+1 {{first outstanding transfer starts here}}
       aiex.npu.dma_memcpy_nd(%x[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @in} : memref<16xi32>
-      // expected-warning@+1 {{reuses buffer descriptor ID 2 on tile (0,0) while an earlier aiex.npu.dma_memcpy_nd of that ID may still be in flight, so this reprograms it underneath. Give this copy another ID, or retire the earlier copy first: it issues no token, so only an await of a later tokened task on its channel, a status poll, or issue_token = true on it and a wait for it shows it done.}}
+      // expected-warning@+1 {{reuses buffer descriptor ID 2 on tile (0,0) while an earlier aiex.npu.dma_memcpy_nd of that ID may still be in flight, so this reprograms it underneath. Give this copy another ID, or retire the earlier copy first: it issues no token: set issue_token = true and wait for it, or await a later token-issuing transfer on its channel.}}
       aiex.npu.dma_memcpy_nd(%x[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @in} : memref<16xi32>
     }
   }

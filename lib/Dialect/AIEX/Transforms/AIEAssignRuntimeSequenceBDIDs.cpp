@@ -81,6 +81,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   llvm::DenseMap<AIE::TileID, BdIdGenerator> gens;
 
+  // How to retire a copy still holding an id, by whether it issues a token.
+  static constexpr llvm::StringLiteral kWaitForToken =
+      "wait for it (aiex.npu.sync or aiex.npu.dma_wait on its channel, "
+      "consuming its token).";
+  static constexpr llvm::StringLiteral kNoTokenAdvice =
+      "it issues no token: set issue_token = true and wait for it, or await "
+      "a later token-issuing transfer on its channel.";
+
   // Bytes as a linear form in the sequence's scratchpad parameters: the
   // constant at key -1, each parameter's coefficient at its state-table index.
   using Volume = std::map<int64_t, int64_t>;
@@ -235,11 +243,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // A PDI load reconfigures the array, so the tasks configured so far no
   // longer hold ids and allocation restarts around the new static BDs.
   void noteLoadPdi(NpuLoadPdiOp load) {
-    loadedDevice = {};
-    if (FlatSymbolRefAttr ref = load.getDeviceRefAttr())
-      if (Operation *parent = getOperation()->getParentOp())
-        loadedDevice =
-            SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(parent, ref);
+    loadedDevice = loadedBy(load);
     opaqueLoad = loadedDevice ? NpuLoadPdiOp() : load;
     resetChannels.clear();
     for (auto &[tile, tasks] : liveByTile)
@@ -394,15 +398,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               << bd_op.getBdId().value()
               << " is the one an aiex.npu.dma_memcpy_nd on this tile "
                  "programs, and that copy may still be in flight here. Give "
-                 "the task another ID, or ";
-          if (held->issuesToken)
-            diag << "wait for the copy first (aiex.npu.sync or "
-                    "aiex.npu.dma_wait on its channel, consuming its token).";
-          else
-            diag << "retire the copy first: it issues no token, so only an "
-                    "await of a later tokened task on its channel, a status "
-                    "poll, or issue_token = true on it and a wait for it "
-                    "shows it done.";
+                 "the task another ID, or retire the copy first: ";
+          diag << (held->issuesToken ? kWaitForToken : kNoTokenAdvice);
           diag.attachNote(held->copy->getLoc()) << "the copy is here";
           return WalkResult::interrupt();
         }
@@ -540,13 +537,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                << " buffer descriptor ID " << id
                << (isForbidden ? " while the task may run; "
                                : " until it is retired: ");
-          if (rawQueueEffect(copy, *symbols).issuesToken)
-            note << "wait for it (aiex.npu.sync or aiex.npu.dma_wait on its "
-                    "channel, consuming its token).";
-          else
-            note << "it issues no token, so only an await of a later tokened "
-                    "task on its channel, a status poll, or issue_token = "
-                    "true on it and a wait for it shows it done.";
+          note << (rawQueueEffect(copy, *symbols).issuesToken ? kWaitForToken
+                                                              : kNoTokenAdvice);
         }
         return WalkResult::interrupt();
       }
@@ -780,15 +772,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     }
     // The id was already taken in the generator, owned by neither a copy
     // nor a live task: only a static DMA program claims an id that way.
-    copy.emitOpError("Specified buffer descriptor ID ")
-        << id
-        << " is already in use. Release the earlier task first: "
-           "aiex.dma_await_task waits for hardware completion before its "
-           "BDs are reusable. aiex.dma_free_task also releases them but "
-           "does NOT wait, so it is only safe when some other "
-           "synchronization already guarantees that task has finished "
-           "(see programming_guide/section-2/section-2d/DMATasks.md).";
-    return failure();
+    InFlightDiagnostic diag = copy.emitOpError("programs buffer descriptor ID ")
+                              << id << ", which a static DMA program on tile ("
+                              << tile.getCol() << "," << tile.getRow()
+                              << ") already uses; give the copy another ID";
+    AIE::DeviceOp other =
+        loadedDevice && loadedDevice != getOperation() ? loadedDevice : nullptr;
+    for (AIE::DeviceOp candidate : {getOperation(), other})
+      if (candidate)
+        for (AIE::DmaBody program : candidate.getOps<AIE::DmaBody>())
+          if (program.getTileID() == tileId)
+            program.getDmaBody().walk([&](AIE::DMABDOp bd) {
+              if (bd.getBdId() == id)
+                diag.attachNote(bd.getLoc())
+                    << "the static program's buffer descriptor is here";
+            });
+    return diag;
   }
 
   void releaseRetiredCopies(const DmaQueueModel::ChannelKey &key) {
@@ -1684,13 +1683,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                      "still be in flight, so this reprograms it underneath. "
                      "Give this copy another ID, or retire the earlier copy "
                      "first: ";
-      if (reuse.earlierIssuesToken)
-        diag << "wait for it (aiex.npu.sync or aiex.npu.dma_wait on its "
-                "channel, consuming its token).";
-      else
-        diag << "it issues no token, so only an await of a later tokened "
-                "task on its channel, a status poll, or issue_token = true on "
-                "it and a wait for it shows it done.";
+      diag << (reuse.earlierIssuesToken ? kWaitForToken : kNoTokenAdvice);
       diag.attachNote(reuse.earlier) << "the earlier copy is here";
       if (reuse.count > 1) {
         Diagnostic &note = diag.attachNote();
@@ -1805,13 +1798,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return success();
   }
 
-  static bool isStartedAfter(DMAConfigureTaskOp task, Operation *op) {
-    return llvm::any_of(task.getResult().getUsers(), [&](Operation *user) {
-      return isa<DMAStartTaskOp>(user) && user->getBlock() == op->getBlock() &&
-             op->isBeforeInBlock(user);
-    });
-  }
-
   // Take back the ids of a started task that is not started again after `op`
   // and holds an id `op`'s channel can use (on a mem tile, its parity's half).
   // One a poll already proved finished is taken as is. Otherwise a poll before
@@ -1828,7 +1814,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     const AIETargetModel &tm =
         tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
     auto isCandidate = [&](DMAConfigureTaskOp task) {
-      if (releasedTasks.contains(task) || isStartedAfter(task, op))
+      if (releasedTasks.contains(task) || startAfter(task, op))
         return false;
       bool usable = false;
       task.walk([&](AIE::DMABDOp bd) {
@@ -2141,7 +2127,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       std::vector<Diagnostic> held;
       for (;;) {
         resetPerSequenceState();
-        indexLockReleases(seq);
+        // positionOf/lastReleaseOf only ever feed reclaimFor.
+        if (reclaimBds)
+          indexLockReleases(seq);
         frees.clear();
         held.clear();
         {
