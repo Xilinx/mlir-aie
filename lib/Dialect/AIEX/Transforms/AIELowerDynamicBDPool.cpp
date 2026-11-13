@@ -722,6 +722,8 @@ struct AIELowerDynamicBDPoolPass
         copies.insert({tile.getCol(), tile.getRow(),
                        static_cast<uint32_t>(copy.getId())});
     });
+    if (pools.empty() || copies.empty())
+      return;
     OpBuilder b = OpBuilder::atBlockBegin(&seq.getBody().front());
     for (auto [col, row, begin, end] : pools)
       for (auto [copyCol, copyRow, id] : copies)
