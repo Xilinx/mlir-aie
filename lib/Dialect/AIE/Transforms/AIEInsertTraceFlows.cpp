@@ -1189,7 +1189,7 @@ private:
           spans.emplace(
               device,
               [&](StringAttr symbol) {
-                return Placer::shimEndOf(device, symbol);
+                return ShimTransferSpans::endOf(device, symbol);
               },
               Placer::provenShimGates(device));
         groups = spans->plan(fifos, fifos, {}).groups.size();
