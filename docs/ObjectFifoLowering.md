@@ -460,17 +460,17 @@ in the pool, attaching locks to a segment, or setting `channelIndex` on an
 endpoint overrides that choice; this pass fills in the rest.
 
 When a shim tile runs out of channels, shim ends that are never in flight
-together take turns on one channel instead. Ends that different runtime
-sequences use never are: one dispatch runs one sequence and is taken to finish
-its transfers before the next starts, the same contract that lets one design
-be dispatched twice in a row. An `aiex.run` call is assumed to finish its
-transfers before returning, so disjoint calls can share, and configuration
-completes before the configure body starts, so control and application MM2S
-transfers in separate phases can share as well. A sending (MM2S) end stays in
-flight to the end of its sequence: a shim MM2S task reports itself complete
-once the shim has read its data, up to about 1580 words before they have
-entered the stream (measured on npu2), so awaiting it proves nothing about a
-later transfer queued behind it.
+together take turns on one channel instead. Ends used by different runtime
+sequences are never in flight together: one dispatch runs one sequence and is
+taken to finish its transfers before the next starts, the same contract that
+lets one design be dispatched twice in a row. An `aiex.run` call is assumed to
+finish its transfers before returning, so disjoint calls can share, and
+configuration completes before the configure body starts, so control and
+application MM2S transfers in separate phases can share as well. A sending
+(MM2S) end stays in flight to the end of its sequence: a shim MM2S task reports
+itself complete once the shim has read its data, up to about 1580 words before
+they have entered the stream (measured on npu2), so awaiting it proves nothing
+about a later transfer queued behind it.
 
 When a sequence returns, whether an `aiex.run` callee or a whole dispatch, its
 sending ends are taken to be done by those contracts, not by analysis. A later
@@ -496,12 +496,13 @@ the next turn; the transfer sizes must be static for that count. Within one
 sequence, the gate must be issued only after the end before it is awaited:
 freeing a task does not wait for it, and an await under a branch, or in a loop
 that may not run, may never happen. Without `--aie-objectfifo-verify` there
-are no proofs, so no receiving end shares without permission. The placers run
-before split, so they find the proofs by running split and verify on a copy of
-the design with every fifo between two tiles on DMA (placement can move to
-shared memory only a fifo whose proof holds the same there), and share a
-receiving end only under them. An end no runtime sequence names is never
-shared.
+are no proofs, so no receiving end shares without permission.
+
+The placers run before split, so they find the proofs by running split and
+verify on a copy of the design with every fifo between two tiles on DMA
+(placement can move to shared memory only a fifo whose proof holds the same
+there), and share a receiving end only under them. An end no runtime sequence
+names is never shared.
 
 With explicit permission the author guarantees instead that packets reach the
 shared channel in the order and quantities the receives expect, including
@@ -525,7 +526,7 @@ shared channels reuse the same ids, as the router keeps flows with one id
 apart wherever their destinations differ. Each end keeps its own
 `aie.shim_dma_allocation`. MM2S transfers stamp their endpoint's packet
 header; S2MM descriptors do not select packets by ID. A design that fits
-without sharing is lowered exactly as before.
+without sharing shares no channel.
 
 The runtime BD allocator warns about transfers left neither awaited nor freed
 at sequence exit (`warn-unreleased-transfers`, enabled by default in the pass
