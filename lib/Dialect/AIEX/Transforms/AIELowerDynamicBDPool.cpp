@@ -706,11 +706,13 @@ struct AIELowerDynamicBDPoolPass
     SymbolTable symbols(device);
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
-      // A copy's id is withheld from every pool this sequence draws from
-      // whether or not THIS pass does any lowering here: a hand-written pop
-      // reaches neither early return below, and bd_pool_reserve is a no-op
-      // where no pool, or no colliding copy, exists.
-      reserveCopyIds(seq, symbols);
+      // A pop with an id withholds a copy's BD id from the pool. Every exit
+      // from this sequence's body runs it, whether or not the lowering below
+      // grew new pools (carryIdsThroughLoop, computeMetadata) for it to see.
+      auto finish = [&](WalkResult result) {
+        reserveCopyIds(seq, symbols);
+        return result;
+      };
 
       bool hasRuntimeCF = false;
       seq.walk([&](Operation *op) {
@@ -718,7 +720,7 @@ struct AIELowerDynamicBDPoolPass
           hasRuntimeCF = true;
       });
       if (!hasRuntimeCF)
-        return WalkResult::advance();
+        return finish(WalkResult::advance());
 
       // Idempotency: a sequence already carrying pool pops has been lowered by
       // a prior run of this pass. Its awaits may have dropped their task
@@ -727,7 +729,7 @@ struct AIELowerDynamicBDPoolPass
       bool alreadyLowered = false;
       seq.walk([&](DMABdPoolPopOp) { alreadyLowered = true; });
       if (alreadyLowered)
-        return WalkResult::advance();
+        return finish(WalkResult::advance());
 
       // scf.while has no bounded trip count, so a BD id popped in its body has
       // no place to be pushed back deterministically; only scf.for and scf.if
@@ -739,7 +741,7 @@ struct AIELowerDynamicBDPoolPass
         return WalkResult::interrupt();
       });
       if (whileCheck.wasInterrupted())
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
 
       pairedId.clear();
       tileForTask.clear();
@@ -753,7 +755,7 @@ struct AIELowerDynamicBDPoolPass
                                            : WalkResult::advance();
       });
       if (r.wasInterrupted())
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
 
       // 2. Thread the id alongside the task everywhere the task flows. The task
       //    Index already threads (it is valid IR); shadowing every position it
@@ -767,7 +769,7 @@ struct AIELowerDynamicBDPoolPass
       //       parent-defines/child-consumes (inner id resolvable after growth).
       computeTaskValues(seq);
       if (failed(verifyChainLengths(seq)))
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
       SmallVector<Operation *> cf;
       seq.walk<WalkOrder::PreOrder>([&](Operation *o) {
         if (isa<scf::ForOp, scf::IfOp>(o))
@@ -777,7 +779,7 @@ struct AIELowerDynamicBDPoolPass
         if (auto f = dyn_cast<scf::ForOp>(o)) {
           carryIdsThroughLoop(f);
         } else if (failed(carryIdsThroughIf(cast<scf::IfOp>(o)))) {
-          return WalkResult::interrupt();
+          return finish(WalkResult::interrupt());
         }
       }
       wireFixups();
@@ -785,7 +787,7 @@ struct AIELowerDynamicBDPoolPass
       // 3. Metadata over the final IR: each task's tile (for the push) and a
       //    dominating origin configure (for an await on a loop/if result).
       if (failed(computeMetadata(seq)))
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
 
       // 4. Return ids to the pool. A free is the ONLY push: it returns the id
       //    to the free-list. An await is a TCT sync (npu_sync), never a release
@@ -814,7 +816,7 @@ struct AIELowerDynamicBDPoolPass
         return WalkResult::advance();
       });
       if (r.wasInterrupted())
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
       // Only once this sequence has lowered cleanly: guarding or reporting a
       // queue on a design that is already being rejected just buries the
       // error. Guard before erasing the frees above -- it still needs to see
@@ -822,8 +824,7 @@ struct AIELowerDynamicBDPoolPass
       guardQueueDepth(seq, symbols);
       for (Operation *op : toErase)
         op->erase();
-      reserveCopyIds(seq, symbols);
-      return WalkResult::advance();
+      return finish(WalkResult::advance());
     });
     if (wr.wasInterrupted())
       return signalPassFailure();
