@@ -3269,14 +3269,38 @@ int main(int argc, char **argv) {
   // line says which placement stands.
   bool mayAgain = mayPlaceAgain || mayWalkAgain || mayCoreAgain;
   struct Attempt {
+    // Null once freed early: kept only while this attempt is the latest, or
+    // the best placement-budget reached so far.
     std::unique_ptr<Graph> graph;
     std::unique_ptr<Engine> engine;
     mlir::LogicalResult ran = mlir::failure();
     std::vector<RecordedError> errors;
     // The flags that place it, past the command line's.
     std::vector<std::string> placedWith;
+    // Index of the attempt's failed edge in its own graph's edges, or -1 for
+    // none; cached at the attempt's end, while its graph is still around, so
+    // later attempts' freed graphs never need revisiting.
+    std::ptrdiff_t reached = -1;
   };
   std::vector<Attempt> attempts;
+  // How far an attempt got: its failed edge's index in its own graph, which
+  // is built in pipeline order, so a later index means it got further. An
+  // attempt with no failed edge (never reached one deferred, or succeeded)
+  // ranks lowest.
+  auto reachedEdge = [](const Attempt &a) -> std::ptrdiff_t {
+    if (!a.engine->failedEdge)
+      return -1;
+    return llvm::find_if(a.graph->edges,
+                         [&](const std::unique_ptr<EdgeBase> &edge) {
+                           return edge.get() == a.engine->failedEdge;
+                         }) -
+           a.graph->edges.begin();
+  };
+  // The earlier attempt most likely to stand if none left routes or
+  // allocates: the one so far whose failed edge comes latest, the later
+  // attempt on a tie. Every other earlier attempt's graph is freed once a new
+  // one completes, since only this one and the latest can still stand.
+  size_t bestReached = 0;
   auto runAttempt = [&](std::unique_ptr<Graph> attemptGraph,
                         std::unique_ptr<Engine> attemptEngine) {
     Attempt &a = attempts.emplace_back();
@@ -3287,6 +3311,13 @@ int main(int argc, char **argv) {
     a.ran = a.engine->run(*a.graph, runOutputs, satisfied,
                           DeserializeContext{&context}, buildAlso);
     a.errors = diagHandler.takeRecordedErrors();
+    a.reached = reachedEdge(a);
+    size_t now = attempts.size() - 1;
+    if (a.reached >= attempts[bestReached].reached)
+      bestReached = now;
+    for (size_t i = 0; i < now; ++i)
+      if (i != bestReached)
+        attempts[i].graph.reset();
     return a.ran;
   };
   auto placeAgain = [&](std::vector<std::string> placedWith,
@@ -3466,19 +3497,10 @@ int main(int argc, char **argv) {
   // succeeded or failed past what placing again fixes.
   // Every attempt here failed at an edge: each was placed again, or ran out,
   // only on failedAt() one. An attempt with none would rank lowest.
-  auto reached = [](const Attempt &a) -> std::ptrdiff_t {
-    if (!a.engine->failedEdge)
-      return -1;
-    return llvm::find_if(a.graph->edges,
-                         [&](const std::unique_ptr<EdgeBase> &edge) {
-                           return edge.get() == a.engine->failedEdge;
-                         }) -
-           a.graph->edges.begin();
-  };
   size_t stands = attempts.size() - 1;
   if (noPlacement)
     for (size_t i = attempts.size() - 1; i-- > 0;)
-      if (reached(attempts[i]) > reached(attempts[stands]))
+      if (attempts[i].reached > attempts[stands].reached)
         stands = i;
   Attempt &standing = attempts[stands];
   EdgeBase *standingFailed = standing.engine->failedEdge;
