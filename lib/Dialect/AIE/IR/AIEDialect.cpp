@@ -6128,6 +6128,21 @@ LogicalResult ObjectFifoRearmBindingOp::verify() {
   for (Value lock : getLocks())
     if (!lock.getDefiningOp<LockOp>())
       return emitOpError("locks operands must be aie.lock values");
+  // The re-push starts each channel on its head BD, which must be in the
+  // channel's BD pool.
+  if (std::optional<ArrayRef<int32_t>> headBdIds = getHeadBdIds()) {
+    const auto &targetModel = getTargetModel(getOperation());
+    for (auto [tile, channel, bdId] :
+         llvm::zip(getChannelTiles(), getChannelIndices(), *headBdIds)) {
+      auto tileOp = tile.getDefiningOp<TileOp>();
+      if (bdId < 0 || !targetModel.isBdChannelAccessible(
+                          tileOp.getCol(), tileOp.getRow(), bdId, channel))
+        return emitOpError("head BD ")
+               << bdId << " is not accessible from channel " << channel
+               << " of tile (" << tileOp.getCol() << ", " << tileOp.getRow()
+               << ")";
+    }
+  }
   return success();
 }
 
