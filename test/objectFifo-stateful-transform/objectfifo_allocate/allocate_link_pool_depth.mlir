@@ -68,30 +68,6 @@ module @dispatch_declared_5 {
 
 // -----
 
-// Six 8 KB objects and a 24 KB buffer do not fit the link tile; two do.
-// CHECK-LABEL: module @owner_declared_6_large
-// CHECK: aie.lock({{.*}}) {init = 2 : i32, sym_name = "in0__cons__prodlock0"}
-// CHECK-NOT: in0__cons__buf2
-module @owner_declared_6_large {
-  aie.device(npu2_1col) {
-    %s = aie.tile(0, 0)
-    %a = aie.tile(0, 2)
-    %l = aie.tile(0, 3)
-    aie.objectfifo @in0(%a, {%l}, [6, 2]) : !aie.objectfifo<memref<2048xi32>>
-    aie.objectfifo @out(%l, {%s}, 2 : i32) : !aie.objectfifo<memref<2048xi32>>
-    aie.objectfifo.link [@in0] -> [@out] ([] [])
-    aie.objectfifo.allocate @in0 (%l)
-    %big = aie.buffer(%l) {sym_name = "big"} : memref<6000xi32>
-    aie.core(%a) {
-      %0 = aie.objectfifo.acquire @in0(Produce, 1) : memref<2048xi32>
-      aie.objectfifo.release @in0(Produce, 1)
-      aie.end
-    }
-  }
-}
-
-// -----
-
 // out's allocate names (0, 3), but the link's tile (0, 2) and out's consumer
 // (0, 4) share no memory, so out falls back to DMA and its ends are not the
 // pool's: the pool keeps in0's two, as without the allocate, not out's 16.

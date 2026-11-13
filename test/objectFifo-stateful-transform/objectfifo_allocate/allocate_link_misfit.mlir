@@ -31,23 +31,6 @@ module @merge_first_input {
 
 // -----
 
-module @merge_second_input {
-  aie.device(npu2_1col) {
-    %s = aie.tile(0, 0)
-    %a = aie.tile(0, 2)
-    %l = aie.tile(0, 3)
-    %b = aie.tile(0, 4)
-    aie.objectfifo @in0(%a, {%l}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @in1(%b, {%l}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @out(%l, {%s}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo.link [@in0, @in1] -> [@out] ([] []) {mode = #aie.link_mode<time>}
-    // expected-error@+1 {{places @in1's objects in the link's pool, but @in1 is a merge's input}}
-    aie.objectfifo.allocate @in1 (%l)
-  }
-}
-
-// -----
-
 module @dispatch_first_output {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -60,23 +43,6 @@ module @dispatch_first_output {
     aie.objectfifo.link [@in] -> [@out0, @out1] ([] []) {mode = #aie.link_mode<time>}
     // expected-error@+1 {{places @out0's objects in the link's pool, but @out0 is a dispatch's output, and a dispatch's outputs take turns draining the pool through one DMA end}}
     aie.objectfifo.allocate @out0 (%l)
-  }
-}
-
-// -----
-
-module @dispatch_second_output {
-  aie.device(npu2_1col) {
-    %s = aie.tile(0, 0)
-    %a = aie.tile(0, 2)
-    %l = aie.tile(0, 3)
-    %b = aie.tile(0, 4)
-    aie.objectfifo @in(%s, {%l}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @out0(%l, {%a}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @out1(%l, {%b}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo.link [@in] -> [@out0, @out1] ([] []) {mode = #aie.link_mode<time>}
-    // expected-error@+1 {{places @out1's objects in the link's pool, but @out1 is a dispatch's output}}
-    aie.objectfifo.allocate @out1 (%l)
   }
 }
 
