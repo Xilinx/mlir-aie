@@ -167,15 +167,17 @@ demandFirstOrder(llvm::ArrayRef<SpillPool> pools) {
   return order;
 }
 
-/// The tiles a mem tile buffer homed at `home` may spill to: either side of it
-/// in its row, where home shares memory with them.
+/// The tiles a mem tile buffer homed at `home` may spill to: those in its row
+/// home shares memory with, in column order.
 inline llvm::SmallVector<TileID, 2>
 memTileSpillNeighbours(const AIETargetModel &target, TileID home) {
   llvm::SmallVector<TileID, 2> neighbours;
-  for (int col : {home.col - 1, home.col + 1}) {
-    if (col < 0 || col >= target.columns())
+  for (int col = 0; col < target.columns(); ++col) {
+    if (col == home.col)
       continue;
     TileID neighbour{col, home.row};
+    if (!target.isValidTile(neighbour))
+      continue;
     auto shared = target.getSharedMemory(home, neighbour);
     if (shared == AIETargetModel::SharedMemory::Second ||
         shared == AIETargetModel::SharedMemory::Either)
