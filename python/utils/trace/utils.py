@@ -260,17 +260,24 @@ def trace_pkts_de_interleave(word_stream):
             break  # TODO Assumes a blank line is the last line
         if (i % 8) == 0:
             pkt_hdr = parse_pkt_hdr_in_stream(int(word_stream[i], 16))
-            if pkt_hdr["valid"]:
-                curr_loc = str(pkt_hdr["row"]) + "," + str(pkt_hdr["col"])
-                valid_type_found = False
-                for tt in range(NUM_TRACE_TYPES):
-                    if pkt_hdr["type"] == tt:
-                        curr_pkt_type = tt
-                        if trace_pkts_sorted[tt].get(curr_loc) is None:
-                            trace_pkts_sorted[tt][curr_loc] = list()
-                        valid_type_found = True
-                if not valid_type_found:
-                    sys.exit("Error: Invalid packet type")
+            if not pkt_hdr["valid"]:
+                # With no earlier packet, its payload has no location.
+                if not curr_vld:
+                    raise ValueError(
+                        "trace segment starts with an invalid packet header "
+                        f"at word {i}: {word_stream[i]}"
+                    )
+                continue
+            curr_loc = str(pkt_hdr["row"]) + "," + str(pkt_hdr["col"])
+            valid_type_found = False
+            for tt in range(NUM_TRACE_TYPES):
+                if pkt_hdr["type"] == tt:
+                    curr_pkt_type = tt
+                    if trace_pkts_sorted[tt].get(curr_loc) is None:
+                        trace_pkts_sorted[tt][curr_loc] = list()
+                    valid_type_found = True
+            if not valid_type_found:
+                sys.exit("Error: Invalid packet type")
             curr_vld = True
         else:
             if curr_vld:

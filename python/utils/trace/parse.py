@@ -486,23 +486,12 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
                                 events_module,
                             )
                             timer = timer + cycles
-                            if len(multiple_list) > 1:
-                                for k in c.keys():
-                                    if "event" in k:
-                                        activate_event(
-                                            c[k],
-                                            tt,
-                                            loc,
-                                            timer,
-                                            pid,
-                                            active_events,
-                                            pid_events,
-                                            trace_events,
-                                            events_module,
-                                        )
-                            else:
+                            # c is the Repeat itself; replay the repeated
+                            # command's events, which Single and Multiple
+                            # both record in multiple_list.
+                            for repeated_event in multiple_list:
                                 activate_event(
-                                    event,
+                                    repeated_event,
                                     tt,
                                     loc,
                                     timer,
@@ -1043,7 +1032,12 @@ def main():
             len(segment),
             len(segment) - len(trimmed),
         )
-        sorted_pkts = trace_pkts_de_interleave(trimmed)
+        try:
+            sorted_pkts = trace_pkts_de_interleave(trimmed)
+        except ValueError as e:
+            logger.error("segment %d: %s", seg_idx, e)
+            logger.error("segment %d first words: %s", seg_idx, " ".join(trimmed[:8]))
+            sys.exit(1)
         for t in range(NUM_TRACE_TYPES):
             for loc, data in sorted_pkts[t].items():
                 if loc in trace_pkts_sorted[t]:
