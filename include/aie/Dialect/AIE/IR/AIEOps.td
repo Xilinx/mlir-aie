@@ -2876,10 +2876,10 @@ def AIE_ObjectFifoCreateOp
     /// The link on the producer's tile writing the fifo, if any.
     ObjectFifoLinkOp getProducerLink();
     /// Whether the two DMA ends the split gives the fifo, one circuit apart,
-    /// may each take turns with other ends on one channel: as
-    /// aie-objectfifo-allocate requires of both, neither is pinned to a
-    /// channel, iterates a bounded count, repeats, dispatches, walks a stream
-    /// window or shares its route.
+    /// may each take turns with other ends on one channel, as
+    /// aie-objectfifo-allocate requires of both
+    /// (ObjectFifoDmaEndpointOp::canTakeTurns), and the fifo shares its route
+    /// with no other.
     bool canTakeTurns();
 
     /// The packet header this fifo asks its route to carry, or null for a
@@ -3408,6 +3408,19 @@ def AIE_ObjectFifoDmaEndpointOp
     /// repeat runs in hardware, for every dispatch pass. The one chain of
     /// endpoints taking turns is counted at the first one `turns` names.
     int64_t getNumBDs();
+    /// Whether an end may take turns with other ends on one channel: not one
+    /// that pushes a queue task per object, is pinned to a channel,
+    /// dispatches, carries packets, iterates a bounded count, repeats or
+    /// walks a stream window.
+    static bool canTakeTurns(bool pushQueue, bool pinned, bool dispatch,
+                             bool packet, bool iterates, int64_t repeat,
+                             bool walksStream);
+    bool canTakeTurns() {
+      return canTakeTurns(getReleaseStrategy() == ObjectFifoRelease::PushQueue,
+                          getChannelIndex().has_value(), !!getDispatch(),
+                          !!getPacketAttr(), getIterCount().has_value(),
+                          getRepeat(), walksStream());
+    }
   }];
 }
 

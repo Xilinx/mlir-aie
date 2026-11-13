@@ -1635,14 +1635,6 @@ struct AIEObjectFifoAllocatePass
     return found;
   }
 
-  static bool canTakeTurns(ObjectFifoDmaEndpointOp endpoint) {
-    return endpoint &&
-           endpoint.getReleaseStrategy() != ObjectFifoRelease::PushQueue &&
-           !endpoint.getChannelIndex() && !endpoint.getDispatch() &&
-           !endpoint.getPacketAttr() && !endpoint.getIterCount() &&
-           endpoint.getRepeat() == 1 && !endpoint.walksStream();
-  }
-
   /// Whether a chain moving `turns` over `ends` can walk each contiguous pool
   /// with one descriptor per turn of its unrolled passes, each stepping over
   /// the others' objects: they must divide the pool's objects.
@@ -1738,9 +1730,10 @@ struct AIEObjectFifoAllocatePass
     for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
       if (sameTile(dma.getTile(), exhausted->getResult(0)) &&
           dma.getRouteDirection() == dir && cachedCoreEnd(dma) &&
-          canTakeTurns(dma.getTurns() ? turnEndpoints(dma).front() : dma) &&
-          canTakeTurns(cachedCircuitPeer(dma)))
-        candidates.push_back(dma);
+          (dma.getTurns() ? turnEndpoints(dma).front() : dma).canTakeTurns())
+        if (ObjectFifoDmaEndpointOp peer = cachedCircuitPeer(dma);
+            peer && peer.canTakeTurns())
+          candidates.push_back(dma);
     llvm::stable_sort(candidates, [&](Operation *a, Operation *b) {
       return structuralRank.lookup(a) < structuralRank.lookup(b);
     });
@@ -1752,8 +1745,10 @@ struct AIEObjectFifoAllocatePass
             dma.getRouteDirection() == dir)
           llvm::dbgs() << "  " << dma.getSymName() << ": core end "
                        << bool(cachedCoreEnd(dma)) << ", takes turns "
-                       << canTakeTurns(dma) << ", peer takes turns "
-                       << canTakeTurns(cachedCircuitPeer(dma)) << "\n";
+                       << dma.canTakeTurns() << ", peer takes turns "
+                       << (cachedCircuitPeer(dma) &&
+                           cachedCircuitPeer(dma).canTakeTurns())
+                       << "\n";
     });
     auto groupOf = [](ObjectFifoDmaEndpointOp end) {
       SmallVector<ObjectFifoDmaEndpointOp> group = turnEndpoints(end);

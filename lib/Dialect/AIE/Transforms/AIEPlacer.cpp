@@ -1197,17 +1197,24 @@ void SequentialPlacer::countTurns(
       int budget = coreDrains ? inBudget : outBudget;
       if (need <= budget)
         continue;
-      llvm::MapVector<Operation *, SmallVector<ObjectFifoCreateOp>> byTile;
+      // Peers with coordinates are one mem tile however many ops name it.
+      llvm::MapVector<std::pair<Operation *, std::optional<TileID>>,
+                      SmallVector<ObjectFifoCreateOp>>
+          byTile;
       for (ObjectFifoCreateOp fifo : objectFifos) {
         if (!fifo.canTakeTurns())
           continue;
         auto consumers = fifo.getConsumerTiles();
         Value mine = coreDrains ? consumers[0] : fifo.getProducerTile();
         Value other = coreDrains ? fifo.getProducerTile() : consumers[0];
-        auto peer = dyn_cast_or_null<LogicalTileOp>(other.getDefiningOp());
-        if (mine == tile.getResult() && peer &&
-            peer.getTileType() == AIETileType::MemTile)
-          byTile[peer].push_back(fifo);
+        auto peer = dyn_cast_or_null<TileLike>(other.getDefiningOp());
+        if (mine != tile.getResult() || !peer || !peer.isMemTile())
+          continue;
+        std::optional<int> col = peer.tryGetCol(), row = peer.tryGetRow();
+        if (col && row)
+          byTile[{nullptr, TileID{*col, *row}}].push_back(fifo);
+        else
+          byTile[{peer, std::nullopt}].push_back(fifo);
       }
       for (auto &[peer, fifos] : byTile) {
         if (fifos.size() < 2 || need <= budget)

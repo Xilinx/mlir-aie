@@ -2334,19 +2334,35 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
 }
 
 bool ObjectFifoCreateOp::canTakeTurns() {
-  if (getConsumerTiles().size() != 1 || packetHeader() || getProdPortAttr() ||
-      getConsumerPort(0) || getIterCount() || getRepeatCount().value_or(1) != 1)
+  if (getConsumerTiles().size() != 1)
     return false;
+  auto pinned = [](ObjectFifoEndPortAttr port) {
+    return port && (port.isCore() || port.channelIndex());
+  };
+  bool dispatch = false, walksStream = false;
+  int64_t repeat = getRepeatCount().value_or(1);
   for (ObjectFifoLinkOp link :
        (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
-    bool output = llvm::is_contained(link.getOutputObjectFifos(), *this);
-    if (output && (link.isDispatch() || link.walksStream() ||
-                   link.getRepeatCount().value_or(1) != 1))
-      return false;
+    if (llvm::is_contained(link.getOutputObjectFifos(), *this)) {
+      dispatch |= link.isDispatch();
+      walksStream |= link.walksStream();
+      repeat = std::max<int64_t>(repeat, link.getRepeatCount().value_or(1));
+    }
     if (link.isMerge() && llvm::is_contained(link.getInputObjectFifos(), *this))
       return false;
   }
-  return true;
+  return ObjectFifoDmaEndpointOp::canTakeTurns(
+      usesPushQueue(), pinned(getProdPortAttr()) || pinned(getConsumerPort(0)),
+      dispatch, packetHeader() != nullptr, getIterCount().has_value(), repeat,
+      walksStream);
+}
+
+bool ObjectFifoDmaEndpointOp::canTakeTurns(bool pushQueue, bool pinned,
+                                           bool dispatch, bool packet,
+                                           bool iterates, int64_t repeat,
+                                           bool walksStream) {
+  return !pushQueue && !pinned && !dispatch && !packet && !iterates &&
+         repeat == 1 && !walksStream;
 }
 
 int ObjectFifoCreateOp::sharedDepth() {
