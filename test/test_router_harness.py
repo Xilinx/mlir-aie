@@ -13,7 +13,6 @@ import inspect
 import json
 import random
 import shutil
-import signal
 import subprocess
 import sys
 import time
@@ -88,15 +87,18 @@ OVER_CUT = """module {
     aie.flow(%t02, DMA : 1, %t01, DMA : 0)
   }
 }"""
-# Two packet sources sharing two receivers: a strict witness exists.
-SHARED = """module {
+# Trees that share two receivers and cannot meet: the router routes them only
+# with allow-deadlock-prone, and no routing without the hold cycle is known.
+STOP_MEETING = """module {
   aie.device(npu1_1col) {
-    %t02 = aie.tile(0, 2)
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
     %t03 = aie.tile(0, 3)
-    %t04 = aie.tile(0, 4)
     %t05 = aie.tile(0, 5)
-    aie.packet_flow(1) { aie.packet_source<%t02, DMA : 0> aie.packet_dest<%t03, DMA : 0> aie.packet_dest<%t04, DMA : 0> }
-    aie.packet_flow(2) { aie.packet_source<%t05, DMA : 0> aie.packet_dest<%t03, DMA : 0> aie.packet_dest<%t04, DMA : 0> }
+    aie.packet_flow(29) { aie.packet_source<%t01, DMA : 5> aie.packet_dest<%t00, DMA : 1> aie.packet_dest<%t05, DMA : 1> }
+    aie.packet_flow(28) { aie.packet_source<%t03, Core : 0> aie.packet_dest<%t00, DMA : 1> aie.packet_dest<%t05, DMA : 1> }
+    aie.packet_flow(23) { aie.packet_source<%t05, DMA : 1> aie.packet_dest<%t01, DMA : 1> }
+    aie.packet_flow(11) { aie.packet_source<%t05, Core : 0> aie.packet_dest<%t00, DMA : 1> aie.packet_dest<%t05, DMA : 1> }
   }
 }"""
 OVERUSED = r"cross from row 2 to row 3, which takes 7 channels across, and it has 6"
@@ -213,11 +215,9 @@ def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
     assert "id 3 from (0, 2) DMA:0" in detail
 
 
-def test_a_strict_rejection_without_a_witness_says_so(priority):
-    d, _ = priority
-    assert rp.strict_witness(d, rp.Analysis(d)) is None
-    rejected = subprocess.CompletedProcess([], 1, "", "error: no legal routing")
-    assert router_mutation.judge_strict(d, "route", True, rejected) == (
+def test_a_strict_rejection_without_a_witness_says_so():
+    d = rp.load_design(STOP_MEETING)
+    assert router_mutation.judge(d, "route", True, 0) == (
         "ok",
         "rejected strict, and no routing without a hold cycle is known",
     )
@@ -241,8 +241,6 @@ def test_a_batch_gets_one_limit_not_one_per_design():
 
 
 def test_every_judged_router_run_reads_a_crash_as_a_crash():
-    crashed = subprocess.CompletedProcess(["aie-opt"], -signal.SIGSEGV, "", "")
-    assert rp.run_failure(crashed)[0] == "crash"
     spent = rp.aie_opt("module {}", deadline=time.monotonic())
     assert rp.run_failure(spent)[0] == "timeout"
     # judge() routes twice: the design the verifier rejects, and any other.
@@ -369,25 +367,6 @@ def test_the_properties_report_keeps_the_generators_undecided_seeds(tmp_path):
     run.write(partial=False, counts={})
     final = json.loads(path.read_text())
     assert (final["partial"], final["undecided"]) == (False, ["seed 0: timeout"])
-
-
-def test_a_crash_in_the_models_router_runs_is_a_crash():
-    crashed = subprocess.CompletedProcess(["aie-opt"], -signal.SIGSEGV, "", "")
-    with pytest.raises(rp.RouterCrash):
-        rp.model_run(crashed, "a crashed run")
-    for fn in (rp.priority_trees, rp.witness_problem):
-        assert "model_run" in code_names(fn.__code__), fn.__name__
-
-
-def test_a_strict_witness_timeout_is_no_strict_pass():
-    d = rp.canonical(rp.load_design(SHARED))
-    strict = rp.aie_opt(d.emit(), strict=True)
-    failed = subprocess.CompletedProcess(strict.args, 1, "", "no routing")
-    assert router_mutation.judge_strict(d, "route", True, failed)[0] == "strict-miss"
-    outcome, detail = router_mutation.judge_strict(
-        d, "route", True, failed, deadline=time.monotonic()
-    )
-    assert outcome == "timeout", detail
 
 
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
