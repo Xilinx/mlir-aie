@@ -6,16 +6,19 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=2" --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %s 2>&1 | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=3" --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %s 2>&1 | FileCheck %s
 
 // The SA placer and allocation choose the same pool to walk whole around the
-// channels and BD ids the mem tile's own program holds: the SA is silent and
-// allocation walks @in2's pool, which fits, not @in1's, which does not.
+// channels and BD ids the mem tile's own program holds. Each case fits by
+// walking either pool; walking @in1's 400 KB pool whole fits no run of memory
+// beside the 64-byte buffer at 256 KB, so the SA is silent and allocation
+// walks @in2's pool. On npu2_1col the SA has one placement to choose.
 
+// The program chains 19 BD ids on S2MM 0 and 19 on MM2S 1, leaving 5 for
+// each channel parity; the ends need 14 unwalked.
 // CHECK-NOT: warning
 // CHECK-LABEL: module @taken_ids
-// CHECK: aie.objectfifo.pool @in2__cons__pool({{.*}}) {buffers = [@in2__cons__buf0], contiguous, depth = 3
+// CHECK-DAG: aie.objectfifo.pool @in1__cons__pool({{.*}}) {buffers = [@in1__cons__buf0, @in1__cons__buf1, @in1__cons__buf2, @in1__cons__buf3], depth = 4
+// CHECK-DAG: aie.objectfifo.pool @in2__cons__pool({{.*}}) {buffers = [@in2__cons__buf0], contiguous, depth = 3
 module @taken_ids {
   aie.device(npu2_1col) {
     %sh = aie.logical_tile<ShimNOCTile>(?, ?)
@@ -153,8 +156,11 @@ module @taken_ids {
 
 // -----
 
+// The program holds every odd channel, so the ends take even ones, which share
+// 24 BD ids; the ends need 26 unwalked.
 // CHECK-LABEL: module @claimed_channels
-// CHECK: aie.objectfifo.pool @in2__cons__pool({{.*}}) {buffers = [@in2__cons__buf0], contiguous, depth = 5
+// CHECK-DAG: aie.objectfifo.pool @in1__cons__pool({{.*}}) {buffers = [@in1__cons__buf0, @in1__cons__buf1, @in1__cons__buf2, @in1__cons__buf3, @in1__cons__buf4, @in1__cons__buf5, @in1__cons__buf6, @in1__cons__buf7], depth = 8
+// CHECK-DAG: aie.objectfifo.pool @in2__cons__pool({{.*}}) {buffers = [@in2__cons__buf0], contiguous, depth = 5
 // CHECK-NOT: warning
 module @claimed_channels {
   aie.device(npu2_1col) {

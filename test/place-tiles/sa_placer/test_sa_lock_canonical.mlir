@@ -8,10 +8,11 @@
 // RUN: %python %S/../../../utils/component_checks/sa_lock_check.py --aie-opt aie-opt --seed 1 %s | FileCheck %s
 
 // An 8x4 grid of 110 pools of 3 to 7 locks whose fifo order is a packing.
-// Placed first fit in fifo order the SA's locks fit; allocation's first fit
-// in its own order misses and its search stops. Both now place first fit in
-// one order taken from the lock groups alone, so the SA fits only where
-// allocation does: here both stop.
+// The SA and allocation place first fit in one order taken from the lock
+// groups alone, not fifo order, so the SA fits only where allocation does:
+// here first fit misses, the exact packing runs out of steps, and both report
+// it stopped. The unused logical shim makes this an SA input; the SA records
+// the stopped packing, so its moves do not repeat the search.
 // CHECK: agree=1 mismatch=0 skipped=0 agreeing_lock_failures=0 agreeing_lock_stops=1
 
 module @lock_canonical {

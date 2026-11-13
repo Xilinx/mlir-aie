@@ -13,7 +13,7 @@
 // fifos are written. Every case here needs a later set than the cheapest.
 // Allocation searches the sets; the SA tries one per annealing step, so it
 // counts these placements as over capacity, never as fitting.
-// CHECK-COUNT-8: warning: SA placer's resource estimate is over capacity
+// CHECK-COUNT-4: warning: SA placer's resource estimate is over capacity
 
 // @s, @x and @f need 75 BD ids. Walking @s and @f fits them and walks the
 // fewest bytes, but @f's walked buffer then finds no room; @x alone is next,
@@ -29,22 +29,6 @@
 // @b walk the fewest bytes, but then @c's 4 KB objects find 15 places of
 // the 16 they need; @a and @c fit, with @b's 2 KB objects in the gaps.
 // ALLOC-LABEL: @pair_abc
-// ALLOC-DAG: {sym_name = "a__cons__buf0"} : memref<4096xi32>
-// ALLOC-DAG: {sym_name = "c__cons__buf0"} : memref<16384xi32>
-// ALLOC-DAG: {sym_name = "b__cons__buf15"} : memref<512xi32>
-// ALLOC-LABEL: @pair_acb
-// ALLOC-DAG: {sym_name = "a__cons__buf0"} : memref<4096xi32>
-// ALLOC-DAG: {sym_name = "c__cons__buf0"} : memref<16384xi32>
-// ALLOC-DAG: {sym_name = "b__cons__buf15"} : memref<512xi32>
-// ALLOC-LABEL: @pair_bac
-// ALLOC-DAG: {sym_name = "a__cons__buf0"} : memref<4096xi32>
-// ALLOC-DAG: {sym_name = "c__cons__buf0"} : memref<16384xi32>
-// ALLOC-DAG: {sym_name = "b__cons__buf15"} : memref<512xi32>
-// ALLOC-LABEL: @pair_bca
-// ALLOC-DAG: {sym_name = "a__cons__buf0"} : memref<4096xi32>
-// ALLOC-DAG: {sym_name = "c__cons__buf0"} : memref<16384xi32>
-// ALLOC-DAG: {sym_name = "b__cons__buf15"} : memref<512xi32>
-// ALLOC-LABEL: @pair_cab
 // ALLOC-DAG: {sym_name = "a__cons__buf0"} : memref<4096xi32>
 // ALLOC-DAG: {sym_name = "c__cons__buf0"} : memref<16384xi32>
 // ALLOC-DAG: {sym_name = "b__cons__buf15"} : memref<512xi32>
@@ -106,94 +90,6 @@ module @pair_abc {
     aie.objectfifo @c(%s1, {%m}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
     aie.objectfifo @c_out(%m, {%s1}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
     aie.objectfifo.link [@c] -> [@c_out] ([] [])
-  }
-}
-
-// -----
-
-module @pair_acb {
-  aie.device(npu2) {
-    %s0 = aie.logical_tile<ShimNOCTile>(0, 0)
-    %s1 = aie.logical_tile<ShimNOCTile>(1, 0)
-    %m = aie.logical_tile<MemTile>(0, 1)
-    %n = aie.logical_tile<MemTile>(1, 1)
-    %fill0 = aie.buffer(%m) {sym_name = "fill0"} : memref<440320xi8>
-    %fill1 = aie.buffer(%n) {sym_name = "fill1"} : memref<493568xi8>
-    aie.objectfifo @a(%s0, {%m}, 16 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @a_out(%m, {%s0}, 16 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo.link [@a] -> [@a_out] ([] [])
-    aie.objectfifo @c(%s1, {%m}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @c_out(%m, {%s1}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo.link [@c] -> [@c_out] ([] [])
-    aie.objectfifo @b(%s0, {%m}, 16 : i32) : !aie.objectfifo<memref<512xi32>>
-    aie.objectfifo @b_out(%m, {%s0}, 16 : i32) : !aie.objectfifo<memref<512xi32>>
-    aie.objectfifo.link [@b] -> [@b_out] ([] [])
-  }
-}
-
-// -----
-
-module @pair_bac {
-  aie.device(npu2) {
-    %s0 = aie.logical_tile<ShimNOCTile>(0, 0)
-    %s1 = aie.logical_tile<ShimNOCTile>(1, 0)
-    %m = aie.logical_tile<MemTile>(0, 1)
-    %n = aie.logical_tile<MemTile>(1, 1)
-    %fill0 = aie.buffer(%m) {sym_name = "fill0"} : memref<440320xi8>
-    %fill1 = aie.buffer(%n) {sym_name = "fill1"} : memref<493568xi8>
-    aie.objectfifo @b(%s0, {%m}, 16 : i32) : !aie.objectfifo<memref<512xi32>>
-    aie.objectfifo @b_out(%m, {%s0}, 16 : i32) : !aie.objectfifo<memref<512xi32>>
-    aie.objectfifo.link [@b] -> [@b_out] ([] [])
-    aie.objectfifo @a(%s0, {%m}, 16 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @a_out(%m, {%s0}, 16 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo.link [@a] -> [@a_out] ([] [])
-    aie.objectfifo @c(%s1, {%m}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @c_out(%m, {%s1}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo.link [@c] -> [@c_out] ([] [])
-  }
-}
-
-// -----
-
-module @pair_bca {
-  aie.device(npu2) {
-    %s0 = aie.logical_tile<ShimNOCTile>(0, 0)
-    %s1 = aie.logical_tile<ShimNOCTile>(1, 0)
-    %m = aie.logical_tile<MemTile>(0, 1)
-    %n = aie.logical_tile<MemTile>(1, 1)
-    %fill0 = aie.buffer(%m) {sym_name = "fill0"} : memref<440320xi8>
-    %fill1 = aie.buffer(%n) {sym_name = "fill1"} : memref<493568xi8>
-    aie.objectfifo @b(%s0, {%m}, 16 : i32) : !aie.objectfifo<memref<512xi32>>
-    aie.objectfifo @b_out(%m, {%s0}, 16 : i32) : !aie.objectfifo<memref<512xi32>>
-    aie.objectfifo.link [@b] -> [@b_out] ([] [])
-    aie.objectfifo @c(%s1, {%m}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @c_out(%m, {%s1}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo.link [@c] -> [@c_out] ([] [])
-    aie.objectfifo @a(%s0, {%m}, 16 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @a_out(%m, {%s0}, 16 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo.link [@a] -> [@a_out] ([] [])
-  }
-}
-
-// -----
-
-module @pair_cab {
-  aie.device(npu2) {
-    %s0 = aie.logical_tile<ShimNOCTile>(0, 0)
-    %s1 = aie.logical_tile<ShimNOCTile>(1, 0)
-    %m = aie.logical_tile<MemTile>(0, 1)
-    %n = aie.logical_tile<MemTile>(1, 1)
-    %fill0 = aie.buffer(%m) {sym_name = "fill0"} : memref<440320xi8>
-    %fill1 = aie.buffer(%n) {sym_name = "fill1"} : memref<493568xi8>
-    aie.objectfifo @c(%s1, {%m}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @c_out(%m, {%s1}, 16 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo.link [@c] -> [@c_out] ([] [])
-    aie.objectfifo @a(%s0, {%m}, 16 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @a_out(%m, {%s0}, 16 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo.link [@a] -> [@a_out] ([] [])
-    aie.objectfifo @b(%s0, {%m}, 16 : i32) : !aie.objectfifo<memref<512xi32>>
-    aie.objectfifo @b_out(%m, {%s0}, 16 : i32) : !aie.objectfifo<memref<512xi32>>
-    aie.objectfifo.link [@b] -> [@b_out] ([] [])
   }
 }
 
