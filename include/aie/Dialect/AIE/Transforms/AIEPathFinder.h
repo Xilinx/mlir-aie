@@ -313,6 +313,17 @@ public:
     return llvm::inconvertibleErrorCode();
   }
 
+  // Another failure of this error's own dynamic type, naming `reason`,
+  // `faults` and `loc`: how the replay ladder reconstructs a kept attempt's
+  // failure from its stored fields without a classID switch at each site
+  // that needs one.
+  virtual std::unique_ptr<RoutingFailure>
+  clone(std::string reason, RoutingFaults faults,
+        std::optional<mlir::Location> loc) const {
+    return std::make_unique<RoutingFailure>(std::move(reason),
+                                            std::move(faults), loc);
+  }
+
   std::string reason;
   RoutingFaults faults;
   std::optional<mlir::Location> loc;
@@ -325,6 +336,12 @@ class DeadlockProneRouting
 public:
   static char ID;
   using ErrorInfo::ErrorInfo;
+  std::unique_ptr<RoutingFailure>
+  clone(std::string reason, RoutingFaults faults,
+        std::optional<mlir::Location> loc) const override {
+    return std::make_unique<DeadlockProneRouting>(std::move(reason),
+                                                  std::move(faults), loc);
+  }
 };
 
 // No legal routing around the routes prioritized flows keep, which the reason
@@ -334,6 +351,12 @@ class PinnedRoutingFailure
 public:
   static char ID;
   using ErrorInfo::ErrorInfo;
+  std::unique_ptr<RoutingFailure>
+  clone(std::string reason, RoutingFaults faults,
+        std::optional<mlir::Location> loc) const override {
+    return std::make_unique<PinnedRoutingFailure>(std::move(reason),
+                                                  std::move(faults), loc);
+  }
 };
 
 // Checks a routing that fits the fabric: a RoutingFailure if it is unusable,
@@ -386,10 +409,11 @@ struct PathfinderAttempt {
   std::vector<llvm::BitVector> circuitOnly;
   // The settings' values, and which of them the attempt read.
   Relax values = Relax::None, consulted = Relax::None;
-  // The routing found, else the failure: its class (RoutingFailure::classID or
-  // a subclass's) and contents.
+  // The routing found, else the failure: a clone of it (so reconstructing a
+  // replay's failure needs no classID switch, just prototype->clone()) and
+  // its contents.
   std::optional<Routing> routing;
-  const void *failureClass = nullptr;
+  std::unique_ptr<RoutingFailure> prototype;
   std::string reason;
   RoutingFaults faults;
   std::optional<mlir::Location> loc;

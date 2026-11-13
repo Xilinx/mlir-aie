@@ -2766,14 +2766,8 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     checkReason = replayed->checkReason;
     if (replayed->routing)
       return *replayed->routing;
-    if (replayed->failureClass == DeadlockProneRouting::classID())
-      return llvm::make_error<DeadlockProneRouting>(
-          replayed->reason, replayed->faults, replayed->loc);
-    if (replayed->failureClass == PinnedRoutingFailure::classID())
-      return llvm::make_error<PinnedRoutingFailure>(
-          replayed->reason, replayed->faults, replayed->loc);
-    return llvm::make_error<RoutingFailure>(replayed->reason, replayed->faults,
-                                            replayed->loc);
+    return llvm::Error(replayed->prototype->clone(
+        replayed->reason, replayed->faults, replayed->loc));
   }
 
   llvm::Expected<Routing> found =
@@ -2790,23 +2784,26 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
             : llvm::handleErrors(
                   found.takeError(),
                   [&](std::unique_ptr<RoutingFailure> f) -> llvm::Error {
-                    const void *cls = f->dynamicClassID();
-                    replayable = cls == RoutingFailure::classID() ||
-                                 cls == DeadlockProneRouting::classID() ||
-                                 cls == PinnedRoutingFailure::classID();
-                    now.failureClass = cls;
+                    // Reaching this handler already means f is a
+                    // RoutingFailure or a registered subclass of it.
+                    replayable = true;
                     now.reason = f->reason;
                     now.faults = f->faults;
                     now.loc = f->loc;
+                    now.prototype = f->clone(f->reason, f->faults, f->loc);
                     return llvm::Error(std::move(f));
                   });
   if (replayed != attempts->end()) {
+    bool sameFailureType =
+        static_cast<bool>(replayed->prototype) ==
+            static_cast<bool>(now.prototype) &&
+        (!now.prototype || replayed->prototype->dynamicClassID() ==
+                               now.prototype->dynamicClassID());
     bool same = replayed->trajectory == now.trajectory &&
                 replayed->routing.has_value() == now.routing.has_value() &&
                 (!now.routing || hashRouting(*replayed->routing) ==
                                      hashRouting(*now.routing)) &&
-                replayed->failureClass == now.failureClass &&
-                replayed->reason == now.reason &&
+                sameFailureType && replayed->reason == now.reason &&
                 replayed->crowdedTiles == now.crowdedTiles &&
                 replayed->packetsFailed == now.packetsFailed &&
                 replayed->checkReason == now.checkReason;
