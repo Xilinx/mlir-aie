@@ -629,7 +629,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
   DmaQueueModel::State merged = entry;
   for (const auto &key : keys) {
     uint32_t depth = depthOf(key);
-    const Visits &channelVisits = visits[key];
+    const ChannelVisits &channelVisits = visits[key];
     auto channelEffectOf = [&](mlir::Operation *op) {
       auto it = effects.find(op);
       return it != effects.end() && it->second.key == key ? it->second
@@ -972,9 +972,7 @@ checkTokensConsumed(AIE::RuntimeSequenceOp sequence,
   // Each channel's analysis visits only its own pushes and syncs and the ops
   // enclosing them, in block order.
   llvm::DenseMap<mlir::Operation *, QueueEffect> effects;
-  using Visits =
-      llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *>>;
-  std::map<DmaQueueModel::ChannelKey, Visits> visits;
+  std::map<DmaQueueModel::ChannelKey, ChannelVisits> visits;
   body.walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
     QueueEffect e = effectOf(op);
     if ((e.kind != QueueEffect::Kind::Push &&
@@ -983,14 +981,7 @@ checkTokensConsumed(AIE::RuntimeSequenceOp sequence,
         covered(ownInexact, e.key))
       return;
     effects[op] = e;
-    Visits &blocks = visits[e.key];
-    for (mlir::Operation *at = op; at != body.getParentOp();
-         at = at->getParentOp()) {
-      auto &ops = blocks[at->getBlock()];
-      if (!ops.empty() && ops.back() == at)
-        break;
-      ops.push_back(at);
-    }
+    recordChannelVisit(body, op, visits[e.key]);
   });
 
   auto describe = [](mlir::InFlightDiagnostic &diag,
@@ -1004,7 +995,7 @@ checkTokensConsumed(AIE::RuntimeSequenceOp sequence,
   bool consumed = true;
   for (const auto &channel : visits) {
     const DmaQueueModel::ChannelKey &key = channel.first;
-    const Visits &blocks = channel.second;
+    const ChannelVisits &blocks = channel.second;
     using Counts = std::set<int64_t>;
     bool unknown = false;
     std::function<Counts(mlir::Region &, Counts)> analyze;
