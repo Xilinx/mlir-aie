@@ -5756,17 +5756,27 @@ def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=No
     Returns:
         The run's result, with returncode `TIMEOUT` if it ran out of time.
     """
-    end = run_end(deadline)
     opts = [] if hops_on else ["circuit-switch-hops=false"]
     if not strict:
         opts.append("allow-deadlock-prone=true")
     opt = "--aie-create-pathfinder-flows" + ("=" + " ".join(opts) if opts else "")
-    cmd = (
-        [aie_opt_path(), opt, *extra]
-        + (["--split-input-file"] if split else [])
-        + ["-"]
-    )
-    timeout = max(0.0, end - time.monotonic())
+    split_args = ["--split-input-file"] if split else []
+    return run_aie_opt([opt, *extra, *split_args], text, deadline)
+
+
+def run_aie_opt(args, text, deadline=None):
+    """Run aie-opt with `args` on `text` within `run_end(deadline)`.
+
+    Args:
+        args: The aie-opt arguments, but the input.
+        text: The input.
+        deadline: As `aie_opt`.
+
+    Returns:
+        The run's result, with returncode `TIMEOUT` if it ran out of time.
+    """
+    cmd = [aie_opt_path(), *args, "-"]
+    timeout = max(0.0, run_end(deadline) - time.monotonic())
     try:
         return subprocess.run(
             cmd, input=text, capture_output=True, text=True, timeout=timeout
@@ -5859,15 +5869,8 @@ def find_flows(text, keep_partial=False, deadline=None):
     Returns:
         The run's result, with returncode `TIMEOUT` if it ran out of time.
     """
-    limit = max(0.0, run_end(deadline) - time.monotonic())
     opt = "--aie-find-flows" + ("=keep-partial-flows=true" if keep_partial else "")
-    cmd = [aie_opt_path(), opt, "-"]
-    try:
-        return subprocess.run(
-            cmd, input=text, capture_output=True, text=True, timeout=limit
-        )
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(cmd, TIMEOUT, "", f"timeout after {limit}s")
+    return run_aie_opt([opt], text, deadline)
 
 
 MODULE_TAG_RE = re.compile(r"^module @s(\d+)\b", re.M)
