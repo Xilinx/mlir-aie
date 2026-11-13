@@ -711,6 +711,33 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     sequence holding that kind's preload, which the host runs before the
     others.
 
+    Teardown completes supported core lock acquires before the next core reset.
+    The compiler collects unique acquire modes and values for each physical
+    lock across its users. It writes each candidate lock once after core disable
+    and DMA reset. It then polls each affected core once for all lock-stall bits
+    to clear. All candidate writes precede all core polls.
+
+    A lock accepts one drain value when that value satisfies every acquire.
+    Greater-or-equal acquires select their largest threshold. Equality acquires
+    require one common value at least as large as every threshold. For example,
+    `AcquireGreaterEqual(1)` and `Acquire(3)` select 3. The compiler treats a
+    zero-valued acquire as equality with zero because the core intrinsic encodes
+    the greater-or-equal mode through a negative value.
+
+    The compiler warns for incompatible values, values outside the writable
+    counter range, and multiple possible core waiters for one lock. It omits
+    lock draining for those cores. It warns and omits device lock draining when
+    a core has an incomplete acquire summary. These cases require PDI resets
+    to clear outstanding acquires. A warning does not insert a reset.
+
+    `aiecc` retains each core's acquire summary in `aie.teardown_lock_acquires`
+    before replacing its body with an ELF reference. Each entry is an i32 array
+    `[lock_column, lock_row, lock_id, greater_equal, value]`. The mode field is
+    zero for equality and one for greater-or-equal. An empty array attribute
+    declares no core acquires. A unit entry marks an incomplete summary.
+    External core ELFs need this attribute. Opaque function calls and unresolved
+    acquire operands make a source core's summary incomplete.
+
     A sequence whose first and last reset (or overlay load) name the same PDI
     gets one more of the other, so the next dispatch's first load is not skipped
     as cached. Under teardown no sequence needs this.

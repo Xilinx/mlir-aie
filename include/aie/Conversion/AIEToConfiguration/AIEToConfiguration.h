@@ -64,6 +64,8 @@ mlir::LogicalResult insertConfigOps(
 // and memref dialects must be loaded.
 mlir::LogicalResult inlineWriteConfigs(mlir::ModuleOp module);
 
+void recordCoreLockAcquires(xilinx::AIE::DeviceOp device);
+
 // Insert the ops of `device`'s teardown (see aiex.npu.write_teardown).
 mlir::LogicalResult
 generateAndInsertTeardownOps(mlir::OpBuilder &builder,
