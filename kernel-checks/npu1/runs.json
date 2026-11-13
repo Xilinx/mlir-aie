@@ -3903,6 +3903,53 @@
     "offered": 100,
     "checked": 98
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "43377026451",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43377026451",
+   "date": "2026-11-13T06:11:56+00:00",
+   "commit": {
+    "id": "1a66f9fe978ae37a3bf8f109564f5a04d70bd0d5",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1a66f9fe978ae37a3bf8f109564f5a04d70bd0d5",
+    "message": "[AIE] Hoist vector transfer pointers through floordiv/mod indices and in-loop views (#4050)",
+    "timestamp": "2026-11-12T23:17:38Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "1a66f9fe97",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2195,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 846,
+    "failed": 0,
+    "timed": 371,
+    "timing_failed": 0,
+    "untimed": 479,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 100,
+    "checked": 98
+   }
   }
  ]
 }
