@@ -8,6 +8,8 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -1175,9 +1177,10 @@ private:
     // This pass runs before objectFifo lowering, so an objectFifo or route
     // that ends at a shim has no flow yet. Claim what its lowering will:
     // every pin first, then the lowest free S2MM channel for each unpinned
-    // end. Receiving ends share a channel only once objectFIFO verification
-    // has proven their turns, which runs after this pass, so each counts.
-    SmallVector<TileOp> unpinned;
+    // end, except that unpinned fifo ends take one per group allocation
+    // shares, by the turns the design's #aie.consumed_by proofs give.
+    SmallVector<int> unpinned;
+    std::map<int, SmallVector<StringAttr>> unpinnedFifos;
     device.walk([&](RouteEndpoint endpoint) {
       auto tile = dyn_cast_or_null<TileOp>(endpoint.getTile().getDefiningOp());
       if (!tile || !tile.isShimTile() ||
@@ -1187,7 +1190,7 @@ private:
       if (std::optional<int> pin = endpoint.getRouteChannel())
         used[tile.getCol()].insert(*pin);
       else
-        unpinned.push_back(tile);
+        unpinned.push_back(tile.getCol());
     });
     device.walk([&](ObjectFifoCreateOp fifo) {
       if (fifo.getPlio())
@@ -1200,11 +1203,26 @@ private:
         if (std::optional<int> pin = port ? port.channelIndex() : std::nullopt)
           used[tile.getCol()].insert(*pin);
         else
-          unpinned.push_back(tile);
+          unpinnedFifos[tile.getCol()].push_back(fifo.getSymNameAttr());
       }
     });
-    for (TileOp tile : unpinned) {
-      auto &channels = used[tile.getCol()];
+    std::optional<ShimTransferSpans> spans;
+    for (auto &[col, fifos] : unpinnedFifos) {
+      size_t groups = fifos.size();
+      if (groups > 1) {
+        if (!spans)
+          spans.emplace(
+              device,
+              [&](StringAttr symbol) {
+                return Placer::shimEndOf(device, symbol);
+              },
+              Placer::provenShimGates(device));
+        groups = spans->plan(fifos, fifos, {}).groups.size();
+      }
+      unpinned.append(groups, col);
+    }
+    for (int col : unpinned) {
+      auto &channels = used[col];
       int ch = 0;
       while (channels.count(ch))
         ++ch;
