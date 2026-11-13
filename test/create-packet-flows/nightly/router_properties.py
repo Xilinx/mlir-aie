@@ -3151,39 +3151,41 @@ class Construction:
                 elif op[0] == "rules":
                     self.owner_s[(*tile, *op[1])] = "fixed"
 
+    def new_tree(self, key, src):
+        """An empty tree from `src`, kept as `self.trees[key]`."""
+        tree = dict(
+            src=src, root=phys_src(src), children=defaultdict(list), next={}, ends={}
+        )
+        self.trees[key] = tree
+        return tree
+
     def route(self, src, dsts, packet):
-        root = phys_src(src)
-        tree = dict(src=src, root=root, children=defaultdict(list), next={}, ends={})
-        self.trees[src] = tree
-        if root in self.owner_s:
+        tree = self.new_tree(src, src)
+        if tree["root"] in self.owner_s:
             return []
-        self.owner_s[root] = src
+        self.owner_s[tree["root"]] = src
         routed = []
         for d in dsts:
-            found = self._search(tree, d, packet)
-            if found is None:
+            hops = self._search(tree, d, packet)
+            if hops is None:
                 continue
-            parent, s, m = found
+            s, m, _ = hops[-1]
             tree["children"][s].append(m)
             tree["ends"][m] = d
             self.owner_m[m] = ("dst", d) if packet else src
-            while parent[s] is not None:
-                ps, pm = parent[s]
+            for ps, pm, s in reversed(hops[:-1]):
                 tree["children"][ps].append(pm)
                 tree["next"][pm] = s
                 self.owner_m[pm] = src
                 self.owner_s[s] = src
-                s = ps
             routed.append(d)
         return routed
 
     def pin(self, src, ends):
         """Take the tree from `src` the router emitted: `ends` as
         trace_output has them."""
-        root = phys_src(src)
-        tree = dict(src=src, root=root, children=defaultdict(list), next={}, ends={})
-        self.trees[src] = tree
-        self.owner_s[root] = src
+        tree = self.new_tree(src, src)
+        self.owner_s[tree["root"]] = src
         for d, hops in ends.items():
             for k, (tile, slave, master, _) in enumerate(hops):
                 s, m = (*tile, *slave), (*tile, *master)
@@ -3199,11 +3201,27 @@ class Construction:
         for ms in tree["children"].values():
             self.pinned_ports.update(ms)
 
-    def _search(self, tree, d, packet):
+    def _search(self, tree, dst, packet, may_share=None, slave=None):
+        """The hops from a port of `tree` to the destination `dst`, or into
+        the slave port `slave`, on ports no other tree owns.
+
+        Args:
+            tree: The tree to extend.
+            dst: The destination to end at; None to end at `slave`.
+            packet: Whether the tree is a packet tree, which may end at a
+                master port other packet trees take into `dst`.
+            may_share: Whether the tree may take a port another tree owns;
+                None for never.
+            slave: The slave port to end at, where `dst` is None.
+
+        Returns:
+            [(slave, master, next slave or None)] from a port of the tree to
+            the end, or None if no path is free.
+        """
         t = self.t
-        target = phys_dst(d)
+        target = None if dst is None else phys_dst(dst)
         starts = [tree["root"], *tree["next"].values()]
-        parent = {s: None for s in starts}
+        parent = dict.fromkeys(starts)
         queue = deque(starts)
         while queue:
             s = queue.popleft()
@@ -3216,40 +3234,51 @@ class Construction:
                     continue
                 if m == target:
                     owner = self.owner_m.get(m)
-                    if m in self.pinned_ports:
-                        continue
-                    if owner is None or (packet and owner == ("dst", d)):
-                        return parent, s, m
+                    if m not in self.pinned_ports and (
+                        owner is None or (packet and owner == ("dst", dst))
+                    ):
+                        return self._unwind(parent, s) + [(s, m, None)]
                     continue
-                if m in self.owner_m or port[0] not in DIRECTIONAL:
+                if port[0] not in DIRECTIONAL or (tile[1] == 0 and port[0] == SOUTH):
                     continue
-                if tile[1] == 0 and port[0] == SOUTH:
+                if m in self.owner_m and (may_share is None or not may_share(m)):
                     continue
                 ntile, nport = linked_input(tile, port)
                 if not t.exists(ntile) or nport[1] >= t.slaves[ntile][nport[0]]:
                     continue
                 nxt = (*ntile, *nport)
-                if nxt in self.owner_s or nxt in parent:
+                if nxt in parent or (
+                    nxt in self.owner_s and (may_share is None or not may_share(nxt))
+                ):
                     continue
                 parent[nxt] = (s, m)
+                if nxt == slave:
+                    return self._unwind(parent, nxt)
                 queue.append(nxt)
         return None
 
-    def settings(self, src):
-        """The tree from `src` as the pathfinder's switch settings."""
-        tree = self.trees.get(src)
+    @staticmethod
+    def _unwind(parent, s):
+        hops = []
+        while parent[s] is not None:
+            ps, pm = parent[s]
+            hops.append((ps, pm, s))
+            s = ps
+        return hops[::-1]
+
+    @staticmethod
+    def settings(tree):
+        """`tree` as the pathfinder's switch settings."""
         out = defaultdict(list)
-        if tree is None:
-            return {}
         for s, ms in tree["children"].items():
-            sp = src[2:] if s == tree["root"] else s[2:]
+            sp = tree["src"][2:] if s == tree["root"] else s[2:]
             for m in ms:
                 mp = tree["ends"][m][2:] if m in tree["ends"] else m[2:]
                 out[s[:2]].append((sp, mp))
         return dict(out)
 
     def solution(self):
-        return {src: self.settings(src) for src in self.trees}
+        return {src: self.settings(tree) for src, tree in self.trees.items()}
 
     def hops(self):
         return sum(
@@ -4324,6 +4353,27 @@ def add_task_tokens(d):
         )
 
 
+def lower_shim_muxes(t, tree, out):
+    """Add to `out` the shim muxes `tree` takes where it starts or ends at a
+    shim DMA."""
+    src = tree["src"]
+    if t.kind(src[:2]) == "shim":
+        out.muxes.setdefault(src[:2], []).append(
+            ((DMA, src[3]), (NORTH, tree["root"][3]))
+        )
+    for m, dst in tree["ends"].items():
+        if t.kind(dst[:2]) == "shim":
+            out.muxes.setdefault(dst[:2], []).append(((NORTH, m[3]), (DMA, dst[3])))
+
+
+def lower_circuit_tree(t, tree, out):
+    """Add the circuit tree `tree` to `out` as connects and shim muxes."""
+    for s, ms in tree["children"].items():
+        for m in ms:
+            out.boxes.setdefault(s[:2], []).append(("connect", s[2:], m[2:]))
+    lower_shim_muxes(t, tree, out)
+
+
 def fix_ir(rng, d, con):
     """A copy of `d` with one circuit tree and one packet tree of the witness
     `con` turned into switchbox configuration the router has to keep."""
@@ -4333,17 +4383,7 @@ def fix_ir(rng, d, con):
     circuit = sorted({s for s, _ in d.flows})
     if circuit and rng.random() < 0.7:
         src = rng.choice(circuit)
-        tree = con.trees[src]
-        for s, ms in tree["children"].items():
-            for m in ms:
-                out.boxes.setdefault(s[:2], []).append(("connect", s[2:], m[2:]))
-        if t.kind(src[:2]) == "shim":
-            out.muxes.setdefault(src[:2], []).append(
-                ((DMA, src[3]), (NORTH, tree["root"][3]))
-            )
-        for m, dst in tree["ends"].items():
-            if t.kind(dst[:2]) == "shim":
-                out.muxes.setdefault(dst[:2], []).append(((NORTH, m[3]), (DMA, dst[3])))
+        lower_circuit_tree(t, con.trees[src], out)
         out.flows = [f for f in out.flows if f[0] != src]
         changed = True
     srcs = Counter(s for f in d.packet_flows for s in f["srcs"])
@@ -4374,13 +4414,7 @@ def fix_ir(rng, d, con):
                 keep = f["keep"] if m in tree["ends"] else None
                 box.append(("masterset", m[2:], [name], keep, False))
             box.append(("rules", s[2:], [(PARAMS["max_id"], f["id"], name)], False))
-        if t.kind(src[:2]) == "shim":
-            out.muxes.setdefault(src[:2], []).append(
-                ((DMA, src[3]), (NORTH, tree["root"][3]))
-            )
-        for m, dst in tree["ends"].items():
-            if t.kind(dst[:2]) == "shim":
-                out.muxes.setdefault(dst[:2], []).append(((NORTH, m[3]), (DMA, dst[3])))
+        lower_shim_muxes(t, tree, out)
         changed = True
     return out if changed else None
 
@@ -4787,22 +4821,24 @@ def shared_receiver_pairs(d):
     for f in d.packet_flows:
         for s in f["srcs"]:
             reached[s] |= set(f["dsts"])
-    srcs = sorted(reached)
     return [
         (a, b, reached[a] & reached[b])
-        for i, a in enumerate(srcs)
-        for b in srcs[i + 1 :]
+        for a, b in itertools.combinations(sorted(reached), 2)
         if len(reached[a] & reached[b]) > 1
     ]
 
 
-class StrictSearch:
-    """One attempt at a strict witness, from a Construction `con` of `d`."""
+class StrictSearch(Construction):
+    """One attempt at a strict witness, from a Construction `con` of `d`: its
+    trees, extended with packet trees that share links where their ids are
+    disjoint and their streams do not conflict."""
 
     def __init__(self, d, an, con, rng):
-        self.d, self.an, self.rng, self.t = d, an, rng, con.t
-        self.con = copy.deepcopy(con, {id(con.t): con.t, id(con.rng): rng})
-        self.con.rng = rng
+        super().__init__(d, rng)
+        self.owner_m, self.owner_s = dict(con.owner_m), dict(con.owner_s)
+        self.trees = copy.deepcopy(con.trees)
+        self.pinned_ports = set(con.pinned_ports)
+        self.d, self.an = d, an
         self.ids = defaultdict(set)
         self.dsts = defaultdict(lambda: defaultdict(set))
         self.prioritized = set()
@@ -4817,9 +4853,7 @@ class StrictSearch:
             self.streams[st.src].append(i)
         # The packet trees on each port, as (source, ids); circuits own theirs.
         self.users = defaultdict(list)
-        # The source whose ports the tree being routed may not share.
-        self.avoid = None
-        for src, tree in self.con.trees.items():
+        for src, tree in self.trees.items():
             if src in self.ids:
                 for port in self.ports(tree):
                     self.users[port].append((src, frozenset(self.ids[src])))
@@ -4833,11 +4867,14 @@ class StrictSearch:
             out.update(tree["next"][m] for m in ms if m in tree["next"])
         return out
 
-    def shareable(self, port, src, ids):
+    def shareable(self, port, src, ids, avoid=None):
+        """Whether the tree from `src` with `ids` may take `port`, which other
+        packet trees use: none is `src`'s own or `avoid`'s, shares an id with
+        it, or has a stream that conflicts with one of `src`'s."""
         users = self.users.get(port)
         return bool(users) and all(
             u != src
-            and u != self.avoid
+            and u != avoid
             and not ids & uids
             and not any(
                 self.an.conflict(i, j)
@@ -4848,61 +4885,16 @@ class StrictSearch:
         )
 
     def release(self, src):
-        tree = self.con.trees.pop(src)
+        tree = self.trees.pop(src)
         for port in self.ports(tree):
             self.users[port] = [(u, i) for u, i in self.users[port] if u != src]
-            if self.con.owner_m.get(port) == src:
-                del self.con.owner_m[port]
-            if self.con.owner_s.get(port) == src:
-                del self.con.owner_s[port]
+            if self.owner_m.get(port) == src:
+                del self.owner_m[port]
+            if self.owner_s.get(port) == src:
+                del self.owner_s[port]
         for m in tree["ends"]:
-            if not any(m in t["ends"] for t in self.con.trees.values()):
-                self.con.owner_m.pop(m, None)
-
-    def search(self, tree, src, ids, dst=None, slave=None):
-        """Hops from the tree to the destination `dst`, or into the slave port
-        `slave`, as [(slave, master, next slave or None)]; None if none."""
-        t = self.t
-        target = phys_dst(dst) if dst is not None else None
-        starts = [tree["root"], *tree["next"].values()]
-        parent = dict.fromkeys(starts)
-        queue = deque(starts)
-        while queue:
-            s = queue.popleft()
-            tile = s[:2]
-            ports = t.master_ports(tile)
-            self.rng.shuffle(ports)
-            for port in ports:
-                m = (*tile, *port)
-                if not t.legal(tile, s[2:], port):
-                    continue
-                if m == target and self.con.owner_m.get(m) in (None, ("dst", dst)):
-                    return self.unwind(parent, s) + [(s, m, None)]
-                if port[0] not in DIRECTIONAL or (tile[1] == 0 and port[0] == SOUTH):
-                    continue
-                if m in self.con.owner_m and not self.shareable(m, src, ids):
-                    continue
-                ntile, nport = linked_input(tile, port)
-                if not t.exists(ntile) or nport[1] >= t.slaves[ntile][nport[0]]:
-                    continue
-                nxt = (*ntile, *nport)
-                if nxt in parent:
-                    continue
-                parent[nxt] = (s, m)
-                if nxt == slave:
-                    return self.unwind(parent, nxt)
-                if nxt not in self.con.owner_s or self.shareable(nxt, src, ids):
-                    queue.append(nxt)
-        return None
-
-    @staticmethod
-    def unwind(parent, s):
-        hops = []
-        while parent[s] is not None:
-            ps, pm = parent[s]
-            hops.append((ps, pm, s))
-            s = ps
-        return hops[::-1]
+            if not any(m in t["ends"] for t in self.trees.values()):
+                self.owner_m.pop(m, None)
 
     def claim(self, tree, src, ids, hops):
         for s, m, nxt in hops:
@@ -4911,29 +4903,29 @@ class StrictSearch:
             if nxt is None:
                 continue
             tree["next"][m] = nxt
-            self.con.owner_m.setdefault(m, src)
-            self.con.owner_s.setdefault(nxt, src)
+            self.owner_m.setdefault(m, src)
+            self.owner_s.setdefault(nxt, src)
             self.users[m].append((src, ids))
             self.users[nxt].append((src, ids))
 
     def new_tree(self, key, src):
-        root = phys_src(src)
-        tree = dict(src=src, root=root, children=defaultdict(list), next={}, ends={})
-        self.con.trees[key] = tree
-        self.con.owner_s.setdefault(root, src)
+        tree = super().new_tree(key, src)
+        self.owner_s.setdefault(tree["root"], src)
         return tree
 
     def route_part(self, key, src, ids, dsts):
         tree = self.new_tree(key, src)
         for x in sorted(dsts):
-            hops = self.search(tree, src, ids, dst=x)
+            hops = self._search(
+                tree, x, True, lambda port: self.shareable(port, src, ids)
+            )
             if hops is None:
                 return False
             s, m, _ = hops[-1]
             self.claim(tree, src, ids, hops[:-1])
             tree["children"][s].append(m)
             tree["ends"][m] = x
-            self.con.owner_m[m] = ("dst", x)
+            self.owner_m[m] = ("dst", x)
         return True
 
     def join(self, key, src, ids, owner, shared):
@@ -4958,16 +4950,24 @@ class StrictSearch:
             if root[:2] == tile:
                 slaves.insert(0, root)
             for j in slaves:
-                if (j != root and j in self.con.owner_s) or not all(
+                if (j != root and j in self.owner_s) or not all(
                     t.legal(tile, j[2:], m[2:]) for m in masters
                 ):
                     continue
                 tree = self.new_tree(key, src)
-                self.avoid = owner["src"]
-                hops = [] if j == root else self.search(tree, src, ids, slave=j)
-                self.avoid = None
+                hops = (
+                    []
+                    if j == root
+                    else self._search(
+                        tree,
+                        None,
+                        True,
+                        lambda port: self.shareable(port, src, ids, owner["src"]),
+                        slave=j,
+                    )
+                )
                 if hops is None:
-                    del self.con.trees[key]
+                    del self.trees[key]
                     continue
                 self.claim(tree, src, ids, hops)
                 for m in masters:
@@ -5000,7 +5000,7 @@ class StrictSearch:
         ]
         affected = sorted({s for a, b, _ in pairs for s in (a, b)} - self.prioritized)
         for src in affected:
-            if src in self.con.trees:
+            if src in self.trees:
                 self.release(src)
         parts = {}
         for src in affected:
@@ -5016,7 +5016,7 @@ class StrictSearch:
             parts[src] = {frozenset(self.ids[src]): None}
         owner_of = {src: src for src in self.prioritized}
         trees = {
-            (src, k): self.con.trees.get(src)
+            (src, k): self.trees.get(src)
             for src in self.prioritized
             for k in parts[src]
         }
@@ -5032,7 +5032,7 @@ class StrictSearch:
                 k = next(k for k in parts[a] if parts[a][k] & shared)
                 if not self.route_part((a, k), a, k, parts[a][k]):
                     return "no room for an owner's tree"
-                trees[(a, k)] = self.con.trees[(a, k)]
+                trees[(a, k)] = self.trees[(a, k)]
             o = owner_of[b] = owner_of[a]
             # The tree `a` joined need not reach what `a` and `b` share.
             okey = next(
@@ -5044,26 +5044,20 @@ class StrictSearch:
                 (b, bkey), b, bkey, trees[(o, okey)], shared
             ):
                 return "no way to meet"
-        rest = [
-            (s, k) for s in affected for k in parts[s] if (s, k) not in self.con.trees
-        ]
+        rest = [(s, k) for s in affected for k in parts[s] if (s, k) not in self.trees]
         self.rng.shuffle(rest)
         for s, k in rest:
             if not self.route_part((s, k), s, k, parts[s][k]):
                 return "no room for a tree"
         out = defaultdict(lambda: defaultdict(list))
-        for tree in self.con.trees.values():
-            src = tree["src"]
+        for tree in self.trees.values():
             for s, ms in tree["children"].items():
-                for m in ms:
-                    if not self.t.legal(s[:2], s[2:], m[2:]):
-                        return "illegal hop"
-                    hop = (
-                        src[2:] if s == tree["root"] else s[2:],
-                        tree["ends"][m][2:] if m in tree["ends"] else m[2:],
-                    )
-                    if hop not in out[src][s[:2]]:
-                        out[src][s[:2]].append(hop)
+                if not all(self.t.legal(s[:2], s[2:], m[2:]) for m in ms):
+                    return "illegal hop"
+            # One source's trees for different ids can take the same hop.
+            have = out[tree["src"]]
+            for tile, hops in self.settings(tree).items():
+                have[tile] += [hop for hop in hops if hop not in have[tile]]
         return {src: dict(v) for src, v in out.items()}
 
 
@@ -5083,19 +5077,8 @@ def lower_witness(d, con, plan):
         return (phys_src if sending else phys_dst)((*tile, *port))[2:]
 
     for tree in con.trees.values():
-        src = tree["src"]
-        if src not in circuit:
-            continue
-        for s, ms in tree["children"].items():
-            for m in ms:
-                out.boxes.setdefault(s[:2], []).append(("connect", s[2:], m[2:]))
-        if t.kind(src[:2]) == "shim":
-            out.muxes.setdefault(src[:2], []).append(
-                ((DMA, src[3]), (NORTH, tree["root"][3]))
-            )
-        for m, dst in tree["ends"].items():
-            if t.kind(dst[:2]) == "shim":
-                out.muxes.setdefault(dst[:2], []).append(((NORTH, m[3]), (DMA, dst[3])))
+        if tree["src"] in circuit:
+            lower_circuit_tree(t, tree, out)
     keep = last_keep(d)
     ctrl = {f["id"] for f in d.packet_flows if f["priority"]}
     muxed = set()
@@ -5204,7 +5187,7 @@ def strict_witness(d, an, witnesses=2, tries=10, deadline=None):
                 continue
             if plan["reason"] is not None or plan["shared_receiver_cycle"] is not None:
                 continue
-            text = lower_witness(d, search.con, plan)
+            text = lower_witness(d, search, plan)
             if text is not None and witness_problem(d, an, text, deadline) is None:
                 return text
     return None
