@@ -15,7 +15,7 @@ Reduced from router_properties.py npu1 seed 207471827, moved to npu2.
 
 import numpy as np
 
-from hw_case import HwCase, Variant
+from hw_case import PacketCase
 
 CHUNK = 64
 PACKETS = [
@@ -226,22 +226,10 @@ DESIGN = """module {
 """
 
 
-class Case(HwCase):
+class Case(PacketCase):
     name = "link_order_above"
     description = __doc__
-    outputs = [(2 * CHUNK, np.int32), (4 * CHUNK, np.int32), (4 * CHUNK, np.int32)]
-
-    def variants(self) -> list[Variant]:
-        return [
-            Variant(
-                "router",
-                DESIGN,
-                None,
-                "PASS",
-                "",
-                "the router's routing without allow-deadlock-prone: the trees meet at (2,3).",
-            ),
-        ]
-
-    def check(self, outputs: list[np.ndarray]) -> list[str]:
-        return self.check_packets(outputs, [PACKETS[2:], PACKETS, PACKETS], CHUNK)
+    design = DESIGN
+    meets = "the trees meet at (2,3)"
+    chunk = CHUNK
+    wants = [PACKETS[2:], PACKETS, PACKETS]

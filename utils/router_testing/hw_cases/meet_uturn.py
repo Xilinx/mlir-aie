@@ -14,7 +14,7 @@ host.
 
 import numpy as np
 
-from hw_case import HwCase, Variant
+from hw_case import PacketCase
 
 CHUNK = 64
 B = 2000 + 3 * np.arange(3 * CHUNK, dtype=np.int32)
@@ -176,22 +176,10 @@ DESIGN = """module {
 """
 
 
-class Case(HwCase):
+class Case(PacketCase):
     name = "meet_uturn"
     description = __doc__
-    outputs = [(4 * CHUNK, np.int32)] * 2
-
-    def variants(self) -> list[Variant]:
-        return [
-            Variant(
-                "router",
-                DESIGN,
-                None,
-                "PASS",
-                "",
-                "the router's routing without allow-deadlock-prone: the trees meet at (0,2).",
-            ),
-        ]
-
-    def check(self, outputs: list[np.ndarray]) -> list[str]:
-        return self.check_packets(outputs, [PACKETS] * len(self.outputs), CHUNK)
+    design = DESIGN
+    meets = "the trees meet at (0,2)"
+    chunk = CHUNK
+    wants = [PACKETS] * 2

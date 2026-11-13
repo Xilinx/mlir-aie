@@ -15,7 +15,7 @@ Reduced from router_properties.py npu1 seed 207470648, moved to npu2.
 
 import numpy as np
 
-from hw_case import HwCase, Variant
+from hw_case import PacketCase, Variant
 
 CHUNK = 64
 A = 5000 + 11 * np.arange(2 * CHUNK, dtype=np.int32)
@@ -204,32 +204,22 @@ MEET_AT_CORE = """    %sb0_1 = aie.switchbox(%t0_1) {
     }"""
 
 
-class Case(HwCase):
+class Case(PacketCase):
     name = "meet_own_loopback"
     description = __doc__
-    outputs = [(2 * CHUNK, np.int32), (3 * CHUNK, np.int32)]
+    design = DESIGN.replace("@TREES@", FLOWS)
+    meets = "id 31 meets id 30 at (0,1) by a U-turn"
+    chunk = CHUNK
+    wants = [[A[CHUNK:], OWN], [A[:CHUNK], A[CHUNK:], OWN]]
 
     def variants(self) -> list[Variant]:
-        design = DESIGN.replace("@TREES@", FLOWS)
-        return [
-            Variant(
-                "router",
-                design,
-                None,
-                "PASS",
-                "",
-                "the router's routing without allow-deadlock-prone: id 31 meets id 30 at (0,1) by a U-turn.",
-            ),
+        return super().variants() + [
             Variant(
                 "meet_at_core",
-                design,
+                self.design,
                 DESIGN.replace("@TREES@", MEET_AT_CORE),
                 "PASS",
                 "",
                 "id 30 goes up to (0,2), meets id 31 there by a U-turn and comes back into (0,1) DMA:3.",
             ),
         ]
-
-    def check(self, outputs: list[np.ndarray]) -> list[str]:
-        wants = [[A[CHUNK:], OWN], [A[:CHUNK], A[CHUNK:], OWN]]
-        return self.check_packets(outputs, wants, CHUNK)

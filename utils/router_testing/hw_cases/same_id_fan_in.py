@@ -15,7 +15,7 @@ npu1 seed 207460302, moved to npu2.
 
 import numpy as np
 
-from hw_case import HwCase, Variant
+from hw_case import PacketCase
 
 CHUNK = 64
 A = 1000 + 7 * np.arange(CHUNK, dtype=np.int32)
@@ -218,27 +218,10 @@ DESIGN = """module {
 """
 
 
-class Case(HwCase):
+class Case(PacketCase):
     name = "same_id_fan_in"
     description = __doc__
-    outputs = [
-        (3 * CHUNK, np.int32),
-        (CHUNK, np.int32),
-        (2 * CHUNK, np.int32),
-        (2 * CHUNK, np.int32),
-    ]
-
-    def variants(self) -> list[Variant]:
-        return [
-            Variant(
-                "router",
-                DESIGN,
-                None,
-                "PASS",
-                "",
-                "the router's routing without allow-deadlock-prone: the trees fan in at (2,1) alone.",
-            ),
-        ]
-
-    def check(self, outputs: list[np.ndarray]) -> list[str]:
-        return self.check_packets(outputs, [[A, C, D], [A], [C, D], [C, D]], CHUNK)
+    design = DESIGN
+    meets = "the trees fan in at (2,1) alone"
+    chunk = CHUNK
+    wants = [[A, C, D], [A], [C, D], [C, D]]
