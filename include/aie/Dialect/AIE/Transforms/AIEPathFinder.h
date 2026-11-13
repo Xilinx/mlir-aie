@@ -15,6 +15,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
@@ -363,10 +364,19 @@ struct PacketConstraints {
 };
 
 // The relax settings an attempt reads while it routes (see Pathfinder::relax).
-struct RelaxSettings {
-  bool idsApart = false, splitShared = false, meetApart = false,
-       meetAheadOfPartners = false;
+enum class Relax : uint8_t {
+  None = 0,
+  IdsApart = 1 << 0,
+  SplitShared = 1 << 1,
+  // Trees that share destinations no longer meet (see TreeBuilder::meet), so
+  // what is left of their hazard is a hold cycle through those receivers.
+  MeetApart = 1 << 2,
+  // A flow meets another id's tree ahead of a same-id partner that has not
+  // routed yet (see Pathfinder::meetAhead).
+  MeetAheadOfPartners = 1 << 3,
+  LLVM_MARK_AS_BITMASK_ENUM(MeetAheadOfPartners)
 };
+LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
 
 // What one attempt of a relax ladder read that a relax step changes, and what
 // it found. A later attempt of the ladder that reads the same replays it
@@ -375,7 +385,7 @@ struct PathfinderAttempt {
   std::vector<Flow> flows;
   std::vector<llvm::BitVector> circuitOnly;
   // The settings' values, and which of them the attempt read.
-  RelaxSettings values, consulted;
+  Relax values = Relax::None, consulted = Relax::None;
   // The routing found, else the failure: its class (RoutingFailure::classID or
   // a subclass's) and contents.
   std::optional<Routing> routing;
@@ -556,13 +566,8 @@ private:
   // rejected a routing, or packet streams cross a link left overused, or the
   // boundary it crosses.
   bool packetsFailed = true;
-  bool shareChannels = false, idsApart = false, splitShared = false;
-  // Trees that share destinations no longer meet (see TreeBuilder::meet), so
-  // what is left of their hazard is a hold cycle through those receivers.
-  bool meetApart = false;
-  // Whether a flow meets another id's tree ahead of a same-id partner that
-  // has not routed yet (see meetAhead).
-  bool meetAheadOfPartners = false;
+  bool shareChannels = false;
+  Relax settings = Relax::None;
   // Whether a tree met another in any attempt, so stopping meeting can change
   // anything.
   bool treesMet = false;
@@ -576,7 +581,12 @@ private:
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
   // The relax settings this attempt read; sortFlows and findPaths fold in
   // the others (shareChannels, leads, cappedTiles) before it routes.
-  RelaxSettings consulted;
+  Relax consulted = Relax::None;
+  // Whether `setting` is on, noting that this attempt read it.
+  bool consult(Relax setting) {
+    consulted |= setting;
+    return any(settings & setting);
+  }
 };
 
 // Routes the flows of a device with a Pathfinder, and finds or creates the
