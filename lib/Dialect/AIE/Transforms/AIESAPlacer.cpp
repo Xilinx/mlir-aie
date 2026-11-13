@@ -46,9 +46,8 @@ static void deterministicShuffle(MutableArrayRef<TileID> values,
     std::swap(values[i - 1], values[drawBoundedIndex(rng, i)]);
 }
 
-/// Return neighboring tiles whose memory module `tilePos` can access.
-/// The direction matches the allocate op requirement: the source tile
-/// can store buffers in the neighbor's memory.
+/// Return the neighbouring tiles an aie.objectfifo.allocate can move a fifo
+/// with both ends on `tilePos` to, by the rule split checks it with.
 static SmallVector<TileID>
 getMemAffinityNeighbors(const AIETargetModel &targetModel, TileID tilePos) {
   SmallVector<TileID> neighbors;
@@ -59,8 +58,8 @@ getMemAffinityNeighbors(const AIETargetModel &targetModel, TileID tilePos) {
     if (candidate.col < 0 || candidate.col >= targetModel.columns() ||
         candidate.row < 0 || candidate.row >= targetModel.rows())
       continue;
-    if (!targetModel.isLegalMemAffinity(tilePos.col, tilePos.row, candidate.col,
-                                        candidate.row))
+    if (!ObjectFifoCreateOp::delegateReaches(targetModel, candidate, tilePos,
+                                             tilePos))
       continue;
     neighbors.push_back(candidate);
   }
