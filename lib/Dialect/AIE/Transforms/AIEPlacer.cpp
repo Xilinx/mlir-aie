@@ -255,7 +255,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
   runtimeBdIds = RuntimeBdIds(device, *targetModel);
-  shareableShimEnds = collectShareableShimEnds(device, objectFifos, demandKeys);
+  shareableShimEnds =
+      collectShareableShimEnds(device, objectFifos, collected.rank, demandKeys);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device), controlOverlay);
@@ -1600,11 +1601,13 @@ Placer::buildObjectFifoAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
 
 Placer::ShareableShimEnds Placer::collectShareableShimEnds(
     DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos,
+    const llvm::DenseMap<Operation *, unsigned> &rank,
     const llvm::DenseMap<Operation *, Operation *> &routeKeys) {
   llvm::DenseSet<std::pair<Operation *, Value>> registered;
   for (auto reg : device.getOps<ObjectFifoRegisterExternalBuffersOp>())
     registered.insert({reg.getObjectFifo(), reg.getTile()});
   ShareableShimEnds ends;
+  DenseMap<StringAttr, unsigned> endRank;
   auto shareable = [&](ObjectFifoCreateOp fifo, Value tile,
                        ObjectFifoEndPortAttr port) -> Operation * {
     auto lt = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
@@ -1614,6 +1617,7 @@ Placer::ShareableShimEnds Placer::collectShareableShimEnds(
     return lt.getOperation();
   };
   for (auto fifo : objectFifos) {
+    endRank[fifo.getSymNameAttr()] = rank.lookup(fifo);
     if (Operation *lt =
             shareable(fifo, fifo.getProducerTile(), fifo.getProdPortAttr()))
       ends[lt][1].ends.push_back(fifo.getSymNameAttr());
@@ -1632,6 +1636,7 @@ Placer::ShareableShimEnds Placer::collectShareableShimEnds(
       side.pinned.push_back(*channel);
     else if (isa<LogicalTileOp>(tile.getOperation()))
       side.ends.push_back(endpoint.getSymNameAttr());
+    endRank[endpoint.getSymNameAttr()] = rank.lookup(endpoint);
   }
   for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
     MLIRContext *context = alloc->getContext();
@@ -1647,6 +1652,23 @@ Placer::ShareableShimEnds Placer::collectShareableShimEnds(
     ends[routeKeys.lookup_or(tile.getOperation(), tile.getOperation())]
         [alloc.getChannelDir() == DMAChannelDir::MM2S ? 1 : 0]
             .shared.emplace_back(alloc.getChannelIndex(), std::move(listed));
+  }
+  // ShimTransferSpans::plan first-fits in the order it is given ends and
+  // shared channels, so give them in structural and channel order.
+  auto entries = ends.takeVector();
+  llvm::stable_sort(entries, [&](const auto &a, const auto &b) {
+    return rank.lookup(a.first) < rank.lookup(b.first);
+  });
+  for (auto &[tile, sides] : entries) {
+    for (ShimSide &side : sides) {
+      llvm::stable_sort(side.ends, [&](StringAttr a, StringAttr b) {
+        return endRank.lookup(a) < endRank.lookup(b);
+      });
+      llvm::stable_sort(side.shared, [](const auto &a, const auto &b) {
+        return a.first < b.first;
+      });
+    }
+    ends.insert({tile, std::move(sides)});
   }
   return ends;
 }

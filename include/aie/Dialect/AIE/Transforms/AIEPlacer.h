@@ -224,13 +224,15 @@ public:
         shared;
     llvm::SmallVector<int> pinned;
   };
-  // Each shim tile op's sides, [0] receiving and [1] sending.
+  // Each shim tile op's sides, [0] receiving and [1] sending, the tile ops
+  // and each side's ends in `rank` order, shared channels by index.
   using ShareableShimEnds =
-      llvm::DenseMap<mlir::Operation *, std::array<ShimSide, 2>>;
+      llvm::MapVector<mlir::Operation *, std::array<ShimSide, 2>>;
   // With `routeKeys` (flowChannelDemand's `keys`), a route endpoint's end
   // goes to the tile its channel demand is keyed by.
   static ShareableShimEnds collectShareableShimEnds(
       DeviceOp device, llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+      const llvm::DenseMap<mlir::Operation *, unsigned> &rank,
       const llvm::DenseMap<mlir::Operation *, mlir::Operation *> &routeKeys =
           {});
   // The channels `sides` save in one direction below one per end, per

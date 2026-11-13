@@ -64,7 +64,7 @@ struct AIEObjectFifoAllocatePass
   /// Ends that take another end's channel, by the end they take it from:
   /// shim ends never in flight together, and ends taking turns.
   llvm::MapVector<Operation *, Operation *> channelSharers;
-  DenseMap<Operation *, ShimDMAAllocationOp> allocationSharers;
+  llvm::MapVector<Operation *, ShimDMAAllocationOp> allocationSharers;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
   DenseMap<Operation *, Value> localPools;

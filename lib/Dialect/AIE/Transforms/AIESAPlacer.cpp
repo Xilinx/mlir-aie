@@ -2383,7 +2383,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   claimsOf.clear();
   for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
     claimsOf[claim.tile.getDefiningOp()].push_back(claim);
-  shareableShimEnds = collectShareableShimEnds(device, objectFifos);
+  shareableShimEnds =
+      collectShareableShimEnds(device, objectFifos, collected.rank);
   collectOverlayUses(device);
   overlayTiles = overlayTileOps();
   shimSpans.emplace(
