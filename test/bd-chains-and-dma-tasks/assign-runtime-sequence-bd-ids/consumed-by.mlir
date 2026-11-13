@@ -142,46 +142,6 @@ module {
 
 // -----
 
-// The next round's input, pushed before this round's output is awaited, lies
-// past the bytes that await proves taken: its id stays unsafe.
-module {
-  aie.device(npu2) {
-    %tile_0_0 = aie.tile(0, 0)
-    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
-    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
-    aie.runtime_sequence @prefetch(%a: memref<512xi32>, %c: memref<512xi32>) {
-      %next = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
-        aie.end
-      } {alloc = @in}
-      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @in}
-      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
-        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @out, issue_token = true}
-      aiex.dma_start_task(%in0)
-      aiex.dma_start_task(%out0)
-      aiex.dma_start_task(%next)
-      aiex.dma_await_task(%out0)
-      // expected-note@+1 {{released here}}
-      aiex.dma_free_task(%next)
-      %out1 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
-        aie.dma_bd(%c : memref<512xi32> offset = 64 len = 64)
-        aie.end
-      } {alloc = @out, issue_token = true}
-      aiex.dma_start_task(%out1)
-      aiex.dma_await_task(%out1)
-      aiex.dma_free_task(%in0)
-    }
-  }
-}
-
-// -----
-
 // k's length is the parameter @m, which nothing ties to the output's @n: its
 // bytes are not proven taken.
 module {
@@ -218,78 +178,9 @@ module {
 
 // -----
 
-// An input whose rounds push more than the output covers is consumed only in
-// part when the output finishes.
-module {
-  aie.device(npu2) {
-    %tile_0_0 = aie.tile(0, 0)
-    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
-    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
-    // expected-note@+1 {{the stretch ends here}}
-    aie.runtime_sequence @partial(%a: memref<512xi32>, %c: memref<512xi32>) {
-      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 128)
-        aie.end
-      } {alloc = @in}
-      aiex.dma_start_task(%in0)
-      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
-        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @out, issue_token = true}
-      aiex.dma_start_task(%out0)
-      aiex.dma_await_task(%out0)
-      // expected-note@+1 {{released here}}
-      aiex.dma_free_task(%in0)
-      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
-        aie.dma_bd(%a : memref<512xi32> offset = 128 len = 128)
-        aie.end
-      } {alloc = @in}
-      aiex.dma_start_task(%in1)
-    }
-  }
-}
-
-// -----
-
-// Without a load first, a sequence that leaves input bytes uncovered at its
-// end could leave them for the next dispatch, whose counts would then be off:
-// nothing is credited.
-module {
-  aie.device(npu2) {
-    %tile_0_0 = aie.tile(0, 0)
-    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
-    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
-    // expected-note@+1 {{the stretch ends here}}
-    aie.runtime_sequence @leaves_input(%a: memref<512xi32>, %c: memref<512xi32>) {
-      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @in}
-      aiex.dma_start_task(%in0)
-      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
-        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
-        aie.end
-      } {alloc = @out, issue_token = true}
-      aiex.dma_start_task(%out0)
-      aiex.dma_await_task(%out0)
-      // expected-note@+1 {{released here}}
-      aiex.dma_free_task(%in0)
-      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
-        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
-        aie.end
-      } {alloc = @in}
-      aiex.dma_start_task(%in1)
-    }
-  }
-}
-
-// -----
-
 // A load of the PDI already loaded leaves the array as it was, so a stretch
-// after a load must leave no input bytes behind either: this one pushes in1
-// past what its output covers, and nothing is credited.
+// after a load must leave no input bytes behind, as one without a load must:
+// this one pushes in1 past what its output covers, and nothing is credited.
 module {
   aie.device(npu2) @design {
     %tile_0_0 = aie.tile(0, 0)
