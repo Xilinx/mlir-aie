@@ -8,9 +8,11 @@
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/CheckedArithmetic.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -303,6 +305,29 @@ LogicalResult AIEX::emitUpdateBdLengthFromParameter(
       /*address=*/static_cast<uint32_t>(registerAddr),
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
   return success();
+}
+
+std::optional<int64_t> AIEX::staticExecutions(Operation *op) {
+  int64_t count = 1;
+  for (Operation *cur = op; !isa<AIE::CoreOp, AIE::RuntimeSequenceOp>(cur);
+       cur = cur->getParentOp()) {
+    if (cur->getBlock() != &cur->getParentRegion()->front())
+      return std::nullopt;
+    Operation *parent = cur->getParentOp();
+    if (isa<AIE::CoreOp, AIE::RuntimeSequenceOp>(parent))
+      break;
+    auto forOp = dyn_cast<scf::ForOp>(parent);
+    std::optional<APInt> trips =
+        forOp ? forOp.getStaticTripCount() : std::nullopt;
+    if (!trips || trips->isNegative() || trips->sge(kRunsForever))
+      return std::nullopt;
+    std::optional<int64_t> product =
+        llvm::checkedMul(count, trips->getSExtValue());
+    if (!product)
+      return std::nullopt;
+    count = *product;
+  }
+  return count;
 }
 
 std::string AIEX::scratchpadCommandName(AIE::RuntimeSequenceOp seq) {

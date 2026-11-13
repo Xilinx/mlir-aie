@@ -10,6 +10,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -28,7 +29,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -59,13 +59,6 @@ struct TransferBudget {
   int64_t objects;
 };
 
-/// IRON's forever loop is an `scf.while` on a constant true condition. A
-/// hand-written `scf.for` meant to run forever has a bound no design counts
-/// to, such as sys.maxsize or 2^32 - 1. From the AIE's 24-bit BD-loop
-/// saturation value up, a trip count is read as "forever"; below it, as a real
-/// bound.
-static constexpr int64_t kRunsForever = (int64_t{1} << 24) - 2;
-
 static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
   if (forOp.getSingleLowerBound() && forOp.getSingleUpperBound() &&
       forOp.getSingleStep()) {
@@ -82,36 +75,8 @@ static bool runsForever(Operation *op) {
   auto forOp = dyn_cast<scf::ForOp>(op);
   std::optional<int64_t> trip =
       forOp ? getStaticTripCount(forOp) : std::nullopt;
-  return (whileOp && isForeverLoop(whileOp)) || (trip && *trip >= kRunsForever);
-}
-
-/// How many times `op` runs when its core, or runtime sequence, runs to
-/// completion, when static loop bounds alone decide that. Anything conditional
-/// between the op and the core, an `scf.if`, a loop with dynamic bounds or one
-/// meant to run forever, a block reached by branching, makes it unknown.
-static std::optional<int64_t> staticExecutions(Operation *op) {
-  int64_t count = 1;
-  for (Operation *cur = op; !isa<CoreOp, RuntimeSequenceOp>(cur);
-       cur = cur->getParentOp()) {
-    if (cur->getBlock() != &cur->getParentRegion()->front()) {
-      return std::nullopt;
-    }
-    Operation *parent = cur->getParentOp();
-    if (isa<CoreOp, RuntimeSequenceOp>(parent)) {
-      break;
-    }
-    auto forOp = dyn_cast<scf::ForOp>(parent);
-    if (!forOp) {
-      return std::nullopt;
-    }
-    std::optional<int64_t> trip = getStaticTripCount(forOp);
-    if (!trip || *trip >= kRunsForever ||
-        (*trip != 0 && count > std::numeric_limits<int64_t>::max() / *trip)) {
-      return std::nullopt;
-    }
-    count *= *trip;
-  }
-  return count;
+  return (whileOp && isForeverLoop(whileOp)) ||
+         (trip && *trip >= AIEX::kRunsForever);
 }
 
 /// Objects of the fifo `name` still held after `block` runs, entered holding
@@ -844,7 +809,7 @@ struct AIEObjectFifoVerifyPass
     DenseSet<StringRef> uncounted;
     device.walk([&](ObjectFifoReleaseOp release) {
       StringRef key = release.getObjFifoName();
-      std::optional<int64_t> runs = staticExecutions(release);
+      std::optional<int64_t> runs = AIEX::staticExecutions(release);
       if (!runs) {
         uncounted.insert(key);
         return;
@@ -956,7 +921,8 @@ struct AIEObjectFifoVerifyPass
                 auto forOp = dyn_cast<scf::ForOp>(op);
                 std::optional<int64_t> trip =
                     forOp ? getStaticTripCount(forOp) : std::nullopt;
-                if (isa<scf::WhileOp>(op) || (trip && *trip >= kRunsForever))
+                if (isa<scf::WhileOp>(op) ||
+                    (trip && *trip >= AIEX::kRunsForever))
                   return WalkResult::interrupt();
                 return WalkResult::advance();
               })
@@ -1104,7 +1070,7 @@ struct AIEObjectFifoVerifyPass
     for (const SymbolTable::SymbolUse &use : *uses) {
       auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(use.getUser());
       std::optional<int64_t> runs =
-          task ? staticExecutions(task) : std::nullopt;
+          task ? AIEX::staticExecutions(task) : std::nullopt;
       std::optional<int64_t> streamed =
           runs ? task.getStaticBytesStreamed() : std::nullopt;
       if (!streamed)
