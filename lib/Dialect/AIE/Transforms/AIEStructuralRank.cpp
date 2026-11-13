@@ -138,3 +138,19 @@ StructuralGraph StructuralGraph::of(DeviceOp device) {
   }
   return graph;
 }
+
+StructuralGraph StructuralGraph::of(ModuleOp module) {
+  StructuralGraph graph;
+  for (DeviceOp device : module.getOps<DeviceOp>()) {
+    StructuralGraph own = of(device);
+    graph.add(device);
+    for (Operation *node : own.nodes) {
+      graph.nodes.push_back(node);
+      graph.features[node] = std::move(own.features[node]);
+      graph.link(device, node, "holds");
+    }
+    for (auto &[op, links] : own.links)
+      llvm::append_range(graph.links[op], links);
+  }
+  return graph;
+}

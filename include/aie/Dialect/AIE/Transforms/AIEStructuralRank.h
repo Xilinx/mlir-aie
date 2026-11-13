@@ -46,6 +46,10 @@ struct StructuralGraph {
   /// The runtime sequence is left out, so a device ranks the same whatever
   /// sequence drives it.
   static StructuralGraph of(DeviceOp device);
+
+  /// Each device of `module` with its graph (of(DeviceOp)), the device a node
+  /// linked to every op in it, so devices rank by what they hold.
+  static StructuralGraph of(mlir::ModuleOp module);
 };
 
 } // namespace xilinx::AIE

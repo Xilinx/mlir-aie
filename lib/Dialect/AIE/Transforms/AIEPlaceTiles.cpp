@@ -8,6 +8,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -99,11 +100,18 @@ struct AIEPlaceTilesPass
     return success();
   }
 
-  // One device after another, in module order: a device's placement may
-  // read the devices placed before it.
+  // One device after another, in structural order: a device's placement
+  // may read the devices placed before it.
   void runOnOperation() override {
-    for (DeviceOp device :
-         llvm::make_early_inc_range(getOperation().getOps<DeviceOp>()))
+    SmallVector<DeviceOp> devices(getOperation().getOps<DeviceOp>());
+    if (devices.size() > 1) {
+      DenseMap<Operation *, unsigned> rank =
+          StructuralGraph::of(getOperation()).rank();
+      llvm::stable_sort(devices, [&](DeviceOp a, DeviceOp b) {
+        return rank.lookup(a) < rank.lookup(b);
+      });
+    }
+    for (DeviceOp device : devices)
       if (failed(placeDevice(device)))
         return signalPassFailure();
   }

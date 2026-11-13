@@ -73,8 +73,11 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "mlir::ModuleOp"> {
     tiles whose flows name the same DMA channel by index never share a
     physical tile.
 
-    The pass places a module's devices one after another, in module order, so
-    a device's placement may read the devices placed before it.
+    The pass places a module's devices one after another, so a device's
+    placement may read the devices placed before it (a control overlay's
+    channels). They go in an order set by each device's structure, not module
+    order or names; devices alike in structure keep module order, which then
+    only decides which of two indistinguishable devices goes first.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
