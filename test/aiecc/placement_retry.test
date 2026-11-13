@@ -7,13 +7,12 @@
 
 // RUN: %aiecc -n --no-progress --tmpdir %t.default --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
 // RUN: not %aiecc -n --no-progress --tmpdir %t.pinned --cores-per-col=4 --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
-// RUN: not %aiecc -n --no-progress --tmpdir %t.never --get=input_physical.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
-// RUN: not %aiecc -n --no-progress --tmpdir %t.neverrep --enable-repeater-scripts --get=input_physical.mlir %s
-// RUN: FileCheck %s --check-prefix=NEVERREP --input-file=%t.neverrep/repeater/manifest.json
+// RUN: not %aiecc -n --no-progress --tmpdir %t.never --enable-repeater-scripts --get=input_physical.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
+// RUN: FileCheck %s --check-prefix=NEVERREP --input-file=%t.never/repeater/manifest.json
 
 // The sequential placer's default placement of the decode pack does not
 // route; aiecc places it again with three cores a column, which does. Each
-// placement prints as it runs (the input warns once a placement:
+// placement prints as it runs (the input warns once per placement:
 // never_called has link_with but no caller); a line marks the first one's
 // messages as superseded, and the last says which placement stands.
 // RETRY: warning: func 'never_called' has link_with but is never called from any core
