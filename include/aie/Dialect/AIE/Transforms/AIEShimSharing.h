@@ -59,16 +59,10 @@ public:
   /// A shim input gating a receiving end's senders, per its
   /// `#aie.consumed_by`.
   struct Gate {
-    Gate(mlir::StringAttr input, int64_t inputBytes, int64_t outputBytes,
-         int64_t granuleBytes)
-        : input(input), inputBytes(inputBytes), outputBytes(outputBytes),
-          granuleBytes(granuleBytes) {}
+    Gate(mlir::StringAttr input, ConsumedByAttr proof)
+        : input(input), proof(proof) {}
     mlir::StringAttr input;
-    int64_t inputBytes;
-    int64_t outputBytes;
-    /// The proof counts drained bytes only in whole multiples of this, when
-    /// nonzero.
-    int64_t granuleBytes;
+    ConsumedByAttr proof;
   };
 
   using Gates = llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<Gate>>;

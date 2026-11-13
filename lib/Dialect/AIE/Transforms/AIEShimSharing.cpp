@@ -438,13 +438,10 @@ bool ShimTransferSpans::contained(StringAttr end, const Gate &gate) const {
       return in == byFifo.end();
     const Span &drain = out->second;
     std::optional<int64_t> filled = in == byFifo.end() ? 0 : in->second.bytes;
-    if (!filled || !drain.bytes || drain.lastAwaited <= drain.lastIssue ||
-        (gate.granuleBytes && *drain.bytes % gate.granuleBytes))
+    if (!filled || !drain.bytes || drain.lastAwaited <= drain.lastIssue)
       return false;
-    std::optional<int64_t> sent = llvm::checkedMul(*filled, gate.outputBytes);
-    std::optional<int64_t> taken =
-        llvm::checkedMul(*drain.bytes, gate.inputBytes);
-    return sent && taken && *sent <= *taken;
+    return AIEX::balanceUnder(gate.proof, {{-1, *filled}},
+                              {{-1, *drain.bytes}}) == AIEX::Unbalanced::No;
   });
 }
 
@@ -504,9 +501,7 @@ ShimTransferSpans::Gates ShimTransferSpans::provenGates(
       auto output = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
           device, proof.getOutput());
       if (StringAttr outputKey = output ? keyOf(output) : StringAttr())
-        gates[outputKey].push_back({inputKey, proof.getInputBytes(),
-                                    proof.getOutputBytes(),
-                                    proof.getGranuleBytes()});
+        gates[outputKey].push_back({inputKey, proof});
     }
   }
   return gates;
