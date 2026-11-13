@@ -806,9 +806,22 @@ def judge(e, expect, hops_on, seed, deadline=None):
 
 
 def judge_strict(e, expect, hops_on, s, deadline=None):
-    """Hold the router's run on canonical `e` without allow-deadlock-prone,
-    `s`, to what judge() holds its run with it to, its router runs stopping by
-    `deadline` as judge()'s do. Returns (outcome, detail) as judge() does."""
+    """Hold the router's run on `e` without allow-deadlock-prone to what
+    judge() holds its run with allow-deadlock-prone to.
+
+    Args:
+        e: The canonical design.
+        expect: What judge() expects of `e`, to name in the detail.
+        hops_on: Whether circuit-switch hops are on.
+        s: The router's run on `e` without allow-deadlock-prone.
+        deadline: A `time.monotonic()` value the witness search's router runs
+            stop by, as judge()'s do.
+
+    Returns:
+        (outcome, detail) as judge() returns them. A rejection is "ok" unless
+        the witness search finds a routing without a hold cycle, which makes
+        it a "strict-miss".
+    """
     if failure := rp.run_failure(s):
         return failure[0], f"strict: {failure[1]}"
     if s.returncode:
@@ -1344,6 +1357,56 @@ def shared_pairs(d, routed):
     return {(a, b) for a in links for b in links if a != b and links[a] & links[b]}
 
 
+def judge_relation(name, what, d, routed, e, check, trees, hops_on, seed):
+    """Route `e`, the design relation `name` made from `d`, and hold the
+    output to the relation.
+
+    Args:
+        name: The relation's name.
+        what: What the relation changed, to name it in the detail.
+        d: The design.
+        routed: The router's output for `d`.
+        e: The design the relation made.
+        check: The relation's check of the output for `e`, or None.
+        trees: The prioritized trees routed so far, as priority_trees keeps
+            them.
+        hops_on: Whether circuit-switch hops are on.
+        seed: The design's seed, for the model.
+
+    Returns:
+        (outcome, detail), outcome one of ok, broken, known, partial-lift,
+        lift-overlap, model-limit, timeout, crash, or one of judge()'s where
+        the model judges.
+    """
+    try:
+        q = rp.model_run(rp.aie_opt(e.emit(), hops_on), "routing the related design")
+        # Reshaping flows can move a prioritized source's own route (see the
+        # pinned overlay in AIECreatePathFindFlows.cpp), so the model judges.
+        if q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(e, trees):
+            outcome, detail = judge(e, "model", hops_on, seed)
+            return outcome, f"{what}: {detail}"
+        if q.returncode:
+            err = rp.first_error(q.stderr)
+            kind = "known" if rp.known_bug(e, [err]) else "broken"
+            if check is not None and vars(check).get("partial", False):
+                kind = "partial-lift"
+            if name == "lift" and "which both match id" in err:
+                kind = "lift-overlap"
+            return kind, f"{what}: router fails: {err[:200]}"
+        try:
+            ce = rp.canonical(e)
+            probs, _ = rp.verify(ce, rp.Analysis(ce), q.stdout, hops_on)
+        except Exception as x:
+            return "model-limit", f"{what}: {x!r}"
+        bad = probs[0] if probs else (check(q.stdout) if check else None)
+    except rp.ModelRunFailed as x:
+        return x.outcome, f"{what}: {x}"
+    if bad:
+        return "broken", f"{what}: {bad[:300]}"
+    same = name == "permute" and routing_key(q.stdout) == routing_key(routed)
+    return "ok", what + (" (same routing)" if same else "")
+
+
 # Driver.
 
 
@@ -1361,9 +1424,10 @@ def run_seed(seed, args):
     if case is None:
         return rows
     d = case["design"]
-    p = rp.aie_opt(d.emit(), hops_on)
-    if p.returncode == rp.TIMEOUT:
-        return [("base", "timeout", "", p.stderr, d)]
+    try:
+        p = rp.model_run(rp.aie_opt(d.emit(), hops_on), "routing the design")
+    except rp.ModelRunFailed as x:
+        return [("base", x.outcome, "", str(x), d)]
     if p.returncode:
         return [("base", "base-fails", "", rp.first_error(p.stderr)[:200], d)]
     routed = p.stdout
@@ -1426,58 +1490,10 @@ def run_seed(seed, args):
         if e is None:
             rows.append(("relation", "broken", name, f"{what}: {check}", d))
             continue
-        q = rp.aie_opt(e.emit(), hops_on)
-        if q.returncode == rp.TIMEOUT:
-            rows.append(("relation", "timeout", name, f"{what}: {q.stderr}", e))
-            continue
-        # Reshaping flows can move a prioritized source's own route (see the
-        # pinned overlay in AIECreatePathFindFlows.cpp), so the model judges.
-        try:
-            moved = q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(
-                e, trees
-            )
-        except rp.ModelRunFailed as x:
-            rows.append(("relation", x.outcome, name, f"{what}: {x}", e))
-            continue
-        if moved:
-            outcome, detail = judge(e, "model", hops_on, seed)
-            rows.append(("relation", outcome, name, f"{what}: {detail}", e))
-            continue
-        if q.returncode:
-            err = rp.first_error(q.stderr)
-            kind = "known" if rp.known_bug(e, [err]) else "broken"
-            if getattr(check, "partial", False):
-                kind = "partial-lift"
-            if name == "lift" and "which both match id" in err:
-                kind = "lift-overlap"
-            rows.append(
-                ("relation", kind, name, f"{what}: router fails: {err[:200]}", e)
-            )
-            continue
-        try:
-            ce = rp.canonical(e)
-            probs, _ = rp.verify(ce, rp.Analysis(ce), q.stdout, hops_on)
-        except Exception as x:
-            rows.append(("relation", "model-limit", name, f"{what}: {x!r}", e))
-            continue
-        try:
-            bad = probs[0] if probs else (check(q.stdout) if check else None)
-        except rp.ModelRunFailed as x:
-            rows.append(("relation", x.outcome, name, f"{what}: {x}", e))
-            continue
-        same = name == "permute" and routing_key(q.stdout) == routing_key(routed)
-        if bad:
-            rows.append(("relation", "broken", name, f"{what}: {bad[:300]}", e))
-        else:
-            rows.append(
-                (
-                    "relation",
-                    "ok",
-                    name,
-                    f"{what}" + (" (same routing)" if same else ""),
-                    None,
-                )
-            )
+        outcome, detail = judge_relation(
+            name, what, d, routed, e, check, trees, hops_on, seed
+        )
+        rows.append(("relation", outcome, name, detail, None if outcome == "ok" else e))
 
     if not args.only or "kill" in args.only:
         kctx = kill_context(d, an, routed)

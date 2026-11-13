@@ -295,12 +295,10 @@ def test_a_seed_remembers_its_prioritized_routing_timed_out(priority):
     assert rp.priority_trees(d, {}) is not None
 
 
-def test_the_generator_names_the_seeds_the_model_could_not_decide():
-    got = list(rp.generated_cases(0, 5, "npu1", deadline=time.monotonic()))
-    assert [(seed, outcome) for seed, _, outcome in got if outcome] == [
-        (0, "timeout"),
-        (4, "timeout"),
-    ]
+@pytest.mark.parametrize("seed", [0, 4])
+def test_the_generator_names_a_seed_the_model_could_not_decide(seed):
+    with pytest.raises(rp.RouterTimeout):
+        rp.routable_case(seed, "npu1", deadline=time.monotonic())
 
 
 def test_the_properties_report_keeps_the_generators_undecided_seeds(tmp_path):

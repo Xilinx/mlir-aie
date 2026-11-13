@@ -6220,29 +6220,6 @@ def known_bug(d, problems):
     return next((label for label, test in KNOWN_BUGS if test(d, problems)), None)
 
 
-def generated_cases(first, count, device, deadline=None):
-    """Generate the routable designs of seeds `first` to `first + count`.
-
-    Args:
-        first: The first seed.
-        count: How many seeds to try.
-        device: The device or family to generate for.
-        deadline: As `aie_opt`, for the model's router runs.
-
-    Yields:
-        (seed, case, outcome): the case, else None with outcome None where the
-        generator gave up, or the outcome of the model's router run
-        ("timeout", "crash") where the model could not decide.
-    """
-    for seed in range(first, first + count):
-        try:
-            case = routable_case(seed, device, deadline)
-        except ModelRunFailed as x:
-            yield seed, None, x.outcome
-            continue
-        yield seed, case, None
-
-
 class PropertiesReport:
     """The properties run's report, replaced whole each time it changes, so a
     run its step stops early still leaves the properties and seeds it got to.
@@ -6390,10 +6367,13 @@ def main(argv=None):
         for hops_on in (True, False):
             pending[hops_on, k] = pool.submit(route, hops_on, cases[k : k + size])
 
-    for seed, case, outcome in generated_cases(first, PARAMS["routable"], args.device):
-        run_report.seed_tried(seed, outcome)
-        if outcome:
+    for seed in range(first, first + PARAMS["routable"]):
+        try:
+            case = routable_case(seed, args.device)
+        except ModelRunFailed as x:
+            run_report.seed_tried(seed, x.outcome)
             continue
+        run_report.seed_tried(seed, None)
         if case is None:
             gave_up += 1
         else:
