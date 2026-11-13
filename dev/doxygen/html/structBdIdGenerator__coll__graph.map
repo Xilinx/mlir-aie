@@ -1,9 +1,0 @@
-<map id="BdIdGenerator" name="BdIdGenerator">
-<area shape="rect" id="Node000001" title=" " alt="" coords="108,128,224,156"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,44,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="52,41,153,126,148,129,50,45"/>
-<area shape="rect" id="Node000003" href="$classxilinx_1_1AIE_1_1AIETargetModel.html" title=" " alt="" coords="68,5,264,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="168,47,168,129,163,127,164,50"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="288,5,412,33"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="331,43,298,77,259,107,209,130,207,125,256,102,295,73,326,46"/>
-</map>

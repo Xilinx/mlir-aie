@@ -1,9 +1,0 @@
-<map id="xilinx::aievec::ShufflePlan" name="xilinx::aievec::ShufflePlan">
-<area shape="rect" id="Node000001" title=" " alt="" coords="161,140,350,168"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,159,67"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="140,73,238,139,233,141,139,78"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="182,22,328,50"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="257,64,258,141,253,138,253,67"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="352,22,433,50"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="373,60,314,118,279,142,277,137,311,114,368,62"/>
-</map>
