@@ -119,7 +119,7 @@ Operation *getRuntimeDmaTile(Operation *op, SymbolTable &symbols);
 
 // Calls `pinned` for each BD id the runtime sequences of `device` fix at
 // compile time, in IR order, with the tile getRuntimeDmaTile gives; a static BD
-// on that tile must not take one. `channel` is unset before allocation picks it.
+// on that tile must not take one. `channel` is unset until allocation.
 void forEachRuntimePinnedBdId(
     AIE::DeviceOp device,
     llvm::function_ref<void(Operation *op, Operation *tile,
