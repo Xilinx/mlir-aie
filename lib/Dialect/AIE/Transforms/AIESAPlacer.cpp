@@ -460,12 +460,12 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     return PoolLocks::needsLocks(fb.unsynchronized, fb.initObjects, depth,
                                  fb.producerCore, fb.rearmed);
   };
-  // A group takes two locks a segment, or on AIE1 one a pool object.
-  bool aie1 = targetModel->getTargetArch() == AIEArch::AIE1;
   auto addLocks = [&](TileID pos, int segments, int64_t depth, bool needed) {
     if (!needed || !segments)
       return;
-    int locks = aie1 ? static_cast<int>(depth) : 2 * segments;
+    SmallVector<int> counts =
+        LockPlan::groupCounts(*targetModel, depth, segments);
+    int locks = std::accumulate(counts.begin(), counts.end(), 0);
     currentLockDemand[pos] += sign * locks;
     lockUndo.push_back({pos, sign * locks});
   };
@@ -1235,13 +1235,10 @@ int SAPlacer::computeCoreOverflowPenalty() const {
 SmallVector<std::pair<int, SmallVector<std::pair<TileID, bool>, 2>>>
 SAPlacer::lockGroups() const {
   SmallVector<std::pair<int, SmallVector<std::pair<TileID, bool>, 2>>> groups;
-  bool aie1 = targetModel->getTargetArch() == AIEArch::AIE1;
   auto add = [&](const SmallVector<std::pair<TileID, bool>, 2> &users,
                  int segments, int64_t depth) {
-    if (aie1 && segments)
-      groups.push_back({static_cast<int>(depth), users});
-    for (int i = 0; !aie1 && i < segments; ++i)
-      groups.push_back({2, users});
+    for (int count : LockPlan::groupCounts(*targetModel, depth, segments))
+      groups.push_back({count, users});
   };
   auto isCore = [](std::optional<AIETileType> type) {
     return type == AIETileType::CoreTile;
@@ -2296,29 +2293,32 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     }
   {
     PoolLocks poolLocks(device);
-    bool aie1 = targetModel->getTargetArch() == AIEArch::AIE1;
+    bool semaphoreLocks =
+        targetModel->hasProperty(AIETargetModel::UsesSemaphoreLocks);
     for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
       if (!poolLocks.needsLocks(pool))
         continue;
-      // AIE1 guards a pool's objects with one lock each; AIE2 gives each
-      // segment a pair.
       SmallVector<Operation *> groups;
-      if (aie1 && !pool.getLocks())
+      if (!semaphoreLocks && !pool.getLocks())
         groups.push_back(pool);
-      if (!aie1)
+      if (semaphoreLocks)
         for (auto segment : pool.getSegmentOps())
           if (!(segment.getProduceLock() && segment.getConsumeLock()))
             groups.push_back(segment);
-      for (Operation *owner : groups) {
+      SmallVector<int> counts =
+          LockPlan::groupCounts(*targetModel, pool.getDepth(), groups.size());
+      for (auto [index, entry] : llvm::enumerate(groups)) {
+        Operation *owner = entry;
         InputLockGroup &group = inputLockGroups.emplace_back();
         group.home = pool.getTile().getDefiningOp();
-        group.locks = aie1 ? pool.getDepth() : 2;
+        group.locks = counts[index];
         auto addUser = [&](Operation *endpoint, auto selected, bool dma) {
-          if (!aie1 && !llvm::is_contained(selected, owner))
+          if (semaphoreLocks && !llvm::is_contained(selected, owner))
             return;
           auto *tile = endpoint->getOperand(0).getDefiningOp();
           group.users.push_back(
-              {tile, dma && !cast<TileLike>(tile).isMemTile()});
+              {tile, dma && LockPlan::dmaLocalOnly(
+                                cast<TileLike>(tile).getTileType())});
         };
         for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
           if (endpoint.getPoolOp() == pool)
