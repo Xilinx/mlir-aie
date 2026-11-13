@@ -51,18 +51,13 @@ static void deterministicShuffle(MutableArrayRef<TileID> values,
 static SmallVector<TileID>
 getMemAffinityNeighbors(const AIETargetModel &targetModel, TileID tilePos) {
   SmallVector<TileID> neighbors;
-  for (TileID candidate : {TileID{tilePos.col - 1, tilePos.row},
-                           TileID{tilePos.col + 1, tilePos.row},
-                           TileID{tilePos.col, tilePos.row + 1},
-                           TileID{tilePos.col, tilePos.row - 1}}) {
-    if (candidate.col < 0 || candidate.col >= targetModel.columns() ||
-        candidate.row < 0 || candidate.row >= targetModel.rows())
-      continue;
-    if (!ObjectFifoCreateOp::delegateReaches(targetModel, candidate, tilePos,
-                                             tilePos))
-      continue;
-    neighbors.push_back(candidate);
-  }
+  for (std::optional<TileID> candidate :
+       {targetModel.getMemWest(tilePos), targetModel.getMemEast(tilePos),
+        targetModel.getMemNorth(tilePos), targetModel.getMemSouth(tilePos)})
+    if (candidate && *candidate != tilePos &&
+        ObjectFifoCreateOp::delegateReaches(targetModel, *candidate, tilePos,
+                                            tilePos))
+      neighbors.push_back(*candidate);
   return neighbors;
 }
 
