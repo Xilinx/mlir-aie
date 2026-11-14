@@ -34,6 +34,14 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(blocks[0].lines, ["one", "two"])
         self.assertEqual(code, 1)
 
+    def test_tool_directives_are_not_blocks(self):
+        directive = "// NOLINTNEXTLINE(bugprone-unchecked-optional-access)"
+        blocks, code = slop.collect(
+            diff(*[(f"{n}.cpp", 1, [directive, "use(*x);"]) for n in "abcde"])
+        )
+        self.assertEqual(blocks, [])
+        self.assertEqual(code, 5)
+
     def test_code_between_comments_splits_the_block(self):
         blocks, _ = slop.collect(diff(("a.cpp", 1, ["// one", "int x = 1;", "// two"])))
         self.assertEqual(len(blocks), 2)
