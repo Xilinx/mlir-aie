@@ -425,6 +425,10 @@ struct PathfinderAttempt {
   std::vector<llvm::hash_code> trajectory;
 };
 
+// The boundary the wires from tile `a` to its neighbour `b` cross: between
+// rows (else columns) `below` and the next, upward (else back).
+std::tuple<bool, int, bool> boundaryOf(TileID a, TileID b);
+
 // Congestion-negotiated routing: each iteration routes every flow by
 // Dijkstra, given each connection's demand, and raises the demand of the
 // connections used over capacity, until no connection is.

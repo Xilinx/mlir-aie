@@ -1471,9 +1471,7 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
       ", and the router found no routing that fits them.");
 }
 
-// The boundary the wires from tile `a` to its neighbour `b` cross: between
-// rows (else columns) `below` and the next, upward (else back).
-static std::tuple<bool, int, bool> boundaryOf(TileID a, TileID b) {
+std::tuple<bool, int, bool> xilinx::AIE::boundaryOf(TileID a, TileID b) {
   bool rows = a.col == b.col;
   return {rows, rows ? std::min(a.row, b.row) : std::min(a.col, b.col),
           rows ? b.row > a.row : b.col > a.col};
