@@ -121,6 +121,11 @@ public:
     auto it = spans[seq].find(end);
     return it == spans[seq].end() ? std::nullopt : it->second.bytes;
   }
+  /// Whether runtime sequence `seq` transfers through `end` at all, static or
+  /// not; `bytes` alone cannot tell a dynamic end from an absent one.
+  bool names(unsigned seq, mlir::StringAttr end) const {
+    return spans[seq].contains(end);
+  }
 
   /// Splits `ends` into groups whose members are pairwise apart, each group
   /// taking one channel: first fit, ordered by the ends' spans in flight.
