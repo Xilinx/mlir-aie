@@ -4521,9 +4521,7 @@ class FifoStartOpAIE2pConversion
     Location loc = op.getLoc();
     Type i32 = rewriter.getI32Type();
     auto stateTy = VectorType::get({32}, i32);
-    Value next = LLVM::PtrToIntOp::create(
-        rewriter, loc, i32,
-        bytePointer(rewriter, loc, op.getBase(), op.getOffset()));
+    Value next = bytePointer(rewriter, loc, op.getBase(), op.getOffset());
     // The state is undefined until the first fill sets it.
     Value state = LLVM::UndefOp::create(rewriter, loc, stateTy);
     Value count = LLVM::ConstantOp::create(rewriter, loc, i32,
@@ -4544,8 +4542,7 @@ class FifoStPushBFP16OpAIE2pConversion
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     MLIRContext *ctx = rewriter.getContext();
-    Value ptr = LLVM::IntToPtrOp::create(
-        rewriter, loc, LLVM::LLVMPointerType::get(ctx), adaptor.getAddr());
+    Value ptr = adaptor.getAddr();
     Value pushed = xllvm::FifoStPushBFP576AIE2pIntrOp::create(
         rewriter, loc, fifoLdType(ctx, false), ptr, adaptor.getMantissas(),
         adaptor.getExponents(), adaptor.getState(), adaptor.getCount());
@@ -4554,9 +4551,7 @@ class FifoStPushBFP16OpAIE2pConversion
         LLVM::ExtractValueOp::create(rewriter, loc, pushed, 0),
         LLVM::ExtractValueOp::create(rewriter, loc, pushed, 1),
         LLVM::ExtractValueOp::create(rewriter, loc, pushed, 2));
-    Value next = LLVM::PtrToIntOp::create(
-        rewriter, loc, rewriter.getI32Type(),
-        LLVM::ExtractValueOp::create(rewriter, loc, flushed, 0));
+    Value next = LLVM::ExtractValueOp::create(rewriter, loc, flushed, 0);
     rewriter.replaceOp(
         op, {next, LLVM::ExtractValueOp::create(rewriter, loc, flushed, 1),
              LLVM::ExtractValueOp::create(rewriter, loc, flushed, 2)});
@@ -4576,8 +4571,7 @@ class FifoLdPopBFP16OpAIE2pConversion
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     MLIRContext *ctx = rewriter.getContext();
-    Value ptr = LLVM::IntToPtrOp::create(
-        rewriter, loc, LLVM::LLVMPointerType::get(ctx), adaptor.getAddr());
+    Value ptr = adaptor.getAddr();
     Value state = adaptor.getState(), count = adaptor.getCount();
     // A pop consumes 576 bits and loads 512, so the FIFO is refilled first.
     if (!op.getNoFill()) {
@@ -4589,11 +4583,8 @@ class FifoLdPopBFP16OpAIE2pConversion
     }
     Value popped = xllvm::FifoLdPopBFP576AIE2pIntrOp::create(
         rewriter, loc, fifoLdType(ctx, true), ptr, state, count);
-    Value next = LLVM::PtrToIntOp::create(
-        rewriter, loc, rewriter.getI32Type(),
-        LLVM::ExtractValueOp::create(rewriter, loc, popped, 0));
-    SmallVector<Value> results = {next};
-    for (int64_t i = 1; i < 5; ++i)
+    SmallVector<Value> results;
+    for (int64_t i = 0; i < 5; ++i)
       results.push_back(LLVM::ExtractValueOp::create(rewriter, loc, popped, i));
     rewriter.replaceOp(op, results);
     return success();

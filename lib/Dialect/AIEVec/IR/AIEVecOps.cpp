@@ -27,7 +27,6 @@ using namespace xilinx;
 using namespace xilinx::aievec;
 
 #include "aie/Dialect/AIEVec/IR/AIEVecEnums.cpp.inc"
-#include "aie/Dialect/AIEVec/IR/AIEVecOpsDialect.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // AIEVecDialect

@@ -5,6 +5,7 @@
 #
 
 add_mlir_dialect_library(MLIRAIEVecDialect
+  AIEVecDialect.cpp
   AIEVecOps.cpp
   AIEVecTypes.cpp
 
@@ -24,6 +25,7 @@ add_mlir_dialect_library(MLIRAIEVecDialect
   LINK_LIBS PUBLIC
   AIE
   MLIRIR
+  MLIRLLVMDialect
   MLIRPass
   )
 
