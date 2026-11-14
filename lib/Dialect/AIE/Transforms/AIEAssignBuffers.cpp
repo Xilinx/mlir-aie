@@ -148,7 +148,8 @@ static LogicalResult materializeCoreSections(DeviceOp device) {
           held.kind == Kind::DataRegion ? builder.getUnitAttr() : nullptr,
           /*bank_reserved=*/
           held.kind == Kind::DataRegion ? nullptr : builder.getUnitAttr(),
-          /*aligned=*/held.aligned() ? nullptr : builder.getBoolAttr(false));
+          /*aligned=*/held.aligned() ? nullptr : builder.getBoolAttr(false),
+          /*resident=*/nullptr);
       buffer->setAttr(SymbolTable::getSymbolAttrName(),
                       builder.getStringAttr(name));
     }
