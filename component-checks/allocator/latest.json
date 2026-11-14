@@ -1,21 +1,21 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "43358372080",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43358372080",
- "date": "2026-11-13T03:21:06+00:00",
+ "id": "43551014799",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43551014799",
+ "date": "2026-11-14T03:19:15+00:00",
  "commit": {
-  "id": "afa0aeedff446643902f356958a14b34ad4b95b1",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/afa0aeedff446643902f356958a14b34ad4b95b1",
-  "message": "[AIEVec] Parse aie-target in one place and reject unknown targets in AIEVec-to-LLVM (#4046)",
-  "timestamp": "2026-11-12T17:03:08Z"
+  "id": "01c12afe7bf8a0e82544cd02e35881807e0abf27",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/01c12afe7bf8a0e82544cd02e35881807e0abf27",
+  "message": "[AIEVec] Mark a scalar trunci illegal only if the scalar SRS pattern converts it (#4051)",
+  "timestamp": "2026-11-13T23:06:08Z"
  },
  "event": "schedule",
  "pmode": null,
  "device": "AMD EPYC 9V74 80-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "afa0aeedff",
+  "commit": "01c12afe7b",
   "cpu": "AMD EPYC 9V74 80-Core Processor"
  },
  "sane": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 234.3,
+    "value": 242.9,
     "unit": "s"
    }
   }

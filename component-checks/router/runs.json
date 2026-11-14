@@ -815,6 +815,36 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "43551014799",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43551014799",
+   "date": "2026-11-14T03:19:15+00:00",
+   "commit": {
+    "id": "01c12afe7bf8a0e82544cd02e35881807e0abf27",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/01c12afe7bf8a0e82544cd02e35881807e0abf27",
+    "message": "[AIEVec] Mark a scalar trunci illegal only if the scalar SRS pattern converts it (#4051)",
+    "timestamp": "2026-11-13T23:06:08Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "01c12afe7b",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 1,
+   "failed": [
+    "npu1/hops-off/seed=207710284+1/mutator multi-source crash",
+    "npu2/hops-off/seed=207710284+1/mutator multi-source crash"
+   ],
+   "truncated": []
   }
  ]
 }
