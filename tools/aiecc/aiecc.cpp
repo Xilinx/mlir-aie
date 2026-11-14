@@ -3268,6 +3268,8 @@ int main(int argc, char **argv) {
   // and that the messages above it are the earlier placement's; at the end, a
   // line says which placement stands.
   bool mayAgain = mayPlaceAgain || mayWalkAgain || mayCoreAgain;
+  // What one attempt of the placement graph found: the compiled outputs or
+  // why it failed, and how it was placed past the command line's own.
   struct Attempt {
     // Null once freed early: kept only while this attempt is the latest, or
     // the best placement-budget reached so far.
@@ -3282,84 +3284,189 @@ int main(int argc, char **argv) {
     // later attempts' freed graphs never need revisiting.
     std::ptrdiff_t reached = -1;
   };
-  std::vector<Attempt> attempts;
-  // How far an attempt got: its failed edge's index in its own graph, which
-  // is built in pipeline order, so a later index means it got further. An
-  // attempt with no failed edge (never reached one deferred, or succeeded)
-  // ranks lowest.
-  auto reachedEdge = [](const Attempt &a) -> std::ptrdiff_t {
-    if (!a.engine->failedEdge)
-      return -1;
-    return llvm::find_if(a.graph->edges,
-                         [&](const std::unique_ptr<EdgeBase> &edge) {
-                           return edge.get() == a.engine->failedEdge;
-                         }) -
-           a.graph->edges.begin();
+  // What a kNoBufferRoom/kNoTileRoom error's notes ask placing again to
+  // charge: pools the SA counts walked whole, and devices whose core
+  // sections the probe link measured larger than the SA guessed.
+  struct Charges {
+    // The pools a kNoBufferRoom error's note names, not yet in saWalkedFifos
+    // (what the next retry's command line would add). Each charge names its
+    // device, and only the devices that failed are charged, so the others
+    // place as they did. Names are written as symbol references, which quote
+    // any name the list's separators would break.
+    std::vector<std::string> fifos;
+    // Whether a kNoBufferRoom error named a walked pool at all, charged or
+    // not: unlike `fifos`, this does not go empty once every pool it names is
+    // already charged, so the loop still sees the attempt as worth a look
+    // instead of appearing to have found nothing to charge.
+    bool anyWalked = false;
+    llvm::StringSet<> fullDevices;
   };
-  // The earlier attempt most likely to stand if none left routes or
-  // allocates: the one so far whose failed edge comes latest, the later
-  // attempt on a tie. Every other earlier attempt's graph is freed once a new
-  // one completes, since only this one and the latest can still stand.
-  size_t bestReached = 0;
-  auto runAttempt = [&](std::unique_ptr<Graph> attemptGraph,
-                        std::unique_ptr<Engine> attemptEngine) {
-    Attempt &a = attempts.emplace_back();
-    a.graph = std::move(attemptGraph);
-    a.engine = std::move(attemptEngine);
-    a.engine->opts.deferFailedEdge = mayAgain;
-    diagHandler.recordErrors();
-    a.ran = a.engine->run(*a.graph, runOutputs, satisfied,
-                          DeserializeContext{&context}, buildAlso);
-    a.errors = diagHandler.takeRecordedErrors();
-    a.reached = reachedEdge(a);
-    size_t now = attempts.size() - 1;
-    if (a.reached >= attempts[bestReached].reached)
-      bestReached = now;
-    for (size_t i = 0; i < now; ++i)
-      if (i != bestReached)
-        attempts[i].graph.reset();
-    return a.ran;
-  };
-  auto placeAgain = [&](std::vector<std::string> placedWith,
-                        llvm::StringRef why) {
-    {
-      auto log = endProgressLine();
-      llvm::errs() << "aiecc: placing again with "
-                   << llvm::join(placedWith, " ") << " (" << why
-                   << "); the messages above are from placement "
-                   << attempts.size() << "\n";
+  // Runs the placement graph, placing again as the command line allows, and
+  // keeps each attempt alive only as long as it might still stand.
+  class PlacementAttempts {
+  public:
+    PlacementAttempts(mlir::MLIRContext &context,
+                      SynchronizedSourceMgrDiagnosticHandler &diagHandler,
+                      const std::vector<EdgeBase *> &runOutputs,
+                      const llvm::DenseMap<EdgeBase *, RestoredNode> &satisfied,
+                      const std::vector<EdgeBase *> &buildAlso,
+                      std::vector<EdgeBase *> &outputs, bool mayAgain)
+        : context(context), diagHandler(diagHandler), runOutputs(runOutputs),
+          satisfied(satisfied), buildAlso(buildAlso), outputs(outputs),
+          mayAgain(mayAgain) {}
+
+    // Runs `graph` with `engine` as a new attempt. Frees every earlier
+    // attempt's graph except the best reached so far and this one, since
+    // only those two can ever stand (see reachedEdge).
+    mlir::LogicalResult run(std::unique_ptr<Graph> graph,
+                            std::unique_ptr<Engine> engine) {
+      Attempt &a = attempts.emplace_back();
+      a.graph = std::move(graph);
+      a.engine = std::move(engine);
+      a.engine->opts.deferFailedEdge = mayAgain;
+      diagHandler.recordErrors();
+      a.ran = a.engine->run(*a.graph, runOutputs, satisfied,
+                            DeserializeContext{&context}, buildAlso);
+      a.errors = diagHandler.takeRecordedErrors();
+      a.reached = reachedEdge(a);
+      size_t now = attempts.size() - 1;
+      if (a.reached >= attempts[bestReached].reached)
+        bestReached = now;
+      for (size_t i = 0; i < now; ++i)
+        if (i != bestReached)
+          attempts[i].graph.reset();
+      return a.ran;
     }
-    auto next = std::make_unique<Graph>();
-    checkEdges.clear();
-    outputs = buildMainGraph(context, *next, cutEdges, checkEdges,
-                             deviceCache ? &*deviceCache : nullptr, keptDevices,
-                             measuredCores, sharedObjects);
-    mlir::LogicalResult ran =
-        runAttempt(std::move(next), std::make_unique<Engine>(engineOptions));
-    attempts.back().placedWith = std::move(placedWith);
-    return ran;
+
+    // Builds a fresh graph with `buildGraph` (storing its outputs, as the
+    // caller's own buildMainGraph call does) and runs it, logging `why` and
+    // recording `placedWith` as what placed this attempt past the command
+    // line's own.
+    mlir::LogicalResult placeAgain(
+        std::vector<std::string> placedWith, llvm::StringRef why,
+        const Engine::Options &engineOptions,
+        llvm::function_ref<std::vector<EdgeBase *>(Graph &)> buildGraph) {
+      {
+        auto log = endProgressLine();
+        llvm::errs() << "aiecc: placing again with "
+                     << llvm::join(placedWith, " ") << " (" << why
+                     << "); the messages above are from placement "
+                     << attempts.size() << "\n";
+      }
+      auto next = std::make_unique<Graph>();
+      outputs = buildGraph(*next);
+      mlir::LogicalResult ran =
+          run(std::move(next), std::make_unique<Engine>(engineOptions));
+      attempts.back().placedWith = std::move(placedWith);
+      return ran;
+    }
+
+    // Whether the last attempt failed at `edge`.
+    bool failedAt(llvm::StringRef edge) const {
+      EdgeBase *failed = attempts.back().engine->failedEdge;
+      return mlir::failed(attempts.back().ran) && failed &&
+             failed->name == edge;
+    }
+
+    // Whether the last attempt failed to route what it placed: the
+    // sequential placer fills each column with cores and has no model of
+    // the links between columns, so its placement can leave flows the
+    // router cannot fit where one with fewer cores a column routes.
+    bool unroutable() const {
+      return failedAt(kRoutedEdge) &&
+             llvm::any_of(attempts.back().errors,
+                          [](const RecordedError &error) {
+                            return llvm::StringRef(error.message)
+                                .starts_with(xilinx::AIE::kNoLegalRouting);
+                          });
+    }
+
+    // What the last attempt's errors ask placing again to charge, walking
+    // its recorded errors once for both the SA's walked-whole pools and the
+    // probe link's core measurements.
+    Charges collectCharges(bool mayWalkAgain, bool mayCoreAgain,
+                           llvm::ArrayRef<std::string> saWalkedFifos) const {
+      Charges charges;
+      for (const RecordedError &error : attempts.back().errors) {
+        llvm::StringRef message = error.message;
+        if (mayCoreAgain && message.contains(xilinx::AIE::kNoTileRoom))
+          for (const auto &[note, attrs] : error.notes)
+            if (llvm::StringRef(note).starts_with(
+                    xilinx::AIE::kCoreSectionsNote))
+              for (mlir::Attribute attr : attrs)
+                if (llvm::isa<mlir::FlatSymbolRefAttr>(attr))
+                  charges.fullDevices.insert(llvm::formatv("{0}", attr).str());
+        if (!mayWalkAgain || !message.contains(xilinx::AIE::kNoBufferRoom))
+          continue;
+        // Only the pools the SA counts otherwise than allocation lays them
+        // out.
+        for (const auto &[note, attrs] : error.notes)
+          if (llvm::StringRef(note).starts_with(xilinx::AIE::kTurnWalkedNote))
+            for (mlir::Attribute attr : attrs)
+              if (llvm::isa<mlir::SymbolRefAttr>(attr)) {
+                charges.anyWalked = true;
+                std::string entry = llvm::formatv("{0}", attr).str();
+                if (!llvm::is_contained(saWalkedFifos, entry) &&
+                    !llvm::is_contained(charges.fifos, entry))
+                  charges.fifos.push_back(entry);
+              }
+      }
+      return charges;
+    }
+
+    size_t size() const { return attempts.size(); }
+    Attempt &back() { return attempts.back(); }
+    Attempt &at(size_t i) { return attempts[i]; }
+
+  private:
+    // How far an attempt got: its failed edge's index in its own graph,
+    // which is built in pipeline order, so a later index means it got
+    // further. An attempt with no failed edge (never reached one deferred,
+    // or succeeded) ranks lowest.
+    static std::ptrdiff_t reachedEdge(const Attempt &a) {
+      if (!a.engine->failedEdge)
+        return -1;
+      return llvm::find_if(a.graph->edges,
+                           [&](const std::unique_ptr<EdgeBase> &edge) {
+                             return edge.get() == a.engine->failedEdge;
+                           }) -
+             a.graph->edges.begin();
+    }
+
+    mlir::MLIRContext &context;
+    SynchronizedSourceMgrDiagnosticHandler &diagHandler;
+    const std::vector<EdgeBase *> &runOutputs;
+    const llvm::DenseMap<EdgeBase *, RestoredNode> &satisfied;
+    const std::vector<EdgeBase *> &buildAlso;
+    std::vector<EdgeBase *> &outputs;
+    bool mayAgain;
+    std::vector<Attempt> attempts;
+    // The earlier attempt most likely to stand if none left routes or
+    // allocates: the one so far whose failed edge comes latest, the later
+    // attempt on a tie (run()'s `>=` keeps the later one). Every other
+    // earlier attempt's graph is freed once a new one completes, since only
+    // this one and the latest can still stand.
+    size_t bestReached = 0;
   };
-  // Whether the last attempt failed at `edge`.
-  auto failedAt = [&](llvm::StringRef edge) {
-    EdgeBase *failed = attempts.back().engine->failedEdge;
-    return mlir::failed(attempts.back().ran) && failed && failed->name == edge;
-  };
+  PlacementAttempts attempts(context, diagHandler, runOutputs, satisfied,
+                             buildAlso, outputs, mayAgain);
   // Set when attempts ran out on a failure only another placement could fix.
   std::optional<std::string> noPlacement;
-  mlir::LogicalResult ran = runAttempt(std::move(graph), std::move(engine));
-  // The sequential placer fills each column with cores and has no model of
-  // the links between columns, so its placement can leave flows the router
-  // cannot fit where one with fewer cores a column routes. Unless the
-  // command line chose the placement, a design with cores to place is placed
-  // again with fewer cores a column until the router fits the flows.
-  auto unroutable = [&] {
-    return failedAt(kRoutedEdge) &&
-           llvm::any_of(attempts.back().errors, [](const RecordedError &error) {
-             return llvm::StringRef(error.message)
-                 .starts_with(xilinx::AIE::kNoLegalRouting);
-           });
+  mlir::LogicalResult ran = attempts.run(std::move(graph), std::move(engine));
+  // Unless the command line chose the placement, a design with cores to
+  // place is placed again with fewer cores a column until the router fits
+  // the flows.
+  auto placeAgainWith = [&](std::vector<std::string> placedWith,
+                            llvm::StringRef why) {
+    return attempts.placeAgain(
+        std::move(placedWith), why, engineOptions, [&](Graph &next) {
+          checkEdges.clear();
+          return buildMainGraph(context, next, cutEdges, checkEdges,
+                                deviceCache ? &*deviceCache : nullptr,
+                                keptDevices, measuredCores, sharedObjects);
+        });
   };
-  if (mayPlaceAgain && unroutable()) {
+  if (mayPlaceAgain && attempts.unroutable()) {
     int coreRows = 0;
     if (mlir::OwningOpRef<mlir::ModuleOp> input =
             parseModuleFromFile(getInputFilename(), &context))
@@ -3380,12 +3487,13 @@ int main(int argc, char **argv) {
           coreRows = std::max(coreRows, rows);
         }
       });
-    for (int cores = coreRows - 1; cores > 0 && unroutable(); --cores) {
+    for (int cores = coreRows - 1; cores > 0 && attempts.unroutable();
+         --cores) {
       coresPerCol = cores;
-      ran = placeAgain({"--cores-per-col=" + std::to_string(cores)},
-                       "the placement does not route");
+      ran = placeAgainWith({"--cores-per-col=" + std::to_string(cores)},
+                           "the placement does not route");
     }
-    if (attempts.size() > 1 && unroutable())
+    if (attempts.size() > 1 && attempts.unroutable())
       noPlacement = "aiecc: no placement with fewer cores a column routes "
                     "either";
   }
@@ -3397,52 +3505,15 @@ int main(int argc, char **argv) {
   // Only the failure placing again addresses (no room, with the note naming
   // what to charge) counts; anything else the attempt reports stands as
   // itself.
-  struct Charges {
-    // The pools a kNoBufferRoom error's note names, not yet in saWalkedFifos
-    // (what the next retry's command line would add). Each charge names its
-    // device, and only the devices that failed are charged, so the others
-    // place as they did. Names are written as symbol references, which quote
-    // any name the list's separators would break.
-    std::vector<std::string> fifos;
-    // Whether a kNoBufferRoom error named a walked pool at all, charged or
-    // not: unlike `fifos`, this does not go empty once every pool it names is
-    // already charged, so the loop still sees the attempt as worth a look
-    // instead of appearing to have found nothing to charge.
-    bool anyWalked = false;
-    llvm::StringSet<> fullDevices;
-  };
-  auto collectCharges = [&] {
-    Charges charges;
-    for (const RecordedError &error : attempts.back().errors) {
-      llvm::StringRef message = error.message;
-      if (mayCoreAgain && message.contains(xilinx::AIE::kNoTileRoom))
-        for (const auto &[note, attrs] : error.notes)
-          if (llvm::StringRef(note).starts_with(xilinx::AIE::kCoreSectionsNote))
-            for (mlir::Attribute attr : attrs)
-              if (llvm::isa<mlir::FlatSymbolRefAttr>(attr))
-                charges.fullDevices.insert(llvm::formatv("{0}", attr).str());
-      if (!mayWalkAgain || !message.contains(xilinx::AIE::kNoBufferRoom))
-        continue;
-      // Only the pools the SA counts otherwise than allocation lays them out.
-      for (const auto &[note, attrs] : error.notes)
-        if (llvm::StringRef(note).starts_with(xilinx::AIE::kTurnWalkedNote))
-          for (mlir::Attribute attr : attrs)
-            if (llvm::isa<mlir::SymbolRefAttr>(attr)) {
-              charges.anyWalked = true;
-              std::string entry = llvm::formatv("{0}", attr).str();
-              if (!llvm::is_contained(saWalkedFifos, entry) &&
-                  !llvm::is_contained(charges.fifos, entry))
-                charges.fifos.push_back(entry);
-            }
-    }
-    return charges;
-  };
   llvm::StringMap<MeasuredRegion> coreData;
-  for (Charges charges = collectCharges();
-       (mayWalkAgain && failedAt(kWithSymbolsEdge) && charges.anyWalked) ||
-       (mayCoreAgain && failedAt(kAddressesEdge) &&
+  for (Charges charges =
+           attempts.collectCharges(mayWalkAgain, mayCoreAgain, saWalkedFifos);
+       (mayWalkAgain && attempts.failedAt(kWithSymbolsEdge) &&
+        charges.anyWalked) ||
+       (mayCoreAgain && attempts.failedAt(kAddressesEdge) &&
         !charges.fullDevices.empty());
-       charges = collectCharges()) {
+       charges =
+           attempts.collectCharges(mayWalkAgain, mayCoreAgain, saWalkedFifos)) {
     // A core's measurement keeps its largest value, so the charges only grow
     // and the attempts end.
     bool grew = false;
@@ -3489,7 +3560,7 @@ int main(int argc, char **argv) {
     if (mayCoreAgain && !saCoreDataSizes.empty())
       placedWith.push_back("--sa-core-data-sizes=" +
                            llvm::join(saCoreDataSizes, ","));
-    ran = placeAgain(std::move(placedWith), llvm::join(why, "; "));
+    ran = placeAgainWith(std::move(placedWith), llvm::join(why, "; "));
   }
   // When attempts ran out, the placement that got furthest stands: the one
   // whose failed edge comes latest in the graph, which is built in pipeline
@@ -3500,9 +3571,9 @@ int main(int argc, char **argv) {
   size_t stands = attempts.size() - 1;
   if (noPlacement)
     for (size_t i = attempts.size() - 1; i-- > 0;)
-      if (attempts[i].reached > attempts[stands].reached)
+      if (attempts.at(i).reached > attempts.at(stands).reached)
         stands = i;
-  Attempt &standing = attempts[stands];
+  Attempt &standing = attempts.at(stands);
   EdgeBase *standingFailed = standing.engine->failedEdge;
   if (attempts.size() > 1) {
     auto log = endProgressLine();
@@ -3567,7 +3638,7 @@ int main(int argc, char **argv) {
 
   // The graph still holds every module it built; freeing them op by op takes
   // over a second on a large design, and the process is about to exit.
-  for (Attempt &tried : attempts)
-    llvm::BuryPointer(std::move(tried.graph));
+  for (size_t i = 0; i < attempts.size(); ++i)
+    llvm::BuryPointer(std::move(attempts.at(i).graph));
   return 0;
 }
