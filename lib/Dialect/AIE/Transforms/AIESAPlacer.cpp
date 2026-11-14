@@ -603,6 +603,7 @@ void SAPlacer::initResourceTracking() {
   pinUse = PinnedChannelUse(pinnedRule);
   sharedMemDestination.clear();
   coreFifoBuffers.clear();
+  coreFifoLog.clear();
 
   auto typeOf = [&](Operation *tile) -> std::optional<AIETileType> {
     if (auto it = tileTypes.find(tile); it != tileTypes.end())
@@ -644,7 +645,6 @@ void SAPlacer::initResourceTracking() {
 
   for (size_t i = 0; i < fifoBuffers.size(); i++)
     addFifoContribution(i, +1);
-  coreFifoLog.clear();
   coreUnplacedAt.clear();
   for (auto &[op, _] : coreContents)
     if (std::optional<TileID> pos = positionOf(op))
@@ -1014,17 +1014,14 @@ void SAPlacer::chargeCoreFifo(TileID pos, int64_t bytes, int count) {
   if (count == 0 ||
       targetModel->getTileType(pos.col, pos.row) != AIETileType::CoreTile)
     return;
-  std::map<int64_t, int> &held = coreFifoBuffers[pos];
+  BufferCounts &held = coreFifoBuffers[pos];
   if ((held[bytes] += count) == 0)
-    held.erase(bytes);
+    held.erase(held.find(bytes));
   coreFifoLog.push_back({pos, bytes, count});
-  std::map<int64_t, int> &change = coreFifoChange[pos];
-  if ((change[bytes] += count) == 0)
-    change.erase(bytes);
 }
 
-int64_t SAPlacer::coreUnplaced(TileID pos, const std::map<int64_t, int> &added,
-                               const std::map<int64_t, int> &removed) const {
+int64_t SAPlacer::coreUnplaced(TileID pos, const BufferCounts &added,
+                               const BufferCounts &removed) const {
   SmallVector<const CoreTileContents *, 2> here;
   int numBanks = targetModel->getNumBanks(pos.col, pos.row);
   // The tile ops and objectFIFO buffers decide the layout, so they key it.
@@ -1043,11 +1040,11 @@ int64_t SAPlacer::coreUnplaced(TileID pos, const std::map<int64_t, int> &added,
         at != currentPlacement.end() && at->second == pos)
       addOp(op);
   tileKey.push_back(-1);
-  static const std::map<int64_t, int> none;
+  static const BufferCounts none;
   auto held = coreFifoBuffers.find(pos);
-  const std::map<int64_t, int> &base =
+  const BufferCounts &base =
       held == coreFifoBuffers.end() ? none : held->second;
-  std::map<int64_t, int> adjusted;
+  BufferCounts adjusted;
   if (!added.empty() || !removed.empty()) {
     adjusted = base;
     for (auto [bytes, count] : added)
@@ -1055,8 +1052,7 @@ int64_t SAPlacer::coreUnplaced(TileID pos, const std::map<int64_t, int> &added,
     for (auto [bytes, count] : removed)
       adjusted[bytes] -= count;
   }
-  const std::map<int64_t, int> &fifo =
-      added.empty() && removed.empty() ? base : adjusted;
+  const BufferCounts &fifo = added.empty() && removed.empty() ? base : adjusted;
   for (auto [bytes, count] : fifo)
     if (count > 0)
       tileKey.insert(tileKey.end(), {bytes, count});
@@ -1145,10 +1141,12 @@ int64_t SAPlacer::coreUnplaced(TileID pos, const std::map<int64_t, int> &added,
 
 SmallVector<TileID> SAPlacer::refreshCoreUnplaced() {
   // A fifo a move takes off a tile and puts back leaves it as it was.
-  for (auto &[pos, change] : coreFifoChange)
-    if (!change.empty())
-      coreDirty.insert(pos);
-  coreFifoChange.clear();
+  llvm::SmallDenseMap<std::pair<TileID, int64_t>, int, 8> net;
+  for (auto &[pos, bytes, count] : coreFifoLog)
+    net[{pos, bytes}] += count;
+  for (auto &[charge, count] : net)
+    if (count)
+      coreDirty.insert(charge.first);
   SmallVector<TileID> changed;
   for (TileID pos : coreDirty) {
     if (targetModel->getTileType(pos.col, pos.row) != AIETileType::CoreTile)
@@ -1172,8 +1170,7 @@ DenseSet<TileID> SAPlacer::coreOverflowReads() const {
 }
 
 int64_t
-SAPlacer::planCoreFit(TileID pos,
-                      DenseMap<TileID, std::map<int64_t, int>> &lent,
+SAPlacer::planCoreFit(TileID pos, DenseMap<TileID, BufferCounts> &lent,
                       SmallVectorImpl<std::pair<size_t, TileID>> *moves) const {
   // The intratile fifos an allocate can move to a neighbour, largest first,
   // then with the larger objects, then the one the core acquires first.
@@ -1217,12 +1214,12 @@ SAPlacer::planCoreFit(TileID pos,
   SmallVector<TileID, 4> neighbours(getMemAffinityNeighbors(*targetModel, pos));
   llvm::sort(neighbours);
 
-  std::map<int64_t, int> removed;
+  BufferCounts removed;
   for (auto [fi, size] : relocatable) {
     const auto &fb = fifoBuffers[fi];
     int64_t bytes = std::max(fb.producerRawBytes, fb.consumerRawBytes);
     for (TileID nbr : neighbours) {
-      std::map<int64_t, int> added = lent.lookup(nbr);
+      BufferCounts added = lent.lookup(nbr);
       added[bytes] += fb.sharedDepth;
       if (coreUnplaced(nbr, added) != 0)
         continue;
@@ -1241,7 +1238,7 @@ int SAPlacer::computeCoreOverflowPenalty(
   int penalty = 0;
   // Room a neighbour gives one overflowing tile is gone for the next, as
   // generateAllocates hands it out.
-  DenseMap<TileID, std::map<int64_t, int>> lent;
+  DenseMap<TileID, BufferCounts> lent;
   for (TileID tilePos : overflowingCoreTiles()) {
     int64_t unresolved = planCoreFit(tilePos, lent, nullptr);
     if (unresolved <= 0)
@@ -1855,7 +1852,7 @@ void SAPlacer::generateAllocates() {
   DenseSet<size_t> emittedFifoIndices;
 
   // Case A: the moves that planCoreFit plans.
-  DenseMap<TileID, std::map<int64_t, int>> lent;
+  DenseMap<TileID, BufferCounts> lent;
   for (TileID tilePos : overflowingCoreTiles()) {
     SmallVector<std::pair<size_t, TileID>> moves;
     (void)planCoreFit(tilePos, lent, &moves);
@@ -1971,14 +1968,18 @@ int SAPlacer::updateResourcePenalty(
       coreDirty.insert(oldPos);
       coreDirty.insert(currentPlacement[op]);
     }
-  SmallVector<TileID> coreChanged = refreshCoreUnplaced();
-  SmallVector<TileID> overflowing = overflowingCoreTiles();
-  DenseSet<TileID> overflowReads = coreOverflowReads();
-  if (overflowing != coreOverflowTiles ||
-      llvm::any_of(coreChanged,
-                   [&](TileID pos) { return overflowReads.contains(pos); })) {
-    coreOverflowTiles = std::move(overflowing);
-    coreOverflowPenalty = computeCoreOverflowPenalty();
+  // The overflow set and the tiles its penalty reads change only through
+  // a core tile whose layout changed.
+  if (SmallVector<TileID> coreChanged = refreshCoreUnplaced();
+      !coreChanged.empty()) {
+    SmallVector<TileID> overflowing = overflowingCoreTiles();
+    DenseSet<TileID> overflowReads = coreOverflowReads();
+    if (overflowing != coreOverflowTiles ||
+        llvm::any_of(coreChanged,
+                     [&](TileID pos) { return overflowReads.contains(pos); })) {
+      coreOverflowTiles = std::move(overflowing);
+      coreOverflowPenalty = computeCoreOverflowPenalty();
+    }
   }
 
   auto reads = [&](const DenseSet<Operation *> &tiles) {
@@ -3080,9 +3081,9 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     for (auto &[tile, at] : llvm::reverse(bdUndo))
       bdShortfallAt[tile] = at;
     for (auto &[pos, bytes, count] : llvm::reverse(coreFifoLog)) {
-      std::map<int64_t, int> &held = coreFifoBuffers[pos];
+      BufferCounts &held = coreFifoBuffers[pos];
       if ((held[bytes] -= count) == 0)
-        held.erase(bytes);
+        held.erase(held.find(bytes));
     }
     for (auto &[pos, unplaced] : llvm::reverse(coreUndo))
       coreUnplacedAt[pos] = unplaced;

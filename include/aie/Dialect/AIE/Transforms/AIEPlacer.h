@@ -16,6 +16,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SortedVectorMap.h"
 
 #include <array>
 #include <deque>
@@ -1258,12 +1259,13 @@ private:
     int64_t stackAlignBytes = 1;
   };
   llvm::DenseMap<mlir::Operation *, CoreTileContents> coreContents;
-  // The objectFIFO buffers on each core tile, by size.
-  llvm::DenseMap<TileID, std::map<int64_t, int>> coreFifoBuffers;
-  // Charges chargeCoreFifo applied since the last accepted move, for undo.
+  // ObjectFIFO buffers by size, and how many of each.
+  using BufferCounts = llvm::SortedVectorMap<int64_t, int, 4>;
+  // The objectFIFO buffers on each core tile.
+  llvm::DenseMap<TileID, BufferCounts> coreFifoBuffers;
+  // Charges chargeCoreFifo applied in the current move, for undo and for
+  // the tiles it changed.
   llvm::SmallVector<std::tuple<TileID, int64_t, int>> coreFifoLog;
-  // Each core tile's net charge change in the current move.
-  llvm::DenseMap<TileID, std::map<int64_t, int>> coreFifoChange;
   // coreUnplaced of each core tile.
   llvm::DenseMap<TileID, int64_t> coreUnplacedAt;
   // The tiles whose ops the current move changed.
@@ -1406,21 +1408,19 @@ private:
       llvm::SmallVectorImpl<TileID> *charged = nullptr);
   int computeCoreOverflowPenalty(
       llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
-  /// No-op off a core tile. Tracks the charge for undo (coreFifoLog) and
-  /// incremental coreUnplaced recomputation (coreFifoChange) alongside the
-  /// running total.
+  /// No-op off a core tile. Logs the charge in coreFifoLog.
   void chargeCoreFifo(TileID pos, int64_t bytes, int count);
   /// The bytes assign-buffer-addresses' layout (layoutTile) leaves unplaced
   /// on the core tile at `pos`, with `added` objectFIFO buffers more and
   /// `removed` fewer.
-  int64_t coreUnplaced(TileID pos, const std::map<int64_t, int> &added = {},
-                       const std::map<int64_t, int> &removed = {}) const;
+  int64_t coreUnplaced(TileID pos, const BufferCounts &added = {},
+                       const BufferCounts &removed = {}) const;
   /// Relocates the intratile fifos of the core tile at `pos` to neighbours
   /// whose layout still places everything with them and what `lent` already
   /// gave them, as generateAllocates' allocates do; records each in `moves`
   /// and returns the bytes the tile's layout still leaves unplaced.
   int64_t
-  planCoreFit(TileID pos, llvm::DenseMap<TileID, std::map<int64_t, int>> &lent,
+  planCoreFit(TileID pos, llvm::DenseMap<TileID, BufferCounts> &lent,
               llvm::SmallVectorImpl<std::pair<size_t, TileID>> *moves) const;
   /// Recomputes coreUnplacedAt for the core tiles whose contents changed, and
   /// returns them.
