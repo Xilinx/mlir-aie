@@ -1723,12 +1723,19 @@ void Placer::buildShimModel(
   shareableShimEnds =
       collectShareableShimEnds(device, objectFifos, rank, routeKeys);
   collectOverlayUses(device);
+  // Gates only let receiving ends share, so without any to share the proofs
+  // are never read.
+  bool receiving = llvm::any_of(shareableShimEnds, [](const auto &entry) {
+    const ShimSide &side = entry.second[0];
+    return !side.ends.empty() || !side.shared.empty();
+  });
   shimSpans.emplace(
       device,
       [&](StringAttr symbol) {
         return ShimTransferSpans::endOf(device, symbol);
       },
-      provenShimGates(device), controlOverlay);
+      receiving ? std::optional(provenShimGates(device)) : std::nullopt,
+      controlOverlay);
 }
 
 std::optional<Placer::PinnedChannels::End>
