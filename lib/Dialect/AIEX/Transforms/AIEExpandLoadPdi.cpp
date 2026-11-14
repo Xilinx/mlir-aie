@@ -285,9 +285,7 @@ verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
                << "is named '" << initEntrySequenceName
                << "', which aie-expand-load-pdi reserves under init-entry";
   if (!teardown) {
-    // Without a teardown, a reload clears the array, so a later
-    // configuration's buffer resident on the same global as an earlier one's
-    // in the same runtime sequence finds it gone.
+    // Only a teardown keeps data memory; see AIEX::checkNoSharedResident.
     llvm::DenseMap<Operation *, AIE::DeviceOp> previous;
     for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
       if (expandMode(loadPdiOp) == AIEX::ExpandMode::none)

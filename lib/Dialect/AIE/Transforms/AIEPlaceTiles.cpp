@@ -154,9 +154,8 @@ struct AIEPlaceTilesPass
         return signalPassFailure();
   }
 
-  // Pins each buffer resident for a memref.global an earlier device placed
-  // to the tile and address that device gave it, so the data stays put
-  // across the switch.
+  // Pins each resident buffer to the tile and address an earlier device gave
+  // its global.
   LogicalResult pinResidents(DeviceOp device) {
     for (BufferOp buffer : device.getOps<BufferOp>()) {
       FlatSymbolRefAttr global = buffer.getResidentAttr();

@@ -1401,8 +1401,7 @@ private:
   JournaledMap<TileID, int64_t> coreUnplacedAt;
   // The tiles whose ops the current move changed.
   llvm::DenseSet<TileID> coreDirty;
-  // The core overflow penalty, kept while no tile it reads changes, and the
-  // overflowing tiles it was computed for.
+  // Cached with the tiles it was computed for; see updateResourcePenalty.
   int coreOverflowPenalty = 0;
   llvm::SmallVector<TileID> coreOverflowTiles;
   // coreUnplaced by layout problem, and by tile ops and objectFIFO buffers;
@@ -1565,8 +1564,7 @@ private:
   /// Recomputes coreUnplacedAt for the core tiles whose contents changed, and
   /// returns them.
   llvm::SmallVector<TileID> refreshCoreUnplaced();
-  /// The overflowing core tiles and their neighbours, which the core
-  /// overflow penalty reads.
+  /// The overflowing core tiles and their neighbours.
   llvm::DenseSet<TileID> coreOverflowReads() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();
@@ -1598,9 +1596,7 @@ private:
   lockGroups() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
-  // The soft terms beside memory pressure: boundaries near their channels,
-  // North/South ports over a tile's or a column's, DDR spread and the core
-  // programs a configuration switch rewrites.
+  // Every soft term but memory pressure, summed.
   int computeSoftTerms() const;
   // The program writes at `pos` when this configuration and a neighbour
   // switch, either way, per keyAt.

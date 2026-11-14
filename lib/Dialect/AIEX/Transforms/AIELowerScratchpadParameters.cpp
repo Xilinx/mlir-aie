@@ -929,12 +929,8 @@ struct AIELowerScratchpadParametersPass
     // (length, offset, length step) -> max of offset + length step * length.
     llvm::MapVector<std::tuple<StringRef, StringRef, int64_t>, int64_t>
         jointBounds;
-    // Each offset parameter's element step: 4 bytes on a core tile, whose
-    // address field counts words and shares its low bits with the length
-    // field, or on a shim, where the update clears the register's low two
-    // bits; 16 on a mem tile, whose address field counts words from bit 0
-    // and whose update also clears those bits; a tile not known takes the
-    // mem tile's 16.
+    // Each offset parameter's byte step, 16 where the tile is not known; see
+    // AIEX::emitUpdateBdAddressFromOffsetParameter for why.
     DenseMap<StringRef, int64_t> offsetMultiples;
     SymbolTableCollection symbolTables;
     auto rewriteParams =

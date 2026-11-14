@@ -974,8 +974,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     // for the device's lifetime since nothing it depends on changes per
     // sequence.
     llvm::DenseMap<std::pair<Operation *, Operation *>, bool> balancedPairs;
-    // Whether the host library holds a scratchpad parameter at or above 0,
-    // by (sequence, state-table index); likewise device-lifetime.
+    // nonNegative's memo.
     llvm::DenseMap<std::pair<Operation *, int64_t>, bool> nonNegativeByIndex;
   };
   DeviceState deviceState;
