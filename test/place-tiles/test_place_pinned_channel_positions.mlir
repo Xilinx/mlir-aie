@@ -13,35 +13,7 @@
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
 
 // Two logical shims each send a circuit fifo on pinned MM2S 0: they take two
-// shim tiles.
-// CHECK-LABEL: module @two_shims_same_pin
-// CHECK: aie.route_endpoint @a__prod__dma(%[[A:[a-z_0-9]+]]) DMA {{.*}}channelIndex = 0
-// CHECK-NOT: aie.route_endpoint @b__prod__dma(%[[A]])
-// CHECK: aie.route_endpoint @b__prod__dma({{.*}}channelIndex = 0
-module @two_shims_same_pin {
-  aie.device(npu2) {
-    %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
-    %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
-    %c = aie.logical_tile<CoreTile>(?, ?)
-    aie.objectfifo @a(%s0, {%c}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%s1, {%c}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
-    aie.core(%c) {
-      %a = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
-      %b = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
-      aie.objectfifo.release @a(Consume, 1)
-      aie.objectfifo.release @b(Consume, 1)
-      aie.end
-    }
-    aie.runtime_sequence @run(%x : memref<16xi32>, %y : memref<16xi32>) {
-      aiex.npu.dma_memcpy_nd(%x[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @a, id = 0 : i64} : memref<16xi32>
-      aiex.npu.dma_memcpy_nd(%y[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @b, id = 1 : i64} : memref<16xi32>
-    }
-  }
-}
-
-// -----
-
-// The same on two columns with a third shim.
+// shim tiles, even with a third shim and two columns to fill.
 // CHECK-LABEL: module @two_shims_same_pin_2col
 // CHECK: aie.route_endpoint @a__prod__dma(%[[A:[a-z_0-9]+]]) DMA {{.*}}channelIndex = 0
 // CHECK-NOT: aie.route_endpoint @b__prod__dma(%[[A]])
