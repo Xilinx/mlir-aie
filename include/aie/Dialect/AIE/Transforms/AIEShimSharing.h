@@ -113,6 +113,15 @@ public:
   /// The planned control overlay channel's end on column `column`'s shim tile.
   mlir::StringAttr overlayEnd(int column) const;
 
+  /// The number of runtime sequences `bytes` indexes into.
+  unsigned sequences() const { return spans.size(); }
+  /// The bytes runtime sequence `seq` moves through `end`, nullopt when not
+  /// static or when `end` is not one of its ends.
+  std::optional<int64_t> bytes(unsigned seq, mlir::StringAttr end) const {
+    auto it = spans[seq].find(end);
+    return it == spans[seq].end() ? std::nullopt : it->second.bytes;
+  }
+
   /// Splits `ends` into groups whose members are pairwise apart, each group
   /// taking one channel: first fit, ordered by the ends' spans in flight.
   /// Returns indices into `ends`.
