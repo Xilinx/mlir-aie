@@ -9,11 +9,15 @@
 // column per consumer. West of them are 12 free cores, east only 3, and the
 // boundary between columns 2 and 3 carries 20 channels west, so at most 10
 // consumers may sit west. Both placers count the streams each row and column
-// boundary must carry, and the design routes.
+// boundary must carry, and the design routes. Reversed and renamed, it
+// places alike.
 
 // RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-resource-stages{placer=sa_placer sa-seed=1})' %s -o /dev/null
 // RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie-resource-stages{placer=sequential_placer})' %s -o /dev/null
 // RUN: aie-opt --split-input-file --aie-place-tiles=placer=sequential_placer %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=1' %s | FileCheck %s --check-prefix=TWIN
+// RUN: aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=2' %s | FileCheck %s --check-prefix=TWIN
+// RUN: aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=3' %s | FileCheck %s --check-prefix=TWIN
 
 // The same design with its ops reversed and renamed places alike.
 // CHECK-LABEL: module @stream_cut
@@ -26,6 +30,36 @@
 // CHECK-DAG: aie.tile(6, 5)
 // CHECK-DAG: aie.tile(7, 5)
 // CHECK-DAG: aie.tile(2, 3)
+
+// Under the SA, each consumer of the twin lands where its original does.
+// TWIN-LABEL: module @stream_cut
+// TWIN-DAG: aie.objectfifo @f3_0(%{{[a-z_0-9]+}}, {%[[C0:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_1(%{{[a-z_0-9]+}}, {%[[C1:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_2(%{{[a-z_0-9]+}}, {%[[C2:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_3(%{{[a-z_0-9]+}}, {%[[C3:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_4(%{{[a-z_0-9]+}}, {%[[C4:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_5(%{{[a-z_0-9]+}}, {%[[C5:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_6(%{{[a-z_0-9]+}}, {%[[C6:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_7(%{{[a-z_0-9]+}}, {%[[C7:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_8(%{{[a-z_0-9]+}}, {%[[C8:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_9(%{{[a-z_0-9]+}}, {%[[C9:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_10(%{{[a-z_0-9]+}}, {%[[C10:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_11(%{{[a-z_0-9]+}}, {%[[C11:tile_[0-9]_[0-9]]]}
+// TWIN-DAG: aie.objectfifo @f3_12(%{{[a-z_0-9]+}}, {%[[C12:tile_[0-9]_[0-9]]]}
+// TWIN-LABEL: module @stream_cut_permuted
+// TWIN-DAG: aie.objectfifo @stream_0_from3(%{{[a-z_0-9]+}}, {%[[C0]]}
+// TWIN-DAG: aie.objectfifo @stream_1_from3(%{{[a-z_0-9]+}}, {%[[C1]]}
+// TWIN-DAG: aie.objectfifo @stream_2_from3(%{{[a-z_0-9]+}}, {%[[C2]]}
+// TWIN-DAG: aie.objectfifo @stream_3_from3(%{{[a-z_0-9]+}}, {%[[C3]]}
+// TWIN-DAG: aie.objectfifo @stream_4_from3(%{{[a-z_0-9]+}}, {%[[C4]]}
+// TWIN-DAG: aie.objectfifo @stream_5_from3(%{{[a-z_0-9]+}}, {%[[C5]]}
+// TWIN-DAG: aie.objectfifo @stream_6_from3(%{{[a-z_0-9]+}}, {%[[C6]]}
+// TWIN-DAG: aie.objectfifo @stream_7_from3(%{{[a-z_0-9]+}}, {%[[C7]]}
+// TWIN-DAG: aie.objectfifo @stream_8_from3(%{{[a-z_0-9]+}}, {%[[C8]]}
+// TWIN-DAG: aie.objectfifo @stream_9_from3(%{{[a-z_0-9]+}}, {%[[C9]]}
+// TWIN-DAG: aie.objectfifo @stream_10_from3(%{{[a-z_0-9]+}}, {%[[C10]]}
+// TWIN-DAG: aie.objectfifo @stream_11_from3(%{{[a-z_0-9]+}}, {%[[C11]]}
+// TWIN-DAG: aie.objectfifo @stream_12_from3(%{{[a-z_0-9]+}}, {%[[C12]]}
 
 module @stream_cut {
   aie.device(npu2) {

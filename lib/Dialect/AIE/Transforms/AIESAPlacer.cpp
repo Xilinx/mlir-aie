@@ -2931,7 +2931,7 @@ LogicalResult SAPlacer::generateInitialPlacement() {
     int64_t wb = computeTileMemoryWeight(b);
     if (wa != wb)
       return wa > wb;
-    return a->isBeforeInBlock(b);
+    return collected.rank.lookup(a) < collected.rank.lookup(b);
   };
   {
     SmallVector<Operation *> sortedCoreTiles;
@@ -2942,7 +2942,7 @@ LogicalResult SAPlacer::generateInitialPlacement() {
       if (lt.getTileType() == AIETileType::CoreTile)
         sortedCoreTiles.push_back(op);
     }
-    llvm::sort(sortedCoreTiles, byMemWeightDesc);
+    llvm::stable_sort(sortedCoreTiles, byMemWeightDesc);
 
     for (auto *op : sortedCoreTiles) {
       TileID pos;
@@ -2979,7 +2979,7 @@ LogicalResult SAPlacer::generateInitialPlacement() {
       else if (type == AIETileType::ShimNOCTile)
         shimTiles.push_back(op);
     }
-    llvm::sort(sortedMemTiles, byMemWeightDesc);
+    llvm::stable_sort(sortedMemTiles, byMemWeightDesc);
 
     // Each takes the next legal position of its pool, round robin.
     auto placeIn = [&](ArrayRef<Operation *> ops, ArrayRef<TileID> pool,
