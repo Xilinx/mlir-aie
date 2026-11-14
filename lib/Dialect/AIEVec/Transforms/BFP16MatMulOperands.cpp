@@ -18,6 +18,7 @@
 #include "mlir/Analysis/AliasAnalysis/LocalAliasAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -33,6 +34,10 @@ using namespace xilinx;
 using namespace xilinx::aievec;
 
 namespace {
+
+/// The type of a FIFO stream's address. Loops carry it as a pointer, not as
+/// an integer converted at every access.
+Type fifoAddrType(MLIRContext *ctx) { return LLVM::LLVMPointerType::get(ctx); }
 
 constexpr int64_t kTile = 64;    // Values in an 8x8 tile.
 constexpr int64_t kExpBytes = 8; // Exponent bytes in a block.
@@ -705,6 +710,7 @@ struct HoistBFP16ConversionPattern : public OpRewritePattern<ToBFP16Op> {
     Location loc = conv.getLoc();
     Attribute space = bufTy.getMemorySpace();
     Type i8 = rewriter.getI8Type(), i32 = rewriter.getI32Type();
+    Type addrTy = fifoAddrType(rewriter.getContext());
     auto stateTy = VectorType::get({32}, i32);
     auto mantTy = VectorType::get({kTile}, i8);
     auto expTy = VectorType::get({kExpBytes}, i8);
@@ -798,8 +804,8 @@ struct HoistBFP16ConversionPattern : public OpRewritePattern<ToBFP16Op> {
               b, l, mantTy, expTy, vector::ShapeCastOp::create(b, l, convTy, v),
               transpose);
           auto push = FifoStPushBFP16Op::create(
-              b, l, i32, stateTy, i32, cur[0], cur[1], cur[2], c.getMantissas(),
-              c.getExponents());
+              b, l, addrTy, stateTy, i32, cur[0], cur[1], cur[2],
+              c.getMantissas(), c.getExponents());
           cur = SmallVector<Value>(push->getResults());
         }
         return cur;
@@ -820,7 +826,7 @@ struct HoistBFP16ConversionPattern : public OpRewritePattern<ToBFP16Op> {
           });
       return SmallVector<Value>(nloop.getResults());
     };
-    auto start = FifoStartOp::create(rewriter, loc, i32, stateTy, i32,
+    auto start = FifoStartOp::create(rewriter, loc, addrTy, stateTy, i32,
                                      copy.getBuffer(), cIdx(rewriter, loc, 0));
     (void)build(rewriter, loc, 0, cIdx(rewriter, loc, 0),
                 ValueRange(start->getResults()));
@@ -845,8 +851,8 @@ struct HoistBFP16ConversionPattern : public OpRewritePattern<ToBFP16Op> {
       Value t0 = arith::DivUIOp::create(rewriter, l, st.init,
                                         cIdx(rewriter, l, kTile));
       auto begin =
-          FifoStartOp::create(rewriter, l, i32, stateTy, i32, copy.getBuffer(),
-                              blockOffset(rewriter, l, t0));
+          FifoStartOp::create(rewriter, l, addrTy, stateTy, i32,
+                              copy.getBuffer(), blockOffset(rewriter, l, t0));
       int64_t r = layout.r;
       (void)st.loop.replaceWithAdditionalYields(
           rewriter, begin->getResults(), /*replaceInitOperandUsesInLoop=*/false,
@@ -860,7 +866,7 @@ struct HoistBFP16ConversionPattern : public OpRewritePattern<ToBFP16Op> {
             Value addr = args[0], state = args[1], count = args[2];
             for (int64_t i = 0; i < r; ++i) {
               auto pop = FifoLdPopBFP16Op::create(
-                  b, first->getLoc(), i32, stateTy, i32, mantTy, expTy, addr,
+                  b, first->getLoc(), addrTy, stateTy, i32, mantTy, expTy, addr,
                   state, count,
                   r % 8 == 0 && i % 8 ? b.getUnitAttr() : UnitAttr());
               for (auto &[rd, place] : st.reads)
@@ -1425,7 +1431,7 @@ struct BFP16LoadStreamPattern : public OpRewritePattern<scf::ForOp> {
             cast<OpResult>(v).getResultNumber());
       };
       auto begin = FifoStartOp::create(
-          rewriter, loc, rewriter.getI32Type(),
+          rewriter, loc, fifoAddrType(rewriter.getContext()),
           VectorType::get({32}, rewriter.getI32Type()), rewriter.getI32Type(),
           base, before(loads.front().getOffset()));
       inits.append(begin->getResults().begin(), begin->getResults().end());
@@ -1450,7 +1456,7 @@ struct BFP16LoadStreamPattern : public OpRewritePattern<scf::ForOp> {
             b.setInsertionPoint(first);
             for (auto [j, ld] : llvm::enumerate(entry.second)) {
               auto pop = FifoLdPopBFP16Op::create(
-                  b, ld.getLoc(), b.getI32Type(), state.getType(),
+                  b, ld.getLoc(), fifoAddrType(b.getContext()), state.getType(),
                   b.getI32Type(), ld.getMantissas().getType(),
                   ld.getExponents().getType(), addr, state, count,
                   r % 8 == 0 && j % 8 ? b.getUnitAttr() : UnitAttr());

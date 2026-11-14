@@ -15,6 +15,7 @@ include "aie/Dialect/AIEVec/IR/AIEVecAttributes.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
 
+include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -698,13 +699,14 @@ def AIEVec_LoadBFP16Op
 def AIEVec_FifoStartOp
     : AIEVec_Op<"fifo_start", [Pure]>,
       Arguments<(ins MemRefRankOf<[I8], [1]>:$base, Index:$offset)>,
-      Results<(outs I32:$next, VectorOfLengthAndType<[32], [I32]>:$state,
-          I32:$count)> {
+      Results<(outs LLVM_DefaultPointer:$next,
+          VectorOfLengthAndType<[32], [I32]>:$state, I32:$count)> {
   let summary = "AIE2P start of a block-vector FIFO stream";
   let description = [{
     AMD AIEv2P-specific start of a stream on a block-vector load or store
-    FIFO at byte `offset` of `base`. The FIFO starts empty. `next`, `state`
-    and `count` hold the FIFO state and are passed to the first
+    FIFO at byte `offset` of `base`. The FIFO starts empty. `next` (the
+    address of the next memory access), `state` and `count` hold the FIFO
+    state and are passed to the first
     `aievec.fifo_ld_pop_bfp16` or `aievec.fifo_st_push_bfp16` of the
     stream.
   }];
@@ -715,11 +717,12 @@ def AIEVec_FifoStartOp
 
 def AIEVec_FifoStPushBFP16Op
     : AIEVec_Op<"fifo_st_push_bfp16", [MemoryEffects<[MemWrite]>]>,
-      Arguments<(ins I32:$addr, VectorOfLengthAndType<[32], [I32]>:$state,
-          I32:$count, VectorOfLengthAndType<[64], [I8]>:$mantissas,
+      Arguments<(ins LLVM_DefaultPointer:$addr,
+          VectorOfLengthAndType<[32], [I32]>:$state, I32:$count,
+          VectorOfLengthAndType<[64], [I8]>:$mantissas,
           VectorOfLengthAndType<[8], [I8]>:$exponents)>,
-      Results<(outs I32:$next, VectorOfLengthAndType<[32], [I32]>:$state_out,
-          I32:$count_out)> {
+      Results<(outs LLVM_DefaultPointer:$next,
+          VectorOfLengthAndType<[32], [I32]>:$state_out, I32:$count_out)> {
   let summary = "AIE2P next bfp16ebs8 block of a block-vector store stream";
   let description = [{
     AMD AIEv2P-specific write of `mantissas` and `exponents`, as produced by
@@ -737,10 +740,12 @@ def AIEVec_FifoStPushBFP16Op
 
 def AIEVec_FifoLdPopBFP16Op
     : AIEVec_Op<"fifo_ld_pop_bfp16", [MemoryEffects<[MemRead]>]>,
-      Arguments<(ins I32:$addr, VectorOfLengthAndType<[32], [I32]>:$state,
-          I32:$count, UnitAttr:$no_fill)>,
-      Results<(outs I32:$next, VectorOfLengthAndType<[32], [I32]>:$state_out,
-          I32:$count_out, VectorOfLengthAndType<[64], [I8]>:$mantissas,
+      Arguments<(ins LLVM_DefaultPointer:$addr,
+          VectorOfLengthAndType<[32], [I32]>:$state, I32:$count,
+          UnitAttr:$no_fill)>,
+      Results<(outs LLVM_DefaultPointer:$next,
+          VectorOfLengthAndType<[32], [I32]>:$state_out, I32:$count_out,
+          VectorOfLengthAndType<[64], [I8]>:$mantissas,
           VectorOfLengthAndType<[8], [I8]>:$exponents)> {
   let summary = "AIE2P next bfp16ebs8 block of a block-vector load stream";
   let description = [{

@@ -28,3 +28,12 @@ func.func @matmul_tensor_acc(%m: vector<64xi8>, %e: vector<8xi8>, %acc: tensor<8
   %r = aievec.matmul_aie2p_bfp16 %m, %e, %m, %e, %acc : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into tensor<8x8xf32>
   return %r : tensor<8x8xf32>
 }
+
+// -----
+
+func.func @integer_address(%a: i32, %s: vector<32xi32>, %n: i32) {
+  // expected-error @+1 {{operand #0 must be LLVM pointer in address space 0}}
+  %r:5 = "aievec.fifo_ld_pop_bfp16"(%a, %s, %n) : (i32, vector<32xi32>, i32) -> (i32, vector<32xi32>, i32, vector<64xi8>, vector<8xi8>)
+  return
+}
+

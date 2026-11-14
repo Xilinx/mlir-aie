@@ -9,10 +9,11 @@
 
 // Each iteration loads the next 8 blocks in order. They become one stream
 // started before the loop. Only the first pop of an iteration fills the
-// FIFO, since a fill provides enough data for 8 pops.
+// FIFO, since a fill provides enough data for 8 pops. The loop carries the
+// stream's address as a pointer.
 // CHECK-LABEL: func.func @stream8
 // CHECK: aievec.fifo_start %{{.*}}[%c0]
-// CHECK: scf.for {{.*}} iter_args
+// CHECK: scf.for {{.*}} iter_args({{.*}}) -> (!llvm.ptr, vector<32xi32>, i32)
 // CHECK: aievec.fifo_ld_pop_bfp16 %{{.*}}, %{{.*}}, %{{.*}} :
 // CHECK-COUNT-7: aievec.fifo_ld_pop_bfp16 {{.*}} no_fill
 // CHECK-NOT: aievec.load_bfp16
