@@ -1979,12 +1979,8 @@ def AIE_BufferOp
   }];
   let hasVerifier = 1;
 
-  // The generated builder from before `resident` existed, kept so a caller
-  // naming no resident global does not have to spell it out: its defaults
-  // for core_data, bank_reserved and aligned match what that builder gave.
-  // core_data/bank_reserved/aligned take plain bool here (not the UnitAttr/
-  // BoolAttr the full builder below takes), since a default argument cannot
-  // name another parameter (an attribute default needs $_builder to build).
+  // Plain bools: a default argument cannot use $_builder to make an attribute.
+  // clang-format off
   let builders = [
     OpBuilder<(ins "::mlir::Type":$buffer, "::mlir::Value":$tile,
               CArg<"::mlir::StringAttr", "{}">:$sym_name,
@@ -2002,6 +1998,7 @@ def AIE_BufferOp
             /*resident=*/::mlir::FlatSymbolRefAttr());
     }]>
   ];
+  // clang-format on
 
   let extraClassDeclaration = [{
     bool hasName() {
