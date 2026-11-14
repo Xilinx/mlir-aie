@@ -1,0 +1,7 @@
+<map id="xilinx::AIEX::DmaQueueModel::ChannelState" name="xilinx::AIEX::DmaQueueModel::ChannelState">
+<area shape="rect" id="Node000001" title="One channel&#39;s queue: its pushes not yet known to have completed, oldest first, each true when it issu..." alt="" coords="52,106,268,151"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,179,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="110,44,149,105,144,106,107,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="203,5,253,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="214,44,192,83,176,108,172,104,187,81,210,47"/>
+</map>

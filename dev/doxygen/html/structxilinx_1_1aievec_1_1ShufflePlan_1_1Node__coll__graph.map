@@ -1,0 +1,13 @@
+<map id="xilinx::aievec::ShufflePlan::Node" name="xilinx::aievec::ShufflePlan::Node">
+<area shape="rect" id="Node000001" title=" " alt="" coords="122,128,312,173"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,56,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="45,44,67,75,95,102,139,127,134,129,92,106,63,78,44,49"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="80,5,160,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="130,45,145,75,163,103,188,128,182,128,159,106,140,77,129,50"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="184,5,250,33"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="219,47,220,129,215,127,215,50"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="274,5,376,33"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="310,44,265,106,241,130,239,126,260,103,305,47"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="401,5,439,33"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="406,45,382,78,351,107,304,130,302,125,348,102,378,74,402,47"/>
+</map>
