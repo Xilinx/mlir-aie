@@ -22,6 +22,8 @@
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include <set>
+
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEMATERIALIZERUNTIMESEQUENCES
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -319,7 +321,8 @@ static LogicalResult copyReferencedSSAValues(
             SmallVector<NamedAttribute> filteredAttrs;
             for (auto namedAttr : dict) {
               StringRef name = namedAttr.getName().getValue();
-              if (name != "col" && name != "row") {
+              if (name != "col" && name != "row" &&
+                  name != "aiex.reserved_bd_ids") {
                 filteredAttrs.push_back(namedAttr);
               }
             }
@@ -336,6 +339,20 @@ static LogicalResult copyReferencedSSAValues(
                    << ") already exists in the device with different "
                       "attributes";
           }
+        }
+        // The callee's sequence ops move here, so the ids they pin do too.
+        if (auto calleeIds = tileOp->getAttrOfType<DenseI32ArrayAttr>(
+                "aiex.reserved_bd_ids")) {
+          std::set<int32_t> ids(calleeIds.asArrayRef().begin(),
+                                calleeIds.asArrayRef().end());
+          if (auto callerIds = existingTile->getAttrOfType<DenseI32ArrayAttr>(
+                  "aiex.reserved_bd_ids"))
+            ids.insert(callerIds.asArrayRef().begin(),
+                       callerIds.asArrayRef().end());
+          SmallVector<int32_t> sorted(ids.begin(), ids.end());
+          existingTile->setAttr(
+              "aiex.reserved_bd_ids",
+              DenseI32ArrayAttr::get(existingTile->getContext(), sorted));
         }
         clonedDefs[definingOp] = existingTile.getOperation();
       }
