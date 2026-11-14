@@ -862,6 +862,42 @@
     "yolo26n/640"
    ],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "43567206706",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43567206706",
+   "date": "2026-11-14T06:36:57+00:00",
+   "commit": {
+    "id": "4a3e8e1fe484fb9ca13f7522b28e40e6d75a3743",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/4a3e8e1fe484fb9ca13f7522b28e40e6d75a3743",
+    "message": "[AIEVec] Lower AIE2P bf16 matmul through explicit bfp16 ops (#4060)",
+    "timestamp": "2026-11-14T03:05:05Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "4a3e8e1fe4",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": false,
+   "published": false,
+   "n_rows": 31,
+   "exitstatus": 1,
+   "failed": [
+    "yolo26n/640"
+   ],
+   "truncated": []
   }
  ]
 }
