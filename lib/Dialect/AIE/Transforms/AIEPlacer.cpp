@@ -1749,13 +1749,84 @@ void Placer::buildShimModel(
     const ShimSide &side = entry.second[0];
     return !side.ends.empty() || !side.shared.empty();
   });
+  // Without gates the spans keep no per-sequence bytes, which ddrGroups
+  // reads; empty ones let no receiving end share either.
   shimSpans.emplace(
       device,
       [&](StringAttr symbol) {
         return ShimTransferSpans::endOf(device, symbol);
       },
-      receiving ? std::optional(provenShimGates(device)) : std::nullopt,
+      receiving ? provenShimGates(device) : ShimTransferSpans::Gates(),
       controlOverlay);
+
+  ddrGroups.clear();
+  ddrTiles.clear();
+  for (unsigned seq = 0, e = shimSpans->sequences(); seq < e; ++seq)
+    for (int dir : {0, 1}) {
+      DdrGroup group;
+      SmallVector<StringAttr> ends;
+      SmallVector<std::optional<int64_t>> bytes;
+      for (auto &[tile, sides] : shareableShimEnds)
+        for (StringAttr end : sides[dir].ends)
+          if (shimSpans->names(seq, end)) {
+            group.tiles.push_back(tile);
+            ends.push_back(end);
+            bytes.push_back(shimSpans->bytes(seq, end));
+          }
+      if (group.tiles.size() < 2)
+        continue;
+      bool dynamic = llvm::is_contained(bytes, std::nullopt);
+      int64_t total = 0;
+      for (std::optional<int64_t> b : bytes)
+        total += b.value_or(0);
+      for (std::optional<int64_t> b : bytes)
+        group.weights.push_back(
+            dynamic || total <= 0
+                ? 1
+                : std::max<int64_t>(1, (b.value_or(0) * 65536 + total / 2) /
+                                           total));
+      for (StringAttr a : ends) {
+        llvm::BitVector &together = group.together.emplace_back(ends.size());
+        for (auto [j, b] : llvm::enumerate(ends))
+          if (a != b && !shimSpans->apart(a, b))
+            together.set(j);
+      }
+      ddrTiles.insert(group.tiles.begin(), group.tiles.end());
+      ddrGroups.push_back(std::move(group));
+    }
+}
+
+int64_t
+Placer::ddrSpread(function_ref<std::optional<int>(Operation *)> columnOf,
+                  int weight) const {
+  int shimColumns = 0;
+  for (int col = 0; col < targetModel->columns(); ++col)
+    shimColumns +=
+        llvm::any_of(llvm::seq(0, targetModel->rows()), [&](int row) {
+          return targetModel->isShimNOCTile(col, row);
+        });
+  int64_t spread = 0;
+  for (const DdrGroup &group : ddrGroups) {
+    SmallVector<std::optional<int>> cols =
+        llvm::map_to_vector(group.tiles, columnOf);
+    int64_t load = 0, sameColumn = 0;
+    int placed = 0;
+    for (auto [i, col] : llvm::enumerate(cols)) {
+      if (!col)
+        continue;
+      ++placed;
+      load += group.weights[i];
+      sameColumn += group.weights[i] * group.weights[i];
+      for (size_t j = i + 1; j < cols.size(); ++j)
+        if (cols[j] == col && group.together[i].test(j))
+          sameColumn += 2 * group.weights[i] * group.weights[j];
+    }
+    if (placed < 2)
+      continue;
+    int64_t spreadOver = std::min(shimColumns, placed);
+    spread += weight * (spreadOver * sameColumn - load * load) / (load * load);
+  }
+  return spread;
 }
 
 std::optional<Placer::PinnedChannels::End>
@@ -2749,7 +2820,7 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
   // already filters per direction: summing both would push a chain's read and
   // write shims onto different columns and need 2N columns for N chains.
   std::optional<TileID> best;
-  std::tuple<int, int, int, int> bestKey;
+  std::tuple<int, int64_t, int, int, int> bestKey;
   SmallVector<PinnedChannels::End> pins = pinnedEnds.lookup(logicalTile);
 
   for (auto &tile : tiles) {
@@ -2787,7 +2858,21 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
       if (requiredOutputChannels > 0)
         load += availability.outputChannelsUsed[tile];
     }
-    std::tuple<int, int, int, int> key{dist, load, tile.col, tile.row};
+    // Among equally near shim tiles, the one spreading DDR traffic most.
+    int64_t ddr = 0;
+    if (ddrTiles.contains(logicalTile))
+      ddr = ddrSpread(
+          [&](Operation *op) -> std::optional<int> {
+            if (op == logicalTile)
+              return tile.col;
+            if (auto placed = dyn_cast<TileOp>(op))
+              return placed.getCol();
+            std::optional<TileID> at = getPlacement(op);
+            return at ? std::optional(at->col) : std::nullopt;
+          },
+          /*weight=*/1 << 16);
+    std::tuple<int, int64_t, int, int, int> key{dist, ddr, load, tile.col,
+                                                tile.row};
     if (!best || key < bestKey) {
       best = tile;
       bestKey = key;

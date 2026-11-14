@@ -425,6 +425,23 @@ protected:
   // A shim tile is also charged for the runtime BD ids its tile ops' tasks
   // lack.
   RuntimeBdIds runtimeBdIds;
+  // The DDR traffic of shim tile ops' ends, one group per runtime sequence
+  // and direction: each end's tile op, its share of the bytes the group
+  // moves (all alike when any end's are dynamic), and which pairs may be in
+  // flight together (not ShimTransferSpans::apart).
+  struct DdrGroup {
+    llvm::SmallVector<mlir::Operation *> tiles;
+    llvm::SmallVector<int64_t> weights;
+    llvm::SmallVector<llvm::BitVector> together;
+  };
+  llvm::SmallVector<DdrGroup> ddrGroups;
+  llvm::DenseSet<mlir::Operation *> ddrTiles;
+  // How unevenly the groups load the shim columns where `columnOf` puts tile
+  // ops, `weight` per group spread worst: 0 when every group's load is even
+  // across as many columns as it has ends, up to the device's.
+  int64_t
+  ddrSpread(llvm::function_ref<std::optional<int>(mlir::Operation *)> columnOf,
+            int weight) const;
   // Builds the members above and overlayUses for `device`, whose channel
   // claims are `claims`; `rank` and `routeKeys` as collectShareableShimEnds
   // takes them.
@@ -991,6 +1008,9 @@ struct SAConfig {
   int streamNearWeight = 3;
   double streamNearFraction = 0.75;
   int portOverWeight = 10;
+  // Per runtime sequence and direction, its shim ends' DDR traffic spread
+  // worst over the shim columns (soft): see Placer::ddrSpread.
+  int ddrWeight = 8;
 
   // Adaptive cooling
   double coolFast = 0.995;        // accept ratio > 96%: cool faster
@@ -1444,6 +1464,8 @@ private:
   JournaledMap<int, int> incomingAt;
   JournaledMap<std::pair<int, mlir::Operation *>, int> incomingCount;
   int portsOver = 0;
+  // Placer::ddrSpread where the shim tile ops sit now.
+  int ddrPenalty = 0;
   // Each position's North/South ports, by column then row, and each
   // column's lowest core's South inputs.
   llvm::SmallVector<StreamDemand> portsAt;

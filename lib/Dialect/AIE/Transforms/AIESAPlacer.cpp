@@ -744,6 +744,11 @@ void SAPlacer::initResourceTracking() {
   for (auto &[op, _] : streamDemand)
     if (std::optional<TileID> at = positionOf(op))
       chargeStreams(op, *at, 1);
+  auto columnOf = [this](Operation *op) -> std::optional<int> {
+    std::optional<TileID> at = positionOf(op);
+    return at ? std::optional(at->col) : std::nullopt;
+  };
+  ddrPenalty = static_cast<int>(ddrSpread(columnOf, config.ddrWeight));
   netStreams.clear();
   auto placed = [this](Operation *op) { return positionOf(op); };
   for (auto [index, net] : llvm::enumerate(streamNets)) {
@@ -798,7 +803,7 @@ void SAPlacer::chargeStreams(Operation *op, TileID at, int sign) {
 int SAPlacer::computeStreamPressure() const {
   return static_cast<int>(config.streamNearWeight *
                               cuts.near(config.streamNearFraction) +
-                          config.portOverWeight * portsOver);
+                          config.portOverWeight * portsOver + ddrPenalty);
 }
 
 int SAPlacer::computeMemoryPressure() const {
@@ -2050,6 +2055,15 @@ int SAPlacer::updateResourcePenalty(
     chargeStreams(op, oldPos, -1);
     chargeStreams(op, currentPlacement[op], 1);
   }
+  if (llvm::any_of(oldPlacements, [&](const auto &moved) {
+        return ddrTiles.contains(moved.first);
+      }))
+    ddrPenalty = static_cast<int>(ddrSpread(
+        [this](Operation *op) -> std::optional<int> {
+          std::optional<TileID> at = positionOf(op);
+          return at ? std::optional(at->col) : std::nullopt;
+        },
+        config.ddrWeight));
   for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, +1);
@@ -3081,6 +3095,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   StreamCuts oldCuts = cuts;
   int oldStreamCut = streamCutPenalty;
   int oldPortsOver = portsOver;
+  int oldDdr = ddrPenalty;
 
   // Apply moves: update placement maps and compute HPWL delta.
   for (auto &[t, _] : moves)
@@ -3159,6 +3174,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     cuts = std::move(oldCuts);
     streamCutPenalty = oldStreamCut;
     portsOver = oldPortsOver;
+    ddrPenalty = oldDdr;
     cachedResourcePenalty = oldResPenalty;
     memSpilloverPenalty = oldMemSpillover;
     bdCountPenalty = oldBDCount;
@@ -3227,7 +3243,7 @@ void SAPlacer::printPlacementStats(int64_t elapsedMs) const {
   llvm::dbgs() << "[SA] seed=" << rngSeed << " Final HPWL=" << finalHPWL
                << ", resPenalty=" << finalHardPenalty
                << ", pressure=" << finalPressure << ", cascade=" << finalCascade
-               << ", cut=" << cuts.over()
+               << ", cut=" << cuts.over() << ", ddr=" << ddrPenalty
                << ", legal=" << (isLegal ? "yes" : "NO") << "\n";
   llvm::dbgs() << "[SA] " << schedule.getIteration() << " iters, "
                << movableTiles.size() << " tiles, " << nets.size() << " nets, "
