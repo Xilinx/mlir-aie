@@ -749,6 +749,23 @@ void SAPlacer::initResourceTracking() {
     return at ? std::optional(at->col) : std::nullopt;
   };
   ddrPenalty = static_cast<int>(ddrSpread(columnOf, config.ddrWeight));
+  keyAt.clear();
+  coresChanged = 0;
+  if (!neighbourCores.empty()) {
+    for (auto &[op, key] : coreKeys)
+      if (std::optional<TileID> at = positionOf(op))
+        keyAt[*at] = key;
+    llvm::SmallVector<TileID> positions;
+    for (auto &[at, key] : keyAt)
+      positions.push_back(at);
+    for (const DenseMap<TileID, unsigned> &neighbour : neighbourCores)
+      for (auto &[at, key] : neighbour)
+        positions.push_back(at);
+    llvm::sort(positions);
+    positions.erase(llvm::unique(positions), positions.end());
+    for (TileID at : positions)
+      coresChanged += coresChangedAt(at);
+  }
   netStreams.clear();
   auto placed = [this](Operation *op) { return positionOf(op); };
   for (auto [index, net] : llvm::enumerate(streamNets)) {
@@ -760,7 +777,7 @@ void SAPlacer::initResourceTracking() {
   cachedResourcePenalty = memSpilloverPenalty + coreOverflowPenalty +
                           computeLockPenalty() + dmaPenalty + bdCountPenalty +
                           delegatePenalty + streamCutPenalty;
-  cachedPressure = computeMemoryPressure() + computeStreamPressure();
+  cachedPressure = computeMemoryPressure() + computeSoftTerms();
 }
 
 int SAPlacer::portExcess(TileID at) const {
@@ -800,10 +817,22 @@ void SAPlacer::chargeStreams(Operation *op, TileID at, int sign) {
   portsOver += columnExcess(at.col);
 }
 
-int SAPlacer::computeStreamPressure() const {
+int SAPlacer::computeSoftTerms() const {
   return static_cast<int>(config.streamNearWeight *
                               cuts.near(config.streamNearFraction) +
-                          config.portOverWeight * portsOver + ddrPenalty);
+                          config.portOverWeight * portsOver + ddrPenalty +
+                          config.coresChangedWeight * coresChanged);
+}
+
+int SAPlacer::coresChangedAt(TileID pos) const {
+  unsigned mine = keyAt.lookup(pos);
+  int writes = 0;
+  for (const DenseMap<TileID, unsigned> &neighbour : neighbourCores) {
+    unsigned theirs = neighbour.lookup(pos);
+    if (mine != theirs)
+      writes += (mine != 0) + (theirs != 0);
+  }
+  return writes;
 }
 
 int SAPlacer::computeMemoryPressure() const {
@@ -2055,6 +2084,24 @@ int SAPlacer::updateResourcePenalty(
     chargeStreams(op, oldPos, -1);
     chargeStreams(op, currentPlacement[op], 1);
   }
+  if (!neighbourCores.empty()) {
+    SmallVector<TileID, 4> changed;
+    for (auto &[op, oldPos] : oldPlacements)
+      if (coreKeys.contains(op))
+        changed.append({oldPos, currentPlacement[op]});
+    llvm::sort(changed);
+    changed.erase(llvm::unique(changed), changed.end());
+    for (TileID at : changed)
+      coresChanged -= coresChangedAt(at);
+    for (auto &[op, oldPos] : oldPlacements)
+      if (coreKeys.contains(op))
+        keyAt[oldPos] = 0;
+    for (auto &[op, oldPos] : oldPlacements)
+      if (unsigned key = coreKeys.lookup(op))
+        keyAt[currentPlacement[op]] = key;
+    for (TileID at : changed)
+      coresChanged += coresChangedAt(at);
+  }
   if (llvm::any_of(oldPlacements, [&](const auto &moved) {
         return ddrTiles.contains(moved.first);
       }))
@@ -2972,7 +3019,7 @@ void SAPlacer::initializeSAState() {
   initResourceTracking();
 
   cascadePen = computePairingPenalty();
-  int memPressure = computeMemoryPressure() + computeStreamPressure();
+  int memPressure = computeMemoryPressure() + computeSoftTerms();
   totalCost =
       computeTotalHPWL() + getResourcePenalty() + cascadePen + memPressure;
 
@@ -2988,8 +3035,9 @@ void SAPlacer::initializeSAState() {
 
 void SAPlacer::runSAMainLoop() {
   // Skip SA when there is nothing to optimize.
-  bool hasCostTerms =
-      !nets.empty() || !fifoBuffers.empty() || !cascadeAdjacency.edges.empty();
+  bool hasCostTerms = !nets.empty() || !fifoBuffers.empty() ||
+                      !cascadeAdjacency.edges.empty() ||
+                      !neighbourCores.empty();
   if (movableTiles.empty() || !hasCostTerms)
     return;
 
@@ -3068,7 +3116,7 @@ void SAPlacer::runSAMainLoop() {
       initResourceTracking();
       cascadePen = computePairingPenalty();
       totalCost = computeTotalHPWL() + getResourcePenalty() + cascadePen +
-                  computeMemoryPressure() + computeStreamPressure();
+                  computeMemoryPressure() + computeSoftTerms();
     }
 
     schedule.cool();
@@ -3096,6 +3144,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   int oldStreamCut = streamCutPenalty;
   int oldPortsOver = portsOver;
   int oldDdr = ddrPenalty;
+  int oldCoresChanged = coresChanged;
 
   // Apply moves: update placement maps and compute HPWL delta.
   for (auto &[t, _] : moves)
@@ -3120,7 +3169,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
                                 })
                        ? computePairingPenalty()
                        : cascadePen;
-  int newPressure = computeMemoryPressure() + computeStreamPressure();
+  int newPressure = computeMemoryPressure() + computeSoftTerms();
   int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
               (newCascade - oldCascade) + (newPressure - oldPressure);
 
@@ -3175,6 +3224,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     streamCutPenalty = oldStreamCut;
     portsOver = oldPortsOver;
     ddrPenalty = oldDdr;
+    coresChanged = oldCoresChanged;
     cachedResourcePenalty = oldResPenalty;
     memSpilloverPenalty = oldMemSpillover;
     bdCountPenalty = oldBDCount;
@@ -3198,6 +3248,7 @@ void SAPlacer::commitMove() {
   dmaPenaltyAt.commit();
   runtimeBdAt.commit();
   netStreams.commit();
+  keyAt.commit();
   streamsAt.commit();
   incomingAt.commit();
   incomingCount.commit();
@@ -3217,6 +3268,7 @@ void SAPlacer::rollbackMove() {
   dmaPenaltyAt.rollback();
   runtimeBdAt.rollback();
   netStreams.rollback();
+  keyAt.rollback();
   streamsAt.rollback();
   incomingAt.rollback();
   incomingCount.rollback();
@@ -3236,7 +3288,7 @@ void SAPlacer::rollbackMove() {
 void SAPlacer::printPlacementStats(int64_t elapsedMs) const {
   int finalHPWL = computeTotalHPWL();
   int finalHardPenalty = getResourcePenalty();
-  int finalPressure = computeMemoryPressure() + computeStreamPressure();
+  int finalPressure = computeMemoryPressure() + computeSoftTerms();
   int finalCascade = computePairingPenalty();
   bool isLegal = (finalHardPenalty == 0 && finalCascade == 0);
 
@@ -3244,6 +3296,7 @@ void SAPlacer::printPlacementStats(int64_t elapsedMs) const {
                << ", resPenalty=" << finalHardPenalty
                << ", pressure=" << finalPressure << ", cascade=" << finalCascade
                << ", cut=" << cuts.over() << ", ddr=" << ddrPenalty
+               << ", cores-changed=" << coresChanged
                << ", legal=" << (isLegal ? "yes" : "NO") << "\n";
   llvm::dbgs() << "[SA] " << schedule.getIteration() << " iters, "
                << movableTiles.size() << " tiles, " << nets.size() << " nets, "

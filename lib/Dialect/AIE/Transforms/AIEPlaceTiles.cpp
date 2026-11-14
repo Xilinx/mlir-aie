@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Diagnostics.h"
@@ -16,6 +17,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringSet.h"
 
 #include <cmath>
@@ -121,9 +123,118 @@ struct AIEPlaceTilesPass
         return rank.lookup(a) < rank.lookup(b);
       });
     }
+    residents.clear();
+    placedCores.clear();
+    programKeys.clear();
+    // Configurations the host loads one right after the other.
+    consecutive.clear();
+    ModuleOp module = getOperation();
+    module.walk([&](RuntimeSequenceOp sequence) {
+      Operation *previous = nullptr;
+      sequence.walk([&](Operation *op) {
+        FlatSymbolRefAttr loaded;
+        if (auto configure = dyn_cast<AIEX::ConfigureOp>(op))
+          loaded = configure.getSymbolAttr();
+        else if (auto load = dyn_cast<AIEX::NpuLoadPdiOp>(op))
+          loaded = load.getDeviceRefAttr();
+        Operation *device =
+            loaded ? SymbolTable::lookupSymbolIn(module, loaded) : nullptr;
+        if (!isa_and_nonnull<DeviceOp>(device))
+          return;
+        if (previous && previous != device) {
+          consecutive[previous].insert(device);
+          consecutive[device].insert(previous);
+        }
+        previous = device;
+      });
+    });
     for (DeviceOp device : devices)
-      if (failed(placeDevice(device)))
+      if (failed(pinResidents(device)) || failed(placeDevice(device)) ||
+          failed(recordPlaced(device)))
         return signalPassFailure();
+  }
+
+  // Pins each buffer resident for a memref.global an earlier device placed
+  // to the tile and address that device gave it, so the data stays put
+  // across the switch.
+  LogicalResult pinResidents(DeviceOp device) {
+    for (BufferOp buffer : device.getOps<BufferOp>()) {
+      FlatSymbolRefAttr global = buffer.getResidentAttr();
+      auto first = global ? residents.find(global.getAttr()) : residents.end();
+      if (first == residents.end())
+        continue;
+      auto [twin, at] = first->second;
+      Operation *tile = buffer.getTile().getDefiningOp();
+      auto like = cast<TileLike>(tile);
+      AIETileType there = device.getTargetModel().getTileType(at.col, at.row);
+      if (like.getTileType() != there) {
+        InFlightDiagnostic diag =
+            buffer.emitError("buffer resident for ")
+            << global << " is on a " << stringifyAIETileType(like.getTileType())
+            << ", but the earlier buffer resident for it is on a "
+            << stringifyAIETileType(there) << " at (" << at.col << ", "
+            << at.row << ")";
+        diag.attachNote(twin.getLoc()) << "the earlier buffer";
+        return diag;
+      }
+      std::optional<int> col = like.tryGetCol(), row = like.tryGetRow();
+      if ((col && *col != at.col) || (row && *row != at.row)) {
+        InFlightDiagnostic diag =
+            buffer.emitError("buffer resident for ")
+            << global << " is on a tile pinned away from (" << at.col << ", "
+            << at.row << "), where the earlier buffer resident for it is";
+        diag.attachNote(twin.getLoc()) << "the earlier buffer";
+        return diag;
+      }
+      if (auto logical = dyn_cast<LogicalTileOp>(tile)) {
+        logical.setCol(at.col);
+        logical.setRow(at.row);
+      }
+      auto address = twin.getAddress(), own = buffer.getAddress();
+      if (address && own && *own != *address) {
+        InFlightDiagnostic diag =
+            buffer.emitError("buffer resident for ")
+            << global << " has address " << *own
+            << ", but the earlier buffer resident for it has " << *address;
+        diag.attachNote(twin.getLoc()) << "the earlier buffer";
+        return diag;
+      }
+      if (address)
+        buffer.setAddress(address);
+      else if (!own)
+        buffer.emitWarning("buffer resident for ")
+            << global
+            << " has no address, so its data may move between "
+               "configurations; give it and its earlier twin one";
+    }
+    return success();
+  }
+
+  // Records where `device`, now placed, keeps its resident buffers and its
+  // cores' programs.
+  LogicalResult recordPlaced(DeviceOp device) {
+    for (BufferOp buffer : device.getOps<BufferOp>())
+      if (FlatSymbolRefAttr global = buffer.getResidentAttr())
+        if (auto tile = dyn_cast<TileOp>(buffer.getTile().getDefiningOp()))
+          residents.try_emplace(global.getAttr(), buffer, tile.getTileID());
+    DenseMap<TileID, unsigned> &cores = placedCores[device];
+    for (auto [tile, key] : programKeysOf(device))
+      if (auto placed = dyn_cast<TileOp>(tile))
+        cores[placed.getTileID()] = key;
+    return success();
+  }
+
+  // Each tile op holding a core, keyed by its core's structure, names and
+  // symbols left out, so equal programs key alike across devices.
+  DenseMap<Operation *, unsigned> programKeysOf(DeviceOp device) {
+    StructuralGraph graph = StructuralGraph::of(device);
+    DenseMap<Operation *, unsigned> keys;
+    for (CoreOp core : device.getOps<CoreOp>()) {
+      auto [entry, added] = programKeys.try_emplace(graph.features.lookup(core),
+                                                    programKeys.size() + 1);
+      keys[core.getTile().getDefiningOp()] = entry->second;
+    }
+    return keys;
   }
 
   LogicalResult placeDevice(DeviceOp device) {
@@ -207,6 +318,13 @@ struct AIEPlaceTilesPass
     placer->initialize(
         device, clCtrlPktOverlay && getsColumnControlOverlay(device, true),
         clCtrlPktOverlayAdaptive, clPacketSwObjectFifos);
+    SmallVector<DenseMap<TileID, unsigned>> neighbours;
+    if (auto adjacent = consecutive.find(device); adjacent != consecutive.end())
+      for (Operation *other : adjacent->second)
+        if (auto cores = placedCores.find(other); cores != placedCores.end())
+          neighbours.push_back(cores->second);
+    if (!neighbours.empty())
+      placer->setNeighbourCores(programKeysOf(device), std::move(neighbours));
     if (failed(placer->place(device)))
       return failure();
     if (saPlacer) {
@@ -259,6 +377,12 @@ struct AIEPlaceTilesPass
   }
 
 private:
+  // The first buffer placed resident for each memref.global, and its tile.
+  DenseMap<StringAttr, std::pair<BufferOp, TileID>> residents;
+  // Each placed device's cores, by position, and the program key each runs.
+  DenseMap<Operation *, DenseMap<TileID, unsigned>> placedCores;
+  llvm::StringMap<unsigned> programKeys;
+  DenseMap<Operation *, llvm::SetVector<Operation *>> consecutive;
   // sa-walked-fifos, as (device, fifo).
   llvm::SmallVector<std::pair<std::string, std::string>> walked;
   // sa-core-data-sizes, as (device, core, bytes, alignment).

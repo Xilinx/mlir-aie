@@ -900,8 +900,19 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   // First prefer columns with stream capacity, then allow overloaded columns
   // while preserving peer room and reservations. Relax those only as a last
   // resort.
+  // Pass 0 tries first the tiles where a neighbouring configuration runs
+  // this core's program.
+  SmallVector<TileID> sameProgramFirst(orderedCandidates);
+  if (unsigned key = coreKeys.lookup(logicalTile))
+    std::stable_partition(
+        sameProgramFirst.begin(), sameProgramFirst.end(), [&](TileID at) {
+          return llvm::any_of(neighbourCores, [&](const auto &neighbour) {
+            return neighbour.lookup(at) == key;
+          });
+        });
   for (int pass = 0; pass < 3; ++pass) {
-    for (const TileID &candidate : orderedCandidates) {
+    for (const TileID &candidate :
+         pass == 0 ? sameProgramFirst : orderedCandidates) {
       if (col && candidate.col != *col)
         continue;
       if (row && candidate.row != *row)

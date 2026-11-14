@@ -115,6 +115,17 @@ public:
   virtual void initialize(DeviceOp device, bool controlOverlay,
                           bool adaptiveOverlay, bool packetSwitched);
 
+  // The program key of each tile op holding a core, and, for each
+  // configuration loaded right before or after this one and already placed,
+  // the key of the core at each of its positions: a core whose program a
+  // neighbour runs at the same position needs no rewrite when they switch.
+  void setNeighbourCores(
+      llvm::DenseMap<mlir::Operation *, unsigned> keys,
+      llvm::SmallVector<llvm::DenseMap<TileID, unsigned>> neighbours) {
+    coreKeys = std::move(keys);
+    neighbourCores = std::move(neighbours);
+  }
+
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
   virtual llvm::StringRef getName() const = 0;
@@ -529,6 +540,9 @@ protected:
   mlir::LogicalResult
   emitNamedClash(mlir::Operation *tile, TileID at,
                  std::pair<mlir::Operation *, std::pair<int, int>> clash) const;
+
+  llvm::DenseMap<mlir::Operation *, unsigned> coreKeys;
+  llvm::SmallVector<llvm::DenseMap<TileID, unsigned>> neighbourCores;
 
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
@@ -1011,6 +1025,9 @@ struct SAConfig {
   // Per runtime sequence and direction, its shim ends' DDR traffic spread
   // worst over the shim columns (soft): see Placer::ddrSpread.
   int ddrWeight = 8;
+  // Per core program a switch between neighbouring configurations rewrites
+  // (soft).
+  int coresChangedWeight = 4;
 
   // Adaptive cooling
   double coolFast = 0.995;        // accept ratio > 96%: cool faster
@@ -1466,6 +1483,10 @@ private:
   int portsOver = 0;
   // Placer::ddrSpread where the shim tile ops sit now.
   int ddrPenalty = 0;
+  // The program key of the core at each position, and the program writes
+  // switching to or from the neighbour configurations take.
+  JournaledMap<TileID, unsigned> keyAt;
+  int coresChanged = 0;
   // Each position's North/South ports, by column then row, and each
   // column's lowest core's South inputs.
   llvm::SmallVector<StreamDemand> portsAt;
@@ -1577,9 +1598,13 @@ private:
   lockGroups() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
-  // The soft stream terms: boundaries near their channels, and North/South
-  // ports over a tile's or a column's.
-  int computeStreamPressure() const;
+  // The soft terms beside memory pressure: boundaries near their channels,
+  // North/South ports over a tile's or a column's, DDR spread and the core
+  // programs a configuration switch rewrites.
+  int computeSoftTerms() const;
+  // The program writes at `pos` when this configuration and a neighbour
+  // switch, either way, per keyAt.
+  int coresChangedAt(TileID pos) const;
   int computeAdjacencyPenalty(
       const Adjacency &adj, llvm::ArrayRef<std::pair<int, int>> validOffsets,
       int weight, llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
