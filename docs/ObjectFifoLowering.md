@@ -717,9 +717,10 @@ Endpoints taking turns:
 - no loop body releases more than it acquires
 - no core must release more objects through an endpoint than the pool's DMA
   endpoint, bounded by an `iterCount`, will move (`iterCount` times depth).
-  Only releases forced by static loop bounds count, and a loop meant to run
-  forever (a trip count from the 24-bit BD-loop saturation value up) is left
-  out, since its core stalling once the data stops is how such a design ends
+  Only releases forced by static `scf.for` bounds count, whatever the trip
+  count. A loop that runs forever, an `scf.while` on a constant true
+  condition, is left out, since its core stalling once the data stops is how
+  such a design ends
 - every end of a fan-in route moves one object of the same size, counting a
   DMA endpoint's selected segments through its `dimensions`
 

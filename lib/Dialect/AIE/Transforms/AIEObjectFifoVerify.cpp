@@ -69,14 +69,11 @@ static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
   return std::nullopt;
 }
 
-/// Whether `op` is a loop meant to run forever.
+/// Whether `op` is a loop that runs forever: an `scf.while` on a constant true
+/// condition. An `scf.for` runs its trip count, however large.
 static bool runsForever(Operation *op) {
   auto whileOp = dyn_cast<scf::WhileOp>(op);
-  auto forOp = dyn_cast<scf::ForOp>(op);
-  std::optional<int64_t> trip =
-      forOp ? getStaticTripCount(forOp) : std::nullopt;
-  return (whileOp && isForeverLoop(whileOp)) ||
-         (trip && *trip >= AIEX::kRunsForever);
+  return whileOp && isForeverLoop(whileOp);
 }
 
 /// Objects of the fifo `name` still held after `block` runs, entered holding
@@ -784,9 +781,10 @@ struct AIEObjectFifoVerifyPass
   /// objects, so a core that must release more through the same pool waits
   /// forever for the rest, or leaves objects it filled unsent. Only
   /// releases static loop bounds force are counted, so what is reported is
-  /// certain; a conditional release, or one in a loop meant to run forever, is
-  /// left out, since such a core stalling once the data stops is how those
-  /// designs end. When all of a core's releases are counted, the DMA endpoint
+  /// certain; a conditional release, or one in an `scf.while` such as a loop
+  /// that runs forever, is left out, since such a core stalling once the data
+  /// stops is how those designs end. An `scf.for` counts its trip count,
+  /// however large. When all of a core's releases are counted, the DMA endpoint
   /// is bounded too: it cannot drain more than the core hands over, nor fill
   /// more than the pool's depth plus what the core releases.
   LogicalResult verifyTransferBudgets(DeviceOp device) {
@@ -877,7 +875,7 @@ struct AIEObjectFifoVerifyPass
   /// A core that reaches its end still holding objects never gives their locks
   /// back, and locks keep their counts until a PDI load, so the next run of
   /// the configuration finds those objects taken. Only cores certain to end
-  /// are checked: one block, and no loop that may run forever. A fifo an
+  /// are checked: one block, and no `scf.while`. A fifo an
   /// `aiex.dma_channel_reset_for` re-arms in every runtime sequence that moves
   /// data through it gets its locks back each launch.
   LogicalResult verifyHeldAtEnd(DeviceOp device,
@@ -910,15 +908,7 @@ struct AIEObjectFifoVerifyPass
       if (!body.hasOneBlock())
         continue;
       bool mayNotEnd =
-          core.walk([](Operation *op) {
-                auto forOp = dyn_cast<scf::ForOp>(op);
-                std::optional<int64_t> trip =
-                    forOp ? getStaticTripCount(forOp) : std::nullopt;
-                if (isa<scf::WhileOp>(op) ||
-                    (trip && *trip >= AIEX::kRunsForever))
-                  return WalkResult::interrupt();
-                return WalkResult::advance();
-              })
+          core.walk([](scf::WhileOp) { return WalkResult::interrupt(); })
               .wasInterrupted();
       if (mayNotEnd)
         continue;

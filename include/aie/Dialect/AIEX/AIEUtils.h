@@ -133,16 +133,11 @@ void forEachRuntimePinnedBdId(
                             std::optional<int> channel, int32_t id)>
         pinned);
 
-// IRON's forever loop is an `scf.while` on a constant true condition. A
-// hand-written `scf.for` meant to run forever has a bound no design counts to,
-// such as sys.maxsize or 2^32 - 1. From the AIE's 24-bit BD-loop saturation
-// value up, a trip count is read as "forever"; below it, as a real bound.
-inline constexpr int64_t kRunsForever = (int64_t{1} << 24) - 2;
-
 // How many times `op` runs when its core, or runtime sequence, runs to
-// completion, when static loop bounds alone decide that. Anything conditional
-// between the op and the core, an `scf.if`, a loop with dynamic bounds or one
-// meant to run forever, a block reached by branching, makes it unknown.
+// completion: the product of the static trip counts of the `scf.for` loops
+// around it, whatever their size. Anything else between the op and the core,
+// an `scf.if`, an `scf.while` (forever included), a loop with dynamic bounds,
+// a block reached by branching or a product that overflows, makes it unknown.
 std::optional<int64_t> staticExecutions(Operation *op);
 
 // Bytes as a linear form in a sequence's scratchpad parameters, each at least

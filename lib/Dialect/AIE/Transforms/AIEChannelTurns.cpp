@@ -31,9 +31,6 @@ namespace {
 constexpr size_t maxPeriodEvents = 4096;
 /// Periods simulated before giving up on a steady state.
 constexpr int maxPeriods = 256;
-/// From the AIE's 24-bit BD-loop saturation value up, an `scf.for` trip count
-/// is read as "forever", as aie-objectfifo-verify reads it.
-constexpr int64_t runsForever = (int64_t{1} << 24) - 2;
 } // namespace
 
 LogicalResult CoreTurns::read(ArrayRef<ObjectFifoCoreEndpointOp> ends,
@@ -289,11 +286,7 @@ LogicalResult CoreTurns::readWholeRun(
   // A tail release behind a loop that runs forever is never reached.
   for (Operation *op = loop; op != core; op = op->getParentOp()) {
     auto whileOp = dyn_cast<scf::WhileOp>(op);
-    auto forOp = dyn_cast<scf::ForOp>(op);
-    std::optional<APInt> trips =
-        forOp ? forOp.getStaticTripCount() : std::nullopt;
-    if ((whileOp && isForeverLoop(whileOp)) ||
-        (trips && trips->getSExtValue() >= runsForever))
+    if (whileOp && isForeverLoop(whileOp))
       return success();
   }
 

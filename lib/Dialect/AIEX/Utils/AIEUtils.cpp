@@ -329,7 +329,7 @@ std::optional<int64_t> AIEX::staticExecutions(Operation *op) {
     auto forOp = dyn_cast<scf::ForOp>(parent);
     std::optional<APInt> trips =
         forOp ? forOp.getStaticTripCount() : std::nullopt;
-    if (!trips || trips->isNegative() || trips->sge(kRunsForever))
+    if (!trips || trips->isNegative())
       return std::nullopt;
     std::optional<int64_t> product =
         llvm::checkedMul(count, trips->getSExtValue());

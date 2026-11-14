@@ -86,19 +86,22 @@ module @window_beside_two_deep {
     aie.objectfifo @c(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@c_in] -> [@c] ([] [])
     aie.core(%t) {
-      %c0 = arith.constant 0 : index
-      %c1 = arith.constant 1 : index
-      %cmax = arith.constant 4294967295 : index
-      scf.for %i = %c0 to %cmax step %c1 {
+      %true = arith.constant true
+      %false = arith.constant false
+      %done = scf.while (%first = %true) : (i1) -> i1 {
+        %forever = arith.constant true
+        scf.condition(%forever) %first : i1
+      } do {
+      ^bb0(%first: i1):
         %a0, %a1, %a2 = aie.objectfifo.acquire @a(Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
         %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
-        %first = arith.cmpi eq, %i, %c0 : index
         scf.if %first {
           %c0_ = aie.objectfifo.acquire @c(Consume, 1) : memref<16xi32>
           aie.objectfifo.release @c(Consume, 1)
         }
         aie.objectfifo.release @b(Consume, 1)
         aie.objectfifo.release @a(Consume, 1)
+        scf.yield %false : i1
       }
       aie.objectfifo.release @a(Consume, 2)
       aie.end
