@@ -10230,7 +10230,7 @@ between.</p>
 <tbody>
 <tr>
 <td style="text-align: center;"><code>addr</code></td>
-<td>32-bit signless integer</td>
+<td>LLVM pointer in address space 0</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>state</code></td>
@@ -10253,7 +10253,7 @@ between.</p>
 <tbody>
 <tr>
 <td style="text-align: center;"><code>next</code></td>
-<td>32-bit signless integer</td>
+<td>LLVM pointer in address space 0</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>state_out</code></td>
@@ -10299,7 +10299,7 @@ with <code>aievec.load_bfp16</code> or <code>aievec.fifo_ld_pop_bfp16</code>.</p
 <tbody>
 <tr>
 <td style="text-align: center;"><code>addr</code></td>
-<td>32-bit signless integer</td>
+<td>LLVM pointer in address space 0</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>state</code></td>
@@ -10330,7 +10330,7 @@ with <code>aievec.load_bfp16</code> or <code>aievec.fifo_ld_pop_bfp16</code>.</p
 <tbody>
 <tr>
 <td style="text-align: center;"><code>next</code></td>
-<td>32-bit signless integer</td>
+<td>LLVM pointer in address space 0</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>state_out</code></td>
@@ -10349,8 +10349,9 @@ with <code>aievec.load_bfp16</code> or <code>aievec.fifo_ld_pop_bfp16</code>.</p
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>              type($state)
 </code></pre></div>
 <p>AMD AIEv2P-specific start of a stream on a block-vector load or store
-FIFO at byte <code>offset</code> of <code>base</code>. The FIFO starts empty. <code>next</code>, <code>state</code>
-and <code>count</code> hold the FIFO state and are passed to the first
+FIFO at byte <code>offset</code> of <code>base</code>. The FIFO starts empty. <code>next</code> (the
+address of the next memory access), <code>state</code> and <code>count</code> hold the FIFO
+state and are passed to the first
 <code>aievec.fifo_ld_pop_bfp16</code> or <code>aievec.fifo_st_push_bfp16</code> of the
 stream.</p>
 <p>Traits: <code>AlwaysSpeculatableImplTrait</code></p>
@@ -10386,7 +10387,7 @@ stream.</p>
 <tbody>
 <tr>
 <td style="text-align: center;"><code>next</code></td>
-<td>32-bit signless integer</td>
+<td>LLVM pointer in address space 0</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>state</code></td>
