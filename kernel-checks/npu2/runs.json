@@ -2722,6 +2722,53 @@
     "offered": 149,
     "checked": 127
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "43565032393",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43565032393",
+   "date": "2026-11-14T06:10:31+00:00",
+   "commit": {
+    "id": "4a3e8e1fe484fb9ca13f7522b28e40e6d75a3743",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/4a3e8e1fe484fb9ca13f7522b28e40e6d75a3743",
+    "message": "[AIEVec] Lower AIE2P bf16 matmul through explicit bfp16 ops (#4060)",
+    "timestamp": "2026-11-14T03:05:05Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "4a3e8e1fe4",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2693,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 999,
+    "failed": 0,
+    "timed": 455,
+    "timing_failed": 0,
+    "untimed": 548,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 149,
+    "checked": 127
+   }
   }
  ]
 }
