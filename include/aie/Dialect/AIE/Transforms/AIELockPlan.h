@@ -9,16 +9,14 @@
 #define AIE_DIALECT_AIE_TRANSFORMS_AIELOCKPLAN_H
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Transforms/AIEBoundedMemo.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
-#include <algorithm>
-#include <list>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 namespace mlir {
@@ -59,54 +57,18 @@ public:
 private:
   enum class Packing { Found, None, Stopped };
 
-public:
-  /// Packings by what the packing reads, the least recently used dropped
-  /// first beyond `capacity`. A packing found records each group's tile as
-  /// an offset into its eligible tiles.
-  class Memo {
-  public:
-    explicit Memo(size_t capacity) : capacity(capacity) {}
-
-  private:
-    friend class LockPlan;
-    struct Outcome {
-      Packing packing;
-      llvm::SmallVector<unsigned> blocked;
-      llvm::SmallVector<unsigned> offsets;
-    };
-    struct Entry {
-      std::vector<int64_t> key;
-      size_t hash;
-      Outcome outcome;
-    };
-    using Entries = std::list<Entry>;
-
-    const Outcome *lookup(const std::vector<int64_t> &key, size_t hash) {
-      auto [first, last] = index.equal_range(hash);
-      for (auto hit = first; hit != last; ++hit)
-        if (hit->second->key == key) {
-          entries.splice(entries.begin(), entries, hit->second);
-          return &hit->second->outcome;
-        }
-      return nullptr;
-    }
-    void record(std::vector<int64_t> key, size_t hash, Outcome outcome) {
-      entries.push_front({std::move(key), hash, std::move(outcome)});
-      index.emplace(hash, entries.begin());
-      if (entries.size() > capacity) {
-        auto oldest = std::prev(entries.end());
-        auto [first, last] = index.equal_range(oldest->hash);
-        index.erase(std::find_if(first, last, [&](const auto &hit) {
-          return hit.second == oldest;
-        }));
-        entries.pop_back();
-      }
-    }
-
-    size_t capacity;
-    Entries entries;
-    std::unordered_multimap<size_t, Entries::iterator> index;
+  /// A packing found, keyed on what pack() reads. A packing found records
+  /// each group's tile as an offset into its eligible tiles.
+  struct Outcome {
+    Packing packing;
+    llvm::SmallVector<unsigned> blocked;
+    llvm::SmallVector<unsigned> offsets;
   };
+
+public:
+  /// Packings by what pack() reads, the least recently used dropped first
+  /// beyond its capacity.
+  using Memo = BoundedMemo<std::vector<int64_t>, Outcome>;
 
   explicit LockPlan(const AIETargetModel &target) : target(target) {}
 

@@ -10,7 +10,6 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/IntEqClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -100,7 +99,6 @@ LockPlan::Assignment LockPlan::assign(llvm::ArrayRef<Group> groups, Memo *memo,
     // What the packing reads: each group's count and the positions of
     // its eligible tiles in order, with the locks taken there before.
     std::vector<int64_t> key;
-    size_t hash = 0;
     if (memo) {
       size_t size = 0;
       for (const llvm::SmallVector<unsigned> &tilesOf : eligible)
@@ -115,9 +113,8 @@ LockPlan::Assignment LockPlan::assign(llvm::ArrayRef<Group> groups, Memo *memo,
             llvm::append_values(key, -1, -1, -1);
         }
       }
-      hash = llvm::hash_combine_range(key.begin(), key.end());
     }
-    const Memo::Outcome *recorded = memo ? memo->lookup(key, hash) : nullptr;
+    const Outcome *recorded = memo ? memo->find(key) : nullptr;
     Packing packing;
     if (recorded) {
       packing = recorded->packing;
@@ -136,14 +133,14 @@ LockPlan::Assignment LockPlan::assign(llvm::ArrayRef<Group> groups, Memo *memo,
     } else {
       packing = pack(groups, eligible, before, packed, blocked);
       if (memo) {
-        Memo::Outcome outcome{packing, blocked, {}};
+        Outcome outcome{packing, blocked, {}};
         if (packing == Packing::Found)
           // Every group's tile is set when pack() returns Found.
           for (auto [tilesOf, tile] : llvm::zip(eligible, packed))
             // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
             outcome.offsets.push_back(llvm::find(tilesOf, *tile) -
                                       tilesOf.begin());
-        memo->record(std::move(key), hash, std::move(outcome));
+        memo->record(std::move(key), std::move(outcome));
       }
     }
     if (packing == Packing::Found) {
