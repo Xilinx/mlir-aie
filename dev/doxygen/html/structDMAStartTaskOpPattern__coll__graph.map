@@ -1,0 +1,7 @@
+<map id="DMAStartTaskOpPattern" name="DMAStartTaskOpPattern">
+<area shape="rect" id="Node000001" title=" " alt="" coords="130,123,306,151"/>
+<area shape="rect" id="Node000002" href="$classOpRewritePattern.html" title=" " alt="" coords="5,5,218,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="145,58,208,122,203,123,142,63"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="242,5,411,50"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="296,60,233,125,230,120,291,62"/>
+</map>
