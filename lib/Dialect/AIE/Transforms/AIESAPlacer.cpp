@@ -2433,7 +2433,10 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   collectOverlayUses(device);
   overlayTiles = overlayTileOps();
   shimSpans.emplace(
-      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
+      device,
+      [&](StringAttr symbol) {
+        return ShimTransferSpans::endOf(device, symbol);
+      },
       provenShimGates(device), controlOverlay);
   runtimeBdIds = RuntimeBdIds(device, *targetModel);
   takenBDs = DMAChannelAnalysis::TakenBDs(device);

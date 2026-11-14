@@ -342,11 +342,6 @@ public:
         claimed;
   };
 
-  // The objectFIFO end a runtime sequence names `symbol` for, before split:
-  // the fifo itself, sending when its producer is a shim tile.
-  static std::optional<ShimTransferSpans::End>
-  shimEndOf(DeviceOp device, mlir::StringAttr symbol);
-
   // The gates objectFIFO allocation will share receiving shim ends by: the
   // #aie.consumed_by proofs aie-objectfifo-verify finds on a copy of the
   // design with every fifo between two tiles moved by DMA. Placing a fifo on

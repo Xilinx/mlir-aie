@@ -258,7 +258,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   shareableShimEnds =
       collectShareableShimEnds(device, objectFifos, collected.rank, demandKeys);
   shimSpans.emplace(
-      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
+      device,
+      [&](StringAttr symbol) {
+        return ShimTransferSpans::endOf(device, symbol);
+      },
       provenShimGates(device), controlOverlay);
   shimTilesAt.clear();
   overlayTilesAt.clear();
@@ -2189,9 +2192,7 @@ Placer::provenShimGates(DeviceOp device) {
   DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>> gates;
   MLIRContext *ctx = device.getContext();
   for (auto &[fifo, proven] :
-       ShimTransferSpans::provenGates(clone, [](RouteEndpointOp endpoint) {
-         return endpoint.getFifoNameAttr();
-       }))
+       ShimTransferSpans::provenGates(clone, ShimTransferSpans::keyOf))
     for (const ShimTransferSpans::Gate &gate : proven) {
       ConsumedByAttr proof = gate.proof;
       FlatSymbolRefAttr device = proof.getDevice();
@@ -2205,21 +2206,6 @@ Placer::provenShimGates(DeviceOp device) {
                       : FlatSymbolRefAttr())});
     }
   return gates;
-}
-
-std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,
-                                                        StringAttr symbol) {
-  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
-          SymbolTable::lookupNearestSymbolFrom(device, symbol)))
-    return ShimTransferSpans::End{symbol, endpoint.getRouteDirection() ==
-                                              DMAChannelDir::MM2S};
-  auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(
-      SymbolTable::lookupNearestSymbolFrom(device, symbol));
-  if (!fifo)
-    return std::nullopt;
-  auto producer =
-      dyn_cast_or_null<TileLike>(fifo.getProducerTile().getDefiningOp());
-  return ShimTransferSpans::End{symbol, producer && producer.isShimTile()};
 }
 
 Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
