@@ -699,6 +699,16 @@ struct AIEObjectFifoAllocatePass
     return bds;
   }
 
+  /// BDs `endpoint` needs: an objectFIFO's DMA count, a program-owned
+  /// endpoint's static chains, or none.
+  int64_t bdsOf(RouteEndpoint endpoint) {
+    if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation()))
+      return dma.getNumBDs();
+    if (isProgramOwned(endpoint))
+      return endpointBDs(endpoint.getOperation());
+    return 0;
+  }
+
   /// BDs the largest runtime task on a program-owned endpoint needs.
   int64_t endpointTaskBDs(Operation *endpoint) {
     int64_t largest = 0;
@@ -883,6 +893,18 @@ struct AIEObjectFifoAllocatePass
     return room;
   }
 
+  /// `endpoint`'s BD plan: its direction, BD count, channel limit (with
+  /// `adjacent` access, where its tile allows it), and its pinned channel,
+  /// kept only when `keepPin`.
+  DMAChannelAnalysis::BDPlanEnd planEnd(RouteEndpoint endpoint, bool adjacent,
+                                        bool keepPin) {
+    DMAChannelDir dir = endpoint.getRouteDirection();
+    return {
+        dir, bdsOf(endpoint),
+        DMAChannelAnalysis::getDMAChannelLimit(tileOf(endpoint), dir, adjacent),
+        keepPin ? endpoint.getRouteChannel() : std::nullopt};
+  }
+
   /// On a tile whose BD ids are split between channels, the free channel whose
   /// BDs have the most room left once every channel sharing them has its
   /// demand; ties, and tiles without such a split, go to the lowest index.
@@ -1011,13 +1033,6 @@ struct AIEObjectFifoAllocatePass
     for (auto [col, row] : takenBDs.positions())
       for (auto [channel, bds] : takenBDs.at(device.getTargetModel(), col, row))
         demand[{col, row, channel}] += bds;
-    auto bdsOf = [&](RouteEndpoint endpoint) -> int64_t {
-      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation()))
-        return dma.getNumBDs();
-      if (isProgramOwned(endpoint))
-        return endpointBDs(endpoint.getOperation());
-      return 0;
-    };
     auto noteDemand = [&](RouteEndpoint endpoint, int channel) {
       TileLike tile = tileOf(endpoint);
       auto col = tile.tryGetCol(), row = tile.tryGetRow();
@@ -1073,13 +1088,8 @@ struct AIEObjectFifoAllocatePass
     for (auto &[at, onTile] : pinnedEnds) {
       auto [col, row] = at;
       SmallVector<DMAChannelAnalysis::BDPlanEnd> ends;
-      for (RouteEndpoint endpoint : onTile) {
-        DMAChannelDir dir = endpoint.getRouteDirection();
-        ends.push_back({dir, bdsOf(endpoint),
-                        DMAChannelAnalysis::getDMAChannelLimit(tileOf(endpoint),
-                                                               dir, false),
-                        endpoint.getRouteChannel()});
-      }
+      for (RouteEndpoint endpoint : onTile)
+        ends.push_back(planEnd(endpoint, /*adjacent=*/false, /*keepPin=*/true));
       DenseMap<int, int64_t> taken =
           takenBDs.at(device.getTargetModel(), col, row);
       if (DMAChannelAnalysis::planBDChannels(
@@ -1163,12 +1173,12 @@ struct AIEObjectFifoAllocatePass
       for (RouteEndpoint endpoint : pending) {
         if (tileOf(endpoint).getOperation() != tileOp)
           continue;
-        DMAChannelDir dir = endpoint.getRouteDirection();
-        int limit = DMAChannelAnalysis::getDMAChannelLimit(
-            tile, dir, reachesAdjacentTile(endpoint));
         onTile.push_back(endpoint);
-        ends.push_back({dir, bdsOf(endpoint), limit, std::nullopt});
-        unweighted.push_back({dir, 0, limit, std::nullopt});
+        ends.push_back(planEnd(endpoint, reachesAdjacentTile(endpoint),
+                               /*keepPin=*/false));
+        DMAChannelAnalysis::BDPlanEnd &zeroed =
+            unweighted.emplace_back(ends.back());
+        zeroed.bds = 0;
       }
       auto free = [&](DMAChannelDir dir, int channel) {
         return channels.isChannelFree(tile, dir, channel);
@@ -1413,11 +1423,8 @@ struct AIEObjectFifoAllocatePass
       auto endpoint = cast<RouteEndpoint>(dma.getOperation());
       if (!drawsOwnChannel(endpoint))
         continue;
-      DMAChannelDir dir = endpoint.getRouteDirection();
-      plan.ends.push_back(
-          {dir, dma.getNumBDs(),
-           DMAChannelAnalysis::getDMAChannelLimit(tileOf(endpoint), dir, false),
-           endpoint.getRouteChannel()});
+      plan.ends.push_back(planEnd(endpoint, /*adjacent=*/false,
+                                  /*keepPin=*/true));
       plan.poolOf.push_back(llvm::find(plan.pools, dma.getPoolOp()) -
                             plan.pools.begin());
     }
