@@ -5,7 +5,6 @@
 #
 
 add_mlir_dialect_library(MLIRAIEVecDialect
-  AIEVecDialect.cpp
   AIEVecOps.cpp
   AIEVecTypes.cpp
 

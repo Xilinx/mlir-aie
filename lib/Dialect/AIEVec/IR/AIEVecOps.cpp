@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
@@ -21,12 +22,12 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h"
 
-using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::aievec;
 
 #include "aie/Dialect/AIEVec/IR/AIEVecEnums.cpp.inc"
+#include "aie/Dialect/AIEVec/IR/AIEVecOpsDialect.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // AIEVecDialect
