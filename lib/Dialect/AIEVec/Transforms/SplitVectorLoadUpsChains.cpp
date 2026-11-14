@@ -6,11 +6,12 @@
 //===----------------------------------------------------------------------===//
 // Splits 1024-bit vector loads and stores into 512-bit halves where the
 // value is widened or narrowed one half at a time on AIE2P: vector.load +
-// aievec.ups, aievec.srs + vector.store, and bf16 loads feeding the LHS of
-// aievec.matmul_aie2p. Each half then maps to its own memory access instead of
+// aievec.ups, aievec.srs + vector.store, and bf16 tile loads that are the lhs
+// of bfp16 matmuls. Each half then maps to its own memory access instead of
 // a shuffle of the full-width value.
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -295,10 +296,12 @@ struct SplitVectorSrsStoreChainPattern
   }
 };
 
-/// Splits a 1024-bit bf16 vector.load that only feeds the LHS of bf16 8x8x8
-/// aievec.matmul_aie2p ops into two 512-bit loads joined by a vector.shuffle.
+/// Splits a 1024-bit bf16 vector.load of an 8x8 tile that is only the lhs of
+/// bfp16 matmuls (converted for them by aievec.to_bfp16, or the lhs of a bf16
+/// aievec.matmul_aie2p not yet expanded) into two 512-bit loads joined by a
+/// vector.shuffle.
 ///
-/// The matmul lowering widens the LHS to accfloat one 32-lane half at a time.
+/// The conversion widens such a tile to fp32 one 32-lane half at a time.
 /// With a single 64-lane load, each half is extracted by a shuffle before it is
 /// widened. After this split, and once LLVM folds the halves of the joining
 /// shuffle back to the two loads, each widening reads its own 512-bit load,
@@ -316,11 +319,15 @@ struct SplitVectorLoadMatMulLhsPattern
 
     auto bf16Tile = VectorType::get({8, 8}, rewriter.getBF16Type());
     auto f32Tile = VectorType::get({8, 8}, rewriter.getF32Type());
+    // The tile is the lhs of bfp16 matmuls: converted for them, or, before
+    // the matmuls are expanded, their bf16 8x8x8 lhs.
     auto feedsOnlyMatMulLhs = [&](Operation *user) {
       auto cast = dyn_cast<vector::ShapeCastOp>(user);
       if (!cast || cast.getResultVectorType() != bf16Tile)
         return false;
       return llvm::all_of(cast->getUses(), [&](OpOperand &use) {
+        if (auto conv = dyn_cast<ToBFP16Op>(use.getOwner()))
+          return isBFP16MatMulLhsOnly(conv);
         auto matmul = dyn_cast<MatMulOp_AIE2P>(use.getOwner());
         return matmul && use.getOperandNumber() == 0 &&
                matmul.getRhs().getType() == bf16Tile &&

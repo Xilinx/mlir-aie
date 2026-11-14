@@ -1278,15 +1278,22 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   let description = [{
     The control_packet operation represents a low-level AIE control packet header
     and payload.
+
+    `opcode` is 0 (write), 1 (read), or 2 (write with response); 3 is
+    reserved. A write carries its payload in `data`. A read carries no `data`;
+    `length` gives the number of words to read, at most 4. A write payload may
+    be longer than 4 words: `aie-legalize-control-packet` splits it.
   }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
 
     /// Most words -- data payload, or read length when there is no data --
     /// one packet can carry on the wire (the header's beat count field is 2
-    /// bits). Enforced where the header is packed, not here -- see
-    /// AIETranslateControlPacketsToUI32Vec.
+    /// bits). The verifier bounds read lengths; write payloads are bounded
+    /// where the header is packed (AIETranslateControlPacketsToUI32Vec), since
+    /// `aie-legalize-control-packet` splits them first.
     static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }

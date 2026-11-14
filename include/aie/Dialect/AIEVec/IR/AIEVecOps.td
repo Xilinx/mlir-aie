@@ -15,6 +15,7 @@ include "aie/Dialect/AIEVec/IR/AIEVecAttributes.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
 include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
 
+include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -650,6 +651,145 @@ def AIEVec_MatMulOp_AIE2P
                          attr-dict `:` type($lhs) `,` type($rhs) `into`
                          type($acc)}];
   let hasVerifier = 1;
+}
+
+def AIEVec_ToBFP16Op
+    : AIEVec_Op<"to_bfp16", [Pure]>,
+      Arguments<(ins VectorOfRankAndType<[2], [BF16]>:$source,
+          UnitAttr:$transpose)>,
+      Results<(outs VectorOfLengthAndType<[64], [I8]>:$mantissas,
+          VectorOfLengthAndType<[8], [I8]>:$exponents)> {
+  let summary = "AIE2P bf16 tile to bfp16ebs8";
+  let description = [{
+    AMD AIEv2P-specific conversion of a bf16 tile to bfp16ebs8, the block
+    floating point format of the `8x8_8x8T` matrix multiplication mode, in
+    which each row of 8 values shares one exponent. The tile is `source`, or
+    its transpose if `transpose` is set, and has 4 or 8 rows of 8 values.
+    `mantissas` holds the 8-bit mantissas of 8 rows and `exponents` their
+    exponents; for a 4-row tile, the last 4 rows are undefined.
+
+    `aievec.matmul_aie2p` on bf16 tiles is lowered as this conversion of each
+    operand followed by `aievec.matmul_aie2p_bfp16`.
+  }];
+  let assemblyFormat = [{$source (`transpose` $transpose^)? attr-dict `:`
+                         type($source) `->` type($mantissas) `,`
+                         type($exponents)}];
+  let hasVerifier = 1;
+}
+
+def AIEVec_LoadBFP16Op
+    : AIEVec_Op<"load_bfp16">,
+      Arguments<(ins Arg<MemRefRankOf<[I8], [1]>, "", [MemRead]>:$base,
+          Index:$offset)>,
+      Results<(outs VectorOfLengthAndType<[64], [I8]>:$mantissas,
+          VectorOfLengthAndType<[8], [I8]>:$exponents)> {
+  let summary = "AIE2P load of a bfp16ebs8 block";
+  let description = [{
+    AMD AIEv2P-specific load of the 72-byte bfp16ebs8 block at byte `offset`
+    of `base`: 8 rows, each a shared exponent byte followed by 8 mantissa
+    bytes. The result has the form `aievec.to_bfp16` produces. Blocks are
+    not aligned to vector registers; they are read through the block-vector
+    load FIFO.
+  }];
+  let assemblyFormat = [{$base `[` $offset `]` attr-dict `:` type($base) `->`
+                         type($mantissas) `,` type($exponents)}];
+  let hasVerifier = 0;
+}
+
+def AIEVec_FifoStartOp
+    : AIEVec_Op<"fifo_start", [Pure]>,
+      Arguments<(ins MemRefRankOf<[I8], [1]>:$base, Index:$offset)>,
+      Results<(outs LLVM_DefaultPointer:$next,
+          VectorOfLengthAndType<[32], [I32]>:$state, I32:$count)> {
+  let summary = "AIE2P start of a block-vector FIFO stream";
+  let description = [{
+    AMD AIEv2P-specific start of a stream on a block-vector load or store
+    FIFO at byte `offset` of `base`. The FIFO starts empty. `next` (the
+    address of the next memory access), `state` and `count` hold the FIFO
+    state and are passed to the first
+    `aievec.fifo_ld_pop_bfp16` or `aievec.fifo_st_push_bfp16` of the
+    stream.
+  }];
+  let assemblyFormat = [{$base `[` $offset `]` attr-dict `:` type($base) `->`
+                         type($state)}];
+  let hasVerifier = 0;
+}
+
+def AIEVec_FifoStPushBFP16Op
+    : AIEVec_Op<"fifo_st_push_bfp16", [MemoryEffects<[MemWrite]>]>,
+      Arguments<(ins LLVM_DefaultPointer:$addr,
+          VectorOfLengthAndType<[32], [I32]>:$state, I32:$count,
+          VectorOfLengthAndType<[64], [I8]>:$mantissas,
+          VectorOfLengthAndType<[8], [I8]>:$exponents)>,
+      Results<(outs LLVM_DefaultPointer:$next,
+          VectorOfLengthAndType<[32], [I32]>:$state_out, I32:$count_out)> {
+  let summary = "AIE2P next bfp16ebs8 block of a block-vector store stream";
+  let description = [{
+    AMD AIEv2P-specific write of `mantissas` and `exponents`, as produced by
+    `aievec.to_bfp16`, as the next 72-byte bfp16ebs8 block of the store
+    stream whose state is `addr`, `state` and `count`. The FIFO is flushed
+    after the write. Returns the updated state. The blocks can be read back
+    with `aievec.load_bfp16` or `aievec.fifo_ld_pop_bfp16`.
+  }];
+  let assemblyFormat = [{$addr `,` $state `,` $count `,` $mantissas `,`
+                         $exponents attr-dict `:` type($state) `,`
+                         type($mantissas) `,` type($exponents) `->`
+                         type($state_out)}];
+  let hasVerifier = 0;
+}
+
+def AIEVec_FifoLdPopBFP16Op
+    : AIEVec_Op<"fifo_ld_pop_bfp16", [MemoryEffects<[MemRead]>]>,
+      Arguments<(ins LLVM_DefaultPointer:$addr,
+          VectorOfLengthAndType<[32], [I32]>:$state, I32:$count,
+          UnitAttr:$no_fill)>,
+      Results<(outs LLVM_DefaultPointer:$next,
+          VectorOfLengthAndType<[32], [I32]>:$state_out, I32:$count_out,
+          VectorOfLengthAndType<[64], [I8]>:$mantissas,
+          VectorOfLengthAndType<[8], [I8]>:$exponents)> {
+  let summary = "AIE2P next bfp16ebs8 block of a block-vector load stream";
+  let description = [{
+    AMD AIEv2P-specific read of the next 72-byte bfp16ebs8 block of the load
+    stream whose state is `addr`, `state` and `count`. Returns the block in
+    the form `aievec.to_bfp16` produces, and the updated state. A stream
+    needs one memory load per block, whereas `aievec.load_bfp16` refills
+    the FIFO for every block.
+
+    A pop consumes 576 bits and loads 512, so the FIFO is refilled before
+    each pop unless `no_fill` is set. One fill provides enough data for the
+    8 pops that follow it, as long as nothing else uses the FIFO in
+    between.
+  }];
+  let assemblyFormat = [{$addr `,` $state `,` $count (`no_fill` $no_fill^)?
+                         attr-dict `:`
+                         type($state) `->` type($state_out) `,` type($mantissas)
+                         `,` type($exponents)}];
+  let hasVerifier = 0;
+}
+
+def AIEVec_MatMulBFP16Op_AIE2P
+    : AIEVec_Op<"matmul_aie2p_bfp16", [Pure, AllTypesMatch<["acc", "result"]>]>,
+      Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs_mantissas,
+          VectorOfLengthAndType<[8], [I8]>:$lhs_exponents,
+          VectorOfLengthAndType<[64], [I8]>:$rhs_mantissas,
+          VectorOfLengthAndType<[8], [I8]>:$rhs_exponents,
+          AnyTypeOf<[VectorOfShapeAndType<[8, 8], F32>,
+                     VectorOfShapeAndType<[4, 8], F32>]>:$acc)>,
+      Results<(outs AnyTypeOf<[VectorOfShapeAndType<[8, 8], F32>,
+                               VectorOfShapeAndType<[4, 8], F32>]>:$result)> {
+  let summary = "AIE2P bfp16 matrix-multiply and accumulate";
+  let description = [{
+    AMD AIEv2P-specific `8x8_8x8T` multiply-accumulate of two bfp16 tiles as
+    produced by `aievec.to_bfp16`. Computes `acc + lhs * transpose(rhs)`,
+    where `lhs` is the [m, k] tile and `rhs` the [n, k] tile. `acc` is
+    [m, n]; when it has 4 rows, only the first 4 rows of `lhs` are used.
+  }];
+  let assemblyFormat = [{$lhs_mantissas `,` $lhs_exponents `,` $rhs_mantissas
+                         `,` $rhs_exponents `,` $acc attr-dict `:`
+                         type($lhs_mantissas) `,` type($lhs_exponents) `,`
+                         type($rhs_mantissas) `,` type($rhs_exponents) `into`
+                         type($acc)}];
+  let hasVerifier = 0;
 }
 
 def AIEVec_ShuffleOp

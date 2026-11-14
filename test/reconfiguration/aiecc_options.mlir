@@ -14,7 +14,7 @@
 // EXPAND-LDPDI-CTRLPKT: aiecc: --expand-load-pdis and --load-pdi-to-ctrl-pkt are mutually exclusive
 
 // RUN: not %aiecc --get-full-elf --get-ctrlpkt %s 2>&1 | FileCheck %s --check-prefix=FULL-ELF-CTRLPKT
-// FULL-ELF-CTRLPKT: aiecc: --generate-full-elf and --aie-generate-ctrlpkt together also requires --load-pdi-to-ctrl-pkt
+// FULL-ELF-CTRLPKT: aiecc: --get-full-elf and --get-ctrlpkt together also require --load-pdi-to-ctrl-pkt
 
 // RUN: not %aiecc --expand-load-pdis --reconfig-teardown %s 2>&1 | FileCheck %s --check-prefix=TEARDOWN-FULL-ELF
 // TEARDOWN-FULL-ELF: aiecc: --reconfig-teardown requires full-ELF output

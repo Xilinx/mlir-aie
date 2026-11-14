@@ -444,6 +444,734 @@ def test_cache_key_covers_the_sources_the_generator_reaches(
     assert key() != before
 
 
+def test_cache_key_covers_kernel_flags_mutated_in_place(scale_design):
+    """Kernel flags read through a mutable module global move the key when mutated.
+
+    Nothing on disk changes when a list the generator reads is edited in
+    place, and the walk dropped containers entirely, so an entry cached
+    before the edit was silently reused -- with the old kernel flags.
+    """
+    _, gen = scale_design
+    flags = sys.modules["scale_flags"]
+
+    def key():
+        return CompilableDesign(gen, compile_kwargs={"N": 64})._compute_cache_hash()
+
+    before = key()
+    flags.FLAGS.append("-O2")
+    assert key() != before
+
+
+_SHAPE_STATE = (
+    "CONFIG = []\n"
+    "FLAGMAP = {'chosen': ['-DSTEP=1'], 'other': ['-DSTEP=2']}\n"
+    "LEFT = ['-DA=1']\n"
+    "RIGHT = ['-DB=1']\n"
+    "TRIPLE = [LEFT, RIGHT, LEFT]\n"
+    "SHARED = {'left': LEFT, 'right': LEFT}\n"
+    "\n"
+    "\n"
+    "def first_helper():\n"
+    "    return 1\n"
+    "\n"
+    "\n"
+    "def second_helper():\n"
+    "    return 2\n"
+    "\n"
+    "\n"
+    "HELPERS = [first_helper, second_helper]\n"
+    "\n"
+    "\n"
+    "def act(x):\n"
+    "    return x\n"
+    "\n"
+    "\n"
+    "FLAG_BY_OP = {act: '-DRELU', 'plain': '-DPLAIN'}\n"
+)
+
+# Each entry: (what the generator reads, how the structure changes without
+# any leaf value changing).  The walk must record the SHAPE -- kind, length,
+# key/value pairing, which value sits at which position -- not only leaves,
+# or these mutations reuse a stale entry.
+_SHAPE_MUTATIONS = [
+    (
+        "empty-shape",
+        "list(shape_state.CONFIG)",
+        lambda s: setattr(s, "CONFIG", [[]]),
+    ),
+    (
+        "dict-pairing",
+        "shape_state.FLAGMAP['chosen']",
+        lambda s: setattr(
+            s, "FLAGMAP", {"chosen": ["-DSTEP=2"], "other": ["-DSTEP=1"]}
+        ),
+    ),
+    (
+        "alias-repeat",
+        "shape_state.TRIPLE",
+        lambda s: setattr(s, "TRIPLE", [s.LEFT, s.RIGHT, s.RIGHT]),
+    ),
+    (
+        "helper-order",
+        "[h.__name__ for h in shape_state.HELPERS]",
+        lambda s: setattr(s, "HELPERS", [s.second_helper, s.first_helper]),
+    ),
+    (
+        "shared-subobject",
+        "shape_state.SHARED['left'][0]",
+        lambda s: s.LEFT.append("-DSHARED=1"),
+    ),
+    (
+        "function-keyed-mapping",
+        "shape_state.FLAG_BY_OP[shape_state.act]",
+        lambda s: setattr(s, "FLAG_BY_OP", {s.act: "-DRELU2"}),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "read_expr,mutate",
+    [(m[1], m[2]) for m in _SHAPE_MUTATIONS],
+    ids=[m[0] for m in _SHAPE_MUTATIONS],
+)
+def test_cache_key_covers_the_shape_of_a_read_container(tmp_path, read_expr, mutate):
+    """A structural change to a read container moves the key with no leaf change.
+
+    Recorded members alone cannot tell ``[]`` from ``[[]]``, one mapping
+    pairing from its swap, ``[a, b, a]`` from ``[a, b, b]``, or ``[f, g]``
+    from ``[g, f]`` -- yet a generator branching on ``len`` or indexing
+    reads the difference.  Kind, length, pairing and position travel with
+    the member digest.
+    """
+    (tmp_path / "shape_state.py").write_text(_SHAPE_STATE)
+    (tmp_path / "shape_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import shape_state\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void shape(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def shape(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "shape",\n'
+        '        object_file_name="shape.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        f"        compile_flags={read_expr},\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import shape_design
+
+        state = sys.modules["shape_state"]
+
+        def key():
+            return CompilableDesign(
+                shape_design.shape, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+        mutate(state)
+        assert key() != before
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("shape_design", None)
+        sys.modules.pop("shape_state", None)
+
+
+def _doubling_chain_source(depth):
+    """Return a config chain source referencing its child twice per level.
+
+    Each level references its child by name. Inlining the child text instead
+    would double the source per level (depth 24 is ~400 MiB, and the parsed
+    tree would share nothing but the TAIL leaf), so the walk -- not the
+    sharing -- would be what the test measures.
+    """
+    lines = ["TAIL = ['-DLEAF=1']"]
+    node = "TAIL"
+    for level in range(depth):
+        lines.append("L%d = {'left': %s, 'right': %s}" % (level, node, node))
+        node = "L%d" % level
+    lines.append("CHAIN = %s" % node)
+    return "\n".join(lines) + "\n"
+
+
+def test_cache_key_walks_a_shared_graph_once(tmp_path):
+    """A config chain that references its child twice per level keys in bounded time.
+
+    Per-path walking made the work grow with the number of paths (2**depth
+    for the doubling chain), which the nesting bound never caps: depth 24
+    exceeds this test's own subprocess timeout walked per path. Each
+    object's content is now digested once per walk and memoized by id, so
+    the chain keys in milliseconds however much it shares -- and the
+    digest is content, so a fresh interpreter computes the same key.
+    """
+    depth = 24
+    (tmp_path / "chain_state.py").write_text(_doubling_chain_source(depth))
+    (tmp_path / "chain_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import chain_state\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void chain(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def chain(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "chain",\n'
+        '        object_file_name="chain.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=chain_state.CHAIN,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import chain_design
+
+        state = sys.modules["chain_state"]
+
+        def key():
+            return CompilableDesign(
+                chain_design.chain, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+        state.TAIL.append("-O2")
+        assert key() != before, "a shared leaf feeds every position it is read at"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("chain_design", None)
+        sys.modules.pop("chain_state", None)
+
+    # A fresh interpreter walks the same graph (the file on disk) with new
+    # ids and must land on the same key; walked per path this outlives the
+    # timeout (2**depth).
+    prog = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(tmp_path)!r})\n"
+        "import chain_design\n"
+        # The file's autouse fixture binds a device for the in-process key;
+        # the fresh interpreter must bind the same one or the artifact hash
+        # carries a different target arch.
+        "from aie.utils.hostruntime import set_current_device\n"
+        "from aie.iron.device import NPU2Col1\n"
+        "from aie.utils.compile.jit.compilabledesign import CompilableDesign\n"
+        "with set_current_device(NPU2Col1()):\n"
+        "    print(CompilableDesign(\n"
+        "        chain_design.chain, compile_kwargs={'N': 64}\n"
+        "    )._compute_cache_hash())\n"
+    )
+    fresh = subprocess.run(
+        [sys.executable, "-c", prog], capture_output=True, text=True, timeout=60
+    )
+    assert fresh.returncode == 0, fresh.stderr
+    assert fresh.stdout.strip() == before, "ids differ; the content must not"
+
+
+def test_swapped_fileless_helpers_rekey_their_positions():
+    """Swapping two same-named fileless helpers moves the key.
+
+    Lambdas from one factory share a module and a qualname, so a position
+    that binds only the name cannot tell a swap: ``OPS = [f, g]`` and
+    ``OPS = [g, f]`` keyed identically while ``OPS[0]()`` selected different
+    flags -- a stale binary served from the cache.  The position now binds
+    the callable's code identity as well.
+    """
+
+    def source(first, second):
+        return (
+            "la = lambda: ['-DSTEP=1']\n"
+            "lb = lambda: ['-DSTEP=2']\n"
+            f"OPS = [{first}, {second}]\n"
+            "def gen(a, b, N=None):\n"
+            "    return OPS[0]()\n"
+        )
+
+    def key(src):
+        # exec'd namespaces are file-less, as a notebook or -c design is.
+        ns = {"__name__": "swapped_mod"}
+        exec(src, ns)
+        return _compute_recipe_hash(ns["gen"], {}, (), ())
+
+    forward = key(source("la", "lb"))
+    assert key(source("la", "lb")) == forward, "the same order must key alike"
+    assert key(source("lb", "la")) != forward, "swapping them must move the key"
+
+
+def test_cache_key_covers_mutable_class_level_state(tmp_path):
+    """A file-backed class's mutable class attribute is keyed like instance state.
+
+    ``class Config: FLAGS = [...]`` read as ``Config.FLAGS[0]`` reaches mutable
+    state the file's stamp cannot see: the class object outlives its file's
+    text, so appending to FLAGS must move the key.
+    """
+    (tmp_path / "class_state.py").write_text(
+        "class Config:\n" "    FLAGS = ['-DSTEP=1']\n"
+    )
+    (tmp_path / "class_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import class_state\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void k(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def k(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "k",\n'
+        '        object_file_name="k.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=class_state.Config.FLAGS,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import class_design
+
+        state = sys.modules["class_state"]
+
+        def key():
+            return CompilableDesign(
+                class_design.k, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+        state.Config.FLAGS.append("-O2")
+        assert key() != before, "a class-level append must move the key"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("class_design", None)
+        sys.modules.pop("class_state", None)
+
+
+def test_swapped_factory_closures_rekey_their_positions():
+    """Factory closures share code and qualname but capture different flags.
+
+    ``def make(flag): return lambda: [flag]`` products have identical code;
+    only the closure cell differs.  Swapping them in a sequence must move
+    the key or ``OPS[0]()`` keeps the old binary with the new flags.
+    """
+
+    def make(flag):
+        return lambda: [flag]
+
+    la, lb = make(1), make(2)
+
+    def key(order):
+        ns = {"__name__": "ops_mod", "OPS": order}
+        exec("def gen(a, b, N=None):\n    return OPS[0]()\n", ns)
+        return _compute_recipe_hash(ns["gen"], {}, (), ())
+
+    forward = key([la, lb])
+    assert key([la, lb]) == forward, "the same order must key alike"
+    assert key([lb, la]) != forward, "swapping closures must move the key"
+
+
+def test_class_digest_keys_private_state_too():
+    """Class-level state is keyed conservatively, private names included.
+
+    ``Config._FLAGS`` is configuration exactly like ``Config.FLAGS`` --
+    skipping it would serve stale binaries.  Registries churning between
+    compiles (``_instances``) cost a conservative rebuild, never a wrong
+    binary; the mutation mask absorbs the generation-time churn.
+    """
+
+    class Config:
+        FLAGS = ["-DSTEP=1"]
+        _STEP = 1
+        _instances = set()
+
+    def key():
+        ns = {"__name__": "cfg_mod", "Config": Config}
+        exec("def gen(a, b, N=None):\n    return Config.FLAGS[0]\n", ns)
+        return _compute_recipe_hash(ns["gen"], {}, (), ())
+
+    before = key()
+    Config._instances.add(object())
+    assert key() != before, "private container state moves the key (conservative miss)"
+    Config._STEP = 2
+    assert key() != before, "private scalar state moves the key"
+    Config._STEP = 1
+    Config.FLAGS.append("-O2")
+    assert key() != before, "public class state moves the key"
+
+
+def test_generation_cache_key_follows_mutable_inputs(tmp_path):
+    """The in-process generation cache must not outlive a mutable-input edit.
+
+    ``_generation_cache_key`` keyed on device+full_elf only, so a design
+    whose flag source changed between compiles would have been served the
+    previously generated MLIR.  The recipe hash now rides the key.
+    """
+    (tmp_path / "gen_state.py").write_text("FLAGS = ['-DSTEP=1']\n")
+    (tmp_path / "gen_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import gen_state\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void k(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def k(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "k",\n'
+        '        object_file_name="k.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=gen_state.FLAGS,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import gen_design
+
+        design = CompilableDesign(gen_design.k, compile_kwargs={"N": 64})
+        before = design._generation_cache_key(full_elf=False)
+        sys.modules["gen_state"].FLAGS.append("-O2")
+        after = design._generation_cache_key(full_elf=False)
+        assert after != before, "an edit to a keyed input must rekey generation"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("gen_design", None)
+        sys.modules.pop("gen_state", None)
+
+
+def test_mask_keepalive_covers_every_pinned_object():
+    """The keepalive must hold every pinned id's object, across runs.
+
+    The mask accumulates ids (mask.update(moved)); a keepalive that only
+    holds the latest run's objects would let an earlier pin's object die
+    and its id be reused -- masking a new object with a dead pin.
+    """
+    from aie.utils.compile.jit import _hash as hash_mod
+
+    calls = {"n": 0}
+    lists = [[], []]
+
+    def gen():
+        lists[calls["n"] % 2].append(1)
+        calls["n"] += 1
+        return None
+
+    with hash_mod._mask_generator_mutations(gen):
+        gen()
+    with hash_mod._mask_generator_mutations(gen):
+        gen()
+    keep = getattr(gen, "__iron_key_mask_keepalive__")
+    assert lists[0] in keep.values() and lists[1] in keep.values()
+
+
+def test_self_referential_closure_terminates():
+    """A closure capturing itself must not recurse the position identity.
+
+    ``def make(): def f(): return f; return f`` puts ``f`` in its own
+    closure; describing the cell used to recurse without end.  The
+    re-entrant frame now contributes code identity only.
+    """
+
+    def make():
+        def f():
+            return f
+
+        return f
+
+    f = make()
+    ns = {"__name__": "rec_mod", "f": f}
+    exec("def gen(a, b, N=None):\n    return f()\n", ns)
+    h = _compute_recipe_hash(ns["gen"], {}, (), ())
+    assert isinstance(h, str) and h
+
+
+def test_walk_survives_objects_with_refusing_getattr():
+    """Objects whose __getattr__ refuses must not crash the key.
+
+    DispatchTime placeholders refuse every attribute access as a
+    generation-time guard; left in a walked container (a test-harness
+    ``retained`` list, say), the instance walk's ``__dict__`` probe fired
+    that guard.  The walk now asks the type's own storage.
+    """
+
+    class Guarded:
+        __slots__ = ()
+
+        def __getattr__(self, name):
+            raise TypeError("refused")
+
+    cfg = {"items": [Guarded()]}
+    ns = {"__name__": "guard_mod", "cfg": cfg}
+    exec("def gen(a, b, N=None):\n    return cfg['items'][0]\n", ns)
+    h1 = _compute_recipe_hash(ns["gen"], {}, (), ())
+    h2 = _compute_recipe_hash(ns["gen"], {}, (), ())
+    assert h1 == h2
+
+
+def test_cache_key_covers_state_of_modules_reached_through_containers(tmp_path):
+    """A module held in a container is more than its file stamp.
+
+    With ``SOURCES = [scale_flags]`` and ``compile_flags=SOURCES[0].FLAGS``,
+    the walk reaches the module as a container member; mutating its FLAGS in
+    place (the file unchanged) must still move the key.
+    """
+    (tmp_path / "scale_flags.py").write_text("FLAGS = ['-DSTEP=1']\n")
+    (tmp_path / "mod_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import scale_flags\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        "SOURCES = [scale_flags]\n"
+        'SOURCE = "void k(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def k(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "k",\n'
+        '        object_file_name="k.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=SOURCES[0].FLAGS,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import mod_design
+
+        state = sys.modules["scale_flags"]
+
+        def key():
+            return CompilableDesign(
+                mod_design.k, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+        state.FLAGS.append("-O2")
+        assert (
+            key() != before
+        ), "mutating a container-held module's state must move the key"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("mod_design", None)
+        sys.modules.pop("scale_flags", None)
+
+
+def test_cache_key_survives_a_self_configuring_generator(tmp_path):
+    """A generator that records what it learns keeps finding its own entry.
+
+    A self-configuring design appends to a module-level list on every run
+    -- the full-ELF learning path's instrumentation is exactly this -- and
+    the walk keys that list, so every run moved the key: the entry a cold
+    compile built was already stale for the next lookup, and the generator
+    re-ran instead of the design being served from the cache. The
+    mutations a run makes about its own inputs are now pinned while it
+    runs (see ``_mask_generator_mutations``), so the next lookup computes
+    the key its entry was built under -- while an edit made outside the
+    run, the user changing kernel flags between compiles, still moves it.
+    """
+    (tmp_path / "learning_state.py").write_text(
+        "LEARNED = []\n"
+        "FLAGS = ['-DSTEP=1']\n"
+        "\n"
+        "\n"
+        "def learned():\n"
+        "    return LEARNED\n"
+    )
+    (tmp_path / "learning_design.py").write_text(
+        "import learning_state\n"
+        "import numpy as np\n"
+        "\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void learn(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def learn(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    learning_state.LEARNED.append(N)\n"
+        "    return ExternalFunction(\n"
+        '        "learn",\n'
+        '        object_file_name="learn.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=learning_state.FLAGS,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import learning_design
+
+        state = sys.modules["learning_state"]
+
+        def key():
+            return CompilableDesign(
+                learning_design.learn, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+
+        # The generator's own run, under the watch the compile flow wraps
+        # it in: it records what it learned about its own inputs.
+        with _hash_mod._mask_generator_mutations(learning_design.learn, (64,)):
+            state.LEARNED.append(64)
+        assert key() == before, "the run's own record-keeping must not strand its entry"
+
+        # A full-ELF cold compile runs the generator twice (infer, then
+        # build); the second run happens under the same pins.
+        with _hash_mod._mask_generator_mutations(learning_design.learn, (64,)):
+            state.LEARNED.append(64)
+        assert key() == before, "a second run learns under the same pins"
+
+        # The user's edit between compiles is not the generator's doing.
+        state.FLAGS.append("-O2")
+        assert key() != before, "an edit outside the run still moves the key"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("learning_design", None)
+        sys.modules.pop("learning_state", None)
+
+
+def test_mask_generator_mutations_never_swallows_a_failing_generator():
+    """A generator that raises must surface its own error.
+
+    The watch's cleanup originally left its finally block through bare
+    return statements; a return inside finally discards the exception
+    propagating out of the generator, the contextmanager then suppresses
+    it, and _generate_uncached went on to read its result unassigned --
+    CI saw UnboundLocalError in place of the user's error
+    (iron_error_frames.py, taskgroup_carry.py). Every exit below must let
+    the exception through, with the watch's record-keeping intact.
+    """
+    from aie.utils.compile.jit._hash import _MAX_KEY_DEPTH, _mask_generator_mutations
+
+    def failing():
+        raise ValueError("the design is broken")
+
+    # No mutable object in the walk domain: the empty pre-snapshot exit.
+    with pytest.raises(ValueError, match="the design is broken"):
+        with _mask_generator_mutations(failing, ()):
+            failing()
+
+    # A domain whose container the generator does not touch: the
+    # nothing-moved exit.
+    with pytest.raises(ValueError, match="the design is broken"):
+        with _mask_generator_mutations(failing, ([1, 2, 3],)):
+            failing()
+
+    # A domain the failing generator deepens past the walk's nesting bound:
+    # the failed post-snapshot exit.
+    deepened = [1]
+
+    def deepening():
+        nest = []
+        for _ in range(_MAX_KEY_DEPTH + 2):
+            nest = [nest]
+        deepened.append(nest)
+        raise ValueError("the design is broken")
+
+    with pytest.raises(ValueError, match="the design is broken"):
+        with _mask_generator_mutations(deepening, (deepened,)):
+            deepening()
+
+    # A domain the failing generator reconfigures: the mask records it AND
+    # the exception still surfaces.
+    learned = [1]
+
+    def configuring():
+        learned.append(2)
+        raise ValueError("the design is broken")
+
+    with pytest.raises(ValueError, match="the design is broken"):
+        with _mask_generator_mutations(configuring, (learned,)):
+            configuring()
+    assert configuring.__iron_key_mask__
+
+
+_CROSS_PROGRAM = """\
+import sys
+
+import numpy as np
+
+from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import CompileTime, In, Out
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
+
+
+def act(x):
+    return x
+
+
+FLAG_BY_OP = {act: '-DRELU', 'plain': '-DPLAIN'}
+OPS = [act]
+
+SOURCE = "void cross(int *a, int *b) {}"
+
+
+def cross(a: In, b: Out, *, N: CompileTime[int]):
+    ty = np.ndarray[(N,), np.dtype[np.int32]]
+    return ExternalFunction(
+        "cross",
+        object_file_name="cross.o",
+        source_string=SOURCE,
+        arg_types=[ty, ty],
+        compile_flags=(act, FLAG_BY_OP, OPS),
+    )
+
+
+print(CompilableDesign(cross, compile_kwargs={'N': 64})._compute_cache_hash())
+"""
+
+
+@pytest.mark.parametrize("seed", ["0", "1", "2"])
+def test_cache_key_is_the_same_in_every_process(seed):
+    """Key a file-less design with function keys and aliased helpers identically everywhere.
+
+    ``repr(key)`` once put a function's address into the record, so every
+    process computed a different key for ``{act: '-DRELU'}`` and the cache
+    never hit. An aliased file-less helper was recorded only at whichever
+    of its positions the walk reached first, and that order follows
+    set iteration, which PYTHONHASHSEED varies per process -- a notebook
+    restart missed. Keys are now address- and order-free, so every seed
+    (and every process) agrees.
+    """
+
+    def key_under(hashseed):
+        result = subprocess.run(
+            [sys.executable, "-c", _CROSS_PROGRAM],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "PYTHONHASHSEED": hashseed},
+            timeout=60,
+        )
+        assert result.stdout.strip(), result.stderr
+        return result.stdout.strip()
+
+    assert key_under(seed) == key_under("0")
+
+
 def test_cache_key_does_not_generate_the_design():
     def scale(a: In, *, N: CompileTime[int]):
         raise AssertionError("the key generated the design")

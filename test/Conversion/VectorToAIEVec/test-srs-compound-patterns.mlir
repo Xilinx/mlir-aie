@@ -231,3 +231,49 @@ func.func @test_scalar_clamp_only_unsigned(%arg0: i32) -> i8 {
   %result = arith.trunci %clamped : i32 to i8
   return %result : i8
 }
+
+// Test: a scalar clamp narrower than the destination type's range is not a
+// saturation, so no SRS: the clamp is promoted op by op and the trunci left
+// as is (it used to be marked illegal and then crash the vector trunc
+// lowering).
+
+// CHECK-LABEL: func.func @test_scalar_clamp_not_saturation(
+// CHECK-NOT: aievec.srs
+// CHECK: aievec.max
+// CHECK: aievec.min
+// CHECK: arith.trunci %{{.*}} : i32 to i16
+// AIE2P-LABEL: func.func @test_scalar_clamp_not_saturation(
+// AIE2P-NOT: aievec.srs
+// AIE2P: aievec.max
+// AIE2P: aievec.min
+// AIE2P: arith.trunci %{{.*}} : i32 to i16
+func.func @test_scalar_clamp_not_saturation(%arg0: i32) -> i16 {
+  %c0 = arith.constant 0 : i32
+  %c63 = arith.constant 63 : i32
+  %clamped0 = arith.maxsi %arg0, %c0 : i32
+  %clamped = arith.minsi %clamped0, %c63 : i32
+  %result = arith.trunci %clamped : i32 to i16
+  return %result : i16
+}
+
+// Test: the shift and clamp of such a chain are then promoted one by one.
+
+// CHECK-LABEL: func.func @test_scalar_shift_clamp_not_saturation(
+// CHECK: aievec.srs %{{.*}} : vector<16xi64>, i32, vector<16xi32>
+// CHECK: aievec.max
+// CHECK: aievec.min
+// CHECK: arith.trunci %{{.*}} : i32 to i8
+// AIE2P-LABEL: func.func @test_scalar_shift_clamp_not_saturation(
+// AIE2P: aievec.srs %{{.*}} : vector<16xi64>, i32, vector<16xi32>
+// AIE2P: aievec.max
+// AIE2P: aievec.min
+// AIE2P: arith.trunci %{{.*}} : i32 to i8
+func.func @test_scalar_shift_clamp_not_saturation(%arg0: i32, %shift: i32) -> i8 {
+  %c0 = arith.constant 0 : i32
+  %c63 = arith.constant 63 : i32
+  %shifted = arith.shrsi %arg0, %shift : i32
+  %clamped0 = arith.maxsi %shifted, %c0 : i32
+  %clamped = arith.minsi %clamped0, %c63 : i32
+  %result = arith.trunci %clamped : i32 to i8
+  return %result : i8
+}

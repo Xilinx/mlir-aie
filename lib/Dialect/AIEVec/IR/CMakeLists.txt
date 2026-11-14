@@ -24,6 +24,7 @@ add_mlir_dialect_library(MLIRAIEVecDialect
   LINK_LIBS PUBLIC
   AIE
   MLIRIR
+  MLIRLLVMDialect
   MLIRPass
   )
 

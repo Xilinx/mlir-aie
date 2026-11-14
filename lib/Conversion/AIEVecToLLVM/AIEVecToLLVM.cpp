@@ -14,12 +14,14 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h"
+#include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/TypeUtilities.h"
 #include <numeric>
@@ -1484,12 +1486,6 @@ public:
     rewriter.replaceOp(fmaOp, resVal);
     return success();
   }
-};
-
-// Enum to represent different AIE target architectures
-enum class AIEArch {
-  AIE2,
-  AIE2p,
 };
 
 class UPSOpAIE2Conversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
@@ -4305,37 +4301,6 @@ static Value widenBF16ToAccFloat(OpBuilder &rewriter, Location loc, Type i32ty,
       ones, conf);
 }
 
-// Helper function to perform BFP16-based 8×8 matmul via mac_8x8_8x8T_conf
-// LHS: v64accfloat, RHS: v64accfloat (transposed 8×8), ACC: v64i32
-// Returns: v64i32 result
-static Value performBFP16_8x8MatMul(OpBuilder &rewriter, Location loc,
-                                    Type i32ty, Value lhs64f32,
-                                    Value rhs64f32Transposed, Value acc64i32,
-                                    Value confCst) {
-  auto v64i32Ty = VectorType::get({64}, rewriter.getI32Type());
-
-  // Convert both to BFP16 format
-  auto bfpStructTy = mlir::LLVM::LLVMStructType::getLiteral(
-      rewriter.getContext(), {VectorType::get({64}, rewriter.getI8Type()),
-                              VectorType::get({8}, rewriter.getI8Type())});
-
-  auto lhsBFP = xllvm::Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp::create(
-      rewriter, loc, bfpStructTy, lhs64f32);
-  auto rhsBFP = xllvm::Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp::create(
-      rewriter, loc, bfpStructTy, rhs64f32Transposed);
-
-  // Extract mantissa and exponent
-  auto lhsData = LLVM::ExtractValueOp::create(rewriter, loc, lhsBFP, 0);
-  auto lhsExp = LLVM::ExtractValueOp::create(rewriter, loc, lhsBFP, 1);
-  auto rhsData = LLVM::ExtractValueOp::create(rewriter, loc, rhsBFP, 0);
-  auto rhsExp = LLVM::ExtractValueOp::create(rewriter, loc, rhsBFP, 1);
-
-  // Perform BFP16 matmul
-  return xllvm::MacConfBFP576ACC2048AIE2pIntrOp::create(
-      rewriter, loc, v64i32Ty, lhsData, lhsExp, rhsData, rhsExp, acc64i32,
-      confCst);
-}
-
 // Helper function to perform 8×8×4 BF16 matmul following mac_8x8_8x4_bf16
 // LHS: 64 bfloat16 (8×8 matrix stored [k, m]), RHS: 32 bfloat16 (8×4 matrix)
 // ACC: 32 float (8×4 result)
@@ -4415,6 +4380,255 @@ static Value perform8x8x4MatMul(OpBuilder &rewriter, Location loc, Type i32ty,
 
   return acc;
 }
+
+// Expands a bf16 aievec.matmul_aie2p with a bfp16 recipe into
+// aievec.to_bfp16 and aievec.matmul_aie2p_bfp16, lowered by the patterns
+// below.
+class ExpandBFP16MatMulAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P> {
+  using ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::MatMulOp_AIE2P op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    return aievec::expandBFP16MatMul(rewriter, op);
+  }
+};
+
+// Lowers aievec.to_bfp16: widens the tile to 64 fp32 accumulator lanes (the
+// upper 32 lanes are undefined for a 4-row tile) as described at
+// isBFP16MatMulRhsOnly, then converts them to bfp16ebs8.
+class ToBFP16OpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::ToBFP16Op> {
+  using ConvertOpToLLVMPattern<aievec::ToBFP16Op>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::ToBFP16Op op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    VectorType srcTy = op.getSource().getType();
+    Value flat = vector::ShapeCastOp::create(
+        rewriter, loc, getFlattenedVectorType(srcTy), adaptor.getSource());
+    if (op.getTranspose())
+      flat = transposeTile(rewriter, loc, flat, srcTy.getDimSize(0),
+                           srcTy.getDimSize(1), /*aie2p=*/true);
+    Type i32ty = rewriter.getI32Type();
+    Value f64;
+    auto v32f32Ty = VectorType::get({32}, rewriter.getF32Type());
+    if (srcTy.getNumElements() == 64 && aievec::isBFP16MatMulRhsOnly(op)) {
+      f64 = widenBF16ToAccFloat(rewriter, loc, i32ty, flat);
+    } else if (srcTy.getNumElements() == 64) {
+      Value half[2];
+      for (int64_t h = 0; h < 2; ++h) {
+        Value v = vector::ShuffleOp::create(
+            rewriter, loc, flat, flat,
+            llvm::to_vector(llvm::seq<int64_t>(32 * h, 32 * h + 32)));
+        half[h] = xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp::create(
+            rewriter, loc, v32f32Ty, v);
+      }
+      f64 =
+          vector::ShuffleOp::create(rewriter, loc, half[0], half[1],
+                                    llvm::to_vector(llvm::seq<int64_t>(0, 64)));
+    } else {
+      SmallVector<int64_t> padMask = llvm::to_vector(llvm::seq<int64_t>(0, 32));
+      padMask.append(32, vector::ShuffleOp::kPoisonIndex);
+      Value f32 = xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp::create(
+          rewriter, loc, v32f32Ty, flat);
+      f64 = vector::ShuffleOp::create(rewriter, loc, f32, f32, padMask);
+    }
+    auto bfpStructTy = LLVM::LLVMStructType::getLiteral(
+        rewriter.getContext(), {VectorType::get({64}, rewriter.getI8Type()),
+                                VectorType::get({8}, rewriter.getI8Type())});
+    Value bfp = xllvm::Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp::create(
+        rewriter, loc, bfpStructTy, f64);
+    rewriter.replaceOp(op,
+                       {LLVM::ExtractValueOp::create(rewriter, loc, bfp, 0),
+                        LLVM::ExtractValueOp::create(rewriter, loc, bfp, 1)});
+    return success();
+  }
+};
+
+// Builds a pointer to byte `offset` of the i8 memref `base`. Memrefs are
+// lowered to LLVM after this pass, so the address is computed with memref
+// ops.
+static Value bytePointer(OpBuilder &b, Location loc, Value base, Value offset) {
+  auto meta = memref::ExtractStridedMetadataOp::create(b, loc, base);
+  Value start = memref::ExtractAlignedPointerAsIndexOp::create(
+      b, loc, meta.getBaseBuffer());
+  Value off = arith::AddIOp::create(b, loc, meta.getOffset(), offset);
+  Value addr = arith::IndexCastOp::create(
+      b, loc, b.getI32Type(), arith::AddIOp::create(b, loc, start, off));
+  return LLVM::IntToPtrOp::create(
+      b, loc, LLVM::LLVMPointerType::get(b.getContext()), addr);
+}
+
+// Returns the FIFO state type { ptr, state, count }, extended with the
+// block's mantissas and exponents if `popped` is set.
+static LLVM::LLVMStructType fifoLdType(MLIRContext *ctx, bool popped) {
+  Type i32 = IntegerType::get(ctx, 32), i8 = IntegerType::get(ctx, 8);
+  SmallVector<Type> fields = {LLVM::LLVMPointerType::get(ctx),
+                              VectorType::get({32}, i32), i32};
+  if (popped) {
+    fields.push_back(VectorType::get({64}, i8));
+    fields.push_back(VectorType::get({8}, i8));
+  }
+  return LLVM::LLVMStructType::getLiteral(ctx, fields);
+}
+
+// Fills the load FIFO at `ptr` and returns its state. The state is undefined
+// until the fill sets it.
+static Value fifoLdFill(OpBuilder &b, Location loc, Value ptr) {
+  Type i32 = b.getI32Type();
+  auto stateTy = VectorType::get({32}, i32);
+  Value state = LLVM::UndefOp::create(b, loc, stateTy);
+  Value count = LLVM::ConstantOp::create(b, loc, i32, b.getI32IntegerAttr(0));
+  return xllvm::FifoLdFillAIE2pIntrOp::create(
+      b, loc, fifoLdType(b.getContext(), false), ptr, state, count);
+}
+
+// Lowers aievec.load_bfp16 to a FIFO fill at the block followed by one pop.
+class LoadBFP16OpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::LoadBFP16Op> {
+  using ConvertOpToLLVMPattern<aievec::LoadBFP16Op>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::LoadBFP16Op op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value filled =
+        fifoLdFill(rewriter, loc,
+                   bytePointer(rewriter, loc, op.getBase(), op.getOffset()));
+    Value popped = xllvm::FifoLdPopBFP576AIE2pIntrOp::create(
+        rewriter, loc, fifoLdType(rewriter.getContext(), true),
+        LLVM::ExtractValueOp::create(rewriter, loc, filled, 0),
+        LLVM::ExtractValueOp::create(rewriter, loc, filled, 1),
+        LLVM::ExtractValueOp::create(rewriter, loc, filled, 2));
+    rewriter.replaceOp(
+        op, {LLVM::ExtractValueOp::create(rewriter, loc, popped, 3),
+             LLVM::ExtractValueOp::create(rewriter, loc, popped, 4)});
+    return success();
+  }
+};
+
+// Lowers aievec.fifo_start to the byte's address and an empty FIFO state.
+class FifoStartOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::FifoStartOp> {
+  using ConvertOpToLLVMPattern<aievec::FifoStartOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::FifoStartOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Type i32 = rewriter.getI32Type();
+    auto stateTy = VectorType::get({32}, i32);
+    Value next = bytePointer(rewriter, loc, op.getBase(), op.getOffset());
+    // The state is undefined until the first fill sets it.
+    Value state = LLVM::UndefOp::create(rewriter, loc, stateTy);
+    Value count = LLVM::ConstantOp::create(rewriter, loc, i32,
+                                           rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOp(op, {next, state, count});
+    return success();
+  }
+};
+
+// Lowers aievec.fifo_st_push_bfp16 to a push followed by a flush.
+class FifoStPushBFP16OpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::FifoStPushBFP16Op> {
+  using ConvertOpToLLVMPattern<
+      aievec::FifoStPushBFP16Op>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::FifoStPushBFP16Op op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    MLIRContext *ctx = rewriter.getContext();
+    Value ptr = adaptor.getAddr();
+    Value pushed = xllvm::FifoStPushBFP576AIE2pIntrOp::create(
+        rewriter, loc, fifoLdType(ctx, false), ptr, adaptor.getMantissas(),
+        adaptor.getExponents(), adaptor.getState(), adaptor.getCount());
+    Value flushed = xllvm::FifoStFlushAIE2pIntrOp::create(
+        rewriter, loc, fifoLdType(ctx, false),
+        LLVM::ExtractValueOp::create(rewriter, loc, pushed, 0),
+        LLVM::ExtractValueOp::create(rewriter, loc, pushed, 1),
+        LLVM::ExtractValueOp::create(rewriter, loc, pushed, 2));
+    Value next = LLVM::ExtractValueOp::create(rewriter, loc, flushed, 0);
+    rewriter.replaceOp(
+        op, {next, LLVM::ExtractValueOp::create(rewriter, loc, flushed, 1),
+             LLVM::ExtractValueOp::create(rewriter, loc, flushed, 2)});
+    return success();
+  }
+};
+
+// Lowers aievec.fifo_ld_pop_bfp16 to a pop, preceded by a fill unless
+// `no_fill` is set.
+class FifoLdPopBFP16OpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::FifoLdPopBFP16Op> {
+  using ConvertOpToLLVMPattern<
+      aievec::FifoLdPopBFP16Op>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::FifoLdPopBFP16Op op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    MLIRContext *ctx = rewriter.getContext();
+    Value ptr = adaptor.getAddr();
+    Value state = adaptor.getState(), count = adaptor.getCount();
+    // A pop consumes 576 bits and loads 512, so the FIFO is refilled first.
+    if (!op.getNoFill()) {
+      Value filled = xllvm::FifoLdFillAIE2pIntrOp::create(
+          rewriter, loc, fifoLdType(ctx, false), ptr, state, count);
+      ptr = LLVM::ExtractValueOp::create(rewriter, loc, filled, 0);
+      state = LLVM::ExtractValueOp::create(rewriter, loc, filled, 1);
+      count = LLVM::ExtractValueOp::create(rewriter, loc, filled, 2);
+    }
+    Value popped = xllvm::FifoLdPopBFP576AIE2pIntrOp::create(
+        rewriter, loc, fifoLdType(ctx, true), ptr, state, count);
+    SmallVector<Value> results;
+    for (int64_t i = 0; i < 5; ++i)
+      results.push_back(LLVM::ExtractValueOp::create(rewriter, loc, popped, i));
+    rewriter.replaceOp(op, results);
+    return success();
+  }
+};
+
+// Lowers aievec.matmul_aie2p_bfp16 to mac_8x8_8x8T_conf. A 4-row
+// accumulator uses the first 32 of the 64 lanes.
+class MatMulBFP16OpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MatMulBFP16Op_AIE2P> {
+  using ConvertOpToLLVMPattern<
+      aievec::MatMulBFP16Op_AIE2P>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::MatMulBFP16Op_AIE2P op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto accTy = cast<VectorType>(op.getAcc().getType());
+    auto accFlatTy = getFlattenedVectorType(accTy);
+    Type i32ty = rewriter.getI32Type();
+    int64_t lanes = accTy.getNumElements();
+    Value acc = forceCastValueToType(
+        rewriter, loc,
+        vector::ShapeCastOp::create(rewriter, loc, accFlatTy, adaptor.getAcc()),
+        VectorType::get({lanes}, i32ty));
+    if (lanes == 32) {
+      SmallVector<int64_t> padMask = llvm::to_vector(llvm::seq<int64_t>(0, 32));
+      padMask.append(32, vector::ShuffleOp::kPoisonIndex);
+      acc = vector::ShuffleOp::create(rewriter, loc, acc, acc, padMask);
+    }
+    auto conf = LLVM::ConstantOp::create(rewriter, loc, i32ty,
+                                         rewriter.getI32IntegerAttr(780));
+    Value res = xllvm::MacConfBFP576ACC2048AIE2pIntrOp::create(
+        rewriter, loc, VectorType::get({64}, i32ty), adaptor.getLhsMantissas(),
+        adaptor.getLhsExponents(), adaptor.getRhsMantissas(),
+        adaptor.getRhsExponents(), acc, conf);
+    if (lanes == 32)
+      res = vector::ShuffleOp::create(
+          rewriter, loc, res, res, llvm::to_vector(llvm::seq<int64_t>(0, 32)));
+    res = forceCastValueToType(rewriter, loc, res, accFlatTy);
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, accTy, res);
+    return success();
+  }
+};
 
 class MatMulOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P> {
@@ -4516,76 +4730,6 @@ class MatMulOpAIE2pConversion
                    VectorType::get({64}, rewriter.getI16Type()),
                    VectorType::get({32}, rewriter.getI64Type()), i32ty}))
               .getResult();
-      break;
-    }
-    case K::AIE2P_BFP16_8x8x8: {
-      // <8x8xbf16> x <8x8xbf16> + <8x8xf32>
-      // This implements the 8×8×8 BF16 matmul using BFP16 format
-      // Following the aie_api reference implementation that converts to BFP16
-      auto v32f32Ty = VectorType::get({32}, rewriter.getF32Type());
-
-      // Step 1: Convert LHS v64bfloat16 to v64accfloat (in two v32 chunks)
-      Value lhs = getLhs();
-      auto lhs32bf16_lo = vector::ShuffleOp::create(
-          rewriter, loc, lhs, lhs, llvm::to_vector(llvm::seq<int64_t>(0, 32)));
-      auto lhs32bf16_hi = vector::ShuffleOp::create(
-          rewriter, loc, lhs, lhs, llvm::to_vector(llvm::seq<int64_t>(32, 64)));
-      auto lhs32f32_lo = xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v32f32Ty, lhs32bf16_lo);
-      auto lhs32f32_hi = xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v32f32Ty, lhs32bf16_hi);
-
-      // Concat to v64accfloat
-      auto lhs64f32 =
-          vector::ShuffleOp::create(rewriter, loc, lhs32f32_lo, lhs32f32_hi,
-                                    llvm::to_vector(llvm::seq<int64_t>(0, 64)));
-
-      // Step 2: Widen the [n, k] RHS to accfloat
-      auto rhsNK = widenBF16ToAccFloat(rewriter, loc, i32ty, getRhs());
-
-      // Step 3: BFP16 8×8 matmul
-      auto conf780 = LLVM::ConstantOp::create(rewriter, loc, i32ty,
-                                              rewriter.getI32IntegerAttr(780));
-      matMulResVal = performBFP16_8x8MatMul(
-          rewriter, loc, i32ty, lhs64f32, rhsNK,
-          forceCastValueToType(rewriter, loc, acc,
-                               VectorType::get({64}, rewriter.getI32Type())),
-          conf780);
-      break;
-    }
-    case K::AIE2P_BFP16_4x8x8: {
-      // <4x8xbf16> x <8x8xbf16> + <4x8xf32>
-      // LHS: 32 lanes, RHS: 64 lanes, ACC: 32 lanes
-      // Similar to 8×8×8 but only use first 32 lanes of LHS
-      auto v32f32Ty = VectorType::get({32}, rewriter.getF32Type());
-      SmallVector<int64_t> padMask = llvm::to_vector(llvm::seq<int64_t>(0, 32));
-      padMask.append(32, vector::ShuffleOp::kPoisonIndex);
-
-      // Step 1: Convert LHS v32bfloat16 to v32accfloat, then pad to v64accfloat
-      auto lhs32f32 = xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v32f32Ty, getLhs());
-      auto lhs64f32 =
-          vector::ShuffleOp::create(rewriter, loc, lhs32f32, lhs32f32, padMask);
-
-      // Step 2: Widen the [n, k] RHS to accfloat
-      auto rhsNK = widenBF16ToAccFloat(rewriter, loc, i32ty, getRhs());
-
-      // Step 3: Pad ACC from 32 to 64 i32
-      auto acc32i32 = forceCastValueToType(
-          rewriter, loc, acc, VectorType::get({32}, rewriter.getI32Type()));
-      auto acc64i32 =
-          vector::ShuffleOp::create(rewriter, loc, acc32i32, acc32i32, padMask);
-
-      // Step 4: BFP16 8×8 matmul
-      auto confCst = LLVM::ConstantOp::create(rewriter, loc, i32ty,
-                                              rewriter.getI32IntegerAttr(780));
-      auto result64i32 = performBFP16_8x8MatMul(rewriter, loc, i32ty, lhs64f32,
-                                                rhsNK, acc64i32, confCst);
-
-      // Step 5: Extract first 32 elements
-      matMulResVal =
-          vector::ShuffleOp::create(rewriter, loc, result64i32, result64i32,
-                                    llvm::to_vector(llvm::seq<int64_t>(0, 32)));
       break;
     }
     case K::AIE2P_BF16Outer_8x1x8: {
@@ -5331,6 +5475,14 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<FMAElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
   patterns.add<MatMulOpAIE2pConversion>(converter);
+  // Expand bfp16 recipes into the ops below before the generic recipe
+  // lowering applies.
+  patterns.add<ExpandBFP16MatMulAIE2pConversion>(converter, /*benefit=*/2);
+  patterns
+      .add<ToBFP16OpAIE2pConversion, MatMulBFP16OpAIE2pConversion,
+           LoadBFP16OpAIE2pConversion, FifoStartOpAIE2pConversion,
+           FifoStPushBFP16OpAIE2pConversion, FifoLdPopBFP16OpAIE2pConversion>(
+          converter);
   patterns.add<ShiftOpAIE2pConversion>(converter);
   patterns.add<MaxOpAIE2pConversion, MinOpAIE2pConversion>(converter);
   patterns.add<CmpOpAIE2pConversion, SelOpAIE2pConversion>(converter);
@@ -5356,9 +5508,12 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
 
 void populateAIEVecToLLVMConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
-    Aie2Fp32Emulation aie2Fp32EmulationOption, StringRef aieTarget) {
+    Aie2Fp32Emulation aie2Fp32EmulationOption, AIEVecTargetInfo aieTarget) {
+  assert(aieTarget.hasAIEVecLowering() && "no AIEVec lowering for target");
   populateAIEVecToLLVMCommonConversionPatterns(converter, patterns);
-  if (aieTarget == "aie2p")
+  // AIE1 and AIE2 both use the AIE2 patterns. The common patterns cover the
+  // aievec_aie1 ops.
+  if (aieTarget.isAIE2P())
     populateAIEVecToLLVMAIE2pConversionPatterns(converter, patterns);
   else
     populateAIEVecToLLVMAIE2ConversionPatterns(converter, patterns,
@@ -5395,6 +5550,29 @@ struct ConvertAIEVecToLLVMPass
   }
 
   void runOnOperation() override {
+    ModuleOp module = getOperation();
+    std::optional<AIEVecTargetInfo> targetInfo =
+        parseAIEVecTarget(aieTarget, module);
+    if (!targetInfo)
+      return signalPassFailure();
+
+    // Without an AIEVec lowering for the target, the pass leaves the module
+    // unchanged, and fails if the module has an AIEVec op to lower.
+    if (!targetInfo->hasAIEVecLowering()) {
+      WalkResult result = module.walk([&](Operation *op) {
+        if (isa_and_present<AIEVecDialect, aie1::AIEVecAIE1Dialect>(
+                op->getDialect())) {
+          op->emitOpError() << "has no LLVM lowering for target '"
+                            << getAIEVecTargetName(*targetInfo) << "'";
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
+      if (result.wasInterrupted())
+        signalPassFailure();
+      return;
+    }
+
     RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(&getContext());
 
@@ -5404,13 +5582,14 @@ struct ConvertAIEVecToLLVMPass
         [&](VectorType type) -> std::optional<Type> { return type; });
 
     populateAIEVecToLLVMConversionPatterns(converter, patterns,
-                                           aie2Fp32Emulation, aieTarget);
+                                           aie2Fp32Emulation, *targetInfo);
 
     LLVMConversionTarget target(getContext());
     target.addIllegalDialect<xilinx::aievec::AIEVecDialect,
                              xilinx::aievec::aie1::AIEVecAIE1Dialect>();
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
-                           xilinx::xllvm::XLLVMDialect, ub::UBDialect>();
+                           memref::MemRefDialect, xilinx::xllvm::XLLVMDialect,
+                           ub::UBDialect>();
 
     // Configure legalizations for AIE2/AIE2p
     configureAIEVecToLLVMLegalizations(target);

@@ -1722,6 +1722,15 @@ def _select_declared_kernels(funcs, link_with: dict[str, set[str | None]]) -> li
     ]
 
 
+def kernel_compile_jobs() -> int:
+    """Concurrent Peano kernel compiles: AIE_KERNEL_COMPILE_JOBS, else cores."""
+    try:
+        jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
+    except ValueError:
+        jobs = 0
+    return jobs if jobs > 0 else (os.cpu_count() or 1)
+
+
 def compile_external_kernels(
     funcs,
     kernel_dir,
@@ -1813,13 +1822,7 @@ def compile_external_kernels(
             pending,
             in_place=lambda f: object_cache is None or not object_cache.accepts(f),
         )
-    try:
-        jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
-    except ValueError:
-        jobs = 0
-    if jobs <= 0:
-        jobs = os.cpu_count() or 1
-    jobs = max(1, min(jobs, len(groups)))
+    jobs = max(1, min(kernel_compile_jobs(), len(groups)))
 
     if jobs == 1:
         for group in groups:
