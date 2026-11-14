@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from contextlib import contextmanager
 import itertools
-from operator import itemgetter
+from operator import index as _index, itemgetter
 
 import numpy as np
 
@@ -30,16 +30,19 @@ from .aie import (
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
+from ..extras.meta import region_op
 from ..helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
 from ..ir import (
     DictAttr,
     IntegerAttr,
+    IntegerType,
     UnitAttr,
     Type,
     InsertionPoint,
     Attribute,
     AttrBuilder,
     Value,
+    register_attribute_builder,
 )
 
 # noinspection PyUnresolvedReferences
@@ -593,3 +596,72 @@ def read_scratchpad_parameter(
     ```
     """
     return _orig_read_scratchpad_parameter(result_type, name)
+
+
+# CERT control code
+#
+# Registers and barrier ids are attributes, and the generated builders hand
+# them to an attribute builder only if one is registered, so an int or a
+# barrier name is rejected with `std::bad_cast`. The builders below accept the
+# plain values; an attribute that is already built passes through unchanged.
+
+_CERT_NUM_REGISTERS = 24  # r0..r7 local to a job, r8..r23 shared
+
+
+def _cert_index(x, what, count, shown=None):
+    shown = x if shown is None else shown
+    if isinstance(x, bool):
+        raise TypeError(f"expected {what}, got {shown!r}")
+    try:
+        index = _index(x)
+    except TypeError:
+        raise TypeError(f"expected {what}, got {shown!r}") from None
+    if not 0 <= index < count:
+        raise ValueError(f"expected {what}, got {shown!r}")
+    return index
+
+
+@register_attribute_builder("AIEX_CertRegisterAttr")
+def _cert_register_attr(x, context=None):
+    what = f"a CERT register 0..{_CERT_NUM_REGISTERS - 1}"
+    index = _cert_index(x, what, _CERT_NUM_REGISTERS)
+    return IntegerAttr.get(IntegerType.get_signless(32, context=context), index)
+
+
+def _cert_barrier_id_builder(prefix, count):
+    """Build a barrier id attribute from its assembler name or its index."""
+    what = f"a barrier {prefix}0..{prefix}{count - 1} or its index 0..{count - 1}"
+
+    def build(x, context=None):
+        if isinstance(x, str):
+            num = x[len(prefix) :] if x.startswith(prefix) else ""
+            # Only the canonical spelling, so "lb01" is not a second name for lb1.
+            if not (num.isdigit() and str(int(num)) == num):
+                raise ValueError(f"expected {what}, got {x!r}")
+            index = _cert_index(int(num), what, count, shown=x)
+        else:
+            index = _cert_index(x, what, count)
+        return IntegerAttr.get(IntegerType.get_signless(32, context=context), index)
+
+    return build
+
+
+register_attribute_builder("CertLocalBarrierId")(_cert_barrier_id_builder("lb", 16))
+register_attribute_builder("CertRemoteBarrierId")(_cert_barrier_id_builder("rb", 7))
+
+
+# The region ops are decorators, as `device` and `core` are: the decorated
+# function is the region body and the implicit `aie.end` terminator is added.
+# The op classes (`CertPageOp` and so on) remain for a caller that fills the
+# region itself.
+
+cert_section = region_op(CertSectionOp, terminator=lambda *_: EndOp())
+cert_page = region_op(CertPageOp, terminator=lambda *_: EndOp())
+cert_job = region_op(CertJobOp, terminator=lambda *_: EndOp())
+cert_attach_to_group = region_op(CertAttachToGroupOp, terminator=lambda *_: EndOp())
+cert_uc_dma_chain = region_op(
+    lambda sym_name=None, *, loc=None, ip=None: CertUcDmaChainOp(
+        sym_name=sym_name, loc=loc, ip=ip
+    ),
+    terminator=lambda *_: EndOp(),
+)
