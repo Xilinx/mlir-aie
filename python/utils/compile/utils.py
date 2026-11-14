@@ -1001,6 +1001,46 @@ def _readable_diagnostic(line: str) -> str:
     return f"[{edge['edge']}] {line[edge.end():]}" if edge else line.strip()
 
 
+# How aiecc marks placing a design again, and says which placement stands.
+_PLACING_AGAIN = "aiecc: placing again with "
+_FAILURE_STANDS_RE = re.compile(r"placement (\d+)'s failure stands$")
+_STANDS_RE = re.compile(r"^aiecc: (placement \d+ \(.*\) stands|no placement with .*)$")
+
+
+def standing_placement(log: str) -> tuple[list[str], list[str], list[str]]:
+    """Split an aiecc log around the placement that stands.
+
+    When aiecc places a design again, each placement prints as it runs, a
+    line marks where the next one starts, and one line says which placement
+    stands (the last, unless it names another whose failure stands); what
+    aiecc prints after that line reports on that placement.
+
+    Args:
+        log: aiecc's output.
+
+    Returns:
+        In log order: aiecc's lines placing again before the standing
+        placement, the lines that placement printed, and aiecc's lines after
+        it (placing again, saying which stands, and its report).
+    """
+    placements: list[list[str]] = [[]]
+    ends: list[str] = []
+    after: list[str] | None = None
+    for line in log.splitlines():
+        if after is not None:
+            after.append(line)
+        elif line.startswith(_PLACING_AGAIN):
+            ends.append(line)
+            placements.append([])
+        elif _STANDS_RE.match(line.rstrip()):
+            after = [line.rstrip()]
+        else:
+            placements[-1].append(line)
+    stands = _FAILURE_STANDS_RE.search(after[0]) if after else None
+    index = int(stands[1]) - 1 if stands else len(placements) - 1
+    return ends[:index], placements[index], ends[index:] + (after or [])
+
+
 def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
     """Return the compiler diagnostics in an aiecc log, without the MLIR dumps.
 
@@ -1009,25 +1049,38 @@ def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
     naming the fix hundreds of lines from either end of the log, so neither
     the head nor the tail of a failure is worth showing on its own. Keep the
     ``error:`` and ``warning:`` lines and the edge aiecc gave up on, in order
-    and without repeats.
+    and without repeats, at most `limit` of them. When aiecc placed the design
+    more than once, only the placement that stands is summarised, in log
+    order between aiecc's lines placing again and saying which stands, which
+    are always kept.
     """
-    lines = log.splitlines()
+    before, standing, after = standing_placement(log)
     kept: list[str] = []
     seen: set[str] = set()
-    for line in lines:
-        if "error: " in line or "warning: " in line:
-            keep = _readable_diagnostic(line)
-        elif line.startswith("aiecc: ") and line.rstrip().endswith("failed"):
-            keep = line.rstrip()
-        else:
-            continue
-        if keep in seen:
-            continue
-        seen.add(keep)
-        kept.append(keep)
-        if len(kept) == limit:
-            kept.append(f"... truncated, see the full log ({len(lines)} lines)")
-            break
+    summarised = 0
+    for section in (before, standing, after):
+        for line in section:
+            if line.startswith(_PLACING_AGAIN) or _STANDS_RE.match(line):
+                keep = line
+            elif "error: " in line or "warning: " in line:
+                keep = _readable_diagnostic(line)
+            elif line.startswith("aiecc: ") and line.rstrip().endswith("failed"):
+                keep = line.rstrip()
+            else:
+                continue
+            if keep in seen:
+                continue
+            seen.add(keep)
+            kept.append(keep)
+            if section is not standing:
+                continue
+            summarised += 1
+            if summarised == limit:
+                kept.append(
+                    f"... truncated, see the full log ({len(log.splitlines())} "
+                    "lines)"
+                )
+                break
     return kept
 
 
@@ -1079,7 +1132,13 @@ def _run_aiecc(
         # debug logging is off by default and the failure path below only runs
         # on a non-zero exit.
         if proc.returncode == 0:
-            for line in stderr.splitlines():
+            # Only the placement that stands, and the line saying which it is:
+            # an earlier placement's errors were what aiecc placed again for.
+            _, standing, after = standing_placement(stderr)
+            for line in after:
+                if _STANDS_RE.match(line):
+                    print(f"[aiecc] {line}", file=sys.stderr)
+            for line in standing + after:
                 # Notes are the explanation, not decoration. A warning that
                 # queue-depth enforcement could not be applied says why in an
                 # attached note, so dropping notes leaves the generic overflow
@@ -1115,7 +1174,7 @@ def _run_aiecc(
                     f"\nThe design's IR, each op noted with its source: {readable_path}"
                 )
         exc = RuntimeError(message)
-        attach_tool_location(exc, error_msg, ir_text)
+        attach_tool_location(exc, "\n".join(standing_placement(error_msg)[1]), ir_text)
         raise exc
 
 

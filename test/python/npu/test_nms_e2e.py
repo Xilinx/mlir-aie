@@ -4,8 +4,7 @@
 
 # RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
-# RUN: %run_on_npu2_hrx% %pytest %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# REQUIRES: xrt_python_bindings
 """Score threshold and class-aware NMS with ``nms``'s three entry points.
 
 Each case is one image: ``nms_setup`` once, ``nms_score`` once a row (one

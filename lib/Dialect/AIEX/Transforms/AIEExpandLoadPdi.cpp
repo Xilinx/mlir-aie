@@ -284,8 +284,29 @@ verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
         return existing->emitOpError()
                << "is named '" << initEntrySequenceName
                << "', which aie-expand-load-pdi reserves under init-entry";
-  if (!teardown)
+  if (!teardown) {
+    // Without a teardown, a reload clears the array, so a later
+    // configuration's buffer resident on the same global as an earlier one's
+    // in the same runtime sequence finds it gone.
+    llvm::DenseMap<Operation *, AIE::DeviceOp> previous;
+    for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
+      if (expandMode(loadPdiOp) == AIEX::ExpandMode::none)
+        continue;
+      auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
+      if (!seq)
+        continue;
+      auto dev =
+          module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
+      if (!dev)
+        continue;
+      AIE::DeviceOp &prevDevice = previous[seq];
+      if (prevDevice &&
+          failed(AIEX::checkNoSharedResident(loadPdiOp, prevDevice, dev)))
+        return failure();
+      prevDevice = dev;
+    }
     return success();
+  }
   for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
     if (expandMode(loadPdiOp) == AIEX::ExpandMode::none)
       continue;

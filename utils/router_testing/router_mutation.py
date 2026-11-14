@@ -28,14 +28,12 @@ Failures are shrunk with router_shrink.py (--shrink) and written to --repros.
 """
 
 import argparse
-import json
 import random
-import subprocess
 import sys
 import time
 import traceback
 from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(
@@ -738,10 +736,12 @@ REPORTED = {
 }
 
 
-def judge(e, expect, hops_on, seed):
+def judge(e, expect, hops_on, seed, deadline=None):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
-    model-limit."""
+    model-limit, strict-miss (tallied, not failed: the properties ratchet it,
+    see max_strict_misses). Every router run stops by `deadline`, a
+    time.monotonic() value, if given."""
     why = must_reject(e)
     try:
         e = rp.canonical(e)
@@ -749,7 +749,9 @@ def judge(e, expect, hops_on, seed):
         if not why:
             return "model-limit", f"emit: {x!r}"
         # The IR verifier rejects it before the router runs.
-        p = rp.aie_opt(e.emit(), hops_on, timeout=120)
+        p = rp.aie_opt(e.emit(), hops_on, deadline=deadline)
+        if failure := rp.run_failure(p):
+            return failure
         if p.returncode == 0:
             return "soundness", f"router routes it, must reject: {why}"
         return "ok", f"rejected by the verifier ({why})"
@@ -758,14 +760,16 @@ def judge(e, expect, hops_on, seed):
         expect = "reject"
     elif expect == "model":
         try:
-            v = rp.verdict(e, hops_on, seed)
+            v = rp.verdict(e, hops_on, seed, deadline)
+        except rp.ModelRunFailed as x:
+            return x.outcome, f"model: {x}"
         except Exception as x:
             return "model-limit", f"verdict: {x!r}"
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
         why = v["reason"]
-    p = rp.aie_opt(e.emit(), hops_on, timeout=120)
-    if p.returncode < 0:
-        return "crash", rp.first_error(p.stderr)[:300]
+    p = rp.aie_opt(e.emit(), hops_on, deadline=deadline)
+    if failure := rp.run_failure(p):
+        return failure
     if p.returncode:
         err = rp.first_error(p.stderr)
         if expect != "route":
@@ -786,6 +790,59 @@ def judge(e, expect, hops_on, seed):
         if rp.known_bug(e, problems):
             return "known", problems[0][:200]
         return "illegal", problems[0][:300]
+    # With allow-deadlock-prone the first routing with only that hold cycle
+    # stands; without it the router tries further, and has to succeed where
+    # a routing without the cycle exists.
+    if rp.shared_receiver_warning(p.stderr) is not None:
+        return judge_strict(
+            e,
+            expect,
+            hops_on,
+            rp.aie_opt(e.emit(), hops_on, strict=True, deadline=deadline),
+            deadline,
+        )
+    return "ok", f"routed ({expect})"
+
+
+def judge_strict(e, expect, hops_on, s, deadline=None):
+    """Hold the router's run on `e` without allow-deadlock-prone to what
+    judge() holds its run with allow-deadlock-prone to.
+
+    Args:
+        e: The canonical design.
+        expect: What judge() expects of `e`, to name in the detail.
+        hops_on: Whether circuit-switch hops are on.
+        s: The router's run on `e` without allow-deadlock-prone.
+        deadline: A `time.monotonic()` value the witness search's router runs
+            stop by, as judge()'s do.
+
+    Returns:
+        (outcome, detail) as judge() returns them. A rejection is "ok" unless
+        the witness search finds a routing without a hold cycle, which makes
+        it a "strict-miss".
+    """
+    if failure := rp.run_failure(s):
+        return failure[0], f"strict: {failure[1]}"
+    if s.returncode:
+        try:
+            witness = rp.strict_witness(e, rp.Analysis(e), deadline=deadline)
+        except rp.ModelRunFailed as x:
+            return x.outcome, f"strict witness: {x}"
+        if witness is not None:
+            return "strict-miss", "fails without allow-deadlock-prone, needlessly"
+        return "ok", "rejected strict, and no routing without a hold cycle is known"
+    try:
+        problems, stats = rp.verify(e, rp.Analysis(e), s.stdout, hops_on)
+    except Exception as x:
+        return "model-limit", f"strict verify: {x!r}"
+    if stats["shared_receiver_cycle"] is not None:
+        problems.append(
+            f"strict routing keeps a hold cycle: {stats['shared_receiver_cycle']}"
+        )
+    if problems:
+        if rp.known_bug(e, problems):
+            return "known", problems[0][:200]
+        return "illegal", f"strict: {problems[0][:300]}"
     return "ok", f"routed ({expect})"
 
 
@@ -897,16 +954,6 @@ def r_rename(rng, d, routed):
     return f"ids x -> x ^ {c}", rename(d, c), None
 
 
-def find_flows(text):
-    p = subprocess.run(
-        [rp.aie_opt_path(), "--aie-find-flows", "-"],
-        input=text,
-        capture_output=True,
-        text=True,
-    )
-    return p
-
-
 def flow_set(d):
     return (
         frozenset(d.flows),
@@ -951,7 +998,7 @@ def delivered(x, d):
 def r_lift(rng, d, routed):
     """aie-find-flows lifts the routing back into the flows the design asked
     for, and routing those again lifts to the same."""
-    p = find_flows(routed)
+    p = rp.model_run(rp.find_flows(routed), "lifting the routing")
     if p.returncode:
         return "lift", None, f"aie-find-flows fails: {rp.first_error(p.stderr)[:200]}"
     lifted = rp.load_design(p.stdout)
@@ -978,7 +1025,7 @@ def r_lift(rng, d, routed):
         return "lift", None, f"lifting the routing loses {lost}, adds {extra}"
 
     def check(text):
-        q = find_flows(text)
+        q = rp.model_run(rp.find_flows(text), "lifting the rerouted output")
         if q.returncode:
             return f"aie-find-flows fails on the rerouted output: {rp.first_error(q.stderr)[:200]}"
         again = rp.load_design(q.stdout)
@@ -1309,6 +1356,56 @@ def shared_pairs(d, routed):
     return {(a, b) for a in links for b in links if a != b and links[a] & links[b]}
 
 
+def judge_relation(name, what, d, routed, e, check, trees, hops_on, seed):
+    """Route `e`, the design relation `name` made from `d`, and hold the
+    output to the relation.
+
+    Args:
+        name: The relation's name.
+        what: What the relation changed, to name it in the detail.
+        d: The design.
+        routed: The router's output for `d`.
+        e: The design the relation made.
+        check: The relation's check of the output for `e`, or None.
+        trees: The prioritized trees routed so far, as priority_trees keeps
+            them.
+        hops_on: Whether circuit-switch hops are on.
+        seed: The design's seed, for the model.
+
+    Returns:
+        (outcome, detail), outcome one of ok, broken, known, partial-lift,
+        lift-overlap, model-limit, timeout, crash, or one of judge()'s where
+        the model judges.
+    """
+    try:
+        q = rp.model_run(rp.aie_opt(e.emit(), hops_on), "routing the related design")
+        # Reshaping flows can move a prioritized source's own route (see the
+        # pinned overlay in AIECreatePathFindFlows.cpp), so the model judges.
+        if q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(e, trees):
+            outcome, detail = judge(e, "model", hops_on, seed)
+            return outcome, f"{what}: {detail}"
+        if q.returncode:
+            err = rp.first_error(q.stderr)
+            kind = "known" if rp.known_bug(e, [err]) else "broken"
+            if check is not None and vars(check).get("partial", False):
+                kind = "partial-lift"
+            if name == "lift" and "which both match id" in err:
+                kind = "lift-overlap"
+            return kind, f"{what}: router fails: {err[:200]}"
+        try:
+            ce = rp.canonical(e)
+            probs, _ = rp.verify(ce, rp.Analysis(ce), q.stdout, hops_on)
+        except Exception as x:
+            return "model-limit", f"{what}: {x!r}"
+        bad = probs[0] if probs else (check(q.stdout) if check else None)
+    except rp.ModelRunFailed as x:
+        return x.outcome, f"{what}: {x}"
+    if bad:
+        return "broken", f"{what}: {bad[:300]}"
+    same = name == "permute" and routing_key(q.stdout) == routing_key(routed)
+    return "ok", what + (" (same routing)" if same else "")
+
+
 # Driver.
 
 
@@ -1317,6 +1414,8 @@ def run_seed(seed, args):
     hops_on = not args.hops_off
     try:
         case = rp.generate(seed, device=args.device)
+    except rp.ModelRunFailed as x:
+        return [("base", x.outcome, "generate", str(x), None)]
     except Exception:
         return [
             ("base", "model-limit", "generate", traceback.format_exc(limit=2), None)
@@ -1324,7 +1423,10 @@ def run_seed(seed, args):
     if case is None:
         return rows
     d = case["design"]
-    p = rp.aie_opt(d.emit(), hops_on, timeout=120)
+    try:
+        p = rp.model_run(rp.aie_opt(d.emit(), hops_on), "routing the design")
+    except rp.ModelRunFailed as x:
+        return [("base", x.outcome, "", str(x), d)]
     if p.returncode:
         return [("base", "base-fails", "", rp.first_error(p.stderr)[:200], d)]
     routed = p.stdout
@@ -1351,6 +1453,9 @@ def run_seed(seed, args):
             continue
         try:
             m = fn(random.Random(f"{seed}-{name}"), d, ctx)
+        except rp.ModelRunFailed as x:
+            rows.append(("mutator", x.outcome, name, str(x), d))
+            continue
         except Exception:
             rows.append(
                 ("mutator", "model-limit", name, traceback.format_exc(limit=3), d)
@@ -1369,6 +1474,9 @@ def run_seed(seed, args):
             continue
         try:
             m = fn(random.Random(f"{seed}-{name}"), d, routed)
+        except rp.ModelRunFailed as x:
+            rows.append(("relation", x.outcome, name, str(x), d))
+            continue
         except Exception:
             rows.append(
                 ("relation", "model-limit", name, traceback.format_exc(limit=3), d)
@@ -1381,44 +1489,10 @@ def run_seed(seed, args):
         if e is None:
             rows.append(("relation", "broken", name, f"{what}: {check}", d))
             continue
-        q = rp.aie_opt(e.emit(), hops_on, timeout=120)
-        # Reshaping flows can move a prioritized source's own route (see the
-        # pinned overlay in AIECreatePathFindFlows.cpp), so the model judges.
-        if q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(e, trees):
-            outcome, detail = judge(e, "model", hops_on, seed)
-            rows.append(("relation", outcome, name, f"{what}: {detail}", e))
-            continue
-        if q.returncode:
-            err = rp.first_error(q.stderr)
-            kind = "known" if rp.known_bug(e, [err]) else "broken"
-            if getattr(check, "partial", False):
-                kind = "partial-lift"
-            if name == "lift" and "which both match id" in err:
-                kind = "lift-overlap"
-            rows.append(
-                ("relation", kind, name, f"{what}: router fails: {err[:200]}", e)
-            )
-            continue
-        try:
-            ce = rp.canonical(e)
-            probs, _ = rp.verify(ce, rp.Analysis(ce), q.stdout, hops_on)
-        except Exception as x:
-            rows.append(("relation", "model-limit", name, f"{what}: {x!r}", e))
-            continue
-        bad = probs[0] if probs else (check(q.stdout) if check else None)
-        same = name == "permute" and routing_key(q.stdout) == routing_key(routed)
-        if bad:
-            rows.append(("relation", "broken", name, f"{what}: {bad[:300]}", e))
-        else:
-            rows.append(
-                (
-                    "relation",
-                    "ok",
-                    name,
-                    f"{what}" + (" (same routing)" if same else ""),
-                    None,
-                )
-            )
+        outcome, detail = judge_relation(
+            name, what, d, routed, e, check, trees, hops_on, seed
+        )
+        rows.append(("relation", outcome, name, detail, None if outcome == "ok" else e))
 
     if not args.only or "kill" in args.only:
         kctx = kill_context(d, an, routed)
@@ -1460,17 +1534,19 @@ def shrink_failure(kind, name, payload, hops_on, seed, verbose, deadline):
         # smaller design no longer has, so only the model can vouch for it.
         if expect == "route":
             expect = "model"
-            if judge(e, expect, hops_on, seed)[0] == "ok":
+            if judge(e, expect, hops_on, seed, deadline)[0] == "ok":
                 return e, True
             if time.monotonic() >= deadline:
                 return e, False
-        first, _ = judge(e, expect, hops_on, seed)
+        first, _ = judge(e, expect, hops_on, seed, deadline)
 
         def holds(x):
             try:
-                return judge(x, expect, hops_on, seed)[0] == first
+                outcome = judge(x, expect, hops_on, seed, deadline)[0]
             except Exception:
                 return False
+            # A judgement the deadline cut short shows nothing about `x`.
+            return outcome == first and time.monotonic() < deadline
 
         return shrinker.shrink(
             rp.canonical(e),
@@ -1478,6 +1554,79 @@ def shrink_failure(kind, name, payload, hops_on, seed, verbose, deadline):
             budget_s=max(0.0, deadline - time.monotonic()),
         )
     return payload, True
+
+
+# Outcomes that fail the run.
+BAD = {
+    "completeness",
+    "soundness",
+    "illegal",
+    "crash",
+    "timeout",
+    "broken",
+    "survived",
+    "base-fails",
+    "base-illegal",
+    "model-limit",
+}
+
+
+class MutationReport:
+    """The mutation run's report: the tally of the seeds finished so far,
+    replaced whole each time a seed finishes, so a run its job's time limit
+    stops still leaves what it found.
+
+    Args:
+        path: Where to write it.
+        device: The run's device.
+        hops_off: Whether circuit-switch hops are off.
+        first_seed: The run's first seed.
+        seeds: How many seeds the run is to try.
+    """
+
+    def __init__(self, path, device, hops_off, first_seed, seeds):
+        self.path, self.device, self.hops_off = path, device, hops_off
+        self.first_seed, self.seeds = first_seed, seeds
+
+    def write(self, results, partial):
+        """Replace the report whole.
+
+        Args:
+            results: (seed, rows) of each seed finished, in any order.
+            partial: Whether seeds are left, so the report covers only those
+                done.
+        """
+        rows = [(seed, row) for seed, seed_rows in sorted(results) for row in seed_rows]
+        kills = Counter(row[1] for _, row in rows if row[0] == "kill")
+        rp.write_json(
+            self.path,
+            {
+                "device": self.device,
+                "hops": "off" if self.hops_off else "on",
+                "first_seed": self.first_seed,
+                "seeds": self.seeds,
+                "seeds_done": len(results),
+                "partial": partial,
+                "killed": kills["killed"],
+                "survived": kills["survived"],
+                "failures": [
+                    {
+                        "seed": seed,
+                        "kind": kind,
+                        "name": name,
+                        "outcome": outcome,
+                        "detail": detail.strip()[:300],
+                    }
+                    for seed, (kind, outcome, name, detail, _) in rows
+                    if outcome in BAD
+                ],
+                "strict_misses": [
+                    {"seed": seed, "kind": kind, "name": name}
+                    for seed, (kind, outcome, name, _, _) in rows
+                    if outcome == "strict-miss"
+                ],
+            },
+        )
 
 
 def main():
@@ -1502,27 +1651,29 @@ def main():
     args = cli.parse_args()
     t0 = time.monotonic()
     seeds = range(args.first_seed, args.first_seed + args.seeds)
+    results = []
+    report = args.report and MutationReport(
+        args.report, args.device, args.hops_off, args.first_seed, args.seeds
+    )
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(lambda s: (s, run_seed(s, args)), seeds))
+        futures = {pool.submit(run_seed, s, args): s for s in seeds}
+        for future in as_completed(futures):
+            results.append((futures[future], future.result()))
+            if report:
+                report.write(results, partial=True)
+    results.sort(key=lambda r: r[0])
 
     tally = defaultdict(Counter)
     failures = []
-    bad = {
-        "completeness",
-        "soundness",
-        "illegal",
-        "crash",
-        "broken",
-        "survived",
-        "base-fails",
-        "base-illegal",
-        "model-limit",
-    }
+    # Strict misses are saved with the failures, but do not fail the run.
+    misses = []
     for seed, rows in results:
         for kind, outcome, name, detail, payload in rows:
             tally[(kind, name)][outcome] += 1
-            if outcome in bad:
+            if outcome in BAD:
                 failures.append((seed, kind, outcome, name, detail, payload))
+            elif outcome == "strict-miss":
+                misses.append((seed, kind, outcome, name, detail, payload))
     for (kind, name), c in sorted(tally.items()):
         print(
             f"{kind:9} {name:18} " + ", ".join(f"{k} {v}" for k, v in sorted(c.items()))
@@ -1536,11 +1687,15 @@ def main():
         f"kill rate: {kills['killed']}/{total}"
         + (f" = {kills['killed'] / total:.3f}" if total else "")
     )
+    print(f"strict misses: {len(misses)}")
     seen = Counter()
-    for seed, kind, outcome, name, detail, payload in failures:
+    for seed, kind, outcome, name, detail, payload in failures + misses:
         seen[(kind, outcome, name)] += 1
         if seen[(kind, outcome, name)] <= (10 if args.v else 3):
-            print(f"FAIL seed {seed} {kind} {name} {outcome}: {detail.strip()[:400]}")
+            label = "MISS" if outcome == "strict-miss" else "FAIL"
+            print(
+                f"{label} seed {seed} {kind} {name} {outcome}: {detail.strip()[:400]}"
+            )
         if args.out and payload is not None:
             args.out.mkdir(parents=True, exist_ok=True)
             text = (
@@ -1552,24 +1707,8 @@ def main():
             )
             (args.out / f"{kind}-{name}-{outcome}-{seed}.mlir").write_text(text)
     # Written before shrinking, which can outlast the job's timeout.
-    if args.report:
-        args.report.write_text(
-            json.dumps(
-                {
-                    "device": args.device,
-                    "hops": "off" if args.hops_off else "on",
-                    "first_seed": args.first_seed,
-                    "seeds": args.seeds,
-                    "killed": kills["killed"],
-                    "survived": kills["survived"],
-                    "failures": [
-                        {"seed": seed, "kind": kind, "name": name, "outcome": outcome}
-                        for seed, kind, outcome, name, _, _ in failures
-                    ],
-                },
-                indent=1,
-            )
-        )
+    if report:
+        report.write(results, partial=False)
     if args.shrink:
         done = set()
         # One deadline for the whole shrink phase, not one per failure.

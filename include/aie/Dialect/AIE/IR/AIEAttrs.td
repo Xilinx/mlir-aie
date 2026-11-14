@@ -235,6 +235,48 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 def PacketInfoArrayAttr
     : TypedArrayAttrBase<PacketInfoAttr, "array of packet headers">;
 
+def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
+  let mnemonic = "consumed_by";
+  let summary = "An output whose progress proves a shim input consumed";
+  let description = [{
+    Held in the `consumed_by` of a shim input: its `aie.route_endpoint` until
+    `--aie-objectfifo-allocate`, its `aie.shim_dma_allocation` after.
+    `--aie-objectfifo-verify` records one where the design proves that, once
+    the host has received `R` bytes through `output` since the array was
+    loaded, the input's first `G(R) * input_bytes / output_bytes` bytes have
+    left the shim, taken by the tile they went to, so the transfers that sent
+    them have finished. `G(R)` is `R`, or with a nonzero `granule_bytes` `g`,
+    `R` rounded down to a multiple of `g`: the input's bytes then reach the
+    output through a later segment of a join, whose drainer takes it only
+    after the segments ahead of it in each object.
+    `--aie-assign-runtime-sequence-bd-ids` credits that completion when an
+    await retires a transfer on `output`.
+
+    The proof describes the array of the device holding it, or of `device`:
+    `--aie-materialize-runtime-sequences` sets that on the copies it makes in
+    another device, and BD id assignment credits it only while that device's
+    PDI is loaded.
+
+    ```
+      aie.shim_dma_allocation @in(%shim, MM2S, 0) {consumed_by = [
+          #aie.consumed_by<output = @out, input_bytes = 256,
+                           output_bytes = 6144>]}
+    ```
+  }];
+
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$output,
+      "int64_t":$input_bytes, "int64_t":$output_bytes,
+      DefaultValuedParameter<"int64_t", "0">:$granule_bytes,
+      OptionalParameter<"::mlir::FlatSymbolRefAttr">:$device);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
+def ConsumedByArrayAttr
+    : TypedArrayAttrBase<ConsumedByAttr,
+                         "outputs whose progress proves a shim input consumed">;
+
 def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
   let mnemonic = "bd_iteration";
   let summary = [{

@@ -7,9 +7,15 @@
 
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/CheckedArithmetic.h"
+#include "llvm/Support/MathExtras.h"
+
+#include <set>
 
 using namespace mlir;
 using namespace xilinx;
@@ -197,9 +203,18 @@ memref::GlobalOp AIEX::BlockwriteData::getOrCreate(OpBuilder &builder,
   return global;
 }
 
+uint64_t AIEX::getBdAddressUnit(const AIE::AIETargetModel &targetModel, int col,
+                                int row) {
+  return targetModel.isShimNOCTile(col, row)
+             ? 1
+             : targetModel.getAddressGenGranularity() / 8;
+}
+
 LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
-    uint64_t registerAddr) {
+    uint64_t registerAddr, const AIE::AIETargetModel &targetModel, int col,
+    int row, std::optional<uint64_t> staticByteAddress,
+    OpFoldResult lengthField) {
   auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("offset_state_table_idx");
   assert(idxAttr && "emitUpdateBdAddressFromOffsetParameter called without "
                     "offset_state_table_idx attribute");
@@ -207,14 +222,65 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
   uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
 
-  // Use func=mul with func_arg=elemBytes so the firmware computes
-  // StateTable[idx] * elemBytes = byte offset, added into the BD address
-  // register.
+  const AIE::DmaBdLayout *layout = targetModel.getDmaBdLayout(col, row);
+  if (!layout)
+    return bdOp->emitOpError("has no buffer descriptor layout on this tile");
+  const AIE::DmaBdField &addressField = layout->bufferOffset;
+  // The firmware adds StateTable[idx] * func_arg into the register holding the
+  // address field.
+  uint64_t unit = getBdAddressUnit(targetModel, col, row);
+  uint64_t perElement = uint64_t{elemBytes} << addressField.shift;
+  if (perElement % unit || perElement / unit > UINT32_MAX)
+    return bdOp->emitOpError("a runtime offset into ")
+           << elemBytes
+           << "-byte elements cannot be added to this tile's buffer "
+              "descriptor address, which counts "
+           << unit << "-byte units from bit " << int{addressField.shift};
+  // It also clears bits [1:0] of that register. An address field from bit 0
+  // loses its own low bits, so the buffer must start on that step, as the
+  // offset moves by it (offset_multiple); one higher up loses another field's,
+  // restored below.
+  uint64_t step = addressField.shift < 2 ? unit << (2 - addressField.shift) : 0;
+  if (step && unit > 1 && (!staticByteAddress || *staticByteAddress % step))
+    return bdOp->emitOpError("a runtime offset needs the buffer at a multiple "
+                             "of ")
+           << step
+           << " bytes, as the firmware clears the address's low two bits "
+              "when it adds the offset";
+  Location loc = bdOp->getLoc();
   AIEX::NpuUpdateFromScratchpadOp::create(
-      builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
-      /*func_arg=*/elemBytes,
+      builder, loc, stateIdx, AIEX::StateTableFunc::Mul,
+      /*func_arg=*/static_cast<uint32_t>(perElement / unit),
       /*address=*/static_cast<uint32_t>(registerAddr),
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  if (step)
+    return success();
+  const AIE::DmaBdField &lengthBits = layout->bufferLength;
+  if (lengthBits.word != addressField.word || lengthBits.shift != 0 ||
+      !lengthField)
+    return bdOp->emitOpError("a runtime offset would clear bits [1:0] of a "
+                             "buffer descriptor register it cannot restore");
+  // Created one at a time: the order of a call's arguments is unspecified, and
+  // the constants' order shows in the output.
+  Value address = arith::ConstantOp::create(
+      builder, loc,
+      builder.getI32IntegerAttr(static_cast<int32_t>(registerAddr)));
+  Value lowBits, mask;
+  if (std::optional<int64_t> length = getConstantIntValue(lengthField)) {
+    lowBits = arith::ConstantOp::create(
+        builder, loc,
+        builder.getI32IntegerAttr(static_cast<int32_t>(
+            lengthBits.place(static_cast<uint64_t>(*length)) & 0x3)));
+    mask =
+        arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0x3));
+  } else {
+    mask =
+        arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0x3));
+    lowBits =
+        arith::AndIOp::create(builder, loc, cast<Value>(lengthField), mask);
+  }
+  AIEX::NpuMaskWrite32Op::create(builder, loc, address, lowBits, mask, nullptr,
+                                 nullptr, nullptr);
   return success();
 }
 
@@ -248,6 +314,96 @@ LogicalResult AIEX::emitUpdateBdLengthFromParameter(
       /*func_arg=*/static_cast<uint32_t>(*unitBytes / bytesPerStateUnit),
       /*address=*/static_cast<uint32_t>(registerAddr),
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  return success();
+}
+
+std::optional<int64_t> AIEX::staticExecutions(Operation *op) {
+  int64_t count = 1;
+  for (Operation *cur = op; !isa<AIE::CoreOp, AIE::RuntimeSequenceOp>(cur);
+       cur = cur->getParentOp()) {
+    if (cur->getBlock() != &cur->getParentRegion()->front())
+      return std::nullopt;
+    Operation *parent = cur->getParentOp();
+    if (isa<AIE::CoreOp, AIE::RuntimeSequenceOp>(parent))
+      break;
+    auto forOp = dyn_cast<scf::ForOp>(parent);
+    std::optional<APInt> trips =
+        forOp ? forOp.getStaticTripCount() : std::nullopt;
+    if (!trips || trips->isNegative() || trips->sge(kRunsForever))
+      return std::nullopt;
+    std::optional<int64_t> product =
+        llvm::checkedMul(count, trips->getSExtValue());
+    if (!product)
+      return std::nullopt;
+    count = *product;
+  }
+  return count;
+}
+
+// Every parameter is at least 0, so it is enough to compare the terms one by
+// one, a term missing from either side counting as 0.
+bool AIEX::atMost(const Volume &a, int64_t scaleA, const Volume &b,
+                  int64_t scaleB) {
+  std::set<int64_t> keys;
+  for (const auto &term :
+       llvm::concat<const std::pair<const int64_t, int64_t>>(a, b))
+    keys.insert(term.first);
+  for (int64_t key : keys) {
+    auto x = a.find(key), y = b.find(key);
+    int64_t lhs = 0, rhs = 0;
+    if ((x != a.end() && llvm::MulOverflow(x->second, scaleA, lhs)) ||
+        (y != b.end() && llvm::MulOverflow(y->second, scaleB, rhs)) ||
+        lhs > rhs)
+      return false;
+  }
+  return true;
+}
+
+bool AIEX::wholeGranules(const Volume &bytes, int64_t granule) {
+  return !granule || llvm::all_of(bytes, [&](const auto &term) {
+    return term.second % granule == 0;
+  });
+}
+
+AIEX::Unbalanced AIEX::balanceUnder(AIE::ConsumedByAttr proof, const Volume &in,
+                                    const Volume &out) {
+  if (!wholeGranules(out, proof.getGranuleBytes()))
+    return Unbalanced::PartGranule;
+  if (!atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
+    return Unbalanced::Excess;
+  return Unbalanced::No;
+}
+
+bool AIEX::namesFifo(Operation *op, StringRef fifo,
+                     SymbolTableCollection &symbols) {
+  auto uses = SymbolTable::getSymbolUses(op);
+  return uses && llvm::any_of(*uses, [&](const SymbolTable::SymbolUse &use) {
+           auto end = dyn_cast_or_null<AIE::RouteEndpoint>(
+               symbols.lookupNearestSymbolFrom(op, use.getSymbolRef()));
+           return end && end.getFifoName() == fifo;
+         });
+}
+
+LogicalResult AIEX::checkNoSharedResident(Operation *reload,
+                                          AIE::DeviceOp before,
+                                          AIE::DeviceOp after) {
+  for (auto earlier : before.getOps<AIE::BufferOp>()) {
+    FlatSymbolRefAttr resident = earlier.getResidentAttr();
+    if (!resident)
+      continue;
+    for (auto later : after.getOps<AIE::BufferOp>()) {
+      if (later.getResidentAttr() != resident)
+        continue;
+      InFlightDiagnostic diag =
+          reload->emitOpError("resets the array between @")
+          << before.getSymName() << " and @" << after.getSymName()
+          << ", which both hold a buffer resident on " << resident
+          << "; needs --reconfig-teardown";
+      diag.attachNote(earlier.getLoc()) << "resident here";
+      diag.attachNote(later.getLoc()) << "resident here";
+      return diag;
+    }
+  }
   return success();
 }
 
@@ -313,6 +469,18 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
       os << " " << ref.getValue();
     os << "\n";
   }
+
+  // Last, and only when there are any, so a reader that predates it stops
+  // before it.
+  SmallVector<std::pair<StringRef, uint32_t>> multiples;
+  for (auto p : allParams)
+    if (std::optional<uint32_t> multiple = p.getOffsetMultiple())
+      multiples.push_back({p.getSymName(), *multiple});
+  if (multiples.empty())
+    return;
+  os << multiples.size() << "\n";
+  for (auto [name, multiple] : multiples)
+    os << name << " " << multiple << "\n";
 }
 
 bool AIEX::getReachableConfigures(
@@ -356,4 +524,60 @@ AIEX::DMAConfigureTaskOp AIEX::getUniqueReachableConfigure(Value task) {
   if (!getReachableConfigures(task, configures) || configures.size() != 1)
     return nullptr;
   return configures.front();
+}
+
+static StringAttr runtimeDmaSymbol(Operation *op) {
+  if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
+    return task.getAlloc().getRootReference();
+  if (auto copy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
+    return copy.getMetadata().getRootReference();
+  return {};
+}
+
+Operation *AIEX::getRuntimeDmaTile(Operation *op, SymbolTable &symbols) {
+  if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op))
+    return task.getTile().getDefiningOp();
+  StringAttr symbol = runtimeDmaSymbol(op);
+  Operation *named = symbol ? symbols.lookup(symbol) : nullptr;
+  if (auto alloc = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(named))
+    return alloc.getTile().getDefiningOp();
+  if (auto endpoint = dyn_cast_or_null<AIE::RouteEndpointOp>(named))
+    return endpoint.getTile().getDefiningOp();
+  auto fifo = dyn_cast_or_null<AIE::ObjectFifoCreateOp>(named);
+  if (!fifo)
+    return nullptr;
+  SmallVector<Value> ends{fifo.getProducerTile()};
+  llvm::append_range(ends, fifo.getConsumerTiles());
+  for (Value end : ends)
+    if (auto tile = dyn_cast_or_null<AIE::TileLike>(end.getDefiningOp());
+        tile && tile.isShimNOCTile())
+      return tile;
+  return nullptr;
+}
+
+void AIEX::forEachRuntimePinnedBdId(
+    AIE::DeviceOp device,
+    llvm::function_ref<void(Operation *op, Operation *tile,
+                            std::optional<int> channel, int32_t id)>
+        pinned) {
+  SymbolTable symbols(device);
+  device.walk([&](Operation *op) {
+    Operation *tile = getRuntimeDmaTile(op, symbols);
+    if (!tile)
+      return;
+    std::optional<int> channel;
+    if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op))
+      channel = task.getChannel();
+    else if (auto alloc =
+                 symbols.lookup<AIE::ShimDMAAllocationOp>(runtimeDmaSymbol(op)))
+      channel = alloc.getChannelIndex();
+    if (auto copy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op)) {
+      pinned(op, tile, channel, static_cast<int32_t>(copy.getId()));
+      return;
+    }
+    cast<AIEX::DMAConfigureTaskLike>(op).getBody().walk([&](AIE::DMABDOp bd) {
+      if (std::optional<int32_t> id = bd.getBdId())
+        pinned(op, tile, channel, *id);
+    });
+  });
 }

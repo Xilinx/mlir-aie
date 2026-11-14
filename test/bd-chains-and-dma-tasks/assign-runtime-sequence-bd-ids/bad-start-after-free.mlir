@@ -20,7 +20,8 @@ aie.device(npu2) {
     // expected-note@+1 {{released here}}
     aiex.dma_free_task(%t)
     %u = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%arg1 : memref<8xi32> offset = 0 len = 8)
       aie.end
     }

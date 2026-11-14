@@ -6,14 +6,15 @@
 """Run a router hazard case on an NPU and record what each routing did.
 
     python utils/router_testing/router_hw.py run utils/router_testing/hw_cases/<case>.py
-        [--variant NAME ...] [--runs 20]
+        [--variant NAME ...] [--runs 20] [--device npu1]
         [--verdicts test/create-packet-flows/nightly/Inputs/hw_verdicts]
 
 A case (hw_case.HwCase) is one design and the ways to route it: as the
 router does, and pinned onto shared arbiters or links that should or should
-not deadlock. Each variant is routed with aie-opt, compiled with aiecc, and
-run with NPUKernel and IRON tensors, --runs times, each run in a process of
-its own. A run that completes has its outputs checked against the case's
+not deadlock. Cases target npu2; --device npu1 runs one on an NPU1, its
+variants named <variant>_npu1. Each variant is routed with aie-opt, compiled
+with aiecc, and run with NPUKernel and IRON tensors, --runs times, each run
+in a process of its own. A run that completes has its outputs checked against the case's
 reference; one the driver ends with a timeout (amdxdna's TDR) is a HANG, and
 one it ends in any other state an ERROR. The variant's verdict is ERROR if any
 run erred, HANG if any hung, FAIL if any output was wrong, and PASS
@@ -37,6 +38,7 @@ Peano (--peano, default $PEANO_INSTALL_DIR).
 """
 
 import argparse
+import dataclasses
 import importlib.util
 import json
 import os
@@ -218,6 +220,29 @@ def run_case(args) -> int:
         print(f"{case.name}: no such variant {', '.join(unknown)}", file=sys.stderr)
         return 2
     variants = [v for v in all_variants if not args.variant or v.name in args.variant]
+    if args.device != "npu2":
+        off_npu2 = [v.name for v in variants if "aie.device(npu2)" not in v.design]
+        if off_npu2:
+            print(
+                f"{case.name}: {', '.join(off_npu2)} not on aie.device(npu2), "
+                f"cannot retarget to {args.device}",
+                file=sys.stderr,
+            )
+            return 2
+        target = f"aie.device({args.device})"
+        variants = [
+            dataclasses.replace(
+                v,
+                name=f"{v.name}_{args.device}",
+                design=v.design.replace("aie.device(npu2)", target),
+                pinned=(
+                    None
+                    if v.pinned is None
+                    else v.pinned.replace("aie.device(npu2)", target)
+                ),
+            )
+            for v in variants
+        ]
     variants.sort(key=lambda v: v.expect == "HANG")
     wrong = 0
     for variant in variants:
@@ -263,12 +288,13 @@ def run_case(args) -> int:
     return 1 if wrong else 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     cli = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     sub = cli.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="route, compile and run every variant")
     run.add_argument("case", type=Path, help="a hw_cases/*.py module")
     run.add_argument("--variant", action="append", default=[])
+    run.add_argument("--device", choices=["npu1", "npu2"], default="npu2")
     run.add_argument("--runs", type=int, default=20)
     run.add_argument("--process-timeout-s", type=int, default=120)
     run.add_argument("--compile-timeout-s", type=int, default=300)
@@ -278,7 +304,7 @@ def main() -> int:
     once = sub.add_parser("once", help="one run of a compiled variant (internal)")
     once.add_argument("case", type=Path)
     once.add_argument("out", type=Path)
-    args = cli.parse_args()
+    args = cli.parse_args(argv)
     if args.command == "once":
         result = run_once(load_case(args.case), args.out)
         print(json.dumps(result), flush=True)

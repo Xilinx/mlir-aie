@@ -3,3 +3,5 @@
 torch==2.14.1+cpu
 # llama_3_2_1b's generate.py tokenizes its prompt.
 tiktoken==0.14.0
+# test_resize_linear_e2e.py holds its reference to cv2.resize.
+opencv-python-headless==4.14.0.94

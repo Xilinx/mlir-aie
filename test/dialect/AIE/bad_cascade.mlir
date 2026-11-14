@@ -88,3 +88,44 @@ aie.device(npu1) {
   %t11 = aie.tile(1, 1)
   aie.configure_cascade(%t11, North, West)
 }
+
+// -----
+
+// CHECK: error{{.*}}'aie.cascade_flow' op source tile must be to the North or West of the destination tile
+
+aie.device(npu1) {
+  %t02 = aie.tile(0, 2)
+  %t03 = aie.tile(0, 3)
+  aie.cascade_flow(%t02, %t03)
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.cascade_flow' op source tile must be to the North or West of the destination tile
+
+aie.device(npu2) {
+  %t13 = aie.tile(1, 3)
+  %t03 = aie.tile(0, 3)
+  aie.cascade_flow(%t13, %t03)
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.cascade_flow' op cascade not supported in AIE1
+
+aie.device(xcvc1902) {
+  %t13 = aie.tile(1, 3)
+  %t23 = aie.tile(2, 3)
+  aie.cascade_flow(%t13, %t23)
+}
+
+// -----
+
+// Pinned logical tiles are held to the same direction rule.
+// CHECK: error{{.*}}'aie.cascade_flow' op source tile must be to the North or West of the destination tile
+
+aie.device(npu1) {
+  %dst = aie.logical_tile<CoreTile>(0, 5)
+  %src = aie.logical_tile<CoreTile>(0, 4)
+  aie.cascade_flow(%src, %dst)
+}

@@ -47,19 +47,15 @@ struct AIELowerCascadeFlowsPass
       tilesWithCascadeFlow.insert(src);
       tilesWithCascadeFlow.insert(dst);
 
+      // CascadeFlowOp::verify already refuses a step isLegalCascade rejects,
+      // so every flow the pass sees here is one of the two it handles below.
       if (targetModel.isSouth(src.getCol(), src.getRow(), dst.getCol(),
                               dst.getRow())) {
         cascadeInputsPerTile[dst] = WireBundle::North;
         cascadeOutputsPerTile[src] = WireBundle::South;
-      } else if (targetModel.isEast(src.getCol(), src.getRow(), dst.getCol(),
-                                    dst.getRow())) {
+      } else {
         cascadeInputsPerTile[dst] = WireBundle::West;
         cascadeOutputsPerTile[src] = WireBundle::East;
-      } else {
-        // TODO: remove when this pass supports routing
-        cascadeFlow.emitOpError(
-            "source tile must be to the North or West of the destination tile");
-        return signalPassFailure();
       }
     }
 

@@ -17,6 +17,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <map>
+
 using namespace mlir;
 
 namespace xilinx {
@@ -72,14 +74,23 @@ std::optional<unsigned> getHostBufferArgIndex(BlockArgument arg);
 // The number of host buffers `block`'s arguments take: its memref arguments.
 unsigned getHostBufferCount(Block &block);
 
+// The bytes one step of a BD address field covers on tile (`col`, `row`):
+// a shim NOC BD addresses bytes, others the address-generation granule.
+uint64_t getBdAddressUnit(const AIE::AIETargetModel &targetModel, int col,
+                          int row);
+
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
 // (held in the scratchpad slot referenced by `bdOp`'s
-// `offset_state_table_idx` attribute, multiplied by the element size of
-// `bufType`) into the BD address register at `registerAddr`.
-LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
-                                                     Operation *bdOp,
-                                                     BaseMemRefType bufType,
-                                                     uint64_t registerAddr);
+// `offset_state_table_idx` attribute, in elements of `bufType`) into the
+// address field of the BD at `registerAddr` on tile (`col`, `row`).
+// `staticByteAddress` is the buffer's address the BD was written with, where
+// known, and `lengthField` the value of its length field, an i32 where it is
+// known only at run time.
+LogicalResult emitUpdateBdAddressFromOffsetParameter(
+    OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
+    uint64_t registerAddr, const AIE::AIETargetModel &targetModel, int col,
+    int row, std::optional<uint64_t> staticByteAddress = std::nullopt,
+    OpFoldResult lengthField = {});
 
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime length
 // (held in the scratchpad slot referenced by `bdOp`'s
@@ -105,6 +116,79 @@ bool getReachableConfigures(Value task,
 // The one configure a task value can come from, through runtime control flow
 // as above, or null if there is none or more than one.
 DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
+
+// The tile a runtime-sequence DMA op programs: an aiex.dma_configure_task's
+// own, or for an aiex.dma_configure_task_for or aiex.npu.dma_memcpy_nd, the
+// tile of the shim DMA allocation or route endpoint its symbol names, or the
+// shim end of the objectFIFO it names before allocation. Logical before
+// placement; null for any other op or symbol.
+Operation *getRuntimeDmaTile(Operation *op, SymbolTable &symbols);
+
+// Calls `pinned` for each BD id the runtime sequences of `device` fix at
+// compile time, in IR order, with the tile getRuntimeDmaTile gives; a static BD
+// on that tile must not take one. `channel` is unset until allocation.
+void forEachRuntimePinnedBdId(
+    AIE::DeviceOp device,
+    llvm::function_ref<void(Operation *op, Operation *tile,
+                            std::optional<int> channel, int32_t id)>
+        pinned);
+
+// IRON's forever loop is an `scf.while` on a constant true condition. A
+// hand-written `scf.for` meant to run forever has a bound no design counts to,
+// such as sys.maxsize or 2^32 - 1. From the AIE's 24-bit BD-loop saturation
+// value up, a trip count is read as "forever"; below it, as a real bound.
+inline constexpr int64_t kRunsForever = (int64_t{1} << 24) - 2;
+
+// How many times `op` runs when its core, or runtime sequence, runs to
+// completion, when static loop bounds alone decide that. Anything conditional
+// between the op and the core, an `scf.if`, a loop with dynamic bounds or one
+// meant to run forever, a block reached by branching, makes it unknown.
+std::optional<int64_t> staticExecutions(Operation *op);
+
+// Bytes as a linear form in a sequence's scratchpad parameters, each at least
+// 0: the constant at key -1, each parameter's coefficient at its state-table
+// index.
+using Volume = std::map<int64_t, int64_t>;
+
+// Whether a * scaleA <= b * scaleB whatever values the parameters take.
+bool atMost(const Volume &a, int64_t scaleA, const Volume &b, int64_t scaleB);
+
+// Whether `bytes` is a multiple of `granule` (when nonzero) whatever values the
+// parameters take.
+bool wholeGranules(const Volume &bytes, int64_t granule);
+
+// Why the bytes a shim input sent may not all be proven taken by the bytes its
+// consumed_by output received.
+enum class Unbalanced {
+  No,
+  // A push of either moves bytes no count follows: a parameter not held
+  // non-negative, a chain, or a loop of a dynamic-pool sequence.
+  Unsized,
+  // Other traffic shares their channels.
+  Traffic,
+  // The input moves more than the output proves taken.
+  Excess,
+  // The output may end partway through an object of the join its proof
+  // passes, whose later segments it has then taken less of.
+  PartGranule,
+};
+
+// Whether `in` bytes sent through a shim input are all taken once `out` bytes
+// came through `proof`'s output: No, PartGranule or Excess.
+Unbalanced balanceUnder(AIE::ConsumedByAttr proof, const Volume &in,
+                        const Volume &out);
+
+// Whether `op`, or an op nested in it, names a route end of the objectFIFO
+// `fifo` by symbol.
+bool namesFifo(Operation *op, StringRef fifo, SymbolTableCollection &symbols);
+
+// A reload between two configurations of the device array in one runtime
+// sequence clears it (outside --reconfig-teardown), so a later
+// configuration's buffer resident on the same global as an earlier one's
+// finds it gone. Verifies `before` and `after` hold no buffer resident on
+// the same symbol, attaching the diagnostic to `reload`.
+LogicalResult checkNoSharedResident(Operation *reload, AIE::DeviceOp before,
+                                    AIE::DeviceOp after);
 
 // `device:sequence`, the name a host runs `seq` by.
 std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);

@@ -94,23 +94,6 @@ std::string bdPoolName(PoolOp op) {
          "_" + std::to_string(op.getBdEnd());
 }
 
-// BD ids the static allocator has already placed on (col, row), read off the
-// placed aie.mem / aie.memtile_dma / aie.shim_dma chains. Sorted so the emitted
-// stream is deterministic.
-llvm::SmallVector<uint32_t, 8> staticBdIdsOnTile(AIE::DeviceOp device,
-                                                 uint32_t col, uint32_t row) {
-  llvm::SmallVector<uint32_t, 8> ids;
-  for (AIE::DmaBody program : device.getOps<AIE::DmaBody>()) {
-    auto id = program.getTileID();
-    if (id.col != static_cast<int>(col) || id.row != static_cast<int>(row))
-      continue;
-    llvm::append_range(ids, AIE::getAssignedBdIds(program));
-  }
-  llvm::sort(ids);
-  ids.erase(llvm::unique(ids), ids.end());
-  return ids;
-}
-
 // A uint32_t literal operand (e.g. `42u`) for a txn_append_* argument. Used for
 // the compile-time-resolved address fields (buffer/col/row are folded in).
 Value u32Literal(OpBuilder &b, Location loc, uint32_t val) {
@@ -330,6 +313,15 @@ private:
               ValueRange{a.getArg()});
         })
         .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
+          if (std::optional<uint32_t> id = pop.getId()) {
+            emitc::VerbatimOp::create(b, loc,
+                                      "aie_runtime::bd_pool_reserve(" +
+                                          bdPoolName(pop) + ", " +
+                                          std::to_string(*id) + ");");
+            pop.getBdId().replaceAllUsesWith(emitc::LiteralOp::create(
+                b, loc, pop.getBdId().getType(), std::to_string(*id)));
+            return;
+          }
           // Draw a BD id from the tile's runtime pool (declared in the
           // prologue) into a fresh C++ variable; nullopt if the pool is empty.
           // Downstream ops consume the id, so replace the SSA result with a
@@ -807,13 +799,6 @@ private:
                                     " = aie_runtime::bd_pool_init_range(" +
                                     std::to_string(lo) + ", " +
                                     std::to_string(hi) + ");");
-      // Hand back the ids the static allocator already placed on this tile.
-      for (uint32_t id :
-           staticBdIdsOnTile(deviceOp, poolOp.getColumn(), poolOp.getRow()))
-        if (id >= lo && id < hi)
-          emitc::VerbatimOp::create(fb, loc,
-                                    "aie_runtime::bd_pool_reserve(" + name +
-                                        ", " + std::to_string(id) + ");");
     };
     seqOp.walk([&](Operation *op) {
       if (auto pop = dyn_cast<AIEX::DMABdPoolPopOp>(op))

@@ -82,3 +82,121 @@ module @branch {
     }
   }
 }
+
+// -----
+
+// @three_fifos_two_channels with the mem tile physical: its fifos take turns
+// all the same.
+// CHECK-LABEL: module @physical_memtile
+// CHECK:       aie.mem(%{{.*}})
+// CHECK:       aie.dma_start(S2MM
+// CHECK:       aie.dma_bd(%b__cons__buf0
+// CHECK:       aie.dma_bd(%c__cons__buf0
+module @physical_memtile {
+  aie.device(npu2_1col) {
+    %s = aie.logical_tile<ShimNOCTile>(?, ?)
+    %m = aie.tile(0, 1)
+    %t = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @a_in(%s, {%m}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@a_in] -> [@a] ([] [])
+    aie.objectfifo @bc_in(%s, {%m}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @b(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@bc_in] -> [@b, @c] ([] [0, 16])
+    aie.core(%t) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c8 = arith.constant 8 : index
+      scf.for %i = %c0 to %c8 step %c1 {
+        %a0, %a1 = aie.objectfifo.acquire @a(Consume, 2) : memref<16xi32>, memref<16xi32>
+        %b = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+        %c = aie.objectfifo.acquire @c(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @a(Consume, 2)
+        aie.objectfifo.release @b(Consume, 1)
+        aie.objectfifo.release @c(Consume, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A DMA port with no channel index leaves allocation free to pick the
+// channel, so the core's three output fifos may take turns: two share MM2S 0.
+// CHECK-LABEL: module @unpinned_port
+// CHECK:       aie.mem(%{{.*}})
+// CHECK:       aie.dma_start(MM2S, 0
+// CHECK:       aie.dma_bd(%a__buf0
+// CHECK:       aie.dma_bd(%d__buf0
+module @unpinned_port {
+  aie.device(npu2) {
+    %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s2 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %m = aie.logical_tile<MemTile>(?, ?)
+    %c = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @a(%c, {%m}, 2 : i32) {prod_port = #aie.end_port<DMA>} : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @out0(%m, {%s0}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@a] -> [@out0] ([] [])
+    aie.objectfifo @b(%c, {%m}, 2 : i32) {prod_port = #aie.end_port<DMA>} : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @out1(%m, {%s1}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@b] -> [@out1] ([] [])
+    aie.objectfifo @d(%c, {%m}, 2 : i32) {prod_port = #aie.end_port<DMA>} : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @out2(%m, {%s2}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@d] -> [@out2] ([] [])
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c8 = arith.constant 8 : index
+      scf.for %i = %c0 to %c8 step %c1 {
+        %x = aie.objectfifo.acquire @a(Produce, 1) : memref<64xi32>
+        aie.objectfifo.release @a(Produce, 1)
+        %y = aie.objectfifo.acquire @b(Produce, 1) : memref<64xi32>
+        aie.objectfifo.release @b(Produce, 1)
+        %z = aie.objectfifo.acquire @d(Produce, 1) : memref<64xi32>
+        aie.objectfifo.release @d(Produce, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A push_queue end pushes a task per object, which allocation never lets take
+// turns, so three such fifos out of one core do not fit its two channels.
+// ERR:         :[[@LINE+7]]:{{[0-9]+}}: error: {{.*}}requires 0 input/3 output DMA channels, but only 2 input/2 output available
+module @push_queue {
+  aie.device(npu2) {
+    %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s2 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %m = aie.logical_tile<MemTile>(?, ?)
+    %c = aie.logical_tile<CoreTile>(?, ?)
+    aie.objectfifo @a(%c, {%m}, 2 : i32) {release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @out0(%m, {%s0}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@a] -> [@out0] ([] [])
+    aie.objectfifo @b(%c, {%m}, 2 : i32) {release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @out1(%m, {%s1}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@b] -> [@out1] ([] [])
+    aie.objectfifo @d(%c, {%m}, 2 : i32) {release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @out2(%m, {%s2}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@d] -> [@out2] ([] [])
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c8 = arith.constant 8 : index
+      scf.for %i = %c0 to %c8 step %c1 {
+        %x = aie.objectfifo.acquire @a(Produce, 1) : memref<64xi32>
+        aie.objectfifo.release @a(Produce, 1)
+        %y = aie.objectfifo.acquire @b(Produce, 1) : memref<64xi32>
+        aie.objectfifo.release @b(Produce, 1)
+        %z = aie.objectfifo.acquire @d(Produce, 1) : memref<64xi32>
+        aie.objectfifo.release @d(Produce, 1)
+      }
+      aie.end
+    }
+  }
+}

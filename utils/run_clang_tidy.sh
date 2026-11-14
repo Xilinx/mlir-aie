@@ -7,10 +7,11 @@
 #
 # clang-tidy needs a real compile database (compile_commands.json) and the
 # tablegen'd headers a file references -- unlike clang-format, it can't run
-# as a bare per-file text check. Any existing build works (clang or GCC --
-# clang-tidy parses the compile flags with its own bundled frontend
-# regardless of which compiler originally built it), as long as its
-# tablegen'd headers have actually been generated. This script:
+# as a bare per-file text check. The build must be configured with clang, as
+# CI's is: LLVM's CMake gives a GCC build other warning flags
+# (-Wno-missing-field-initializers among them), and clang-tidy reports
+# clang-diagnostic-* findings from those flags. Only its tablegen'd headers
+# need to have been generated. This script:
 #   - locates a build directory's compile_commands.json (MLIR_AIE_BUILD_DIR
 #     env var, defaulting to `build/` at the repo root)
 #   - resolves the resource-dir clang-tidy needs to find builtin headers
@@ -54,6 +55,22 @@ if [ ! -f "$BUILD_DIR/compile_commands.json" ]; then
   exit 1
 fi
 
+# CMakeFiles keeps a directory per CMake version that configured the build;
+# read the one the cache names, not a stale one from before an upgrade.
+CMAKE_VERSION=$(sed -nE 's/^CMAKE_CACHE_(MAJOR|MINOR|PATCH)_VERSION:INTERNAL=//p' \
+  "$BUILD_DIR/CMakeCache.txt" 2>/dev/null | paste -sd. || true)
+COMPILER_ID=$(sed -n 's/^set(CMAKE_CXX_COMPILER_ID "\(.*\)")$/\1/p' \
+  "$BUILD_DIR/CMakeFiles/$CMAKE_VERSION/CMakeCXXCompiler.cmake" 2>/dev/null || true)
+if [ "$COMPILER_ID" != "Clang" ]; then
+  echo "error: $BUILD_DIR was configured with ${COMPILER_ID:-an unknown compiler}, but CI's clang-tidy" >&2
+  echo "       reads a clang-configured build, whose warning flags differ. Configure one" >&2
+  echo "       with -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++" >&2
+  echo "       -DCMAKE_EXPORT_COMPILE_COMMANDS=ON, build the header targets CI's" >&2
+  echo "       'Prepare compile_commands.json' step lists (lintAndFormat.yml), and point" >&2
+  echo "       MLIR_AIE_BUILD_DIR at it." >&2
+  exit 1
+fi
+
 if ! command -v clang++ >/dev/null 2>&1; then
   echo "error: clang++ not found on PATH (needed to resolve clang-tidy's builtin header search path)." >&2
   exit 1
@@ -87,6 +104,16 @@ for key in ("platlib", "purelib"):
 PYEOF
 )
 CLANG_TIDY_BIN="${CLANG_TIDY_BIN:-clang-tidy}"
+
+PINNED=$(sed -n 's/^clang-tidy==\([^ ]*\).*/\1/p' "$REPO_ROOT/python/requirements_dev.lock")
+FOUND=$("$CLANG_TIDY_BIN" --version 2>/dev/null | sed -n 's/.*LLVM version \([0-9.]*\).*/\1/p' || true)
+if [ "$FOUND" != "$PINNED" ]; then
+  echo "error: $CLANG_TIDY_BIN is clang-tidy ${FOUND:-of unknown version}, but CI runs $PINNED" >&2
+  echo "       (python/requirements_dev.lock), whose checks differ. Install the pinned one" >&2
+  echo "       into the python3 on PATH:" >&2
+  echo "         python3 -m pip install --require-hashes -r python/requirements_dev.lock" >&2
+  exit 1
+fi
 
 # clang-tidy 22 flipped --header-filter's default from '' (main file only) to
 # '.*' (every non-system header), so without this it now also lints whatever

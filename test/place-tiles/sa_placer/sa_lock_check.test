@@ -1,0 +1,12 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// utils/component_checks/sa_lock_check.py holds the SA's lock groups to what
+// aie-objectfifo-allocate makes; run it on this directory's lock designs.
+// test_sa_locks.mlir places and allocates seed 1 itself, so it runs here with
+// seed 3 only.
+// RUN: %python %S/../../../utils/component_checks/sa_lock_check.py --aie-opt aie-opt --seed 1 --seed 3 %S/test_sa_placed_ends.mlir %S/test_sa_lock_constants.mlir %S/test_sa_lock_input_pools.mlir %S/test_sa_lock_links.mlir %S/test_sa_lock_spill.mlir %S/test_sa_lock_spill_turns.mlir | FileCheck %s
+// RUN: %python %S/../../../utils/generate_self_loop_cores.py %S/test_sa_locks.mlir > %t.mlir
+// RUN: %python %S/../../../utils/component_checks/sa_lock_check.py --aie-opt aie-opt --seed 3 %t.mlir | FileCheck %s --check-prefix=LOCKS
+// CHECK: agree=12 mismatch=0 skipped=0 agreeing_lock_failures=2 agreeing_lock_stops=0
+// LOCKS: agree=2 mismatch=0 skipped=0 agreeing_lock_failures=0 agreeing_lock_stops=0

@@ -14,6 +14,7 @@
 // the third has nowhere to go.
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles %s | FileCheck %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1' %s | FileCheck %s
 
 // CHECK-LABEL: @shared_shim_channel
 // CHECK:       %[[S:.*]] = aie.tile(0, 0)
@@ -81,8 +82,8 @@ module @shared_needs_distinct_ids {
     %c0 = aie.logical_tile<CoreTile>(0, 2)
     %c1 = aie.logical_tile<CoreTile>(0, 3)
     %shim = aie.logical_tile<ShimNOCTile>(0, 0)
+    // expected-error@+1 {{shares MM2S channel 0 with @b, but both pin packet id 4}}
     aie.objectfifo @a(%shim, {%c0}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
-    // expected-error@+1 {{shares MM2S channel 0 with @a, but both pin packet id 4}}
     aie.objectfifo @b(%shim, {%c1}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
   }
 }

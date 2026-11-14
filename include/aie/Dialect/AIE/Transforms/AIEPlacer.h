@@ -10,11 +10,22 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Transforms/AIEBoundedMemo.h"
+#include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
+#include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
+#include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SortedVectorMap.h"
 
 #include <array>
 #include <deque>
+#include <map>
 #include <random>
+#include <tuple>
+#include <unordered_map>
 
 namespace xilinx::AIE {
 
@@ -42,6 +53,28 @@ struct StreamDemand {
   }
 };
 
+// The streams each boundary between neighbouring rows or columns carries one
+// way, against the channels across it, as Pathfinder::cutOverflow counts
+// them: every circuit tree crossing it takes a channel, and the packet flows
+// crossing it one more. Demand counts only streams sure to be routed and
+// capacity every wire, so a placement over it cannot route.
+class StreamCuts {
+public:
+  StreamCuts() = default;
+  explicit StreamCuts(const AIETargetModel &target);
+  // Adds (`sign` 1) or removes (-1) a stream from `src` to `dsts`.
+  void add(TileID src, llvm::ArrayRef<TileID> dsts, bool packet, int sign);
+  // The channels the boundaries are short of.
+  int over() const;
+  // The squared streams past `fraction` of each boundary's channels.
+  int64_t near(double fraction) const;
+
+private:
+  unsigned indexOf(bool rows, int below, bool up) const;
+  int columns = 0;
+  llvm::SmallVector<int, 32> capacity, circuits, packets;
+};
+
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
 
@@ -58,16 +91,17 @@ struct TileAvailability {
   // kept in sync with `compTiles` by any code that mutates the vector
   // (initialize(), limitCoresPerColumn(), removeTile()).
   llvm::DenseSet<TileID> compTilesSet;
+  // Core positions a physical aie.tile's own aie.core already holds.
+  llvm::DenseSet<TileID> physicalCores;
+  // Compute tiles cores-per-col leaves out. A core pinned by column or row
+  // outranks the budget and may still take one.
+  std::vector<TileID> overBudgetCompTiles;
 
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
   llvm::DenseMap<TileID, StreamDemand> streamsUsed;
-  // Live runtime-sequence BDs after each task event, as in
-  // SequentialPlacer::runtimeBdProfiles.
-  llvm::DenseMap<TileID, llvm::SmallVector<int>> runtimeBdsUsed;
-  // DMA channels, as (output, index), that flows of the logical tiles placed
-  // here name by index.
-  llvm::DenseMap<TileID, llvm::DenseSet<std::pair<int, int>>> namedChannelsUsed;
+  // The logical tiles placed here whose runtime tasks take BD ids.
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> runtimeBdTiles;
 
   void removeTile(TileID tile, AIETileType type);
 };
@@ -78,7 +112,19 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(const AIETargetModel &tm);
+  virtual void initialize(DeviceOp device, bool controlOverlay,
+                          bool adaptiveOverlay, bool packetSwitched);
+
+  // The program key of each tile op holding a core, and, for each
+  // configuration loaded right before or after this one and already placed,
+  // the key of the core at each of its positions: a core whose program a
+  // neighbour runs at the same position needs no rewrite when they switch.
+  void setNeighbourCores(
+      llvm::DenseMap<mlir::Operation *, unsigned> keys,
+      llvm::SmallVector<llvm::DenseMap<TileID, unsigned>> neighbours) {
+    coreKeys = std::move(keys);
+    neighbourCores = std::move(neighbours);
+  }
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -126,10 +172,28 @@ public:
     llvm::SmallVector<FlowOp> flows;
     llvm::SmallVector<PacketFlowOp> pktFlows;
     llvm::SmallVector<RouteOp> routes;
+    // The device's top-level ops by StructuralGraph::rank, for ties.
+    llvm::DenseMap<mlir::Operation *, unsigned> rank;
   };
 
   // Collect all placement-relevant operations from the device.
   static CollectedOps collectOperations(DeviceOp device);
+
+  // The (input, output) DMA channels each tile's flows, packet flows, route
+  // endpoints and channel claims (DMAChannelAnalysis's: program starts,
+  // runtime tasks, shim allocations) take: one per endpoint however many
+  // routes name it, and one per channel named by index. Tiles with both
+  // coordinates are keyed by position. With `named`, the (output, index)
+  // channels named by index, by tile; with `keys`, the tile each tile's
+  // demand is keyed by.
+  static llvm::MapVector<mlir::Operation *, std::pair<int, int>>
+  flowChannelDemand(
+      llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
+      llvm::ArrayRef<RouteOp> routes,
+      llvm::ArrayRef<DMAChannelAnalysis::ChannelClaim> claims,
+      llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+          *named = nullptr,
+      llvm::DenseMap<mlir::Operation *, mlir::Operation *> *keys = nullptr);
 
   // Check if a logical tile's col/row constraints are satisfied at a position.
   static bool satisfiesConstraints(mlir::Operation *tile, TileID pos);
@@ -158,26 +222,335 @@ public:
   static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
                                       llvm::ArrayRef<PacketFlowOp> pktFlows);
 
-  // The objectFIFO ends each shim LTO hosts that may take turns on a channel
-  // with ends never in flight with them (ShimTransferSpans): DMA ends naming
-  // no channel, [0] receiving and [1] sending, as objectFIFO allocation sees
-  // them.
+  // A shim tile op's ends on one side, as ShimTransferSpans::plan reads them.
+  struct ShimSide {
+    llvm::SmallVector<mlir::StringAttr> ends;
+    llvm::SmallVector<std::pair<int, llvm::SmallVector<mlir::StringAttr>>>
+        shared;
+    llvm::SmallVector<int> pinned;
+  };
+  // Each shim tile op's sides, [0] receiving and [1] sending, the tile ops
+  // and each side's ends in `rank` order, shared channels by index.
   using ShareableShimEnds =
-      llvm::DenseMap<mlir::Operation *,
-                     std::array<llvm::SmallVector<mlir::StringAttr>, 2>>;
-  static ShareableShimEnds
-  collectShareableShimEnds(DeviceOp device,
-                           llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+      llvm::MapVector<mlir::Operation *, std::array<ShimSide, 2>>;
+  // With `routeKeys` (flowChannelDemand's `keys`), a route endpoint's end
+  // goes to the tile its channel demand is keyed by.
+  static ShareableShimEnds collectShareableShimEnds(
+      DeviceOp device, llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+      const llvm::DenseMap<mlir::Operation *, unsigned> &rank,
+      const llvm::DenseMap<mlir::Operation *, mlir::Operation *> &routeKeys =
+          {});
+  // The channels `sides` save in one direction below one per end, per
+  // ShimTransferSpans::plan, with `extra` ends joining and objectFIFO ends
+  // pinning `pinnedHere` there.
+  static int shimChannelsSaved(const ShimTransferSpans &spans,
+                               llvm::ArrayRef<const ShimSide *> sides,
+                               llvm::ArrayRef<mlir::StringAttr> extra,
+                               llvm::ArrayRef<int> pinnedHere);
 
-  // The objectFIFO end a runtime sequence names `symbol` for, before split:
-  // the fifo itself, sending when its producer is a shim tile.
-  static std::optional<ShimTransferSpans::End>
-  shimEndOf(DeviceOp device, mlir::StringAttr symbol);
+  // The objectFIFO ends that pin one DMA channel of one tile share it, as
+  // objectFIFO allocation lets them: sending ends off a shim or off a core
+  // that pushes its tasks, told apart by packet id, and receiving ends that
+  // take objects out of order.
+  class PinnedChannels {
+  public:
+    // The end of `fifo` (its producer's when `consumer` is empty) on `tile`
+    // pinning `channel`. `movesByDma`: the fifo moves by DMA wherever its
+    // ends are placed (dmaReason(), or an end off a core tile); otherwise
+    // neighbouring cores' shared memory may carry it, and its pin holds only
+    // where it does not.
+    struct End {
+      ObjectFifoCreateOp fifo;
+      std::optional<unsigned> consumer;
+      mlir::Operation *tile;
+      bool sends;
+      int channel;
+      bool movesByDma;
+    };
+    PinnedChannels() = default;
+    // With `packetSwitched`, an end asking for no packet header gets one.
+    PinnedChannels(const AIETargetModel &targetModel, bool packetSwitched)
+        : targetModel(&targetModel), packetSwitched(packetSwitched) {}
+    // The end `fifo` pins a DMA channel by, if it does: the producer when
+    // `consumer` is null, otherwise that consumer.
+    static std::optional<End> endOf(ObjectFifoCreateOp fifo,
+                                    std::optional<unsigned> consumer);
+    // Why `a` and `b`, pinning one channel of one tile, cannot share it;
+    // nothing when they can.
+    std::optional<std::string> whyApart(End a, End b) const;
+    // The channel `end` shares with the ends of its own tile op that took it
+    // before, numbered by the first. Each pair that cannot share it and, both
+    // moving by DMA wherever placed, would hold it together wherever their
+    // tile goes is diagnosed on the fifo of lower `rank`.
+    unsigned share(End end,
+                   const llvm::DenseMap<mlir::Operation *, unsigned> &rank);
+    // Whether share() diagnosed an end, which fails the placement.
+    bool failed() const { return diagnosed; }
+    // Whether `end` may take turns on the channel of `claim`, as allocation
+    // lets a pinned end: a shim allocation whose aie.shareable_with names it,
+    // when it sends packet-switched or receives out of order.
+    bool sharesClaim(End end,
+                     const DMAChannelAnalysis::ChannelClaim &claim) const;
+
+  private:
+    const AIETargetModel *targetModel = nullptr;
+    bool packetSwitched = false;
+    bool diagnosed = false;
+    llvm::DenseMap<std::tuple<mlir::Operation *, int, int>,
+                   std::pair<llvm::SmallVector<End, 2>, unsigned>>
+        taken;
+  };
+
+  // The pinned ends at each position, where the ends of tiles placed together
+  // meet: one channel serves those that may share it, and two of different
+  // tile ops that may not clash there. Two of one tile op clash wherever it
+  // goes when both move by DMA wherever placed, which PinnedChannels::share
+  // reports; otherwise they clash only where both are placed.
+  class PinnedChannelUse {
+  public:
+    PinnedChannelUse() = default;
+    explicit PinnedChannelUse(const PinnedChannels &rule) : rule(&rule) {}
+    // Adds (`sign` 1) or removes (-1) `end` at `at`. Returns `sign` when the
+    // end takes or frees its channel there, 0 when other ends hold it too.
+    int place(TileID at, const PinnedChannels::End &end, int sign);
+    // The channels at `at` holding two ends that cannot share them, or
+    // claimed by two tile ops.
+    int clashes(TileID at) const;
+    // The (input, output) channels of one tile op's `ends` that `at` already
+    // holds; nothing when one of them clashes there.
+    std::optional<std::pair<int, int>>
+    heldAt(TileID at, llvm::ArrayRef<PinnedChannels::End> ends) const;
+    // An end at `at` that `end` cannot share its channel with, if any.
+    std::optional<PinnedChannels::End>
+    clashWith(TileID at, const PinnedChannels::End &end) const;
+    // The sending ends at `at`, by the MM2S channel they pin.
+    llvm::DenseMap<int, llvm::SmallVector<PinnedChannels::End, 2>>
+    sendingAt(TileID at) const;
+    // Adds (`sign` 1) or removes (-1) `claim` at `at`. A claimed channel is
+    // held from every pinned end there but those sharesClaim() lets share it.
+    void claim(TileID at, const DMAChannelAnalysis::ChannelClaim &claim,
+               int sign);
+    // The claim at `at` that holds `end`'s channel from it, if any.
+    std::optional<DMAChannelAnalysis::ChannelClaim>
+    claimWith(TileID at, const PinnedChannels::End &end) const;
+    // The channels ends at `at` pin in one direction.
+    llvm::SmallVector<int> channelsAt(TileID at, bool sends) const;
+
+  private:
+    const PinnedChannels *rule = nullptr;
+    std::map<std::tuple<int, int, int, int>,
+             llvm::SmallVector<PinnedChannels::End, 2>>
+        placed;
+    std::map<std::tuple<int, int, int, int>,
+             llvm::SmallVector<DMAChannelAnalysis::ChannelClaim, 1>>
+        claimed;
+  };
+
+  // The gates objectFIFO allocation will share receiving shim ends by: the
+  // #aie.consumed_by proofs aie-objectfifo-verify finds on a copy of the
+  // design with every fifo between two tiles moved by DMA. Placing a fifo on
+  // shared memory instead keeps every proof the DMA-moved copy has, so these
+  // never promise a turn allocation refuses. Empty when the copy does not
+  // verify.
+  static llvm::DenseMap<mlir::StringAttr,
+                        llvm::SmallVector<ShimTransferSpans::Gate>>
+  provenShimGates(DeviceOp device);
+
+  // The BD ids a shim tile's DMAs take, as aie-assign-bd-ids and
+  // aie-assign-runtime-sequence-bd-ids hand them out: static BDs around the ids
+  // runtime tasks and copies pin; each sequence's tasks their pinned ids, then
+  // the lowest free (head aligned, descriptors split as
+  // aie-decompose-large-dma-bd splits them), held from configure to the first
+  // await or free; a copy holds its id to the sequence's end. Reclaim,
+  // restarts, already-taken tokens, ids a copy forbids, BD chains and aiex.run
+  // callees are not followed, so the count can err either way and the pass
+  // checks exactly. Placed shims count where they sit.
+  class RuntimeBdIds {
+  public:
+    // The most ids a shim's DMAs hold at once on a tile of their own, and
+    // whether any pins an id or aligns its head.
+    struct Peak {
+      int live = 0;
+      bool constrained = false;
+    };
+    RuntimeBdIds() = default;
+    RuntimeBdIds(DeviceOp device, const AIETargetModel &targetModel);
+
+    bool uses(mlir::Operation *logicalTile) const {
+      return peaks.contains(logicalTile);
+    }
+    const llvm::DenseMap<mlir::Operation *, Peak> &users() const {
+      return peaks;
+    }
+
+    // The ids the DMAs of `onTile` and of the shim already placed at `tile`
+    // cannot get when they share it.
+    int shortfall(llvm::ArrayRef<mlir::Operation *> onTile, TileID tile) const;
+
+  private:
+    struct Task {
+      mlir::Operation *owner;
+      // One entry per descriptor after the split: its pinned id, if any.
+      llvm::SmallVector<std::optional<uint32_t>> bdIds;
+      uint32_t headAlignment;
+      // An aiex.npu.dma_memcpy_nd: its one id stays held to the end of the
+      // sequence.
+      bool copy = false;
+    };
+    struct StaticBds {
+      llvm::SmallVector<uint32_t> pinned;
+      int unpinned = 0;
+    };
+    llvm::SmallVector<Task> tasks;
+    // Per runtime sequence, (task, configured or released) in program order.
+    llvm::SmallVector<llvm::SmallVector<std::pair<unsigned, bool>>> sequences;
+    llvm::DenseMap<mlir::Operation *, StaticBds> statics;
+    llvm::DenseMap<mlir::Operation *, Peak> peaks;
+    llvm::DenseMap<TileID, mlir::Operation *> placed;
+    const AIETargetModel *targetModel = nullptr;
+    // Each shim in `peaks` by index: its tasks, and per sequence the places
+    // of its events, so a shortfall replays only the shims sharing a tile.
+    struct Shim {
+      mlir::Operation *op;
+      llvm::SmallVector<unsigned> tasks;
+      llvm::SmallVector<llvm::SmallVector<unsigned>> events;
+    };
+    llvm::SmallVector<Shim> shims;
+    llvm::DenseMap<mlir::Operation *, unsigned> indexOf;
+    // Every shim tile lays out its BD ids alike, so the answer depends only on
+    // which shims share one.
+    mutable llvm::DenseMap<llvm::SmallBitVector, int> shortfallOf;
+  };
 
 protected:
+  // DMAChannelAnalysis::getChannelClaims(), grouped by the tile op owning
+  // each: the channels its claims take by index hold them from pinned ends
+  // placed with it.
+  llvm::DenseMap<mlir::Operation *,
+                 llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
+      claimsOf;
+  // Shim channels count one per end until a shim tile runs out; then ends
+  // never in flight together count once, as allocation will share them.
+  std::optional<ShimTransferSpans> shimSpans;
+  ShareableShimEnds shareableShimEnds;
+  // A shim tile is also charged for the runtime BD ids its tile ops' tasks
+  // lack.
+  RuntimeBdIds runtimeBdIds;
+  // The DDR traffic of shim tile ops' ends, one group per runtime sequence
+  // and direction: each end's tile op, its share of the bytes the group
+  // moves (all alike when any end's are dynamic), and which pairs may be in
+  // flight together (not ShimTransferSpans::apart).
+  struct DdrGroup {
+    llvm::SmallVector<mlir::Operation *> tiles;
+    llvm::SmallVector<int64_t> weights;
+    llvm::SmallVector<llvm::BitVector> together;
+  };
+  llvm::SmallVector<DdrGroup> ddrGroups;
+  llvm::DenseSet<mlir::Operation *> ddrTiles;
+  // How unevenly the groups load the shim columns where `columnOf` puts tile
+  // ops, `weight` per group spread worst: 0 when every group's load is even
+  // across as many columns as it has ends, up to the device's.
+  int64_t
+  ddrSpread(llvm::function_ref<std::optional<int>(mlir::Operation *)> columnOf,
+            int weight) const;
+  // Builds the members above and overlayUses for `device`, whose channel
+  // claims are `claims`; `rank` and `routeKeys` as collectShareableShimEnds
+  // takes them.
+  void buildShimModel(DeviceOp device,
+                      llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+                      llvm::ArrayRef<DMAChannelAnalysis::ChannelClaim> claims,
+                      const llvm::DenseMap<mlir::Operation *, unsigned> &rank,
+                      const llvm::DenseMap<mlir::Operation *, mlir::Operation *>
+                          &routeKeys = {});
+
+  // Whether the control overlay takes an MM2S channel on `tile`.
+  bool overlayChannels(TileID tile) const {
+    return controlOverlay && targetModel->isShimNOCTile(tile.col, tile.row);
+  }
+  // The control overlay's MM2S channel on shim tile `at`, as
+  // aie-generate-column-control-overlay picks it: channel 0, or, with
+  // `adaptiveOverlay`, whichever channel no circuit-switched end pins and
+  // overlayUses finds no circuit on for the tile ops at `at` (`tilesHere`),
+  // preferring the one with fewest packet-switched ends. Pinned ends on that
+  // channel share it with the overlay when ShimTransferSpans proves each is
+  // apart from it; otherwise allocation refuses those pins, and the overlay
+  // does not `fit`. `extra` is a tile op's pinned ends about to join `pins`.
+  struct OverlayFit {
+    bool fits = true;
+    // The MM2S channels it adds: none on a pinned channel it shares.
+    int channels = 0;
+    // Whether it holds a channel of its own, which unpinned ends may share.
+    bool own = false;
+  };
+  OverlayFit overlayAt(TileID at, const PinnedChannelUse &pins,
+                       llvm::ArrayRef<PinnedChannels::End> extra,
+                       llvm::ArrayRef<mlir::Operation *> tilesHere,
+                       const ShimTransferSpans *spans) const;
+  // The shim MM2S channels each tile op's ends name, as the overlay's pass
+  // weighs them: `device`'s, and those of the other devices the overlay
+  // serves (its target's), at the tiles they sit on now.
+  ShimMM2SUses overlayUses;
+  void collectOverlayUses(DeviceOp device);
+  llvm::SmallVector<mlir::Operation *> overlayTileOps() const;
+
+  // North/South streams of each tile's ObjectFifos: a memtile has 6
+  // DMA inputs but only 4 streams from the core above, and no East/West.
+  llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
+  // Broadcast consumers in one column share a single incoming stream.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
+      incomingFifos;
+  // Extra broadcast destinations beyond the first, which uses one DMA channel.
+  llvm::DenseMap<mlir::Operation *, int> broadcastFanout;
+  void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // A stream routing will need, from one tile op to others. Consumers of an
+  // objectFIFO that share memory with its producer
+  // (ObjectFifoCreateOp::sharedMemoryOf, through its allocate's delegate and
+  // its link's tile) take none of it.
+  struct StreamNet {
+    mlir::Operation *src;
+    llvm::SmallVector<mlir::Operation *, 2> dsts;
+    bool packet;
+    // An objectFIFO dmaReason() leaves to sharedMemoryOf.
+    bool mayShare = false;
+    mlir::Operation *delegate = nullptr;
+    mlir::Operation *link = nullptr;
+  };
+  llvm::SmallVector<StreamNet> streamNets;
+  // The nets each tile op is an end, delegate or link tile of.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned>> streamNetsOf;
+  void buildStreamNets(DeviceOp device, const CollectedOps &collected);
+  // The stream `net` routes where `at` puts tile ops, into `src` and `dsts`;
+  // false while an end is unplaced, or when no consumer takes a stream.
+  bool streamOf(const StreamNet &net,
+                llvm::function_ref<std::optional<TileID>(mlir::Operation *)> at,
+                TileID &src, llvm::SmallVectorImpl<TileID> &dsts) const;
+
+  // flowChannelDemand's `named`, by tile op.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+      namedChannels;
+  // A tile op among `others` naming a channel `tile` names too, with that
+  // channel. Two such tile ops cannot share a physical tile: their programs
+  // or flows would drive one channel.
+  std::optional<std::pair<mlir::Operation *, std::pair<int, int>>>
+  namedClash(mlir::Operation *tile,
+             llvm::ArrayRef<mlir::Operation *> others) const;
+  // Reports that `tile` can take no tile of its type, because the one at
+  // `at` with room for it holds `clash`, a tile op naming a channel it names.
+  mlir::LogicalResult
+  emitNamedClash(mlir::Operation *tile, TileID at,
+                 std::pair<mlir::Operation *, std::pair<int, int>> clash) const;
+
+  llvm::DenseMap<mlir::Operation *, unsigned> coreKeys;
+  llvm::SmallVector<llvm::DenseMap<TileID, unsigned>> neighbourCores;
+
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
   const AIETargetModel *targetModel = nullptr;
+  bool controlOverlay = false;
+  bool adaptiveOverlay = true;
+  // Routes asking for no packet header carry one (packet-sw-objFifos).
+  bool packetSwitched = false;
   TileAvailability availability;
 };
 
@@ -211,25 +584,18 @@ inline bool isSharedComputeMemory(const AIETargetModel &targetModel, TileID a,
          targetModel.isLegalMemAffinity(b.col, b.row, a.col, a.row);
 }
 
-// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that can share
-// compute-peer memory with it per the target model.
+// Invoke `fn(TileID)` on every other CoreTile that can share compute-peer
+// memory with `at` per the target model.
 template <typename F>
 inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
                                        TileID at, F &&fn) {
-  for (auto [dc, dr] :
-       {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{1, 0}}) {
-    int nc = at.col + dc;
-    int nr = at.row + dr;
-    if (nc < 0 || nc >= targetModel.columns())
-      continue;
-    if (nr < 0 || nr >= targetModel.rows())
-      continue;
-    if (targetModel.getTileType(nc, nr) != AIETileType::CoreTile)
-      continue;
-    if (!isSharedComputeMemory(targetModel, at, TileID{nc, nr}))
-      continue;
-    fn(TileID{nc, nr});
-  }
+  for (int col = 0; col < targetModel.columns(); ++col)
+    for (int row = 0; row < targetModel.rows(); ++row)
+      if (TileID other{col, row};
+          other != at &&
+          targetModel.getTileType(col, row) == AIETileType::CoreTile &&
+          isSharedComputeMemory(targetModel, at, other))
+        fn(other);
 }
 
 // Sequential placement algorithm
@@ -277,7 +643,8 @@ public:
       : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles),
         spreadUnanchoredTiles(spreadUnanchoredTiles) {}
 
-  void initialize(const AIETargetModel &targetModel) override;
+  void initialize(DeviceOp device, bool controlOverlay, bool adaptiveOverlay,
+                  bool packetSwitched) override;
 
   mlir::LogicalResult place(DeviceOp device) override;
 
@@ -294,13 +661,12 @@ private:
   // non-core aie.logical_tile onto a tile that already hosts one.
   llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
+  // The compute tiles cores-per-col leaves to unpinned logical cores.
+  int placeableCores = 0;
 
-  // Shim channels are counted one per end until a shim tile runs out; then
-  // ends never in flight together count once, as allocation will share them.
-  std::optional<ShimTransferSpans> shimSpans;
-  ShareableShimEnds shareableShimEnds;
-  llvm::DenseMap<TileID, std::array<llvm::SmallVector<mlir::StringAttr>, 2>>
-      shimEndsAt;
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> shimTilesAt;
+  // The tile ops placed at each position, whose overlayUses count there.
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> overlayTilesAt;
   bool fitsSharingShim(TileID tile, mlir::Operation *logicalTile,
                        std::pair<int, int> required);
   void recordShimEnds(TileID tile, mlir::Operation *logicalTile);
@@ -318,16 +684,21 @@ private:
   // attributes) or chosen by the placer.
   enum class PlacementOrigin { Pinned, Selected };
 
-  void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
+  /// Keeps at most `maxCoresPerCol` cores in each column, counting the
+  /// `held` positions a physical or pinned core already takes.
+  void limitCoresPerColumn(int maxCoresPerCol, int numColumns,
+                           const llvm::DenseSet<TileID> &held);
 
   // targetCol == nullopt means no routing anchor is known, so candidates are
   // ranked by DMA load rather than by distance to a column. `withinBudgets`
-  // also requires fitsStreamAndBdBudgets.
+  // also requires fitsStreamAndBdBudgets; `apartByName` requires that no
+  // tile op there names a channel `logicalTile` names (namedClash).
   std::optional<TileID>
   findTileWithCapacity(std::optional<int> targetCol,
                        llvm::ArrayRef<TileID> tiles, int requiredInputChannels,
                        int requiredOutputChannels, AIETileType requestedType,
-                       mlir::Operation *logicalTile, bool withinBudgets);
+                       mlir::Operation *logicalTile, bool withinBudgets,
+                       bool apartByName = true);
 
   // Diagnosis for a failed findTileWithCapacity() call. `findTileWithCapacity`
   // scans every tile of `requestedType` on the device -- `targetCol` orders
@@ -344,38 +715,44 @@ private:
     int inUsed = 0, inMax = 0, outUsed = 0, outMax = 0;
     // Both shortfalls belong to one tile, minimizing their sum.
     int closestShortIn = 0, closestShortOut = 0;
+    // Of outUsed, the control overlay's channels; and the tiles where it has
+    // none it can take.
+    int overlayOut = 0, overlayUnfit = 0;
+    // The tiles where a pinned end of the joining tile clashes with one
+    // already there, and the first such pair.
+    int clashTiles = 0;
+    std::optional<std::tuple<TileID, PinnedChannels::End, PinnedChannels::End>>
+        clash;
   };
+  // `joining` is the logical tile that found no tile, whose pinned ends move
+  // the control overlay.
   CapacityDiagnosis diagnoseCapacityExhaustion(AIETileType requestedType,
                                                int requiredInputChannels,
-                                               int requiredOutputChannels);
+                                               int requiredOutputChannels,
+                                               mlir::Operation *joining);
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
-  // North/South streams of each tile's ObjectFifos: a memtile has 6
-  // DMA inputs but only 4 streams from the core above, and no East/West.
-  llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
   // Aggregate traffic between a column's cores and the tiles below them.
   llvm::DenseMap<int, StreamDemand> columnStreamsUsed;
-  // Broadcast consumers in one column share a single incoming stream.
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
-      incomingFifos;
   llvm::DenseMap<int, llvm::DenseSet<mlir::Operation *>> columnIncomingFifos;
   void recordColumnStreamUsage(mlir::Operation *tile, int col);
-  // Extra broadcast destinations beyond the first, which uses one DMA channel.
-  llvm::DenseMap<mlir::Operation *, int> broadcastFanout;
   llvm::DenseMap<TileID, int> broadcastFanoutUsed;
-  void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+  // The cuts of the stream nets whose ends are all placed, and which those
+  // are.
+  StreamCuts placedCuts;
+  llvm::BitVector cutNets;
+  // Whether placing `logicalTile` at `tile` leaves the boundaries shorter of
+  // channels than they are.
+  bool raisesStreamCuts(mlir::Operation *logicalTile, TileID tile) const;
+  // Adds the stream nets `logicalTile`, now placed, completes.
+  void addPlacedStreams(mlir::Operation *logicalTile);
 
-  // Live runtime-sequence BDs of each ShimNOCTile LTO after every task event,
-  // counting each descriptor as aie-decompose-large-dma-bd splits it.
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<int>> runtimeBdProfiles;
-
-  // DMA channels, as (output, index), that each logical tile's flows name by
-  // index. Two logical tiles naming the same one cannot share a physical tile.
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
-      namedChannels;
-  void buildRuntimeBdProfiles(DeviceOp device,
-                              llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+  // Pinned objectFIFO ends: the rule, their positions, and each tile op's own.
+  PinnedChannels pinnedRule;
+  PinnedChannelUse pinsAt;
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<PinnedChannels::End>>
+      pinnedEnds;
 
   // True if `tile`'s stream ports and BDs still fit `logicalTile`'s demand on
   // top of what earlier placements use.
@@ -384,7 +761,16 @@ private:
   // `tile`.
   void recordStreamAndBdUsage(mlir::Operation *logicalTile, TileID tile);
 
-  bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels);
+  // `joining` is the logical tile being placed on `tile`: its pinned ends and
+  // named channels count there, as does its own use of the control overlay.
+  bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels,
+                            mlir::Operation *joining = nullptr);
+  OverlayFit overlayWith(TileID tile, mlir::Operation *joining);
+
+  // Notes on `diag` the first pinned end of `logicalTile` that clashes at
+  // `at` and what it clashes with.
+  void notePinClash(mlir::InFlightDiagnostic &diag, LogicalTileOp logicalTile,
+                    TileID at);
 
   mlir::LogicalResult validateAndUpdateChannelUsage(
       LogicalTileOp logicalTile, TileID tile,
@@ -395,7 +781,8 @@ private:
   llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
   buildChannelRequirements(
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
-      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
+      const llvm::DenseMap<mlir::Operation *, unsigned> &rank);
 
   // Per-place() neighbor-demand maps and soft-reservation table.
   struct PlacementContext {
@@ -478,18 +865,21 @@ private:
     bool sawConstraintMatch = false;
     bool allConstraintMatchesFailedAdjacency = true;
     bool computePeerWasCause = false;
+    // The first candidate passing every other check where a pin of the LTO
+    // clashes with one placed there.
+    std::optional<TileID> pinClash;
   };
 
   // Two-pass candidate search for an unpinned (or partially-pinned)
   // CoreTile LTO. First pass prefers candidates that aren't
   // soft-reserved by an unrelated demand-bearing LTO's peers; second
   // pass falls back to reserved candidates. Each candidate is filtered
-  // by buffer adjacency, cascade adjacency, and the compute-peer DMA
-  // budget. Does not mutate placer state.
-  UnpinnedSearchResult
-  findUnconstrainedCoreCandidate(LogicalTileOp logicalTile,
-                                 std::optional<int> col, std::optional<int> row,
-                                 const UnpinnedPlacementInputs &inputs);
+  // by buffer adjacency, cascade adjacency, the compute-peer DMA
+  // budget and the LTO's pinned channels. Does not mutate placer state.
+  UnpinnedSearchResult findUnconstrainedCoreCandidate(
+      LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
+      const UnpinnedPlacementInputs &inputs, llvm::ArrayRef<TileID> candidates,
+      llvm::ArrayRef<TileID> pastBudget);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
   // SequentialPlacer-only: walks CoreOps and BufferOps, and takes each end of
@@ -584,12 +974,6 @@ private:
       mlir::InFlightDiagnostic &diag, LogicalTileOp logicalTile,
       const Adjacency &adjacency,
       llvm::function_ref<llvm::StringRef(bool thisIsFirst)> labelPeer) const;
-
-  void addChannelRequirementsFromFlows(
-      llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
-      llvm::ArrayRef<RouteOp> routes,
-      llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
-          &channelRequirements);
 };
 
 // Configuration for the SA placer's cost model and schedule.
@@ -603,10 +987,11 @@ private:
 //
 // 2. Resource penalty (hard, blocks legality): penalizes MemTile buffer
 //    overflow, core tile overflow, DMA channel overuse, BD count
-//    overuse, and fifo ends that can't reach their allocate's delegate.
+//    overuse, fifo ends that can't reach their allocate's delegate, and
+//    locks LockPlan cannot place at the current positions.
 //
 // 3. Cascade penalty (hard, blocks legality): penalizes cascade put/get
-//    pairs that aren't adjacent.
+//    pairs and shared-memory pairs that aren't adjacent.
 //
 // 4. Memory pressure (soft, guides optimization): quadratic penalty when
 //    tile utilization exceeds a threshold.
@@ -626,13 +1011,23 @@ struct SAConfig {
   // fifo's worth of memory overflow, which a neighbour's spare room absorbs.
   int sharedMemWeightPerDist = 300;
 
-  // The core's own sections (tables, constants) a core that declares no
-  // data_size is taken to need, before aiecc measures them after placement.
-  int coreSectionsBytes = 3 * 1024;
-
   // Memory pressure (cost 4)
   int pressurePerKB = 3;           // quadratic pressure above threshold
   double pressureThreshold = 0.75; // utilization fraction triggering pressure
+
+  // Stream demand: per channel a row or column boundary is short of (hard),
+  // per squared stream past a fraction of its channels (soft), and per
+  // North/South port over a tile's or a column's (soft).
+  int streamCutPenaltyPerChannel = 20;
+  int streamNearWeight = 3;
+  double streamNearFraction = 0.75;
+  int portOverWeight = 10;
+  // Per runtime sequence and direction, its shim ends' DDR traffic spread
+  // worst over the shim columns (soft): see Placer::ddrSpread.
+  int ddrWeight = 8;
+  // Per core program a switch between neighbouring configurations rewrites
+  // (soft).
+  int coresChangedWeight = 4;
 
   // Adaptive cooling
   double coolFast = 0.995;        // accept ratio > 96%: cool faster
@@ -645,8 +1040,10 @@ struct SAConfig {
   int minMovesPerIter = 100;
   int maxMovesPerIter = 2000;
   int minMaxIters = 10000;
-  int greedyMultiplier = 50;       // greedyIters = multiplier * numMovable
-  double effort = 1.0;             // scales movesPerIter and greedyIters
+  int greedyMultiplier = 50; // greedyIters = multiplier * numMovable
+  double effort = 1.0;       // scales movesPerIter and greedyIters
+  // assign-buffer-addresses' placement-budget, for core tile layouts.
+  int64_t placementBudget = kDefaultPlacementBudget;
   double tempScaleEstimate = 10.0; // initTemp cap: scale * estimated T
   double tempScaleCost = 2.0;      // initTemp cap: scale * totalCost
 
@@ -665,6 +1062,20 @@ struct SAConfig {
 
   // Acceptance tracking
   int windowSize = 100; // sliding window for acceptance ratio
+
+  // ObjectFIFOs whose mem tile pools allocation walked whole.
+  llvm::SmallVector<std::string> walkedFifos;
+  // The data region each core keeps for its own sections, by the device's
+  // core order, where a build measured it, for a core declaring neither
+  // data_size nor measured_data_size: its bytes and the alignment its
+  // sections start at.
+  struct CoreDataCharge {
+    CoreDataCharge(int64_t bytes, int64_t alignBytes)
+        : bytes(bytes), alignBytes(alignBytes) {}
+    int64_t bytes;
+    int64_t alignBytes;
+  };
+  llvm::DenseMap<unsigned, CoreDataCharge> coreDataCharges;
 };
 
 // SA temperature schedule with windowed acceptance tracking.
@@ -715,13 +1126,53 @@ struct NetInfo {
   bool isMulticast = false; // >4 consumers triggers 2x HPWL penalty
 };
 
+/// A DenseMap that notes what each write through operator[] overwrote, so
+/// rollback() can restore it as of the last commit().
+template <typename Key, typename Value>
+class JournaledMap {
+public:
+  using Map = llvm::DenseMap<Key, Value>;
+  Value &operator[](const Key &key) {
+    auto [it, added] = map.try_emplace(key);
+    saved.emplace_back(key,
+                       added ? std::nullopt : std::optional<Value>(it->second));
+    return it->second;
+  }
+  Value lookup(const Key &key) const { return map.lookup(key); }
+  typename Map::const_iterator find(const Key &key) const {
+    return map.find(key);
+  }
+  bool contains(const Key &key) const { return map.contains(key); }
+  typename Map::const_iterator begin() const { return map.begin(); }
+  typename Map::const_iterator end() const { return map.end(); }
+  void clear() {
+    map.clear();
+    saved.clear();
+  }
+  void commit() { saved.clear(); }
+  void rollback() {
+    for (auto &[key, old] : llvm::reverse(saved)) {
+      if (old)
+        map[key] = std::move(*old);
+      else
+        map.erase(key);
+    }
+    saved.clear();
+  }
+
+private:
+  Map map;
+  llvm::SmallVector<std::pair<Key, std::optional<Value>>> saved;
+};
+
 // Simulated annealing placement algorithm
 //
 // Uses HPWL (half-perimeter wire length) cost with incremental bounding-box
 // updates. Nets are derived from ObjectFifo producer/consumer connectivity.
-// All tile types (compute, mem, shim) participate in SA moves. After SA
-// converges, a merge pass collapses mem/shim logical tiles that landed in the
-// same column onto a shared physical tile when DMA capacity permits.
+// All tile types (compute, mem, shim) participate in SA moves, and a move can
+// put two mem/shim logical tiles on the same physical tile directly: the cost
+// terms (currentMemUsage, currentDMAUsage, ...) charge the shared position,
+// not a separate merge step.
 class SAPlacer : public Placer {
 public:
   explicit SAPlacer(unsigned seed = 0, SAConfig config = {})
@@ -730,12 +1181,24 @@ public:
   mlir::LogicalResult place(DeviceOp device) override;
   llvm::StringRef getName() const override { return "sa_placer"; }
   int getFinalCost() const { return finalCost; }
+  int getFinalLockGroups() const { return finalLockGroups; }
+  int getFinalLockPenalty() const { return finalLockPenalty; }
+  bool getFinalLockStopped() const { return finalLockStopped; }
+
+  // Whether a fifo end of `type` sits on either shim tile kind: allocation
+  // moves such an end's objects by DMA rather than pooling them with a mem
+  // or core tile's.
+  static bool isShimEndType(std::optional<AIETileType> type) {
+    return type == AIETileType::ShimNOCTile || type == AIETileType::ShimPLTile;
+  }
 
 private:
   // Configuration
   unsigned rngSeed;
   SAConfig config;
   int finalCost = 0;
+  int finalLockGroups = 0, finalLockPenalty = 0;
+  bool finalLockStopped = false;
   std::mt19937 rng;
   SASchedule schedule;
 
@@ -744,29 +1207,92 @@ private:
   llvm::DenseMap<mlir::Operation *, AIETileType> tileTypes;
   llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
   llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
+  // Locks the design already places on each logical tile, in the order
+  // collectOperations ranks the tiles, and on each placed tile; placed tiles
+  // take lock groups too.
+  llvm::MapVector<mlir::Operation *, int> fixedLocks;
+  llvm::DenseMap<TileID, int> placedLocks;
+  llvm::SmallVector<TileID> placedTiles;
+  // Each fifo's place among the ones its core first acquires, in the core's
+  // program order.
+  llvm::DenseMap<mlir::Operation *, unsigned> firstAcquire;
+  // The lock groups of pools already in the input, read as
+  // aie-objectfifo-allocate reads them: each segment without its locks, used
+  // by the tiles of the endpoints selecting it (a compute tile's DMA reaching
+  // only its own locks).
+  struct InputLockGroup {
+    mlir::Operation *home;
+    llvm::SmallVector<std::pair<mlir::Operation *, bool>, 2> users;
+    int locks;
+  };
+  llvm::SmallVector<InputLockGroup> inputLockGroups;
 
   // Net model
   struct FifoBufferInfo {
     mlir::Operation *fifoOp = nullptr;
+    // Logical ends, null for a physical one.
     mlir::Operation *producer = nullptr;
     llvm::SmallVector<mlir::Operation *> consumers;
+    // Every end's tile, physical ones included.
+    mlir::Operation *producerTile = nullptr;
+    llvm::SmallVector<mlir::Operation *> consumerTiles;
     mlir::Operation *delegate = nullptr;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;
+    // Each end's object bytes, unaligned, as addressing lays the buffers out.
+    int64_t producerRawBytes = 0;
+    int64_t consumerRawBytes = 0;
+    // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
+    int sharedDepth = 0;
     int producerDepth = 0;
     llvm::SmallVector<int> consumerDepths;
-    int producerDMADepth = 0;
-    llvm::SmallVector<int> consumerDMADepths;
+    // ObjectFifoCreateOp::plannedDmaEnd of each end, and the index of its
+    // entry in memTileEnds on a mem tile.
+    std::optional<PlannedDmaEnd> producerEnd;
+    llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerEnds;
+    std::optional<unsigned> producerMemTileEntry;
+    llvm::SmallVector<std::optional<unsigned>> consumerMemTileEntries;
+    // Whether an end on a link's tile holds the link's one pool, which the
+    // split builds from getPoolOwner and getPoolDepth as the plan says, or
+    // shares one another end holds.
+    enum class LinkPool { None, Holds, Shares };
+    LinkPool producerLinkPool = LinkPool::None;
+    llvm::SmallVector<LinkPool> consumerLinkPools;
+    std::optional<PlannedDmaEnd> producerLinkPlan;
+    llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerLinkPlans;
+    // The channel each end that draws one pins, if it pins one.
+    std::optional<PinnedChannels::End> producerPin;
+    llvm::SmallVector<std::optional<PinnedChannels::End>> consumerPins;
+    // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
+    // The tile of the link naming the fifo, if any.
+    mlir::Operation *linkTile = nullptr;
+    // With an aie.objectfifo.allocate, ObjectFifoCreateOp's
+    // allocateFallsBackToDMA() and whether linkPoolMisfit() is None.
+    bool allocateFallsBackToDMA = false;
+    bool fitsLinkPool = true;
     bool linkSharedProd = false;
-
-    int consumerDepthAt(size_t ci) const {
-      return (ci < consumerDepths.size()) ? consumerDepths[ci] : producerDepth;
-    }
+    // PoolLocks::needsLocks' facts for the pools the split makes, and which
+    // ends' cores use the fifo.
+    bool unsynchronized = false;
+    int64_t initObjects = 0;
+    bool rearmed = false;
+    bool producerCore = false;
+    llvm::SmallVector<bool> consumerCore;
+    // The lock groups of the link pool an end holds: the link's segments, or
+    // none when a participant disables synchronization.
+    int producerLinkSegments = 0;
+    llvm::SmallVector<int> consumerLinkSegments;
   };
   llvm::SmallVector<NetInfo> nets;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
-  llvm::SmallVector<FifoBufferInfo> fifoBuffers;
+  llvm::SmallVector<FifoBufferInfo, 0> fifoBuffers;
+  // Each fifo's end tile types, where known, as tileTypes gives them.
+  struct FifoEndTypes {
+    std::optional<AIETileType> producer;
+    llvm::SmallVector<std::optional<AIETileType>, 4> consumers;
+  };
+  std::vector<FifoEndTypes> fifoEndTypes;
 
   // A route's DMA end on a logical tile: one channel, in or out, that moves
   // with the tile.
@@ -776,8 +1302,45 @@ private:
   };
   llvm::SmallVector<RouteEndInfo> routeEnds;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
-  // Descriptors the pools on each logical tile need, for the mem-tile budget.
-  llvm::DenseMap<mlir::Operation *, int> poolBDs;
+  // The DMA ends of each mem tile, logical or physical, and the BD ids each
+  // takes, as the split will make them.
+  struct MemTileEnd {
+    DMAChannelDir dir;
+    PlannedDmaEnd end;
+  };
+  llvm::MapVector<mlir::Operation *, llvm::SmallVector<MemTileEnd>> memTileEnds;
+  // A link whose pool's depth follows where tiles sit: a participant other
+  // than the owner shares the pool through its allocate only where its ends,
+  // its delegate and the link's tile let it (ObjectFifoLinkOp::getPoolPlan).
+  // `tiles` are those tiles; `depth` is the pool's depth the participants'
+  // plans hold now. `holds` are the participants' ends that hold the pool's
+  // plan. A participant's ends depend on where tiles sit only through link
+  // pools' depths, so `replans` keeps them, and the pool's plan, by the
+  // depths every variable link has.
+  struct VariableLink {
+    struct Replan {
+      llvm::SmallVector<llvm::SmallVector<std::optional<PlannedDmaEnd>>> ends;
+      std::optional<PlannedDmaEnd> held;
+    };
+    ObjectFifoLinkOp link;
+    LinkPoolPlan plan;
+    int64_t depth;
+    llvm::SmallVector<mlir::Operation *> tiles;
+    llvm::SmallVector<size_t> fifos;
+    llvm::SmallVector<std::pair<size_t, std::optional<unsigned>>> holds;
+    std::map<std::vector<int64_t>, Replan> replans;
+  };
+  llvm::SmallVector<VariableLink, 0> variableLinks;
+  // The variable links the move being weighed planned again, with their
+  // depths before and after it.
+  struct ReplannedLink {
+    unsigned index;
+    int64_t from;
+    int64_t to;
+  };
+  llvm::SmallVector<ReplannedLink> replannedLinks;
+  // The pools of memTileEnds that config.walkedFifos names.
+  llvm::DenseSet<mlir::Operation *> chargedPools;
 
   // Placement state
   llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;
@@ -788,18 +1351,155 @@ private:
   // Resource tracking
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>>
       tileToFifoIndices;
-  llvm::DenseMap<TileID, int64_t> currentMemUsage;
-  llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
-  llvm::DenseMap<size_t, TileID> sharedMemDestination;
+  // Every map a move writes is journaled, and a rejected move rolls them
+  // back (rejectMove).
+  JournaledMap<TileID, int64_t> currentMemUsage;
+  // Lock packings the moves repeat, the costliest to search again.
+  mutable LockPlan::Memo lockMemo{64};
+  // Every position whose memory a lock user at a position reaches, by
+  // LockPlan::reaches, in position order and its own included.
+  llvm::DenseMap<TileID, llvm::SmallVector<TileID>> lockReach;
+  // The locks each position's pools, lock ops and input pools take, and how
+  // many positions take more than they hold.
+  JournaledMap<TileID, int> currentLockDemand;
+  int positionsOverLocks = 0;
+  // The locks a tile op's lock ops and input pools take wherever it sits.
+  llvm::DenseMap<mlir::Operation *, int> homeLocks;
+  JournaledMap<TileID, std::pair<int, int>> currentDMAUsage;
+  // The rule pinned ends share channels by, and the pinned ends at each
+  // position, whose channels count in currentDMAUsage once each. The move's
+  // changes to pinUse are logged, each undone by its inverse.
+  PinnedChannels pinnedRule;
+  PinnedChannelUse pinUse;
+  llvm::SmallVector<std::tuple<TileID, PinnedChannels::End, int>> pinLog;
+  llvm::SmallVector<std::tuple<TileID, DMAChannelAnalysis::ChannelClaim, int>>
+      claimLog;
+  JournaledMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
-  // An over-full shim tile is charged only for the channels allocation
-  // still needs once ends never in flight together share them.
-  std::optional<ShimTransferSpans> shimSpans;
-  ShareableShimEnds shareableShimEnds;
+  // The resource terms that read only some tiles' positions, kept so a move
+  // recomputes one only when it moves a tile the term reads.
+  int memSpilloverPenalty = 0, bdCountPenalty = 0, delegatePenalty = 0;
+  // What each core tile op holds besides objectFIFO buffers, as
+  // assign-buffer-addresses lays it out: its aie.buffers and unsplit pools,
+  // the buffers its core's section reservations become, and the stack.
+  struct CoreTileContents {
+    llvm::SmallVector<TileLayoutBuffer> buffers;
+    bool hasCore = false;
+    MemoryRun stackRun;
+    std::optional<int> stackBank;
+    int64_t stackAlignBytes = 1;
+  };
+  llvm::DenseMap<mlir::Operation *, CoreTileContents> coreContents;
+  // ObjectFIFO buffers by size, and how many of each.
+  using BufferCounts = llvm::SortedVectorMap<int64_t, int, 4>;
+  // The objectFIFO buffers on each core tile.
+  JournaledMap<TileID, BufferCounts> coreFifoBuffers;
+  // Charges chargeCoreFifo applied in the current move, which tell the
+  // tiles it changed.
+  llvm::SmallVector<std::tuple<TileID, int64_t, int>> coreFifoLog;
+  // coreUnplaced of each core tile.
+  JournaledMap<TileID, int64_t> coreUnplacedAt;
+  // The tiles whose ops the current move changed.
+  llvm::DenseSet<TileID> coreDirty;
+  // The core overflow penalty, kept while no tile it reads changes, and the
+  // overflowing tiles it was computed for.
+  int coreOverflowPenalty = 0;
+  llvm::SmallVector<TileID> coreOverflowTiles;
+  // coreUnplaced by layout problem, and by tile ops and objectFIFO buffers;
+  // a result equals a fresh layoutTile.
+  struct KeyHash {
+    size_t operator()(const std::vector<int64_t> &key) const {
+      return llvm::hash_combine_range(key.begin(), key.end());
+    }
+  };
+  mutable std::unordered_map<std::vector<int64_t>, int64_t, KeyHash>
+      coreUnplacedOf, coreUnplacedByTile;
+  // computeLockPenalty's penalty, and whether its packing stopped, by all it
+  // reads; a result equals a fresh one.
+  mutable std::unordered_map<std::vector<int64_t>, std::pair<int, bool>,
+                             KeyHash>
+      lockVerdicts;
+  static constexpr size_t kLockVerdictBytes = 1 << 20;
+  static constexpr unsigned kLockVerdictMissRun = 4096;
+  mutable size_t lockVerdictBytes = 0;
+  mutable unsigned lockVerdictMissRun = 0;
+  llvm::DenseSet<mlir::Operation *> spillTiles, delegateTermTiles, pairedTiles;
+  // The buffers each mem tile, logical or physical, already holds, as the
+  // allocator lays them out.
+  llvm::MapVector<mlir::Operation *, llvm::SmallVector<BufferAllocation>>
+      memTileFixed;
+  // A variable link's depth changes what ends its participants plan there,
+  // so every cache below that reads a position's ends or buffers also keys
+  // on every variable link's depth, not the tiles' positions alone.
+  // The BD ids the mem tile ends at each position are short of.
+  JournaledMap<TileID, int64_t> bdShortfallAt;
+  using WalkSets =
+      llvm::SmallVector<llvm::SmallVector<std::pair<mlir::Operation *, int>>>;
+  struct BDShortfall {
+    int64_t ids;
+    WalkSets sets;
+    llvm::SmallVector<int64_t> bytes;
+  };
+  // The shortfall of each set of logical tiles sharing a position, by its
+  // BD layout's position, its tiles in order and every variable link's depth.
+  BoundedMemo<std::vector<uintptr_t>, BDShortfall> bdShortfallOf{1u << 16};
+  // The bytes the spill search leaves unplaced in one spill component, by its
+  // tiles' contents and each mem tile's walk set, keyed as bdShortfallOf is.
+  BoundedMemo<std::vector<uintptr_t>, int64_t> unplacedOf{1u << 16};
+  // The spill penalty, by where every mem tile's holders sit, keyed as
+  // bdShortfallOf is.
+  BoundedMemo<std::vector<int64_t>, int> spillPenaltyOf{1u << 14};
+  // For each mem tile position, the first position seen whose channels reach
+  // the same BD ids, which the shortfalls are cached under.
+  llvm::DenseMap<TileID, TileID> bdLayoutOf;
+  // What aie-objectfifo-allocate plans a tile's BD ids around: the channels
+  // and ids its own programs and pinned runtime ids already hold.
+  std::optional<DMAChannelAnalysis> channelAnalysis;
+  DMAChannelAnalysis::TakenBDs takenBDs;
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> physicalTiles;
+  // Every logical mem tile, objectFIFO ends or not: its programs hold BD ids
+  // and channels wherever it is placed.
+  llvm::SmallVector<mlir::Operation *> logicalMemTiles;
+  int cachedPressure = 0;
+  // The DMA-channel term, and its part at each tile.
+  int dmaPenalty = 0;
+  JournaledMap<TileID, int> dmaPenaltyAt;
+  // The tile ops overlayUses names, which the overlay's channel weighs where
+  // they are.
+  llvm::SmallVector<mlir::Operation *> overlayTiles;
+  // The streams each row and column boundary carries, and the penalty for
+  // the channels they are short of.
+  StreamCuts cuts;
+  int streamCutPenalty = 0;
+  // Each stream net's stream as cuts counts it; no destinations for none.
+  JournaledMap<unsigned, std::pair<TileID, llvm::SmallVector<TileID, 2>>>
+      netStreams;
+  // The North/South streams at each position, how many objectFIFOs enter
+  // each column's cores and the cores each enters there, and the ports those
+  // overrun.
+  JournaledMap<TileID, StreamDemand> streamsAt;
+  JournaledMap<int, int> incomingAt;
+  JournaledMap<std::pair<int, mlir::Operation *>, int> incomingCount;
+  int portsOver = 0;
+  // Placer::ddrSpread where the shim tile ops sit now.
+  int ddrPenalty = 0;
+  // The program key of the core at each position, and the program writes
+  // switching to or from the neighbour configurations take.
+  JournaledMap<TileID, unsigned> keyAt;
+  int coresChanged = 0;
+  // Each position's North/South ports, by column then row, and each
+  // column's lowest core's South inputs.
+  llvm::SmallVector<StreamDemand> portsAt;
+  llvm::SmallVector<int> columnSouthPorts;
+  // Adds (`sign` 1) or removes (-1) the streams of tile op `op` at `at`.
+  void chargeStreams(mlir::Operation *op, TileID at, int sign);
+  int portExcess(TileID at) const;
+  int columnExcess(int col) const;
+  // The runtime BD-id charge at each shim position.
+  JournaledMap<TileID, int> runtimeBdAt;
 
   // Cascade
   Adjacency cascadeAdjacency;
-  static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
   // Ends of fifos that ask for shared memory, which must share a module.
   Adjacency sharedMemAdjacency;
 
@@ -821,34 +1521,111 @@ private:
   void initializeSAState();
   void runSAMainLoop();
   mlir::LogicalResult finalizePlacement(DeviceOp device);
-  mlir::LogicalResult mergeMemShimTiles(DeviceOp device);
 
   // Cost and resource methods
   void initResourceTracking();
   void addFifoContribution(size_t fifoIdx, int sign);
   void addRouteEndContribution(size_t endIdx, int sign);
+  void addLockDemand(TileID pos, int locks);
+  void drawChannel(TileID position, bool output,
+                   const std::optional<PinnedChannels::End> &pin, int sign);
   int updateResourcePenalty(
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);
   int getResourcePenalty() const { return cachedResourcePenalty; }
-  int computePenalty() const;
-  int computeMemSpilloverPenalty() const;
-  int computeCoreOverflowPenalty() const;
-  int computeDMAChannelPenalty() const;
-  int computeBDCountPenalty() const;
-  int computeDelegatePenalty() const;
+  /// The BD ids the ends of mem tiles `tiles`, at `position`, are short of
+  /// once aie-objectfifo-allocate has planned their channels; with
+  /// `walkSets`, DMAChannelAnalysis::walkSetsThatFit's sets (every walkable
+  /// pool when none fits) and, with `walkBytes`, each one's bytes.
+  int64_t bdShortfall(TileID position, llvm::ArrayRef<mlir::Operation *> tiles,
+                      WalkSets *walkSets = nullptr,
+                      llvm::SmallVector<int64_t> *walkBytes = nullptr);
+  /// The mem tiles at `position`, in memTileEnds order.
+  llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
+  // Each penalty term below with a `charged` argument also appends to it the
+  // positions of the tiles it charges, for finalizePlacement's notes.
+  int computeMemSpilloverPenalty(
+      llvm::SmallVectorImpl<TileID> *charged = nullptr);
+  int computeCoreOverflowPenalty(
+      llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
+  /// No-op off a core tile. Logs the charge in coreFifoLog.
+  void chargeCoreFifo(TileID pos, int64_t bytes, int count);
+  /// The bytes assign-buffer-addresses' layout (layoutTile) leaves unplaced
+  /// on the core tile at `pos`, with `added` objectFIFO buffers more and
+  /// `removed` fewer.
+  int64_t coreUnplaced(TileID pos, const BufferCounts &added = {},
+                       const BufferCounts &removed = {}) const;
+  /// Relocates the intratile fifos of the core tile at `pos` to neighbours
+  /// whose layout still places everything with them and what `lent` already
+  /// gave them, as generateAllocates' allocates do; records each in `moves`
+  /// and returns the bytes the tile's layout still leaves unplaced.
+  int64_t
+  planCoreFit(TileID pos, llvm::DenseMap<TileID, BufferCounts> &lent,
+              llvm::SmallVectorImpl<std::pair<size_t, TileID>> *moves) const;
+  /// Recomputes coreUnplacedAt for the core tiles whose contents changed, and
+  /// returns them.
+  llvm::SmallVector<TileID> refreshCoreUnplaced();
+  /// The overflowing core tiles and their neighbours, which the core
+  /// overflow penalty reads.
+  llvm::DenseSet<TileID> coreOverflowReads() const;
+  /// Fills `dmaPenaltyAt` and returns its sum.
+  int computeDMAChannelPenalty();
+  /// With `bdIds`, sets it to the part a shim tile's runtime BD ids take.
+  int computeTileDMAPenalty(TileID tilePos, int *bdIds = nullptr) const;
+  /// Charges `pos` for the runtime BD ids the shims there lack, in
+  /// runtimeBdAt.
+  void chargeRuntimeBds(TileID pos);
+  /// Fills `bdShortfallAt` and returns the penalty it gives.
+  int computeBDCountPenalty();
+  int computeDelegatePenalty(
+      llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
+  /// Plans the pools of the links `depths` names for the depths it gives
+  /// them, and their participants' ends; a link already at its given depth
+  /// keeps its plans. Every other variable link's tiles must not have moved
+  /// since its last plan.
+  void replanLinks(llvm::ArrayRef<std::pair<unsigned, int64_t>> depths);
+  /// Charges each lock LockPlan cannot place at the current positions (see
+  /// lockGroups). Sets `stopped`, when given, to whether its search stopped.
+  int computeLockPenalty(
+      bool *stopped = nullptr,
+      llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
+  /// The lock groups aie-objectfifo-allocate gives the pools the split makes
+  /// where the tiles sit now: how many locks each takes
+  /// (LockPlan::groupCounts) and the tiles using them, a compute tile's DMA
+  /// reaching only its own.
+  llvm::SmallVector<
+      std::pair<int, llvm::SmallVector<std::pair<TileID, bool>, 2>>>
+  lockGroups() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
-  int computeAdjacencyPenalty(const Adjacency &adj,
-                              llvm::ArrayRef<std::pair<int, int>> validOffsets,
-                              int weight) const;
+  // The soft terms beside memory pressure: boundaries near their channels,
+  // North/South ports over a tile's or a column's, DDR spread and the core
+  // programs a configuration switch rewrites.
+  int computeSoftTerms() const;
+  // The program writes at `pos` when this configuration and a neighbour
+  // switch, either way, per keyAt.
+  int coresChangedAt(TileID pos) const;
+  int computeAdjacencyPenalty(
+      const Adjacency &adj, llvm::ArrayRef<std::pair<int, int>> validOffsets,
+      int weight, llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
   /// Cascade neighbours placed apart, and shared-memory ends placed on
   /// tiles sharing no memory module, by how far.
-  int computePairingPenalty() const;
+  int computePairingPenalty(
+      llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
+  /// Attaches to `diag` one note per nonzero penalty term: its name, its
+  /// penalty and the positions it charges, anchored on a tile op at the
+  /// first.
+  void explainPenalties(mlir::InFlightDiagnostic &diag);
+  /// Core tiles over local memory, in position order.
+  llvm::SmallVector<TileID> overflowingCoreTiles() const;
   void generateAllocates();
 
   // Move methods
   void tryMove(llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
+  /// Starts journaling a move's changes afresh.
+  void commitMove();
+  /// Undoes every journaled change since commitMove().
+  void rollbackMove();
   bool
   generateMove(llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
   int evaluateMove(
@@ -863,12 +1640,20 @@ private:
   void buildFifoBufferInfo(DeviceOp device,
                            llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
                            llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
-  void buildRouteModel(DeviceOp device, llvm::ArrayRef<RouteOp> routes);
+  void buildRouteModel(DeviceOp device, llvm::ArrayRef<FlowOp> flows,
+                       llvm::ArrayRef<PacketFlowOp> pktFlows,
+                       llvm::ArrayRef<RouteOp> routes,
+                       llvm::ArrayRef<DMAChannelAnalysis::ChannelClaim> claims);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();
   double estimateInitialTemperature(int numSamples);
   bool isLegalPosition(mlir::Operation *tile, TileID pos) const;
+  // The tile ops at `pos`, but `tile` and `leaving`, that name a channel by
+  // index, for namedClash().
+  llvm::SmallVector<mlir::Operation *>
+  namedAt(mlir::Operation *tile, TileID pos,
+          mlir::Operation *leaving = nullptr) const;
   int64_t computeTileMemoryWeight(mlir::Operation *tile) const;
   void printPlacementStats(int64_t elapsedMs) const;
 };

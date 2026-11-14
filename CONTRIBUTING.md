@@ -152,8 +152,13 @@ clang-format, clang-tidy needs a real compile database
 anything, so it can't run as a bare per-file text check the way the
 formatting hooks do.
 
-If you already have a build (see [Building from source](docs/Building.md)),
-point the pre-push hook and CI at it — any build works, clang or GCC:
+Point the pre-push hook at a build configured with clang
+(`-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`), as CI's is: LLVM's
+CMake gives a GCC build other warning flags (`-Wno-missing-field-initializers`
+among them), so clang-tidy's `clang-diagnostic-*` findings would differ from
+CI's, and `utils/run_clang_tidy.sh` refuses one. The build only needs the
+header targets CI's "Prepare compile_commands.json" step in
+`lintAndFormat.yml` lists, not a full compile:
 
 ```shell
 # If your build wasn't configured with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON,
@@ -166,11 +171,11 @@ export MLIR_AIE_BUILD_DIR=/path/to/build
 
 The pre-push hook then runs it automatically on enabled files you've
 touched, via `utils/run_clang_tidy.sh` — a pinned `clang-tidy==22.1.8`
-(via `python/requirements_dev.txt`)
-rather than a bare `apt install clang-tidy`, so the version doesn't silently
-drift between your machine and CI. If there's no compile database yet, the
-hook fails with the setup hint above instead of silently skipping. To run it
-by hand:
+(via `python/requirements_dev.txt`) rather than a bare
+`apt install clang-tidy`, so the version doesn't silently drift between your
+machine and CI; the script refuses any other version. If there's no compile
+database yet, the hook fails with the setup hint above instead of silently
+skipping. To run it by hand:
 
 ```shell
 utils/run_clang_tidy.sh <file>...

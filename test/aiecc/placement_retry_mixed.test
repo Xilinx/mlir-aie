@@ -1,0 +1,69 @@
+//===- placement_retry_mixed.test ------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// REQUIRES: peano
+// RUN: not %aiecc --no-progress --tmpdir %t --enable-repeater-scripts --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s
+// RUN: FileCheck %s --check-prefix=REPEAT --input-file=%t/repeater/manifest.json
+
+// placement_retry_walked's design with a 63 KiB global on the core %t.
+// Placement 1 has no room for its walked pools; placement 2 allocates them
+// and has no room on %t beside its sections; placement 3, charged with them,
+// fails the same way. Placement 3 got furthest, so its failure stands, not
+// placement 1's: its edge, and a reproducer placing as it did.
+// CHECK: could not place buffers
+// CHECK: aiecc: placing again with --sa-walked-fifos=@main::@a_in,@main::@b_in (buffers channel turns walked whole found no room); the messages above are from placement 1
+// CHECK: note: this core keeps its own sections in
+// CHECK: aiecc: placing again with --sa-walked-fifos=@main::@a_in,@main::@b_in --sa-core-data-sizes=@main:0={{[0-9]+}}@16 (a core's buffers found no room beside its own sections); the messages above are from placement 2
+// CHECK: aiecc: no placement with what allocation found counted fits either; placement 3's failure stands
+// CHECK: aiecc: edge 'input_with_addresses.mlir' failed
+// REPEAT: "--sa-walked-fifos=@main::@a_in,@main::@b_in"
+// REPEAT: "--sa-core-data-sizes=@main:0={{[0-9]+}}@16"
+
+module @turn_walk_then_core {
+  aie.device(npu2) {
+    %s = aie.logical_tile<ShimNOCTile>(0, 0)
+    %s1 = aie.logical_tile<ShimNOCTile>(1, 0)
+    %b0 = aie.logical_tile<MemTile>(0, 1)
+    %b1 = aie.logical_tile<MemTile>(1, 1)
+    %m = aie.logical_tile<MemTile>(?, ?)
+    %t = aie.logical_tile<CoreTile>(0, 2)
+    %h0 = aie.buffer(%b0) {address = 1024 : i32, sym_name = "hold0"} : memref<256xi32>
+    %r0 = aie.buffer(%b0) {address = 3072 : i32, sym_name = "rest0"} : memref<130304xi32>
+    %h1 = aie.buffer(%b1) {address = 1024 : i32, sym_name = "hold1"} : memref<256xi32>
+    %r1 = aie.buffer(%b1) {address = 3072 : i32, sym_name = "rest1"} : memref<130304xi32>
+    memref.global "private" @scratch : memref<16128xi32> = uninitialized
+    aie.objectfifo @a_in(%s, {%m}, [2 : i32, 7 : i32]) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @a(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@a_in] -> [@a] ([] [])
+    aie.objectfifo @b_in(%s, {%m}, [2 : i32, 6 : i32]) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @b(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@b_in] -> [@b] ([] [])
+    aie.objectfifo @c(%s1, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.core(%t) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c42 = arith.constant 42 : index
+      scf.for %i = %c0 to %c42 step %c1 {
+        %x = aie.objectfifo.acquire @c(Consume, 1) : memref<64xi32>
+        %g = memref.get_global @scratch : memref<16128xi32>
+        %v = memref.load %x[%c0] : memref<64xi32>
+        %vi = arith.index_cast %v : i32 to index
+        %n = arith.constant 16128 : index
+        %k = arith.remui %vi, %n : index
+        %old = memref.load %g[%k] : memref<16128xi32>
+        memref.store %v, %g[%k] : memref<16128xi32>
+        memref.store %old, %x[%c0] : memref<64xi32>
+        %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<64xi32>
+        aie.objectfifo.release @a(Consume, 1)
+        %bb = aie.objectfifo.acquire @b(Consume, 1) : memref<64xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        aie.objectfifo.release @c(Consume, 1)
+      }
+      aie.end
+    }
+  }
+}

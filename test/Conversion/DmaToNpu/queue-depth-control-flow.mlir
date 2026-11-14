@@ -5,7 +5,8 @@
 // RUN: aie-opt --aie-dma-to-npu='enforce-queue-depth=false' --split-input-file %s 2>/dev/null | FileCheck %s --check-prefix=OFF
 
 // The inner loop can fill the queue before the outer loop's sync. Walking its
-// body just once would incorrectly make this look like push-then-await.
+// body just once would incorrectly make this look like push-then-await. Each
+// outer pass syncs the token its own last push issues, so none is left over.
 // CHECK-LABEL: @nested
 // CHECK: scf.for
 // CHECK: scf.for
@@ -22,8 +23,9 @@ aie.device(npu2) {
     %c1 = arith.constant 1 : i32
     scf.for %i = %zero to %n step %one {
       scf.for %j = %zero to %m step %one {
-        aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
+        aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
       }
+      aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
       aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
     }
   }
@@ -32,7 +34,8 @@ aie.device(npu2) {
 // -----
 
 // A runtime loop may execute zero times: its waits do not necessarily drain
-// the prefix. Keep the entry state among the possible exits.
+// the prefix. Keep the entry state among the possible exits. Each pass syncs
+// the token it pushes, so the prefix needs none.
 // CHECK-LABEL: @possibly_zero
 // CHECK-NOT: aiex.npu.maskpoll
 // CHECK: scf.for
@@ -48,11 +51,12 @@ aie.device(npu2) {
     %one = arith.constant 1 : index
     %c0 = arith.constant 0 : i32
     %c1 = arith.constant 1 : i32
-    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
-    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
-    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
-    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
     scf.for %i = %zero to %n step %one {
+      aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
       aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
     }
     aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
@@ -85,7 +89,8 @@ aie.device(npu2) {
 
 // -----
 
-// A wait on only one branch cannot make the following push safe.
+// A wait on only one branch cannot make the following push safe. The branch
+// syncs the token of its own push, which drains the four ahead of it.
 // CHECK-LABEL: @conditional_wait
 // CHECK-NOT: aiex.npu.maskpoll
 // CHECK: scf.if
@@ -99,11 +104,12 @@ aie.device(npu2) {
   aie.runtime_sequence @conditional_wait(%cond: i1) {
     %c0 = arith.constant 0 : i32
     %c1 = arith.constant 1 : i32
-    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
-    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
-    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
-    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
     scf.if %cond {
+      aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
       aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
     }
     aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
@@ -155,6 +161,8 @@ aie.device(npu2) {
     aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
     aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
     aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = false} : i32, i32
+    // Takes the fifth push's token, so the sequence ends with none.
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
   }
 }
 

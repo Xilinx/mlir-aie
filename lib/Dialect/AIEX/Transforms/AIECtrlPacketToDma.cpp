@@ -197,9 +197,13 @@ struct AIECtrlPacketToDmaPass
 
         SymbolRefAttr metadata =
             SymbolRefAttr::get(builder.getContext(), batchIt->shimDmaAllocName);
-        NpuDmaMemcpyNdOp::create(builder, loc, newBlockArg, staticOffsets,
-                                 staticSizes, staticStrides, metadata,
-                                 /*id=*/0, /*issue_token=*/true);
+        // The batch's own first control packet, not the device line: a BD-id
+        // diagnostic on this copy should point at the control packet that
+        // caused it, not merge every batch of every device into one location.
+        NpuDmaMemcpyNdOp::create(builder, batchIt->first->getLoc(), newBlockArg,
+                                 staticOffsets, staticSizes, staticStrides,
+                                 metadata, /*id=*/0,
+                                 /*issue_token=*/true);
 
         Value shimRow = AIEX::createConstantI32(builder, loc, 0);
         Value shimCol = AIEX::createConstantI32(builder, loc, col);

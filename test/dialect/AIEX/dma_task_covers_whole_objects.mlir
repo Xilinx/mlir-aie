@@ -668,9 +668,9 @@ module {
 
 // -----
 
-// A dma_memcpy_nd through the same fifo shares its objects too, so the
-// sequence's total is unknown: 128 bytes from the task plus 128 from the
-// memcpy fill one 256-byte object.
+// A dma_memcpy_nd through the same fifo shares its objects too and counts
+// toward the total: 128 bytes from the task plus 128 from the memcpy fill one
+// 256-byte object.
 module {
   aie.device(npu2_1col) {
     %t00 = aie.tile(0, 0)
@@ -1254,6 +1254,61 @@ module {
         aie.end
       }
       aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A dma_memcpy_nd alone: 432 i32 into 1776-element objects never completes one.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 1 : i32) : !aie.objectfifo<memref<1776xi32>>
+    aie.runtime_sequence(%arg0: memref<1776xi32>) {
+      // expected-error @+1 {{moves 1728 bytes through objectFIFO @of, which is not a whole number of its 7104-byte objects}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 432][0, 0, 0, 1]) {id = 0 : i64, metadata = @of} : memref<1776xi32>
+    }
+  }
+}
+
+// -----
+
+// A memcpy and a task, 128 bytes each, leave a 384-byte total mid-object; the
+// first transfer through the fifo reports it.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error @+1 {{with this runtime sequence's other transfers through it (384 bytes in all), is not a whole number of its 256-byte objects}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 32][0, 0, 0, 1]) {id = 0 : i64, metadata = @of} : memref<64xi32>
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A memcpy in a loop has no static count to sum, so the total isn't checked.
+module {
+  aie.device(npu2_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2)
+    aie.objectfifo @of(%t00, {%t02}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c3 = arith.constant 3 : index
+      scf.for %i = %c0 to %c3 step %c1 {
+        aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 32][0, 0, 0, 1]) {id = 0 : i64, metadata = @of} : memref<64xi32>
+      }
     }
   }
 }

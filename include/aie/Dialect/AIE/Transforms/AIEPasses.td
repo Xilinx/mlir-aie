@@ -52,7 +52,7 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
   ];
 }
 
-def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
+def AIEPlaceTiles : Pass<"aie-place-tiles", "mlir::ModuleOp"> {
   let summary = "Place logical tiles onto physical AIE tiles";
   let description = [{
     The sequential placer maps cores column-major and FIFO-connected Shim/Mem
@@ -72,6 +72,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     declared in another order or under other names is placed alike. Logical
     tiles whose flows name the same DMA channel by index never share a
     physical tile.
+
+    The pass places a module's devices one after another, so a device's
+    placement may read the devices placed before it (a control overlay's
+    channels). They go in an order set by each device's structure, not module
+    order or names; devices alike in structure keep module order, which then
+    only decides which of two indistinguishable devices goes first.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
@@ -113,10 +119,49 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
               /*default=*/"1.0",
               "Scales the SA placer's moves per temperature step and its "
               "greedy tail. Below 1.0 trades placement cost for compile "
-              "time.">];
+              "time.">,
+       ListOption<"clSAWalkedFifos", "sa-walked-fifos", "std::string",
+                  "ObjectFIFOs whose mem tile pools the SA placer counts as "
+                  "walked whole, one buffer each, as allocation lays out "
+                  "the pools a turn-sharing walk takes, as "
+                  "@<device>::@<fifo> (MLIR symbol references, quoted where "
+                  "a name needs it)">,
+       ListOption<"clSACoreDataSizes", "sa-core-data-sizes", "std::string",
+                  "Bytes the SA placer reserves for a core's own sections, "
+                  "as @<device>:<core>=<bytes>[@<align>], <core> counting the "
+                  "device's aie.core ops in order and <align> the alignment "
+                  "the sections start at (1 when absent). A "
+                  "core's declared data_size or measured_data_size still "
+                  "wins">,
+       Option<"clPlacementBudget", "placement-budget", "int64_t",
+              /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
+              "Search budget per tile; the SA uses it to lay out core tiles "
+              "as aie-assign-buffer-addresses will.">,
+       Option<"clCtrlPktOverlay", "ctrl-pkt-overlay", "bool",
+              /*default=*/"false",
+              "Reserve on each shim the MM2S channel the configuration "
+              "overlay of aie-generate-column-control-overlay will take">,
+       Option<"clCtrlPktOverlayAdaptive", "ctrl-pkt-overlay-adaptive", "bool",
+              /*default=*/"true",
+              "With ctrl-pkt-overlay, where the overlay's MM2S channel goes, "
+              "as aie-generate-column-control-overlay's adaptive option "
+              "says: on, any channel no circuit holds; off, channel 0">,
+       Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
+              /*default=*/"false",
+              "Count every route that asks for no packet header as packet "
+              "switched, as aie-assign-packet-ids' packet-sw-objFifos makes "
+              "it">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,
+                    Statistic<"saLockGroups", "sa-lock-groups",
+                              "Lock groups the SA counts on the placement it "
+                              "kept">,
+                    Statistic<"saLockPenalty", "sa-lock-penalty",
+                              "SA lock penalty of the placement it kept">,
+                    Statistic<"saLockStopped", "sa-lock-stopped",
+                              "Devices whose kept placement's lock packing "
+                              "search stopped before it decided">,
   ];
 }
 
@@ -155,7 +200,7 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 
   let options = [Option<"clPlacementBudget", "placement-budget", "int64_t",
-                        /*default=*/"100000",
+                        /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
                         "Placements each search, ranked then exhaustive, may "
                         "try per tile before it gives up. A node count rather "
                         "than a time limit, so a build stays reproducible; "
@@ -629,6 +674,12 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
 
     These are completeness rules, so a design that is deliberately partial --
     one whose other half is supplied elsewhere -- may decline to run this pass.
+
+    On a design that passes, it also records on each shim input the outputs
+    whose progress proves it consumed (`#aie.consumed_by`), replacing any
+    earlier proof. `--aie-assign-runtime-sequence-bd-ids` trusts these to
+    reuse an input's buffer descriptor IDs once an output is awaited, so a
+    design that declines this pass gets no proof and keeps those IDs apart.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoVerifyPass()";
@@ -894,7 +945,10 @@ def AIEGenerateColumnControlOverlay
        Option<"adaptive", "adaptive", "bool", "true",
               "Place configuration transport around application resources">,
        ListOption<"coverColumns", "cover-columns", "int",
-                  "Additional columns touched by application routing">];
+                  "Additional columns touched by application routing">,
+       Option<"packetSwitched", "packet-sw-objFifos", "bool", "false",
+              "Count route ends with no packet header as packet switched, "
+              "as aie-assign-packet-ids does with this option">];
 }
 
 def AIEAnnotateShimSharing

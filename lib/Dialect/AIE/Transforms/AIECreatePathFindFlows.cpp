@@ -18,6 +18,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
@@ -1364,8 +1365,8 @@ struct PacketFlowRouting : PacketPlan {
         numArbiters(targetModel.getNumArbiters()),
         numMselsPerArbiter(targetModel.getNumMselsPerArbiter()),
         maxPacketId(targetModel.getMaxPacketId()),
-        idBits(llvm::Log2_32_Ceil(maxPacketId + 1)), idMask((1 << idBits) - 1) {
-  }
+        idBits(targetModel.getPacketIdBits()),
+        idMask(targetModel.getPacketIdMask()) {}
 
   llvm::Expected<PacketPlan> plan();
   void collectFlows();
@@ -2569,8 +2570,8 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
   const int numArbiters = targetModel.getNumArbiters();
   const int numMselsPerArbiter = targetModel.getNumMselsPerArbiter();
   const uint32_t maxPacketId = targetModel.getMaxPacketId();
-  const int idBits = llvm::Log2_32_Ceil(maxPacketId + 1);
-  const int idMask = (1 << idBits) - 1;
+  const int idBits = targetModel.getPacketIdBits();
+  const int idMask = targetModel.getPacketIdMask();
   AIEDialect::PriorityRouteAttrHelper priority(builder.getContext());
   UnitAttr unit = builder.getUnitAttr();
 
@@ -3245,6 +3246,11 @@ void AIEPathfinderPass::runOnOperation() {
                            const StreamConflicts &c, const PinnedRoutes &pin,
                            bool prioritize =
                                true) -> llvm::Expected<PacketPlan> {
+    // Every attempt of the ladder routes `dev` under the same constraints, so
+    // one that replays an earlier attempt is skipped (see findPaths).
+    std::vector<PathfinderAttempt> attempts;
+    an.pathfinder.attempts = &attempts;
+    llvm::scope_exit detach([&] { an.pathfinder.attempts = nullptr; });
     llvm::Expected<PacketPlan> plan =
         route(dev, an, c, pin, clCircuitSwitchHops, prioritize);
     if (plan)

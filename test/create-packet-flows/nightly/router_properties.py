@@ -30,7 +30,8 @@ Designs come in three tiers:
    runtime sequence and pre-placed switchbox configuration. The router has
    to succeed with allow-deadlock-prone, and its output is checked hop by
    hop; without it, it has to fail exactly where the model says the flows
-   can deadlock.
+   can deadlock. Where it fails on a hold cycle through receivers flows
+   share, strict_witness looks for a routing without one: a miss.
  * unroutable: more pairwise conflicting streams must take an arbiter at a
    tile than it has (the router's message is predicted exactly), more
    circuit flows must cross a port than it has channels, or conflicting
@@ -43,6 +44,7 @@ verify.
 """
 
 import argparse
+import copy
 import itertools
 import json
 import os
@@ -75,11 +77,12 @@ PARAMS = dict(
     max_bd_steps=1024,
     # stepBudget in planArbiters and unroutableArbiters, budget in
     # runOnPacketFlow's hold-cycle search: AIECreatePathFindFlows.cpp;
-    # maxWalkSearches in StreamConflicts::holdCycle
+    # maxWalkSearches, maxOrders in StreamConflicts::holdCycle
     plan_budget=100000,
     clique_budget=100000,
     hold_budget=256,
     walk_searches=1024,
+    link_orders=8,
     # Designs per tier and per aie-opt run.
     routable=170,
     unroutable=40,
@@ -90,6 +93,12 @@ PARAMS = dict(
     max_hop_ratio=1.10,
     max_amsels=dict(npu1=19.5, npu2=19.5, xcvc1902=21.0),
     max_low_priority=0.05,
+    # Routable designs the router fails without allow-deadlock-prone on a
+    # shared-receiver hold cycle though strict_witness finds a routing without
+    # one: at most this share of them plus the allowance. Measured 2026-10-21:
+    # 0-1 per 2000 designs on npu1 and npu2, none of lit's 170.
+    max_strict_misses=0.001,
+    strict_miss_allowance=2,
     max_ms_per_design=dict(npu1=250, npu2=250, xcvc1902=600),
     # Generator knobs: share of routable designs given pre-placed switchbox
     # configuration, and parallel aie-opt runs.
@@ -2251,22 +2260,42 @@ class Analysis:
                 entering[hop].append((t, h))
                 passing[hop[0]].append((t, h))
 
-        # The arbiter both trees took to leave the switchbox above a hop they
-        # share where they came into it apart.
-        def merged_at(a, ha, b, hb):
+        # The arbiters that granted two trees a hop they share in one order:
+        # the one both took to leave the switchbox above it where they came
+        # into it apart, and each they took on the way down from there
+        # together that neither takes at another hop, so grants each packet
+        # once.
+        def ordered_by(a, ha, b, hb):
+            def once(t, grant):
+                tree = trees[t]
+                return (
+                    sum(
+                        1
+                        for h, hop in enumerate(tree["hops"])
+                        if hop[0] == grant[0] and tree["arbiter"][h] == grant[1]
+                    )
+                    == 1
+                )
+
+            grants = []
             while True:
                 pa, pb = trees[a]["parent"][ha], trees[b]["parent"][hb]
                 if pa < 0 or pb < 0:
-                    return None
-                if trees[a]["hops"][pa] != trees[b]["hops"][pb]:
-                    arbiter = trees[a]["arbiter"][pa]
-                    if (
-                        trees[a]["hops"][pa][0] != trees[b]["hops"][pb][0]
-                        or arbiter is None
-                        or arbiter != trees[b]["arbiter"][pb]
-                    ):
-                        return None
-                    return (trees[a]["hops"][pa][0], arbiter)
+                    return tuple(grants)
+                arbiter = trees[a]["arbiter"][pa]
+                shared = trees[a]["hops"][pa] == trees[b]["hops"][pb]
+                if (
+                    trees[a]["hops"][pa][0] == trees[b]["hops"][pb][0]
+                    and arbiter is not None
+                    and arbiter == trees[b]["arbiter"][pb]
+                ):
+                    grant = (trees[a]["hops"][pa][0], arbiter)
+                    if not shared:
+                        grants.insert(0, grant)
+                    elif once(a, grant) and once(b, grant):
+                        grants.append(grant)
+                if not shared:
+                    return tuple(grants)
                 ha, hb = pa, pb
 
         cache = {}
@@ -2300,7 +2329,7 @@ class Analysis:
                                     -1,
                                     same_id,
                                 ),
-                                merged_at(t0, index, t, ht),
+                                ordered_by(t0, index, t, ht),
                             )
                         )
                     arbiter = trees[t]["arbiter"][ht]
@@ -2335,7 +2364,7 @@ class Analysis:
                                     arbiter,
                                     is_forced,
                                 ),
-                                None,
+                                (),
                             )
                         )
             elif kind == "recv":
@@ -2353,7 +2382,7 @@ class Analysis:
                                 (
                                     anywhere_node(g),
                                     ("drain", s, s, m, None, None, None, -1, False),
-                                    None,
+                                    (),
                                 )
                             )
                             break
@@ -2366,9 +2395,9 @@ class Analysis:
                         h = u["parent"][h]
                 for h in range(len(u["hops"])):
                     if h not in behind:
-                        out.append((u["base"] + h, None, None))
+                        out.append((u["base"] + h, None, ()))
                 for m in range(len(u["members"])):
-                    out.append((receiver_node(t0, m), None, None))
+                    out.append((receiver_node(t0, m), None, ()))
             cache[n] = out
             return out
 
@@ -2437,19 +2466,27 @@ class Analysis:
 
         # A packet holds its arbiter until its tail passes, so no state has two
         # trees holding one arbiter. Nor is a walk where each packet is behind
-        # the next on links below one arbiter they merged at, which granted
-        # them those links in one order, a deadlock, so a walk from a link wait
-        # below one must also wait otherwise.
+        # the next on links one arbiter granted them all in one order a
+        # deadlock, so a walk from a link wait must, for each arbiter that
+        # ordered that link, also wait otherwise. Arbiters past
+        # PARAMS["link_orders"] go untracked, which at worst finds a cycle no
+        # routing has.
         def close_walk(x, e, fixed, excluded):
             if not allowed(e, fixed, excluded):
                 return None
 
-            # A state is a node and whether the walk there has waited other
-            # than on a link below e's merge.
-            def ordered(edge):
-                return edge[1] is None or edge[2] == e[2]
+            # A state is a node and, per arbiter that ordered e's link,
+            # whether the walk there has waited other than on a link it
+            # ordered too.
+            orders = e[2][: PARAMS["link_orders"]]
+            full = (1 << len(orders)) - 1
 
-            start, end = (e[0], e[2] is None), (x, True)
+            def unordered(edge):
+                if edge[1] is None:
+                    return 0
+                return sum(1 << i for i, g in enumerate(orders) if g not in edge[2])
+
+            start, end = (e[0], 0), (x, full)
             via = {start: (start, None)}
             work = deque([start])
             while end not in via:
@@ -2457,7 +2494,7 @@ class Analysis:
                     return None
                 n = work.popleft()
                 for nxt in successors(n[0]):
-                    to = (nxt[0], n[1] or not ordered(nxt))
+                    to = (nxt[0], n[1] | unordered(nxt))
                     if (
                         comp[nxt[0]] == comp[x]
                         and allowed(nxt, fixed, excluded)
@@ -3114,39 +3151,41 @@ class Construction:
                 elif op[0] == "rules":
                     self.owner_s[(*tile, *op[1])] = "fixed"
 
+    def new_tree(self, key, src):
+        """An empty tree from `src`, kept as `self.trees[key]`."""
+        tree = dict(
+            src=src, root=phys_src(src), children=defaultdict(list), next={}, ends={}
+        )
+        self.trees[key] = tree
+        return tree
+
     def route(self, src, dsts, packet):
-        root = phys_src(src)
-        tree = dict(src=src, root=root, children=defaultdict(list), next={}, ends={})
-        self.trees[src] = tree
-        if root in self.owner_s:
+        tree = self.new_tree(src, src)
+        if tree["root"] in self.owner_s:
             return []
-        self.owner_s[root] = src
+        self.owner_s[tree["root"]] = src
         routed = []
         for d in dsts:
-            found = self._search(tree, d, packet)
-            if found is None:
+            hops = self._search(tree, d, packet)
+            if hops is None:
                 continue
-            parent, s, m = found
+            s, m, _ = hops[-1]
             tree["children"][s].append(m)
             tree["ends"][m] = d
             self.owner_m[m] = ("dst", d) if packet else src
-            while parent[s] is not None:
-                ps, pm = parent[s]
+            for ps, pm, s in reversed(hops[:-1]):
                 tree["children"][ps].append(pm)
                 tree["next"][pm] = s
                 self.owner_m[pm] = src
                 self.owner_s[s] = src
-                s = ps
             routed.append(d)
         return routed
 
     def pin(self, src, ends):
         """Take the tree from `src` the router emitted: `ends` as
         trace_output has them."""
-        root = phys_src(src)
-        tree = dict(src=src, root=root, children=defaultdict(list), next={}, ends={})
-        self.trees[src] = tree
-        self.owner_s[root] = src
+        tree = self.new_tree(src, src)
+        self.owner_s[tree["root"]] = src
         for d, hops in ends.items():
             for k, (tile, slave, master, _) in enumerate(hops):
                 s, m = (*tile, *slave), (*tile, *master)
@@ -3162,11 +3201,27 @@ class Construction:
         for ms in tree["children"].values():
             self.pinned_ports.update(ms)
 
-    def _search(self, tree, d, packet):
+    def _search(self, tree, dst, packet, may_share=None, slave=None):
+        """The hops from a port of `tree` to the destination `dst`, or into
+        the slave port `slave`, on ports no other tree owns.
+
+        Args:
+            tree: The tree to extend.
+            dst: The destination to end at; None to end at `slave`.
+            packet: Whether the tree is a packet tree, which may end at a
+                master port other packet trees take into `dst`.
+            may_share: Whether the tree may take a port another tree owns;
+                None for never.
+            slave: The slave port to end at, where `dst` is None.
+
+        Returns:
+            [(slave, master, next slave or None)] from a port of the tree to
+            the end, or None if no path is free.
+        """
         t = self.t
-        target = phys_dst(d)
+        target = None if dst is None else phys_dst(dst)
         starts = [tree["root"], *tree["next"].values()]
-        parent = {s: None for s in starts}
+        parent = dict.fromkeys(starts)
         queue = deque(starts)
         while queue:
             s = queue.popleft()
@@ -3179,40 +3234,51 @@ class Construction:
                     continue
                 if m == target:
                     owner = self.owner_m.get(m)
-                    if m in self.pinned_ports:
-                        continue
-                    if owner is None or (packet and owner == ("dst", d)):
-                        return parent, s, m
+                    if m not in self.pinned_ports and (
+                        owner is None or (packet and owner == ("dst", dst))
+                    ):
+                        return self._unwind(parent, s) + [(s, m, None)]
                     continue
-                if m in self.owner_m or port[0] not in DIRECTIONAL:
+                if port[0] not in DIRECTIONAL or (tile[1] == 0 and port[0] == SOUTH):
                     continue
-                if tile[1] == 0 and port[0] == SOUTH:
+                if m in self.owner_m and (may_share is None or not may_share(m)):
                     continue
                 ntile, nport = linked_input(tile, port)
                 if not t.exists(ntile) or nport[1] >= t.slaves[ntile][nport[0]]:
                     continue
                 nxt = (*ntile, *nport)
-                if nxt in self.owner_s or nxt in parent:
+                if nxt in parent or (
+                    nxt in self.owner_s and (may_share is None or not may_share(nxt))
+                ):
                     continue
                 parent[nxt] = (s, m)
+                if nxt == slave:
+                    return self._unwind(parent, nxt)
                 queue.append(nxt)
         return None
 
-    def settings(self, src):
-        """The tree from `src` as the pathfinder's switch settings."""
-        tree = self.trees.get(src)
+    @staticmethod
+    def _unwind(parent, s):
+        hops = []
+        while parent[s] is not None:
+            ps, pm = parent[s]
+            hops.append((ps, pm, s))
+            s = ps
+        return hops[::-1]
+
+    @staticmethod
+    def settings(tree):
+        """`tree` as the pathfinder's switch settings."""
         out = defaultdict(list)
-        if tree is None:
-            return {}
         for s, ms in tree["children"].items():
-            sp = src[2:] if s == tree["root"] else s[2:]
+            sp = tree["src"][2:] if s == tree["root"] else s[2:]
             for m in ms:
                 mp = tree["ends"][m][2:] if m in tree["ends"] else m[2:]
                 out[s[:2]].append((sp, mp))
         return dict(out)
 
     def solution(self):
-        return {src: self.settings(src) for src in self.trees}
+        return {src: self.settings(tree) for src, tree in self.trees.items()}
 
     def hops(self):
         return sum(
@@ -3244,12 +3310,13 @@ def pins_hops_fn(d, hops_on):
     return lambda tile: not hops_on or d.target.kind(tile) == "shim"
 
 
-def priority_trees(d, cache):
+def priority_trees(d, cache, deadline=None):
     """The trees from `d`'s prioritized sources, {source: trace_output ends},
     as the router routes the prioritized packets without the rest of the
     design. The witness tries to preserve these routes, so it has to route
-    around them. A source's other
-    ids are no part of it. None if the router cannot route them."""
+    around them. A source's other ids are no part of it. None if the router
+    cannot route them. A run that timed out raises RouterTimeout again for as
+    long as `cache` lives."""
     prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
     if not prio:
         return {}
@@ -3261,8 +3328,17 @@ def priority_trees(d, cache):
         if (srcs := [s for s in f["srcs"] if (s, f["id"]) in prio])
     ]
     text = c.emit()
+    if isinstance(cache.get(text), RouterTimeout):
+        raise cache[text]
     if text not in cache:
-        p = aie_opt(text, hops_on=False, timeout=120)
+        try:
+            p = model_run(
+                aie_opt(text, hops_on=False, deadline=deadline),
+                "routing the prioritized flows alone",
+            )
+        except RouterTimeout as x:
+            cache[text] = x
+            raise
         trees = None
         if p.returncode == 0:
             out, trees = load_design(p.stdout), defaultdict(dict)
@@ -3331,14 +3407,14 @@ def priority_problems(out, alone):
     return problems
 
 
-def construct(d, seed, attempts=40):
+def construct(d, seed, attempts=40, deadline=None):
     """Route `d` on exclusive links and plan its arbiters with the router's
     rules, dropping streams until both hop modes accept the witness. Returns
     (construction, analysis, plan) or None; `d` is pruned in place."""
     cache = {}
     for attempt in range(attempts):
         con = Construction(d, random.Random(f"route-{seed}-{attempt}"))
-        pinned = priority_trees(d, cache)
+        pinned = priority_trees(d, cache, deadline)
         if pinned is None:
             prio = {s for f in d.packet_flows if f["priority"] for s in f["srcs"]}
             blame = [st for st in requested_streams(d) if st.src in prio]
@@ -4277,6 +4353,27 @@ def add_task_tokens(d):
         )
 
 
+def lower_shim_muxes(t, tree, out):
+    """Add to `out` the shim muxes `tree` takes where it starts or ends at a
+    shim DMA."""
+    src = tree["src"]
+    if t.kind(src[:2]) == "shim":
+        out.muxes.setdefault(src[:2], []).append(
+            ((DMA, src[3]), (NORTH, tree["root"][3]))
+        )
+    for m, dst in tree["ends"].items():
+        if t.kind(dst[:2]) == "shim":
+            out.muxes.setdefault(dst[:2], []).append(((NORTH, m[3]), (DMA, dst[3])))
+
+
+def lower_circuit_tree(t, tree, out):
+    """Add the circuit tree `tree` to `out` as connects and shim muxes."""
+    for s, ms in tree["children"].items():
+        for m in ms:
+            out.boxes.setdefault(s[:2], []).append(("connect", s[2:], m[2:]))
+    lower_shim_muxes(t, tree, out)
+
+
 def fix_ir(rng, d, con):
     """A copy of `d` with one circuit tree and one packet tree of the witness
     `con` turned into switchbox configuration the router has to keep."""
@@ -4286,17 +4383,7 @@ def fix_ir(rng, d, con):
     circuit = sorted({s for s, _ in d.flows})
     if circuit and rng.random() < 0.7:
         src = rng.choice(circuit)
-        tree = con.trees[src]
-        for s, ms in tree["children"].items():
-            for m in ms:
-                out.boxes.setdefault(s[:2], []).append(("connect", s[2:], m[2:]))
-        if t.kind(src[:2]) == "shim":
-            out.muxes.setdefault(src[:2], []).append(
-                ((DMA, src[3]), (NORTH, tree["root"][3]))
-            )
-        for m, dst in tree["ends"].items():
-            if t.kind(dst[:2]) == "shim":
-                out.muxes.setdefault(dst[:2], []).append(((NORTH, m[3]), (DMA, dst[3])))
+        lower_circuit_tree(t, con.trees[src], out)
         out.flows = [f for f in out.flows if f[0] != src]
         changed = True
     srcs = Counter(s for f in d.packet_flows for s in f["srcs"])
@@ -4327,13 +4414,7 @@ def fix_ir(rng, d, con):
                 keep = f["keep"] if m in tree["ends"] else None
                 box.append(("masterset", m[2:], [name], keep, False))
             box.append(("rules", s[2:], [(PARAMS["max_id"], f["id"], name)], False))
-        if t.kind(src[:2]) == "shim":
-            out.muxes.setdefault(src[:2], []).append(
-                ((DMA, src[3]), (NORTH, tree["root"][3]))
-            )
-        for m, dst in tree["ends"].items():
-            if t.kind(dst[:2]) == "shim":
-                out.muxes.setdefault(dst[:2], []).append(((NORTH, m[3]), (DMA, dst[3])))
+        lower_shim_muxes(t, tree, out)
         changed = True
     return out if changed else None
 
@@ -4342,12 +4423,13 @@ def devices_of(device):
     return FAMILIES.get(device, (device,))
 
 
-def routable_case(seed, device):
-    """A design the generator routed itself. None if it gave up."""
+def routable_case(seed, device, deadline=None):
+    """A design the generator routed itself. None if it gave up; the model's
+    router runs stop by `deadline` (ModelRunFailed) if given."""
     devs = devices_of(device)
     rng = random.Random(seed)
     d = canonical(random_design(rng, devs[seed % len(devs)]))
-    built = construct(d, seed)
+    built = construct(d, seed, deadline=deadline)
     if built is None:
         return None
     shape = "random"
@@ -4355,7 +4437,7 @@ def routable_case(seed, device):
         fixed = fix_ir(rng, d, built[0])
         if fixed is not None:
             fd = canonical(fixed)
-            fbuilt = construct(fd, seed)
+            fbuilt = construct(fd, seed, deadline=deadline)
             if fbuilt is not None and (fd.flows or fd.packet_flows):
                 d, built, shape = fd, fbuilt, "fixed-ir"
     con, an, _ = built
@@ -4677,7 +4759,7 @@ def generate(seed, params=None, device="npu2", tier="routable"):
     }[tier](seed, device)
 
 
-def verdict(d, hops_on=True, seed=0):
+def verdict(d, hops_on=True, seed=0, deadline=None):
     """What the model says about routing `d`: routable True (the generator
     found a witness), False (the router's pre-routing check rejects it, with
     its exact reason), or None; and every pair of requested streams that can
@@ -4702,11 +4784,413 @@ def verdict(d, hops_on=True, seed=0):
         return out
     c = d.copy()
     before = design_signature(c)
-    built = construct(c, seed)
+    built = construct(c, seed, deadline=deadline)
     if built is not None and design_signature(c) == before:
         out["routable"] = True
         out["witness"] = built[0].solution()
     return out
+
+
+# Strict witnesses: where the router fails without allow-deadlock-prone on a
+# hold cycle through receivers trees share, a routing without one may still
+# exist. strict_witness searches for one the way the router avoids the cycle:
+# packet sources that share two or more receivers meet, the ids they meet on
+# leave their source switchbox apart from the rest, and packet trees share
+# links where their ids are disjoint and their streams do not conflict. Only a
+# routing lowered to switchbox configuration that the C++ verifier accepts,
+# verify() clears and --aie-find-flows lifts back to the requested flows
+# counts.
+
+
+def tree_reach(tree, port):
+    """The destinations a Construction tree reaches below `port`: a master
+    port of it, or a slave port it enters by."""
+    if port in tree["ends"]:
+        return {tree["ends"][port]}
+    if port in tree["next"]:
+        return tree_reach(tree, tree["next"][port])
+    out = set()
+    for m in tree["children"].get(port, []):
+        out |= tree_reach(tree, m)
+    return out
+
+
+def shared_receiver_pairs(d):
+    """Pairs of packet sources sharing two or more receivers, and those."""
+    reached = defaultdict(set)
+    for f in d.packet_flows:
+        for s in f["srcs"]:
+            reached[s] |= set(f["dsts"])
+    return [
+        (a, b, reached[a] & reached[b])
+        for a, b in itertools.combinations(sorted(reached), 2)
+        if len(reached[a] & reached[b]) > 1
+    ]
+
+
+class StrictSearch(Construction):
+    """One attempt at a strict witness, from a Construction `con` of `d`: its
+    trees, extended with packet trees that share links where their ids are
+    disjoint and their streams do not conflict."""
+
+    def __init__(self, d, an, con, rng):
+        super().__init__(d, rng)
+        self.owner_m, self.owner_s = dict(con.owner_m), dict(con.owner_s)
+        self.trees = copy.deepcopy(con.trees)
+        self.pinned_ports = set(con.pinned_ports)
+        self.d, self.an = d, an
+        self.ids = defaultdict(set)
+        self.dsts = defaultdict(lambda: defaultdict(set))
+        self.prioritized = set()
+        for f in d.packet_flows:
+            for s in f["srcs"]:
+                self.ids[s].add(f["id"])
+                self.dsts[s][f["id"]].update(f["dsts"])
+                if f["priority"]:
+                    self.prioritized.add(s)
+        self.streams = defaultdict(list)
+        for i, st in enumerate(an.streams[: an.num_requested]):
+            self.streams[st.src].append(i)
+        # The packet trees on each port, as (source, ids); circuits own theirs.
+        self.users = defaultdict(list)
+        for src, tree in self.trees.items():
+            if src in self.ids:
+                for port in self.ports(tree):
+                    self.users[port].append((src, frozenset(self.ids[src])))
+
+    @staticmethod
+    def ports(tree):
+        out = {tree["root"]}
+        for s, ms in tree["children"].items():
+            out.add(s)
+            out.update(ms)
+            out.update(tree["next"][m] for m in ms if m in tree["next"])
+        return out
+
+    def shareable(self, port, src, ids, avoid=None):
+        """Whether the tree from `src` with `ids` may take `port`, which other
+        packet trees use: none is `src`'s own or `avoid`'s, shares an id with
+        it, or has a stream that conflicts with one of `src`'s."""
+        users = self.users.get(port)
+        return bool(users) and all(
+            u != src
+            and u != avoid
+            and not ids & uids
+            and not any(
+                self.an.conflict(i, j)
+                for i in self.streams[src]
+                for j in self.streams[u]
+            )
+            for u, uids in users
+        )
+
+    def release(self, src):
+        tree = self.trees.pop(src)
+        for port in self.ports(tree):
+            self.users[port] = [(u, i) for u, i in self.users[port] if u != src]
+            if self.owner_m.get(port) == src:
+                del self.owner_m[port]
+            if self.owner_s.get(port) == src:
+                del self.owner_s[port]
+        for m in tree["ends"]:
+            if not any(m in t["ends"] for t in self.trees.values()):
+                self.owner_m.pop(m, None)
+
+    def claim(self, tree, src, ids, hops):
+        for s, m, nxt in hops:
+            if m not in tree["children"][s]:
+                tree["children"][s].append(m)
+            if nxt is None:
+                continue
+            tree["next"][m] = nxt
+            self.owner_m.setdefault(m, src)
+            self.owner_s.setdefault(nxt, src)
+            self.users[m].append((src, ids))
+            self.users[nxt].append((src, ids))
+
+    def new_tree(self, key, src):
+        tree = super().new_tree(key, src)
+        self.owner_s.setdefault(tree["root"], src)
+        return tree
+
+    def route_part(self, key, src, ids, dsts):
+        tree = self.new_tree(key, src)
+        for x in sorted(dsts):
+            hops = self._search(
+                tree, x, True, lambda port: self.shareable(port, src, ids)
+            )
+            if hops is None:
+                return False
+            s, m, _ = hops[-1]
+            self.claim(tree, src, ids, hops[:-1])
+            tree["children"][s].append(m)
+            tree["ends"][m] = x
+            self.owner_m[m] = ("dst", x)
+        return True
+
+    def join(self, key, src, ids, owner, shared):
+        """Route `src` into a slave port at a switchbox the owner's tree
+        passes on its way to every receiver in `shared`, and on from there by
+        the owner's master ports toward those receivers."""
+        t = self.t
+        meets = [
+            s
+            for s in [owner["root"], *owner["next"].values()]
+            if shared <= tree_reach(owner, s)
+        ]
+        self.rng.shuffle(meets)
+        root = phys_src(src)
+        for s in meets:
+            tile = s[:2]
+            masters = [m for m in owner["children"][s] if tree_reach(owner, m) & shared]
+            slaves = [
+                (*tile, b, c) for b in DIRECTIONAL for c in range(t.slaves[tile][b])
+            ]
+            self.rng.shuffle(slaves)
+            if root[:2] == tile:
+                slaves.insert(0, root)
+            for j in slaves:
+                if (j != root and j in self.owner_s) or not all(
+                    t.legal(tile, j[2:], m[2:]) for m in masters
+                ):
+                    continue
+                tree = self.new_tree(key, src)
+                hops = (
+                    []
+                    if j == root
+                    else self._search(
+                        tree,
+                        None,
+                        True,
+                        lambda port: self.shareable(port, src, ids, owner["src"]),
+                        slave=j,
+                    )
+                )
+                if hops is None:
+                    del self.trees[key]
+                    continue
+                self.claim(tree, src, ids, hops)
+                for m in masters:
+                    tree["children"][j].append(m)
+                    self.follow(tree, owner, m, shared)
+                return True
+        return False
+
+    @staticmethod
+    def follow(tree, owner, m, shared):
+        if m in owner["ends"]:
+            tree["ends"][m] = owner["ends"][m]
+            return
+        nxt = tree["next"][m] = owner["next"][m]
+        for below in owner["children"].get(nxt, []):
+            if tree_reach(owner, below) & shared:
+                if below not in tree["children"][nxt]:
+                    tree["children"][nxt].append(below)
+                StrictSearch.follow(tree, owner, below, shared)
+
+    def run(self):
+        """The trees as a solution plan_routing takes, or why none."""
+        pairs = shared_receiver_pairs(self.d)
+        # A prioritized tree keeps the route it takes alone (see
+        # priority_trees); trees with an id of its own may still join it.
+        pairs = [
+            (a, b, x)
+            for a, b, x in pairs
+            if not {a, b} & self.prioritized or self.ids[a] & self.ids[b]
+        ]
+        affected = sorted({s for a, b, _ in pairs for s in (a, b)} - self.prioritized)
+        for src in affected:
+            if src in self.trees:
+                self.release(src)
+        parts = {}
+        for src in affected:
+            shared = set().union(*(x for a, b, x in pairs if src in (a, b)))
+            meet = frozenset(i for i, ds in self.dsts[src].items() if ds & shared)
+            rest = frozenset(self.ids[src] - meet)
+            parts[src] = {
+                k: set().union(*(self.dsts[src][i] for i in k))
+                for k in (meet, rest)
+                if k
+            }
+        for src in self.prioritized:
+            parts[src] = {frozenset(self.ids[src]): None}
+        owner_of = {src: src for src in self.prioritized}
+        trees = {
+            (src, k): self.trees.get(src)
+            for src in self.prioritized
+            for k in parts[src]
+        }
+        order = list(pairs)
+        self.rng.shuffle(order)
+        for a, b, shared in order:
+            if a in owner_of and b in owner_of:
+                continue
+            if b in owner_of or (a not in owner_of and self.rng.random() < 0.5):
+                a, b = b, a
+            if a not in owner_of:
+                owner_of[a] = a
+                k = next(k for k in parts[a] if parts[a][k] & shared)
+                if not self.route_part((a, k), a, k, parts[a][k]):
+                    return "no room for an owner's tree"
+                trees[(a, k)] = self.trees[(a, k)]
+            o = owner_of[b] = owner_of[a]
+            # The tree `a` joined need not reach what `a` and `b` share.
+            okey = next(
+                (k for k in parts[o] if parts[o][k] is None or parts[o][k] & shared),
+                None,
+            )
+            bkey = next(k for k in parts[b] if parts[b][k] & shared)
+            if trees.get((o, okey)) is None or not self.join(
+                (b, bkey), b, bkey, trees[(o, okey)], shared
+            ):
+                return "no way to meet"
+        rest = [(s, k) for s in affected for k in parts[s] if (s, k) not in self.trees]
+        self.rng.shuffle(rest)
+        for s, k in rest:
+            if not self.route_part((s, k), s, k, parts[s][k]):
+                return "no room for a tree"
+        out = defaultdict(lambda: defaultdict(list))
+        for tree in self.trees.values():
+            for s, ms in tree["children"].items():
+                if not all(self.t.legal(s[:2], s[2:], m[2:]) for m in ms):
+                    return "illegal hop"
+            # One source's trees for different ids can take the same hop.
+            have = out[tree["src"]]
+            for tile, hops in self.settings(tree).items():
+                have[tile] += [hop for hop in hops if hop not in have[tile]]
+        return {src: dict(v) for src, v in out.items()}
+
+
+def lower_witness(d, con, plan):
+    """`d` without its flows, with the routing `con` and its arbiter `plan`
+    (plan_routing) as switchbox configuration: connects for the circuit trees,
+    amsels, master sets and exact rules for the packet trees. None if a slave
+    port needs more rules than it has."""
+    t, na = d.target, PARAMS["arbiters"]
+    out = d.copy()
+    out.flows, out.packet_flows = [], []
+    circuit = {s for s, _ in d.flows}
+
+    def physical(tile, port, sending):
+        if t.kind(tile) != "shim" or port[0] != DMA:
+            return port
+        return (phys_src if sending else phys_dst)((*tile, *port))[2:]
+
+    for tree in con.trees.values():
+        if tree["src"] in circuit:
+            lower_circuit_tree(t, tree, out)
+    keep = last_keep(d)
+    ctrl = {f["id"] for f in d.packet_flows if f["priority"]}
+    muxed = set()
+    for tile, (by_flow, masters_of) in plan["plans"].items():
+        box = out.boxes.setdefault(tile, [])
+        name = {a: f"w{a}" for a in sorted(masters_of)}
+        for a in sorted(masters_of):
+            box.append(("amsel", name[a], a % na, a // na))
+        dsts = {x[2:]: x for f in d.packet_flows for x in f["dsts"] if x[:2] == tile}
+        ctrl_amsels = {a for (_, pid), a in by_flow.items() if pid in ctrl}
+        sets = defaultdict(list)
+        for a, ms in masters_of.items():
+            for m in ms:
+                sets[m].append(a)
+        for m, amsels in sorted(sets.items()):
+            pm = physical(tile, m, False)
+            box.append(
+                (
+                    "masterset",
+                    pm,
+                    sorted(name[a] for a in amsels),
+                    keep.get(dsts[m]) if m in dsts else None,
+                    any(a in ctrl_amsels for a in amsels),
+                )
+            )
+            if pm != m:
+                muxed.add((tile, ((NORTH, pm[1]), m)))
+        rules = defaultdict(list)
+        for (slave, pid), a in sorted(by_flow.items()):
+            ps = physical(tile, slave, True)
+            if ps != slave:
+                muxed.add((tile, (slave, (NORTH, ps[1]))))
+            rules[ps].append((PARAMS["max_id"], pid, name[a], pid in ctrl))
+        for ps, rs in sorted(rules.items()):
+            if len(rs) > PARAMS["rule_slots"]:
+                return None
+            box.append(("rules", ps, [r[:3] for r in rs], any(r[3] for r in rs)))
+    for tile, pair in sorted(muxed):
+        out.muxes.setdefault(tile, []).append(pair)
+    return out.emit()
+
+
+def witness_problem(d, an, text, deadline=None):
+    """None if the lowered routing `text` of `d` passes the C++ verifier,
+    verify() with no shared-receiver cycle, and --aie-find-flows lifts it back
+    to exactly the requested flows; else what fails."""
+    # With nothing left to route, the router only adds the wires find-flows
+    # follows.
+    wired = model_run(
+        aie_opt(text, strict=True, deadline=deadline), "wiring a strict witness"
+    )
+    if wired.returncode:
+        return "C++ verifier: " + first_error(wired.stderr)[:120]
+    problems, stats = verify(d, an, text, hops_on=False)
+    if problems or stats.get("shared_receiver_cycle") is not None:
+        return "verify: " + (problems[0][:80] if problems else "shared-receiver cycle")
+    lifted = model_run(
+        find_flows(wired.stdout, keep_partial=True, deadline=deadline),
+        "lifting a strict witness",
+    )
+    if lifted.returncode:
+        return "find-flows: " + first_error(lifted.stderr)[:120]
+    got = load_design(lifted.stdout)
+
+    sent = {(s, f["id"]) for f in d.packet_flows for s in f["srcs"]}
+
+    def requested(design, ctrl_too):
+        # find-flows keeps the control overlay's TileControl flows as they are,
+        # and lifts the ids a widened rule claims though their source does not
+        # send them.
+        return sorted(
+            (s, x, f["id"])
+            for f in design.packet_flows
+            for s in f["srcs"]
+            for x in f["dsts"]
+            if (ctrl_too or CTRL not in (s[2], x[2])) and (s, f["id"]) in sent
+        )
+
+    if sorted(got.flows) != sorted(d.flows) or requested(got, True) != requested(
+        d, False
+    ):
+        return "find-flows lifts other flows than requested"
+    return None
+
+
+def strict_witness(d, an, witnesses=2, tries=10, deadline=None):
+    """A routing of `d` with no shared-receiver hold cycle, lowered to
+    switchbox configuration, or None if the search found none."""
+    if not shared_receiver_pairs(d):
+        return None
+    for w in range(witnesses):
+        c = d.copy()
+        before = design_signature(c)
+        built = construct(c, w, deadline=deadline)
+        if built is None or design_signature(c) != before:
+            continue
+        for k in range(tries):
+            search = StrictSearch(d, an, built[0], random.Random(f"strict-{w}-{k}"))
+            sol = search.run()
+            if isinstance(sol, str):
+                continue
+            try:
+                plan = plan_routing(d, an, sol, hops_on=False)
+            except RecursionError:
+                # Shared links can close a loop in one source's settings.
+                continue
+            if plan["reason"] is not None or plan["shared_receiver_cycle"] is not None:
+                continue
+            text = lower_witness(d, search, plan)
+            if text is not None and witness_problem(d, an, text, deadline) is None:
+                return text
+    return None
 
 
 # The route space: what a design asks of the router and what the router did,
@@ -4810,7 +5294,7 @@ DETOUR, TURNS, BOX_AMSELS = (0, 1, 2, 4), (0, 1, 2, 3), (1, 3, 7, 15)
 def outcome(rc, stderr):
     if rc == 0:
         return "routed"
-    if rc == -1000:
+    if rc == TIMEOUT:
         return "timeout"
     for key, rx in OUTCOMES:
         if re.search(rx, stderr, re.M):
@@ -5256,31 +5740,137 @@ def aie_opt_path():
     return os.environ.get("AIE_OPT") or shutil.which("aie-opt") or str(here)
 
 
-def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=False):
-    """Run the router, letting flows that can deadlock route with a warning
-    unless strict. A timeout comes back as returncode -1000."""
+def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=None):
+    """Run the router on `text` within `run_end(deadline)`; a batch that runs
+    out of time is for the caller to rerun a design at a time.
+
+    Args:
+        text: The design, or with `split` designs separated by `// -----`.
+        hops_on: Whether circuit-switch hops are on.
+        split: Whether `text` holds several designs.
+        extra: More aie-opt arguments.
+        strict: Whether flows that can deadlock fail instead of routing with a
+            warning.
+        deadline: A `time.monotonic()` value to stop by, if that comes first.
+
+    Returns:
+        The run's result, with returncode `TIMEOUT` if it ran out of time.
+    """
     opts = [] if hops_on else ["circuit-switch-hops=false"]
     if not strict:
         opts.append("allow-deadlock-prone=true")
     opt = "--aie-create-pathfinder-flows" + ("=" + " ".join(opts) if opts else "")
-    cmd = (
-        [aie_opt_path(), opt, *extra]
-        + (["--split-input-file"] if split else [])
-        + ["-"]
-    )
-    for _ in range(2):
-        try:
-            p = subprocess.run(
-                cmd, input=text, capture_output=True, text=True, timeout=timeout
-            )
-        except subprocess.TimeoutExpired:
-            return subprocess.CompletedProcess(
-                cmd, -1000, "", f"timeout after {timeout}s"
-            )
-        # The binary may be relinked under us; a crash is worth one retry.
-        if p.returncode >= 0:
-            break
+    split_args = ["--split-input-file"] if split else []
+    return run_aie_opt([opt, *extra, *split_args], text, deadline)
+
+
+def run_aie_opt(args, text, deadline=None):
+    """Run aie-opt with `args` on `text` within `run_end(deadline)`.
+
+    Args:
+        args: The aie-opt arguments, but the input.
+        text: The input.
+        deadline: As `aie_opt`.
+
+    Returns:
+        The run's result, with returncode `TIMEOUT` if it ran out of time.
+    """
+    cmd = [aie_opt_path(), *args, "-"]
+    timeout = max(0.0, run_end(deadline) - time.monotonic())
+    try:
+        return subprocess.run(
+            cmd, input=text, capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            cmd, TIMEOUT, "", f"timeout after {timeout}s"
+        )
+
+
+TIMEOUT = -1000
+SPLIT = "\n// -----\n"
+
+# Room for the slowest design the mutation nightly judges, 258 s on a busy
+# hosted runner, with a quarter to spare.
+ROUTE_TIMEOUT_S = 360
+
+
+def run_end(deadline=None):
+    """The `time.monotonic()` value an aie-opt run starting now stops by.
+
+    Args:
+        deadline: A `time.monotonic()` value to stop by, if that comes before
+            `ROUTE_TIMEOUT_S` from now.
+
+    Returns:
+        The earlier of the two.
+    """
+    end = time.monotonic() + ROUTE_TIMEOUT_S
+    return end if deadline is None else min(end, deadline)
+
+
+class ModelRunFailed(Exception):
+    """A run the model relies on gave no answer, so the model cannot say."""
+
+
+class RouterTimeout(ModelRunFailed):
+    outcome = "timeout"
+
+
+class RouterCrash(ModelRunFailed):
+    outcome = "crash"
+
+
+def run_failure(p):
+    """How a run gave no answer, if it did not.
+
+    Args:
+        p: The run's result.
+
+    Returns:
+        ("timeout", detail) or ("crash", detail), else None.
+    """
+    if p.returncode == TIMEOUT:
+        return "timeout", p.stderr
+    if p.returncode < 0:
+        return "crash", first_error(p.stderr)[:300]
+    return None
+
+
+def model_run(p, what):
+    """`p`, a run the model relies on, if it answered.
+
+    Args:
+        p: The run's result.
+        what: What the run was for, to name it.
+
+    Returns:
+        `p`, whatever it decided.
+
+    Raises:
+        RouterTimeout: The run ran out of time.
+        RouterCrash: The run crashed.
+    """
+    if failure := run_failure(p):
+        kind = RouterTimeout if failure[0] == "timeout" else RouterCrash
+        raise kind(f"{what}: {failure[0]} {failure[1]}")
     return p
+
+
+def find_flows(text, keep_partial=False, deadline=None):
+    """Lift a routing back into flows with --aie-find-flows.
+
+    Args:
+        text: The routed design.
+        keep_partial: Whether to keep what it cannot lift as switchbox
+            configuration.
+        deadline: As `aie_opt`.
+
+    Returns:
+        The run's result, with returncode `TIMEOUT` if it ran out of time.
+    """
+    opt = "--aie-find-flows" + ("=keep-partial-flows=true" if keep_partial else "")
+    return run_aie_opt([opt], text, deadline)
 
 
 MODULE_TAG_RE = re.compile(r"^module @s(\d+)\b", re.M)
@@ -5291,14 +5881,14 @@ def route_batch(tagged, hops_on, extra=(), strict=False):
     output, so designs missing from it are rerun alone. Returns ({tag:
     output}, {tag: (returncode, stderr)}, {tag: debug output})."""
     p = aie_opt(
-        "\n// -----\n".join(m for _, m in tagged),
+        SPLIT.join(m for _, m in tagged),
         hops_on,
         split=True,
         extra=extra,
         strict=strict,
     )
     out, errs, debug = {}, {}, {}
-    for chunk in p.stdout.split("\n// -----\n"):
+    for chunk in p.stdout.split(SPLIT):
         if m := MODULE_TAG_RE.search(chunk):
             out[int(m.group(1))] = chunk.removeprefix("// -----\n")
     logs = p.stderr.split(PASS_BEGIN)[1:]
@@ -5616,6 +6206,75 @@ def known_bug(d, problems):
     return next((label for label, test in KNOWN_BUGS if test(d, problems)), None)
 
 
+def write_json(path, data):
+    """Replace `path` with `data` as JSON, whole, so a reader never sees half
+    of it, even from a run stopped part way."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=1))
+    tmp.replace(path)
+
+
+class PropertiesReport:
+    """The properties run's report, replaced whole each time it changes, so a
+    run its step stops early still leaves the properties and seeds it got to.
+
+    Args:
+        path: Where to write it; None to only print the properties.
+        device: The run's device.
+        first_seed: The run's first seed.
+        seeds: How many seeds the generator is to try.
+    """
+
+    def __init__(self, path, device, first_seed, seeds):
+        self.path, self.device = path, device
+        self.first_seed, self.seeds = first_seed, seeds
+        self.properties, self.regressions = [], []
+        self.done, self.undecided = 0, []
+
+    def seed_done(self, seed, outcome):
+        """Count a seed the generator tried.
+
+        Args:
+            seed: The seed.
+            outcome: The outcome of the model's router run where the model
+                could not decide the seed ("timeout", "crash"), else None.
+        """
+        self.done += 1
+        if outcome:
+            self.undecided.append(f"seed {seed}: {outcome}")
+        self.write(partial=True)
+
+    def add(self, label, ok, detail):
+        """Print a property's verdict and add it to the report."""
+        print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
+        self.properties.append({"name": label, "ok": bool(ok), "detail": detail})
+        if not ok:
+            self.regressions.append(label)
+        self.write(partial=True)
+
+    def write(self, partial, counts=None):
+        """Replace the report whole.
+
+        Args:
+            partial: Whether the run is not done.
+            counts: The run's counts, once it has them.
+        """
+        if self.path is None:
+            return
+        out = {
+            "device": self.device,
+            "first_seed": self.first_seed,
+            "seeds": self.seeds,
+            "seeds_done": self.done,
+            "undecided": self.undecided,
+            "partial": partial,
+            "properties": self.properties,
+        }
+        if counts is not None:
+            out["counts"] = counts
+        write_json(self.path, out)
+
+
 def main(argv=None):
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--device", default="npu2", help="npu1, npu2 or a device name")
@@ -5641,14 +6300,8 @@ def main(argv=None):
     t_start = time.monotonic()
     first = args.first_seed
 
-    regressions = []
-    properties = []
-
-    def report(label, ok, detail):
-        print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
-        properties.append({"name": label, "ok": bool(ok), "detail": detail})
-        if not ok:
-            regressions.append(label)
+    run_report = PropertiesReport(args.report, args.device, first, PARAMS["routable"])
+    report = run_report.add
 
     def save(case, what, text, stderr=""):
         if args.out:
@@ -5707,13 +6360,27 @@ def main(argv=None):
             pending[hops_on, k] = pool.submit(route, hops_on, cases[k : k + size])
 
     for seed in range(first, first + PARAMS["routable"]):
-        case = routable_case(seed, args.device)
+        try:
+            case = routable_case(seed, args.device)
+        except ModelRunFailed as x:
+            run_report.seed_done(seed, x.outcome)
+            continue
+        run_report.seed_done(seed, None)
         if case is None:
             gave_up += 1
-            continue
-        cases.append(case)
-        if len(cases) % size == 0:
-            submit(len(cases) - size)
+        else:
+            cases.append(case)
+            if len(cases) % size == 0:
+                submit(len(cases) - size)
+    undecided = run_report.undecided
+    for line in undecided[:10]:
+        print("UNDECIDED:", line)
+    report(
+        "generation",
+        not undecided,
+        f"{len(undecided)} seeds the model could not decide, its router run "
+        f"timed out or crashed: {', '.join(undecided[:10])}",
+    )
     if len(cases) % size:
         submit(len(cases) - len(cases) % size)
     shapes = Counter(c["shape"] for c in cases)
@@ -5722,6 +6389,7 @@ def main(argv=None):
     inherent, inherent_wrong = Counter(), []
     shared, shared_wrong = Counter(), []
     strict, strict_wrong = Counter(), []
+    strict_shared = {}
 
     def check_strict(tag, c, hops_on, allowed, warned, out, err):
         """Without allow-deadlock-prone, flows that can deadlock however they
@@ -5747,6 +6415,8 @@ def main(argv=None):
                 problems, stats = verify(c["design"], c["analysis"], out, hops_on)
                 ok = not problems and stats["shared_receiver_cycle"] is None
         strict[kind] += 1
+        if kind == "shared" and ok:
+            strict_shared.setdefault(c["seed"], c)
         if not ok:
             got = "routed" if out is not None else first_error(err)[:300]
             strict_wrong.append(f"{tag}: {kind}: {got}")
@@ -5921,9 +6591,9 @@ def main(argv=None):
         tag = f"seed {c['seed']} ({c['shape']})"
         if p.returncode >= 0:
             check_inherent(tag, c, p.stderr)
-        if p.returncode < 0:
-            unknown_illegal.append(f"{tag}: crashed: {first_error(p.stderr)[:300]}")
-            save(c, "crash", c["design"].emit(), p.stderr)
+        if failure := run_failure(p):
+            unknown_illegal.append(f"{tag}: {failure[0]}: {failure[1]}")
+            save(c, failure[0], c["design"].emit(), p.stderr)
         elif p.returncode == 0:
             problems, _ = verify(c["design"], c["analysis"], p.stdout, c["hops_on"])
             if problems and (label := known_bug(c["design"], problems)):
@@ -5944,7 +6614,7 @@ def main(argv=None):
     report(
         "unknown-legality",
         not unknown_illegal,
-        f"{len(unknown_illegal)} illegal or crashed of {len(kcases)}",
+        f"{len(unknown_illegal)} illegal, crashed or timed out of {len(kcases)}",
     )
     for line in inherent_wrong[:10]:
         print("WRONG WARNING:", line)
@@ -5973,6 +6643,33 @@ def main(argv=None):
         f"route the same, {strict['rerouted']} reroute around a shared-receiver "
         f"hold cycle, {strict['shared']} fail on one, {strict['inherent']} fail "
         f"on flows that deadlock however they are routed)",
+    )
+    misses, strict_undecided = [], []
+    for seed, c in sorted(strict_shared.items()):
+        try:
+            witness = strict_witness(c["design"], c["analysis"])
+        except ModelRunFailed:
+            strict_undecided.append(seed)
+            continue
+        if witness is not None:
+            misses.append(seed)
+            save(c, "strict-miss", c["design"].emit())
+            save(c, "strict-witness", witness)
+    for seed in misses[:10]:
+        print(f"STRICT MISS: seed {seed}")
+    for seed in strict_undecided[:10]:
+        print(f"STRICT WITNESS UNDECIDED: seed {seed}")
+    report(
+        "strict-completeness",
+        not strict_undecided
+        and len(misses)
+        <= PARAMS["max_strict_misses"] * totals["designs"]
+        + PARAMS["strict_miss_allowance"],
+        f"{len(misses)}/{len(strict_shared)} designs that fail without "
+        f"allow-deadlock-prone on a shared-receiver hold cycle have a routing "
+        f"without one (max {PARAMS['max_strict_misses']} per design + "
+        f"{PARAMS['strict_miss_allowance']}); {len(strict_undecided)} undecided, the "
+        f"router timed out or crashed",
     )
 
     for label, count in sorted(known.items()):
@@ -6038,29 +6735,20 @@ def main(argv=None):
             "unrouted": len(failed),
             "illegal": len(illegal) + len(unknown_illegal),
             "unstable": nondet,
+            "strict_misses": len(misses),
             "hop_ratio": round(ratio, 4),
             "amsels_per_design": round(totals["amsels"] / n, 3),
             "ms_per_design": round(per_design, 2),
             "wall_s": round(time.monotonic() - t_start, 1),
         }
-        args.report.write_text(
-            json.dumps(
-                {
-                    "device": args.device,
-                    "first_seed": first,
-                    "seeds": PARAMS["routable"],
-                    "properties": properties,
-                    "counts": counts,
-                },
-                indent=1,
-            )
-        )
-    return 1 if regressions else 0
+        run_report.write(partial=False, counts=counts)
+    return 1 if run_report.regressions else 0
 
 
 # CHECK: model-validation: {{.*}} : OK
 # CHECK: verifier-validation: {{.*}} : OK
 
+# CHECK: generation: {{.*}} : OK
 # CHECK: completeness: {{.*}} : OK
 # CHECK: legality: {{.*}} : OK
 # CHECK: determinism: {{.*}} : OK

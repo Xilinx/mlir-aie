@@ -237,3 +237,24 @@ aie.device(npu1) {
 
   aie.route from @a to [@sink, @sink] {packet = #aie.packet_info<>}
 }
+
+// -----
+
+// CHECK: 'aie.objectfifo' op lists core tile (7, 2) as consumers 0 and 1; its core reads only the first of those ends, so the other would never be drained
+// CHECK: note: the tile
+
+aie.device(xcvc1902) {
+  %p = aie.tile(7, 4)
+  %c = aie.tile(7, 2)
+  aie.objectfifo @f(%p, {%c, %c}, 6 : i32) : !aie.objectfifo<memref<16xi32>>
+}
+
+// -----
+
+// CHECK: 'aie.objectfifo' op lists core tile as consumers 1 and 2; its core reads only the first of those ends, so the other would never be drained
+
+aie.device(xcvc1902) {
+  %p = aie.tile(7, 4)
+  %t = aie.logical_tile<CoreTile>(?, ?)
+  aie.objectfifo @f(%p, {%p, %t, %t}, 4 : i32) : !aie.objectfifo<memref<16xi32>>
+}

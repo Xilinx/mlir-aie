@@ -576,6 +576,19 @@ def AIE_CoreOp
     /// existed. A stack_bank-only pin must first be resolved by the allocator
     /// before consumers use this run as its final placement.
     MemoryRun getStackRun();
+    /// What assign-buffer-addresses reserves for this core's own sections:
+    /// `data_size`, else `measured_data_size`; each `measured_bank_sizes`
+    /// bank; each `measured_data_ranges` run.
+    llvm::SmallVector<CoreSectionReservation> getSectionReservations();
+    /// The measured alignment of the sections in the data region (no
+    /// `bank`) or pinned to `bank`; 1 when unmeasured.
+    int64_t getSectionAlignment(std::optional<int32_t> bank);
+    /// For each of `reservations`, the aie.buffer on this core's tile that
+    /// already holds it exactly (the kind, bank or address, and size
+    /// assign-buffer-addresses would give it), or null. A buffer holds at
+    /// most one reservation.
+    llvm::SmallVector<BufferOp> getSectionReservationBuffers(
+        llvm::ArrayRef<CoreSectionReservation> reservations);
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }
@@ -1423,6 +1436,10 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       return static_cast<uint64_t>(memrefType.getNumElements()) *
              static_cast<uint64_t>(getBufferElementTypeWidthInBytes());
     }
+    // The bytes moved with a zero length parameter: the constant len, or the
+    // whole static buffer when len is omitted and sizes/strides are static.
+    // Nullopt for a runtime len.
+    std::optional<int64_t> getStaticLenInBytes();
     int64_t getOffsetInBytes() {
       return static_cast<int64_t>(getConstantOffset().value_or(0)) *
              static_cast<int64_t>(getBufferElementTypeWidthInBytes());
@@ -1941,13 +1958,18 @@ def AIE_BufferOp
     records sizes instead, because its addresses are chosen after the measure;
     a prebaked one has them already, so the pass pins buffers around the
     extents rather than reserving room of its own.
+
+    `resident` names a module-level `memref.global` whose data this buffer
+    stays resident for, across a later configuration that reuses it without a
+    resetting reload; its type must match the buffer's.
   }];
 
   let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
       OptionalAttr<AIEI32Attr>:$address,
       OptionalAttr<ElementsAttr>:$initial_value,
       OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
-      UnitAttr:$bank_reserved, DefaultValuedAttr<BoolAttr, "true">:$aligned);
+      UnitAttr:$bank_reserved, DefaultValuedAttr<BoolAttr, "true">:$aligned,
+      OptionalAttr<FlatSymbolRefAttr>:$resident);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{
@@ -1956,6 +1978,30 @@ def AIE_BufferOp
     custom<BufferInitialValue>(ref(type($buffer)), $initial_value)
   }];
   let hasVerifier = 1;
+
+  // The generated builder from before `resident` existed, kept so a caller
+  // naming no resident global does not have to spell it out: its defaults
+  // for core_data, bank_reserved and aligned match what that builder gave.
+  // core_data/bank_reserved/aligned take plain bool here (not the UnitAttr/
+  // BoolAttr the full builder below takes), since a default argument cannot
+  // name another parameter (an attribute default needs $_builder to build).
+  let builders = [
+    OpBuilder<(ins "::mlir::Type":$buffer, "::mlir::Value":$tile,
+              CArg<"::mlir::StringAttr", "{}">:$sym_name,
+              CArg<"::mlir::IntegerAttr", "{}">:$address,
+              CArg<"::mlir::ElementsAttr", "{}">:$initial_value,
+              CArg<"::mlir::IntegerAttr", "{}">:$mem_bank,
+              CArg<"bool", "false">:$core_data,
+              CArg<"bool", "false">:$bank_reserved,
+              CArg<"bool", "true">:$aligned),
+             [{
+      build($_builder, $_state, buffer, tile, sym_name, address, initial_value,
+            mem_bank, core_data ? $_builder.getUnitAttr() : nullptr,
+            bank_reserved ? $_builder.getUnitAttr() : nullptr,
+            $_builder.getBoolAttr(aligned),
+            /*resident=*/::mlir::FlatSymbolRefAttr());
+    }]>
+  ];
 
   let extraClassDeclaration = [{
     bool hasName() {
@@ -1975,6 +2021,9 @@ def AIE_BufferOp
     TileOp getTileOp();
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
+    /// For a core_data or bank_reserved buffer, the measured alignment of the
+    /// core sections it holds (CoreOp::getSectionAlignment); otherwise 1.
+    int64_t getSectionAlignment();
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
@@ -2314,7 +2363,10 @@ def AIE_RouteEndpointOp
       OptionalAttr<PacketInfoAttr>:$packet,
       // If lowered from a high-level ObjectFifo, the name of that fifo.
       // Used to group ops lowered by the same ObjectFifo.
-      OptionalAttr<StrAttr>:$fifoName);
+      OptionalAttr<StrAttr>:$fifoName,
+      // On a shim input, the outputs whose progress proves it consumed; see
+      // #aie.consumed_by. Allocation moves it to the shim_dma_allocation.
+      OptionalAttr<ConsumedByArrayAttr>:$consumed_by);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $bundle attr-dict
@@ -2422,7 +2474,10 @@ def AIE_ShimDMAAllocationOp
       DMAChannelDir:$channel_dir, AIEI64Attr:$channel_index,
       // If this is set we are using the PLIO in this ShimTile
       DefaultValuedAttr<BoolAttr, "false">:$plio,
-      OptionalAttr<PacketInfoAttr>:$packet);
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // On an input, the outputs whose progress proves it consumed; see
+      // #aie.consumed_by.
+      OptionalAttr<ConsumedByArrayAttr>:$consumed_by);
 
   let results = (outs);
 
@@ -2600,7 +2655,10 @@ def AIE_ObjectFifoCreateOp
 
     `transport` names the path the objects take (`#aie.transport`), and
     `prod_port` and `cons_ports` name what drives each end (`#aie.end_port`):
-    a DMA channel, pinned or left to allocation, or a core stream port.
+    a DMA channel, pinned or left to allocation, or a core stream port. Leaving
+    `transport` absent (auto) never sets `packet` on the fifo itself, but
+    allocation may still put packet headers on the routes it gives a shim
+    channel shared between transfers that are never in flight together.
 
     ```
       aie.objectfifo @of5 (%tile12, { %tile33 }, 2 : i32)
@@ -2771,6 +2829,98 @@ def AIE_ObjectFifoCreateOp
           return true;
       return false;
     }
+
+    /// The aie.objectfifo.link naming the fifo, if any.
+    std::optional<ObjectFifoLinkOp> getLink();
+    /// The aie.objectfifo.allocate naming the fifo, if any; its verifier
+    /// refuses a second.
+    std::optional<ObjectFifoAllocateOp> getAllocate();
+    /// Whether a delegate on `delegate` holds objects both ends reach.
+    static bool delegateReaches(const AIETargetModel &target, TileID delegate,
+                                TileID producer, TileID consumer);
+    /// Whether a fifo whose aie.objectfifo.allocate names a delegate on
+    /// `delegate`, with its producer on `producer` and consumer on
+    /// `consumer`, can keep its objects at that home: the delegate's memory,
+    /// or for a fifo whose link sits on `linkTile`, the link's pool there.
+    /// Both ends must reach the delegate and that home. False when the
+    /// allocate is not honoured: the split then moves the fifo by DMA if
+    /// allocateFallsBackToDMA(), and rejects it otherwise.
+    static bool allocatedHome(const AIETargetModel &target, TileID producer,
+                              TileID consumer, TileID delegate,
+                              std::optional<TileID> linkTile);
+    /// Whether the split moves the fifo by DMA, ignoring its
+    /// aie.objectfifo.allocate, when allocatedHome finds no home: a link's
+    /// participant that does not own the link's pool.
+    bool allocateFallsBackToDMA();
+    /// Why the fifo's objects cannot be its link's pool's, should it share
+    /// memory with the link; LinkPoolMisfit documents each reason.
+    LinkPoolMisfit linkPoolMisfit();
+
+    /// Why the fifo moves by DMA wherever its ends are placed; nothing when
+    /// shared memory may carry it, which sharedMemoryOf then decides.
+    std::optional<llvm::StringRef> dmaReason();
+    /// The memory module a fifo dmaReason() leaves open shares with its
+    /// producer on `producer`, its consumer on `consumer`, its
+    /// aie.objectfifo.allocate's delegate, if any, on `delegate`, and its
+    /// aie.objectfifo.link's tile, if any, on `linkTile`; None means DMA.
+    static AIETargetModel::SharedMemory
+    sharedMemoryOf(const AIETargetModel &target, TileID producer,
+                   TileID consumer, std::optional<TileID> delegate,
+                   std::optional<TileID> linkTile);
+    /// Why the fifo moves by DMA where its ends are placed: dmaReason(), or
+    /// that sharedMemoryOf() finds no module both reach; otherwise `shared`
+    /// names the module. Nothing while an end it needs is unplaced.
+    std::optional<llvm::StringRef>
+    placedDmaReason(AIETargetModel::SharedMemory &shared);
+    /// Why the producer's DMA end cannot push a task per object
+    /// (`push_queue`): initialized objects, a producer that is not a core's
+    /// sending DMA on a target with core-issued tasks, or no local producer
+    /// release to submit them. Nothing when it can.
+    std::optional<llvm::StringRef> pushQueueRefusal();
+    /// Why a receiving DMA end, on a shim or not and out_of_order or not,
+    /// cannot share its pinned channel with another fifo's: only a tile's
+    /// out_of_order end, which takes each object into the buffer its header
+    /// names, can. Nothing when it can.
+    static std::optional<llvm::StringRef> sharedReceiveRefusal(bool shim,
+                                                               bool outOfOrder);
+    /// Whether another fifo moved by DMA pins the DMA channel this one's
+    /// producer pins, on the same tile off a shim. A channel cycling on one
+    /// fifo's buffers never reaches the other's, so aie-objectfifo-split
+    /// gives both `push_queue`, a task pushed per object.
+    bool sharesSendChannel();
+    /// Whether the producer's DMA end will push a task per object: it asks
+    /// for `push_queue`, or sharesSendChannel().
+    bool usesPushQueue() {
+      return getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
+             sharesSendChannel();
+    }
+
+    /// Objects in the pool an end keeps on its own tile when the fifo moves by
+    /// DMA: the producer's when `consumer` is empty, else that consumer's. An
+    /// end wired to a core stream port keeps none.
+    int dmaDepth(std::optional<unsigned> consumer);
+    /// Objects in the one pool of a fifo whose ends share a memory module.
+    int sharedDepth();
+    /// The DMA end the fifo gets on its producer's tile (`consumer` empty) or
+    /// consumer `consumer`'s, unless that end takes no BD ids of the tile's:
+    /// a shim's, a stream port's, or a merge's or dispatch's but the one end
+    /// its participants share. A link's pool is sized where `positions` puts
+    /// the tiles (ObjectFifoLinkOp::getPoolDepth); by default, where they are
+    /// placed.
+    std::optional<PlannedDmaEnd> plannedDmaEnd(std::optional<unsigned> consumer);
+    std::optional<PlannedDmaEnd> plannedDmaEnd(std::optional<unsigned> consumer,
+                                               TilePositions positions);
+    /// The link reading consumer `consumer`'s end, if any: each link on a tile
+    /// takes the next of the fifo's consumer ends there, in order.
+    ObjectFifoLinkOp getConsumerLink(unsigned consumer);
+    /// The link on the producer's tile writing the fifo, if any.
+    ObjectFifoLinkOp getProducerLink();
+    /// Whether the two DMA ends the split gives the fifo, one circuit apart,
+    /// may each take turns with other ends on one channel, as
+    /// aie-objectfifo-allocate requires of both
+    /// (ObjectFifoDmaEndpointOp::canTakeTurns), and the fifo shares its route
+    /// with no other.
+    bool canTakeTurns();
 
     /// The packet header this fifo asks its route to carry, or null for a
     /// circuit-switched connection.
@@ -2947,6 +3097,14 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     bool walksStream();
     // The window a stream walk reads, in input objects.
     mlir::LogicalResult getStreamWindow(StreamWindow &window);
+    // When the pool owner is an input, the consumer of it whose end the pool
+    // is: one on the shared tile, after those earlier links took there.
+    std::optional<unsigned> getOwnerConsumerIndex();
+    // What sizes the link's pool regardless of placement; depthAt applies a
+    // placement.
+    LinkPoolPlan getPoolPlan();
+    int64_t getPoolDepth();
+    int64_t getPoolDepth(TilePositions positions);
   }];
 }
 
@@ -3089,6 +3247,9 @@ def AIE_ObjectFifoPoolOp
     /// The pool's name without the end marker, which buffers and locks are
     /// named after.
     llvm::StringRef getBaseName();
+
+    /// Whether one BD per side can walk the pool whole.
+    bool canWalkWhole();
   }];
 }
 
@@ -3279,6 +3440,19 @@ def AIE_ObjectFifoDmaEndpointOp
     /// repeat runs in hardware, for every dispatch pass. The one chain of
     /// endpoints taking turns is counted at the first one `turns` names.
     int64_t getNumBDs();
+    /// Whether an end may take turns with other ends on one channel: not one
+    /// that pushes a queue task per object, is pinned to a channel,
+    /// dispatches, carries packets, iterates a bounded count, repeats or
+    /// walks a stream window.
+    static bool canTakeTurns(bool pushQueue, bool pinned, bool dispatch,
+                             bool packet, bool iterates, int64_t repeat,
+                             bool walksStream);
+    bool canTakeTurns() {
+      return canTakeTurns(getReleaseStrategy() == ObjectFifoRelease::PushQueue,
+                          getChannelIndex().has_value(), !!getDispatch(),
+                          !!getPacketAttr(), getIterCount().has_value(),
+                          getRepeat(), walksStream());
+    }
   }];
 }
 

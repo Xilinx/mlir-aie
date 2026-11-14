@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
@@ -42,14 +43,10 @@ struct AIEReserveRuntimeBDIDsPass
     DeviceOp device = getOperation();
 
     llvm::DenseMap<TileOp, std::set<int32_t>> reserved;
-    device.walk([&](DMAConfigureTaskOp cfg) {
-      TileOp tile = cfg.tryGetTileOp();
-      if (!tile)
-        return;
-      cfg.walk([&](DMABDOp bd) {
-        if (bd.getBdId().has_value())
-          reserved[tile].insert(bd.getBdId().value());
-      });
+    forEachRuntimePinnedBdId(device, [&](Operation *, Operation *tile,
+                                         std::optional<int>, int32_t id) {
+      if (auto placed = dyn_cast<TileOp>(tile))
+        reserved[placed].insert(id);
     });
 
     for (auto &[tile, ids] : reserved) {

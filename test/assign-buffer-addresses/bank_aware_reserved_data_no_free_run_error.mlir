@@ -21,6 +21,7 @@ module @zero_free_run_nonzero_reservation {
     // the region is a buffer like any other.
     %a = aie.buffer(%tile_0_2) {sym_name = "a", aligned = false} : memref<64512xi8>
     // expected-error @below {{could not be placed: this core's data sections (data_size) needs 1 bytes}}
+    // expected-note @below {{this core keeps its own sections in 1 bytes}}
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32, data_size = 1 : i32}

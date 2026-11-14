@@ -93,3 +93,28 @@ module @explicit_shared_memory {
     aie.objectfifo @b(%producer, {%consumer}, 2 : i32) {transport = #aie.transport<shared_mem>, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
   }
 }
+
+// -----
+
+// A shim's receiving channel takes no turns by header: allocation shares no
+// pinned S2MM there, out_of_order or not, and the split says so first.
+module @shim_receive_shared {
+  aie.device(npu2) {
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %s = aie.tile(0, 0)
+    // expected-error@+1 {{shares a receiving channel, but a shim's receiving channel writes into the runtime's tasks, which no object header picks}}
+    aie.objectfifo @fa(%a, {%s}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>, out_of_order = true>, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @fb(%b, {%s}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>, out_of_order = true>, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %1 = aie.objectfifo.acquire @fa(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @fa(Produce, 1)
+      aie.end
+    }
+    aie.core(%b) {
+      %1 = aie.objectfifo.acquire @fb(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @fb(Produce, 1)
+      aie.end
+    }
+  }
+}

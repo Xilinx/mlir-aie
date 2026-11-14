@@ -231,8 +231,16 @@ struct AIEObjectFifoLowerDMAsPass
                                       descriptor.size),
                            descriptor.dimensions, descriptor.padding);
     } else if (descriptor.dimensions) {
-      bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                           descriptor.size, descriptor.dimensions);
+      // An outer dimension of size 1 reads one position, so it is dropped
+      // where the tile's DMA steps through fewer dimensions.
+      ArrayRef<BDDimLayoutAttr> dims = descriptor.dimensions.getValue();
+      size_t maxDims = device.getTargetModel().getBDMaxDims(
+          endpoint.getTileLike().getTileType());
+      while (dims.size() > maxDims && dims.front().getSize() == 1)
+        dims = dims.drop_front();
+      bd = DMABDOp::create(
+          builder, loc, descriptor.buffer, descriptor.offset, descriptor.size,
+          BDDimLayoutArrayAttr::get(builder.getContext(), dims));
     } else {
       bd = DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
                            descriptor.size);

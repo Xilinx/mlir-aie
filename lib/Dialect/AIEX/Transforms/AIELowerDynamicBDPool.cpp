@@ -35,6 +35,8 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 
+#include <set>
+
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIELOWERDYNAMICBDPOOL
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -215,7 +217,7 @@ struct AIELowerDynamicBDPoolPass
     for (AIE::DMABDOp bd : bds) {
       Value bdId =
           DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(), tile.getCol(),
-                                 tile.getRow(), begin, end)
+                                 tile.getRow(), begin, end, /*id=*/nullptr)
               .getBdId();
       bd.getBdIdValMutable().assign(bdId);
       ids.push_back(bdId);
@@ -498,16 +500,12 @@ struct AIELowerDynamicBDPoolPass
                                       StringRef msg) {
     DMAConfigureTaskOp originA = originConfigure.lookup(a);
     DMAConfigureTaskOp originB = originConfigure.lookup(b);
-    if (originA && originB && channelKey(originA) != channelKey(originB)) {
+    if (originA && originB &&
+        DmaQueueModel::keyOf(originA) != DmaQueueModel::keyOf(originB)) {
       op->emitOpError(msg);
       return failure();
     }
     return success();
-  }
-
-  static DmaQueueModel::ChannelKey channelKey(DMAConfigureTaskOp cfg) {
-    return DmaQueueModel::keyOf(cfg.getTileOp(), cfg.getDirection(),
-                                cfg.getChannel());
   }
 
   // Every value that may carry `task`'s BD id after it: the region arguments
@@ -607,45 +605,13 @@ struct AIELowerDynamicBDPoolPass
   // A sequence lowered here keeps its scf.for rolled, so the static allocator
   // skips it. Guard while task metadata is available; aie-dma-to-npu later
   // checks the combined pushes from tasks, memcpy and channel rearm operations.
-  void guardQueueDepth(AIE::RuntimeSequenceOp seq) {
+  void guardQueueDepth(AIE::RuntimeSequenceOp seq, SymbolTable &symbols) {
     const AIE::AIETargetModel &tm =
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
     auto effectOf = [&](Operation *op) -> QueueEffect {
-      if (auto push = dyn_cast<NpuPushQueueOp>(op))
-        return QueueEffect::push({static_cast<int>(push.getColumn()),
-                                  static_cast<int>(push.getRow()),
-                                  static_cast<int>(push.getDirection()),
-                                  static_cast<int>(push.getChannel())},
-                                 push.getIssueToken());
-      if (auto sync = dyn_cast<NpuSyncOp>(op)) {
-        if (auto key = syncChannelKey(sync))
-          return QueueEffect::await(*key);
-        return {};
-      }
-      if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-        auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
-            seq->getParentOfType<AIE::DeviceOp>(),
-            copy.getMetadata().getRootReference());
-        if (allocation)
-          if (AIE::TileOp tile = allocation.getTileOp())
-            return QueueEffect::push(
-                DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
-                                     allocation.getChannelIndex()),
-                copy.getIssueToken() ||
-                    allocation.getChannelDir() == AIE::DMAChannelDir::S2MM);
-        return {};
-      }
-      if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
-        auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
-            seq->getParentOfType<AIE::DeviceOp>(), wait.getSymbol());
-        if (allocation)
-          if (AIE::TileOp tile = allocation.getTileOp())
-            return QueueEffect::await(
-                DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
-                                     allocation.getChannelIndex()));
-        return {};
-      }
+      if (isa<NpuPushQueueOp, NpuSyncOp, NpuDmaMemcpyNdOp, NpuDmaWaitOp>(op))
+        return rawQueueEffect(op, symbols);
       DMAConfigureTaskOp cfg;
       Value task;
       bool isConfigure = false;
@@ -673,22 +639,17 @@ struct AIELowerDynamicBDPoolPass
         cfg = originConfigure.lookup(freeOp.getTask());
         if (!cfg)
           return {};
-        AIE::TileOp tile = cfg.tryGetTileOp();
-        if (!tile)
+        if (!cfg.tryGetTileOp())
           return {};
-        return QueueEffect::free(
-            DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel()),
-            freeOp.getTask());
+        return QueueEffect::free(DmaQueueModel::keyOf(cfg), freeOp.getTask());
       } else {
         return {};
       }
       if (!cfg)
         return {};
-      AIE::TileOp tile = cfg.tryGetTileOp();
-      if (!tile)
+      if (!cfg.tryGetTileOp())
         return {};
-      DmaQueueModel::ChannelKey key =
-          DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
+      DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(cfg);
       if (isConfigure)
         return QueueEffect::configure(key, task);
       return isPush ? QueueEffect::push(key, issuesToken,
@@ -701,17 +662,60 @@ struct AIELowerDynamicBDPoolPass
                             warnUnsafeBdReuse, effectOf);
   }
 
+  // A static DMA program or an aiex.npu.dma_memcpy_nd programs its BD id on
+  // its tile outside the pool, so every pool of that tile holding the id gives
+  // it up for the sequence.
+  void reserveTakenIds(AIE::RuntimeSequenceOp seq, SymbolTable &symbols) {
+    std::set<std::tuple<int, int, uint32_t, uint32_t>> pools;
+    std::set<std::tuple<int, int, uint32_t>> reserved;
+    seq.walk([&](DMABdPoolPopOp pop) {
+      pools.insert(
+          {pop.getColumn(), pop.getRow(), pop.getBdBegin(), pop.getBdEnd()});
+      if (std::optional<uint32_t> id = pop.getId())
+        reserved.insert({pop.getColumn(), pop.getRow(), *id});
+    });
+    if (pools.empty())
+      return;
+    std::set<std::tuple<int, int, uint32_t>> taken;
+    for (AIE::DmaBody program : getOperation().getOps<AIE::DmaBody>())
+      for (uint32_t id : AIE::getAssignedBdIds(program))
+        taken.insert({program.getTileID().col, program.getTileID().row, id});
+    seq.walk([&](NpuDmaMemcpyNdOp copy) {
+      auto allocation = symbols.lookup<AIE::ShimDMAAllocationOp>(
+          copy.getMetadata().getRootReference());
+      if (AIE::TileOp tile = allocation ? allocation.getTileOp() : nullptr)
+        taken.insert({tile.getCol(), tile.getRow(),
+                      static_cast<uint32_t>(copy.getId())});
+    });
+    OpBuilder b = OpBuilder::atBlockBegin(&seq.getBody().front());
+    for (auto [col, row, begin, end] : pools)
+      for (auto [takenCol, takenRow, id] : taken)
+        if (takenCol == col && takenRow == row && id >= begin && id < end &&
+            !reserved.count({col, row, id}))
+          DMABdPoolPopOp::create(b, seq.getLoc(), b.getI32Type(), col, row,
+                                 begin, end, b.getI32IntegerAttr(id));
+  }
+
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
+    SymbolTable symbols(device);
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
+      // A pop with an id withholds a taken BD id from the pool. Every exit
+      // from this sequence's body runs it, whether or not the lowering below
+      // grew new pools (carryIdsThroughLoop, computeMetadata) for it to see.
+      auto finish = [&](WalkResult result) {
+        reserveTakenIds(seq, symbols);
+        return result;
+      };
+
       bool hasRuntimeCF = false;
       seq.walk([&](Operation *op) {
         if (isa<scf::ForOp, scf::IfOp, scf::WhileOp>(op))
           hasRuntimeCF = true;
       });
       if (!hasRuntimeCF)
-        return WalkResult::advance();
+        return finish(WalkResult::advance());
 
       // Idempotency: a sequence already carrying pool pops has been lowered by
       // a prior run of this pass. Its awaits may have dropped their task
@@ -720,7 +724,7 @@ struct AIELowerDynamicBDPoolPass
       bool alreadyLowered = false;
       seq.walk([&](DMABdPoolPopOp) { alreadyLowered = true; });
       if (alreadyLowered)
-        return WalkResult::advance();
+        return finish(WalkResult::advance());
 
       // scf.while has no bounded trip count, so a BD id popped in its body has
       // no place to be pushed back deterministically; only scf.for and scf.if
@@ -732,7 +736,7 @@ struct AIELowerDynamicBDPoolPass
         return WalkResult::interrupt();
       });
       if (whileCheck.wasInterrupted())
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
 
       pairedId.clear();
       tileForTask.clear();
@@ -746,7 +750,7 @@ struct AIELowerDynamicBDPoolPass
                                            : WalkResult::advance();
       });
       if (r.wasInterrupted())
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
 
       // 2. Thread the id alongside the task everywhere the task flows. The task
       //    Index already threads (it is valid IR); shadowing every position it
@@ -760,7 +764,7 @@ struct AIELowerDynamicBDPoolPass
       //       parent-defines/child-consumes (inner id resolvable after growth).
       computeTaskValues(seq);
       if (failed(verifyChainLengths(seq)))
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
       SmallVector<Operation *> cf;
       seq.walk<WalkOrder::PreOrder>([&](Operation *o) {
         if (isa<scf::ForOp, scf::IfOp>(o))
@@ -770,7 +774,7 @@ struct AIELowerDynamicBDPoolPass
         if (auto f = dyn_cast<scf::ForOp>(o)) {
           carryIdsThroughLoop(f);
         } else if (failed(carryIdsThroughIf(cast<scf::IfOp>(o)))) {
-          return WalkResult::interrupt();
+          return finish(WalkResult::interrupt());
         }
       }
       wireFixups();
@@ -778,7 +782,7 @@ struct AIELowerDynamicBDPoolPass
       // 3. Metadata over the final IR: each task's tile (for the push) and a
       //    dominating origin configure (for an await on a loop/if result).
       if (failed(computeMetadata(seq)))
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
 
       // 4. Return ids to the pool. A free is the ONLY push: it returns the id
       //    to the free-list. An await is a TCT sync (npu_sync), never a release
@@ -807,15 +811,15 @@ struct AIELowerDynamicBDPoolPass
         return WalkResult::advance();
       });
       if (r.wasInterrupted())
-        return WalkResult::interrupt();
+        return finish(WalkResult::interrupt());
       // Only once this sequence has lowered cleanly: guarding or reporting a
       // queue on a design that is already being rejected just buries the
       // error. Guard before erasing the frees above -- it still needs to see
       // them, resolved through originConfigure, to check reuse safety.
-      guardQueueDepth(seq);
+      guardQueueDepth(seq, symbols);
       for (Operation *op : toErase)
         op->erase();
-      return WalkResult::advance();
+      return finish(WalkResult::advance());
     });
     if (wr.wasInterrupted())
       return signalPassFailure();

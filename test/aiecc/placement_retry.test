@@ -1,0 +1,59 @@
+//===- placement_retry.test -----------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: %aiecc -n --no-progress --tmpdir %t.default --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
+// RUN: not %aiecc -n --no-progress --tmpdir %t.pinned --cores-per-col=4 --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
+// RUN: not %aiecc -n --no-progress --tmpdir %t.never --enable-repeater-scripts --get=input_physical.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
+// RUN: FileCheck %s --check-prefix=NEVERREP --input-file=%t.never/repeater/manifest.json
+
+// The sequential placer's default placement of the decode pack does not
+// route; aiecc places it again with three cores a column, which does. Each
+// placement prints as it runs (the input warns once per placement:
+// never_called has link_with but no caller); a line marks the first one's
+// messages as superseded, and the last says which placement stands.
+// RETRY: warning: func 'never_called' has link_with but is never called from any core
+// RETRY: error: Unable to find a legal routing
+// RETRY: aiecc: placing again with --cores-per-col=3 (the placement does not route); the messages above are from placement 1
+// RETRY-NOT: error:
+// RETRY: warning: func 'never_called' has link_with but is never called from any core
+// RETRY-NOT: error:
+// RETRY: aiecc: placement 2 (--cores-per-col=3) stands
+
+// A cores-per-col the command line chose is kept.
+// PINNED: error: Unable to find a legal routing
+// PINNED-NOT: placing again
+
+// Five flows down one column need more links than any placement of the
+// unrelated core gives them; aiecc tries each, and as all fail at routing,
+// the last stands (on a tie, the later placement): its failed edge, and a
+// reproducer placing as it did.
+// NEVER: aiecc: placing again with --cores-per-col=3 (the placement does not route); the messages above are from placement 1
+// NEVER: aiecc: placing again with --cores-per-col=2 (the placement does not route); the messages above are from placement 2
+// NEVER: aiecc: placing again with --cores-per-col=1 (the placement does not route); the messages above are from placement 3
+// NEVER: error: Unable to find a legal routing
+// NEVER-SAME: cross from row 2 to row 1
+// NEVER: aiecc: no placement with fewer cores a column routes either; placement 4's failure stands
+// NEVERREP: "--cores-per-col=1"
+// NEVERREP: "--get=input_physical.mlir"
+// NEVER: aiecc: edge 'input_physical.mlir' (key '{{.*}}') failed
+
+module {
+  aie.device(npu1_1col) {
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    %c = aie.logical_tile<CoreTile>(?, ?)
+    aie.flow(%t02, DMA : 0, %t01, DMA : 0)
+    aie.flow(%t02, DMA : 1, %t01, DMA : 1)
+    aie.flow(%t02, Core : 0, %t01, DMA : 2)
+    aie.flow(%t03, DMA : 0, %t01, DMA : 3)
+    aie.flow(%t03, DMA : 1, %t01, DMA : 4)
+    aie.core(%c) {
+      aie.end
+    }
+  }
+}

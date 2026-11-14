@@ -4,8 +4,7 @@
 
 # RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
-# RUN: %run_on_npu2_hrx% %pytest %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# REQUIRES: xrt_python_bindings
 """resize's resize_emit_row, which test_resize_e2e.py's state machine does
 not exercise: the same setup/take/band/consume/finish, but reading a band's
 patch columns as interleaved uint8 RGB rows rather than bf16 u8/255

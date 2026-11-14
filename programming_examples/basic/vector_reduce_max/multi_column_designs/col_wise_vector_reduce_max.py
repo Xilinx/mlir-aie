@@ -93,10 +93,10 @@ def vector_reduce_max(
     reduce_max_vector = kernels.reduce_max(tile_size=tile_size, dtype=dtype)
     compute_max = kernels.compute_max(dtype=dtype)
 
-    min_val = (
-        np.array([bfloat16(float("-inf"))], dtype=dtype)
-        if dtype_str == "bf16"
-        else np.array([np.iinfo(dtype).min], dtype=dtype)
+    min_val = np.full(
+        out_num_elements,
+        bfloat16(float("-inf")) if dtype_str == "bf16" else np.iinfo(dtype).min,
+        dtype=dtype,
     )
     nextC_buffers = []
     tmp_buffers = []

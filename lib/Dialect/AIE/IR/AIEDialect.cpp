@@ -631,6 +631,24 @@ ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// ConsumedByAttr
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+ConsumedByAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                       FlatSymbolRefAttr output, int64_t input_bytes,
+                       int64_t output_bytes, int64_t granule_bytes,
+                       FlatSymbolRefAttr device) {
+  if (input_bytes <= 0 || output_bytes <= 0)
+    return emitError() << "consumed_by needs positive byte counts, got "
+                       << input_bytes << " and " << output_bytes;
+  if (granule_bytes < 0)
+    return emitError() << "consumed_by needs a granule of 0 or more bytes, got "
+                       << granule_bytes;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ObjectFifoEndPortAttr
 //===----------------------------------------------------------------------===//
 
@@ -655,6 +673,23 @@ ObjectFifoEndPortAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 //===----------------------------------------------------------------------===//
 // ObjectFifoCreateOp
 //===----------------------------------------------------------------------===//
+
+// Each initial value is one object's dense contents, in the object's shape
+// and element type: that is all a buffer can be loaded with.
+static LogicalResult verifyInitValues(Operation *op, ArrayAttr initValues,
+                                      MemRefType object) {
+  for (Attribute value : initValues) {
+    auto dense = dyn_cast<DenseElementsAttr>(value);
+    if (!dense)
+      return op->emitOpError("initial value ")
+             << value << " is not a dense elements attribute";
+    if (dense.getType().getShape() != object.getShape() ||
+        dense.getElementType() != object.getElementType())
+      return op->emitOpError("initial value of type ")
+             << dense.getType() << " does not match the object type " << object;
+  }
+  return success();
+}
 
 LogicalResult ObjectFifoCreateOp::verify() {
   for (Type fifoType : {Type(getElemType()), getConsumerElemTypeOrDefault()})
@@ -726,6 +761,27 @@ LogicalResult ObjectFifoCreateOp::verify() {
     }
   }
 
+  // A core takes its consumer accesses from the first of its tile's ends
+  // a link does not already claim; a link on the tile reads one end each
+  // (getConsumerLink), in the order its own aie.objectfifo.link ops appear.
+  for (auto [index, consumer] : llvm::enumerate(getConsumerTiles())) {
+    size_t first =
+        llvm::find(getConsumerTiles(), consumer) - getConsumerTiles().begin();
+    TileLike tile = getTileLikeFromValue(consumer);
+    if (first == index || tile.getTileType() != AIETileType::CoreTile ||
+        getConsumerLink(index))
+      continue;
+    InFlightDiagnostic diag = emitOpError("lists core tile ");
+    if (std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+        col && row)
+      diag << "(" << *col << ", " << *row << ") ";
+    diag << "as consumers " << first << " and " << index
+         << "; its core reads only the first of those ends, so the other "
+            "would never be drained";
+    diag.attachNote(consumer.getLoc()) << "the tile";
+    return diag;
+  }
+
   if (getRepeatCount().has_value()) {
     if (producerTile.isShimTile())
       return emitError("`repeat_count` unavailable for shim tiles");
@@ -787,6 +843,10 @@ LogicalResult ObjectFifoCreateOp::verify() {
   if (auto initValues = getInitValues()) {
     if ((int)initValues->size() != size())
       return emitError("`init_values` does not initialize all objects");
+    if (failed(verifyInitValues(
+            *this, *initValues,
+            cast<AIEObjectFifoType>(getElemType()).getElementType())))
+      return failure();
   }
 
   if (auto iterCountAttr = getIterCount()) {
@@ -902,6 +962,8 @@ LogicalResult ObjectFifoPoolOp::verify() {
     if (static_cast<int64_t>(initValues->size()) > getDepth()) {
       return emitOpError("has more 'init_values' than 'depth' objects");
     }
+    if (failed(verifyInitValues(*this, *initValues, getElemType())))
+      return failure();
   }
 
   std::vector<ObjectFifoSegmentOp> segments = getSegmentOps();
@@ -941,11 +1003,18 @@ LogicalResult ObjectFifoPoolOp::verify() {
   return success();
 }
 
+int64_t xilinx::AIE::getMemRefSizeInBytes(MemRefType type,
+                                          const DataLayout &layout) {
+  return type.getNumElements() * layout.getTypeSize(type.getElementType());
+}
+
 int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
-  MemRefType elemType = getElemType();
-  DataLayout layout = DataLayout::closest(*this);
-  return elemType.getNumElements() *
-         layout.getTypeSize(elemType.getElementType());
+  return getMemRefSizeInBytes(getElemType(), DataLayout::closest(*this));
+}
+
+bool xilinx::AIE::walksWholeDepth(bool isMemTile, int64_t depth,
+                                  int64_t maxLockValue) {
+  return isMemTile && depth > 1 && depth <= maxLockValue;
 }
 
 std::vector<ObjectFifoSegmentOp> ObjectFifoPoolOp::getSegmentOps() {
@@ -981,6 +1050,25 @@ SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
 StringRef ObjectFifoPoolOp::getBaseName() {
   StringRef name = getSymName();
   return name.consume_back("__pool") ? name : getSymName();
+}
+
+bool ObjectFifoPoolOp::canWalkWhole() {
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  return walksWholeDepth(
+             getTileLike().isMemTile(), getDepth(),
+             static_cast<int64_t>(device.getTargetModel().getMaxLockValue())) &&
+         !getContiguous() && getSegmentOps().size() == 1 && !getRepeatCount() &&
+         !getBuffers() &&
+         llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
+                      [&](ObjectFifoDmaEndpointOp end) {
+                        auto dims = end.getDimensions();
+                        return end.getPool() != getSymName() ||
+                               (!end.getDispatch() && !end.getOutOfOrder() &&
+                                end.getReleaseStrategy() !=
+                                    ObjectFifoRelease::PushQueue &&
+                                (!end.drains() || !dims || dims->empty() ||
+                                 (*dims)[0].getValue().empty()));
+                      });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1915,6 +2003,425 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
+// ObjectFifoCreateOp DMA decision
+//===----------------------------------------------------------------------===//
+
+std::optional<ObjectFifoLinkOp> ObjectFifoCreateOp::getLink() {
+  auto self = FlatSymbolRefAttr::get(getSymNameAttr());
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (llvm::is_contained(link.getFifoIns(), self) ||
+        llvm::is_contained(link.getFifoOuts(), self))
+      return link;
+  return std::nullopt;
+}
+
+std::optional<ObjectFifoAllocateOp> ObjectFifoCreateOp::getAllocate() {
+  for (ObjectFifoAllocateOp alloc :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoAllocateOp>())
+    if (alloc.getObjFifoName() == name().getValue())
+      return alloc;
+  return std::nullopt;
+}
+
+bool ObjectFifoCreateOp::delegateReaches(const AIETargetModel &target,
+                                         TileID delegate, TileID producer,
+                                         TileID consumer) {
+  using SharedMemory = AIETargetModel::SharedMemory;
+  return llvm::all_of(std::array{producer, consumer}, [&](TileID end) {
+    SharedMemory s = target.getSharedMemory(delegate, end);
+    return s == SharedMemory::First || s == SharedMemory::Either;
+  });
+}
+
+bool ObjectFifoCreateOp::allocatedHome(const AIETargetModel &target,
+                                       TileID producer, TileID consumer,
+                                       TileID delegate,
+                                       std::optional<TileID> linkTile) {
+  TileID home = linkTile.value_or(delegate);
+  return delegateReaches(target, delegate, producer, consumer) &&
+         delegateReaches(target, home, producer, consumer);
+}
+
+bool ObjectFifoCreateOp::allocateFallsBackToDMA() {
+  auto self = FlatSymbolRefAttr::get(getSymNameAttr());
+  bool linked = false;
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
+    if (!llvm::is_contained(link.getFifoIns(), self) &&
+        !llvm::is_contained(link.getFifoOuts(), self))
+      continue;
+    if (link.getOptionalSharedTile() && link.getPoolOwner() == *this)
+      return false;
+    linked = true;
+  }
+  return linked;
+}
+
+LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
+  ObjectFifoLinkOp producerLink = getProducerLink();
+  ObjectFifoLinkOp consumerLink =
+      getConsumerTiles().empty() ? ObjectFifoLinkOp() : getConsumerLink(0);
+  if (producerLink && consumerLink)
+    return LinkPoolMisfit::BetweenLinks;
+  if (consumerLink && consumerLink.isMerge())
+    return LinkPoolMisfit::MergeInput;
+  if (producerLink && producerLink.isDispatch())
+    return LinkPoolMisfit::DispatchOutput;
+  ObjectFifoLinkOp link = producerLink ? producerLink : consumerLink;
+  if (!link)
+    return LinkPoolMisfit::None;
+  ObjectFifoCreateOp owner = link.getPoolOwner();
+  if (owner == *this)
+    return LinkPoolMisfit::None;
+  if (owner.getElemType() != getElemType())
+    return LinkPoolMisfit::ObjectType;
+  return getInitValues() ? LinkPoolMisfit::InitialValues : LinkPoolMisfit::None;
+}
+
+std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
+  if (forcesDMA())
+    return "it asks for a dma transport";
+  if (getRepeatCount())
+    return "it repeats objects (`repeat_count`)";
+  if (usesStream())
+    return "an end is a Core stream port";
+  if (getConsumerElemType())
+    return "its consumer takes a different element type";
+  if (getConsumerTiles().size() > 1)
+    return "it has more than one consumer";
+  if (!getDimensionsToStream().empty())
+    return "its producer reshapes the data (`dimensionsToStream`)";
+  for (BDDimLayoutArrayAttr dims : getDimensionsFromStreamPerConsumer())
+    if (!dims.empty())
+      return "a consumer reshapes the data (`dimensionsFromStream`)";
+  // A link passes objects between two fifos through a tile's DMAs, unless an
+  // aie.objectfifo.allocate names a delegate whose memory both ends reach.
+  if (getLink() && !getAllocate())
+    return "it is linked through a tile's DMAs";
+  return std::nullopt;
+}
+
+AIETargetModel::SharedMemory ObjectFifoCreateOp::sharedMemoryOf(
+    const AIETargetModel &target, TileID producer, TileID consumer,
+    std::optional<TileID> delegate, std::optional<TileID> linkTile) {
+  using SharedMemory = AIETargetModel::SharedMemory;
+  // A delegate both ends reach holds the objects even where the ends share no
+  // memory of their own; a link's objects need one.
+  if (delegate &&
+      allocatedHome(target, producer, consumer, *delegate, linkTile)) {
+    SharedMemory own = target.getSharedMemory(producer, consumer);
+    return own == SharedMemory::None ? SharedMemory::Either : own;
+  }
+  if (linkTile)
+    return SharedMemory::None;
+  return target.getSharedMemory(producer, consumer);
+}
+
+static std::optional<TileID> placedAt(Value tile) {
+  auto tileLike = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
+  if (!tileLike)
+    return std::nullopt;
+  std::optional<int> col = tileLike.tryGetCol(), row = tileLike.tryGetRow();
+  if (!col || !row)
+    return std::nullopt;
+  return TileID{*col, *row};
+}
+
+std::optional<StringRef>
+ObjectFifoCreateOp::placedDmaReason(AIETargetModel::SharedMemory &shared) {
+  if (std::optional<StringRef> reason = dmaReason())
+    return reason;
+  std::optional<ObjectFifoAllocateOp> alloc = getAllocate();
+  std::optional<TileID> producer = placedAt(getProducerTile());
+  std::optional<TileID> consumer = placedAt(getConsumerTiles()[0]);
+  std::optional<TileID> delegate =
+      alloc ? placedAt(alloc->getDelegateTile()) : std::nullopt;
+  std::optional<ObjectFifoLinkOp> link = getLink();
+  std::optional<Value> linkPoint =
+      link ? link->getOptionalSharedTile() : std::nullopt;
+  std::optional<TileID> linkTile =
+      linkPoint ? placedAt(*linkPoint) : std::nullopt;
+  if (!producer || !consumer || (alloc && !delegate) || (link && !linkTile))
+    return std::nullopt;
+  shared = sharedMemoryOf(getTargetModel(*this), *producer, *consumer, delegate,
+                          linkTile);
+  if (shared == AIETargetModel::SharedMemory::None)
+    return link ? "it is linked through a tile's DMAs"
+                : "its ends share no memory module";
+  return std::nullopt;
+}
+
+std::optional<StringRef> ObjectFifoCreateOp::pushQueueRefusal() {
+  if (auto values = getInitValues(); values && !values->empty())
+    return StringRef("push_queue does not support initialized objects");
+  auto tile = cast<TileLike>(getProducerTile().getDefiningOp());
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  if (!tile.isCoreTile() || streamsFromProducer() ||
+      device.getTargetModel().getDmaTaskQueueDepth() == 0)
+    return StringRef("push_queue requires a sending DMA on a core tile with "
+                     "core-issued task support");
+  bool hasRelease = false;
+  for (Operation *user : getProducerTile().getUsers())
+    if (auto core = dyn_cast<CoreOp>(user))
+      core.walk([&](ObjectFifoReleaseOp release) {
+        hasRelease |= release.getObjectFifo() == *this &&
+                      release.getPort() == ObjectFifoPort::Produce;
+      });
+  if (!hasRelease)
+    return StringRef("push_queue requires producer releases in a local core "
+                     "to submit send tasks");
+  return std::nullopt;
+}
+
+std::optional<StringRef>
+ObjectFifoCreateOp::sharedReceiveRefusal(bool shim, bool outOfOrder) {
+  if (shim)
+    return StringRef("a shim's receiving channel writes into the runtime's "
+                     "tasks, which no object header picks");
+  if (!outOfOrder)
+    return StringRef("a channel its fifos receive in turn holds their order; "
+                     "out_of_order puts that order in each object's header");
+  return std::nullopt;
+}
+
+bool ObjectFifoCreateOp::sharesSendChannel() {
+  auto pinned = [](ObjectFifoCreateOp fifo) -> std::optional<int> {
+    ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
+    return port && !port.isCore() ? port.channelIndex() : std::nullopt;
+  };
+  auto byDMA = [](ObjectFifoCreateOp fifo) {
+    auto shared = AIETargetModel::SharedMemory::None;
+    return fifo.placedDmaReason(shared).has_value();
+  };
+  std::optional<int> channel = pinned(*this);
+  Value tile = getProducerTile();
+  if (!channel || cast<TileLike>(tile.getDefiningOp()).isShimTile() ||
+      !byDMA(*this))
+    return false;
+  std::optional<TileID> at = placedAt(tile);
+  for (ObjectFifoCreateOp other :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoCreateOp>()) {
+    Value otherTile = other.getProducerTile();
+    if (other != *this && pinned(other) == channel &&
+        (otherTile == tile || (at && placedAt(otherTile) == at)) &&
+        byDMA(other))
+      return true;
+  }
+  return false;
+}
+
+int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
+  if (consumer ? streamsToConsumer(*consumer) : streamsFromProducer())
+    return 0;
+  if (!consumer && getInitValues())
+    return size();
+  if (consumer && isa<ArrayAttr>(getElemNumber()))
+    return size(*consumer + 1);
+  if (size() == 0)
+    return 0;
+  // Enough objects for the largest acquire the end's core makes, plus one so
+  // it can hold an object while the next arrives. A core on the producer's
+  // tile may also consume, through another end.
+  Value tile = consumer ? getConsumerTiles()[*consumer] : getProducerTile();
+  ObjectFifoPort port =
+      consumer ? ObjectFifoPort::Consume : ObjectFifoPort::Produce;
+  int maxAcquire = 0;
+  for (Operation *user : tile.getUsers())
+    if (auto core = dyn_cast<CoreOp>(user))
+      core.walk([&](ObjectFifoAcquireOp acquire) {
+        if (acquire.getObjectFifo() == *this && acquire.getPort() == port)
+          maxAcquire = std::max(maxAcquire, acquire.acqNumber());
+      });
+  if (maxAcquire == 0)
+    return size();
+  if (maxAcquire == 1 && size() == 1)
+    return 1;
+  return maxAcquire + 1;
+}
+
+ObjectFifoLinkOp ObjectFifoCreateOp::getProducerLink() {
+  auto self = FlatSymbolRefAttr::get(getSymNameAttr());
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (llvm::is_contained(link.getFifoOuts(), self) &&
+        link.getOptionalSharedTile() == getProducerTile())
+      return link;
+  return {};
+}
+
+ObjectFifoLinkOp ObjectFifoCreateOp::getConsumerLink(unsigned consumer) {
+  auto consumers = getConsumerTiles();
+  Value tile = consumers[consumer];
+  size_t earlier = llvm::count(consumers.take_front(consumer), tile);
+  auto self = FlatSymbolRefAttr::get(getSymNameAttr());
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (llvm::is_contained(link.getFifoIns(), self) &&
+        link.getOptionalSharedTile() == tile && earlier-- == 0)
+      return link;
+  return {};
+}
+
+std::optional<PlannedDmaEnd>
+ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
+  return plannedDmaEnd(consumer, placedAt);
+}
+
+std::optional<PlannedDmaEnd>
+ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
+                                  TilePositions positions) {
+  bool drains = !consumer;
+  Value tile = drains ? getProducerTile() : getConsumerTiles()[*consumer];
+  auto tileLike = cast<TileLike>(tile.getDefiningOp());
+  if (tileLike.isShimTile() ||
+      (drains ? streamsFromProducer() : streamsToConsumer(*consumer)))
+    return std::nullopt;
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  int64_t maxLock = device.getTargetModel().getMaxLockValue();
+  ObjectFifoEndPortAttr port =
+      drains ? getProdPortAttr() : getConsumerPort(*consumer);
+  std::optional<int> channel = port ? port.channelIndex() : std::nullopt;
+  auto walkable = [&](int64_t depth) {
+    return walksWholeDepth(tileLike.isMemTile(), depth, maxLock);
+  };
+
+  ObjectFifoLinkOp link =
+      drains ? getProducerLink() : getConsumerLink(*consumer);
+  DataLayout layout = DataLayout::closest(*this);
+  auto objectBytes = [&](Type fifoType) -> int64_t {
+    MemRefType type = cast<AIEObjectFifoType>(fifoType).getElementType();
+    return getMemRefSizeInBytes(type, layout);
+  };
+  auto ordered = [](ObjectFifoCreateOp fifo, bool drains) {
+    return !fifo.getOutOfOrder() && (!drains || !fifo.usesPushQueue());
+  };
+  if (!link) {
+    int depth = dmaDepth(consumer);
+    if (!drains)
+      return PlannedDmaEnd{depth,
+                           *this,
+                           static_cast<int>(*consumer),
+                           depth,
+                           walkable(depth) && ordered(*this, false),
+                           objectBytes(getConsumerElemTypeOrDefault()),
+                           0,
+                           channel};
+    int64_t repeat = getRepeatCount().value_or(1);
+    bool inHardware =
+        repeat > 1 && (usesPushQueue() || (depth == 1 && !getIterCount()));
+    return PlannedDmaEnd{depth * (inHardware ? 1 : repeat),
+                         *this,
+                         -1,
+                         depth,
+                         walkable(depth) && ordered(*this, true) &&
+                             !getRepeatCount() &&
+                             getDimensionsToStream().empty(),
+                         objectBytes(getElemType()),
+                         0,
+                         channel};
+  }
+
+  // A merge's participants fill one end, a dispatch's drain one, made by the
+  // first of them the split reaches.
+  if (drains ? link.isDispatch() : link.isMerge()) {
+    std::vector<ObjectFifoCreateOp> sharing =
+        drains ? link.getOutputObjectFifos() : link.getInputObjectFifos();
+    for (ObjectFifoCreateOp fifo : device.getOps<ObjectFifoCreateOp>())
+      if (llvm::is_contained(sharing, fifo)) {
+        if (fifo != *this)
+          return std::nullopt;
+        break;
+      }
+  }
+  int64_t depth = link.getPoolDepth(positions);
+  int64_t segments = link.getPoolSegments().size();
+  int64_t selected =
+      (drains ? link.isDistribute() : link.isJoin()) ? 1 : segments;
+  int64_t descriptors = depth * selected;
+  int64_t contiguousObjects = 0;
+  if (link.walksStream()) {
+    StreamWindow window;
+    bool inferred = succeeded(link.getStreamWindow(window));
+    descriptors = !drains ? 1 : inferred ? window.outputs : 0;
+    if (inferred)
+      contiguousObjects = depth + window.top + window.bottom;
+  }
+  int64_t repeat = drains ? link.getRepeatCount().value_or(1) : 1;
+  bool inHardware = repeat > 1 && ((drains && usesPushQueue()) ||
+                                   (descriptors == 1 && !getIterCount()));
+  int64_t passes = 1;
+  if (drains && link.isDispatch()) {
+    int64_t objects = std::max<int64_t>(depth, 1);
+    passes =
+        std::lcm(objects, static_cast<int64_t>(link.getFifoOuts().size())) /
+        objects;
+  }
+  bool drainLaysOut =
+      llvm::any_of(link.getOutputObjectFifos(), [](ObjectFifoCreateOp out) {
+        return !out.getDimensionsToStream().empty();
+      });
+  // A merge's one fill end is made for its first output.
+  bool linkOrdered =
+      llvm::all_of(
+          link.getOutputObjectFifos(),
+          [&](ObjectFifoCreateOp out) { return ordered(out, true); }) &&
+      (link.isMerge() ||
+       llvm::all_of(link.getInputObjectFifos(),
+                    [&](ObjectFifoCreateOp in) { return ordered(in, false); }));
+  return PlannedDmaEnd{descriptors * (inHardware ? 1 : repeat) * passes,
+                       link,
+                       -1,
+                       depth,
+                       walkable(depth) && segments == 1 &&
+                           !link.getRepeatCount() && !link.walksStream() &&
+                           !link.isDispatch() && !drainLaysOut && linkOrdered,
+                       objectBytes(link.getPoolOwner().getElemType()),
+                       contiguousObjects,
+                       channel};
+}
+
+bool ObjectFifoCreateOp::canTakeTurns() {
+  if (getConsumerTiles().size() != 1)
+    return false;
+  auto pinned = [](ObjectFifoEndPortAttr port) {
+    return port && (port.isCore() || port.channelIndex());
+  };
+  bool dispatch = false, walksStream = false;
+  int64_t repeat = getRepeatCount().value_or(1);
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
+    if (llvm::is_contained(link.getOutputObjectFifos(), *this)) {
+      dispatch |= link.isDispatch();
+      walksStream |= link.walksStream();
+      repeat = std::max<int64_t>(repeat, link.getRepeatCount().value_or(1));
+    }
+    if (link.isMerge() && llvm::is_contained(link.getInputObjectFifos(), *this))
+      return false;
+  }
+  return ObjectFifoDmaEndpointOp::canTakeTurns(
+      usesPushQueue(), pinned(getProdPortAttr()) || pinned(getConsumerPort(0)),
+      dispatch, packetHeader() != nullptr, getIterCount().has_value(), repeat,
+      walksStream);
+}
+
+bool ObjectFifoDmaEndpointOp::canTakeTurns(bool pushQueue, bool pinned,
+                                           bool dispatch, bool packet,
+                                           bool iterates, int64_t repeat,
+                                           bool walksStream) {
+  return !pushQueue && !pinned && !dispatch && !packet && !iterates &&
+         repeat == 1 && !walksStream;
+}
+
+int ObjectFifoCreateOp::sharedDepth() {
+  int depth = size();
+  if (auto depths = dyn_cast<ArrayAttr>(getElemNumber()))
+    for (int index = 1, e = depths.size(); index < e; ++index)
+      depth = std::max(depth, size(index));
+  return depth;
+}
+
+//===----------------------------------------------------------------------===//
 // ObjectFifoAllocateOp
 //===----------------------------------------------------------------------===//
 
@@ -1922,20 +2429,76 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   ObjectFifoCreateOp objFifo = getObjectFifo();
   if (!objFifo)
     return emitError("cannot retrieve associated object FIFO");
+  if (!isa_and_nonnull<TileLike>(getDelegateTile().getDefiningOp()))
+    return emitOpError("delegate must be a tile");
   if (objFifo.getConsumerTiles().size() != 1)
     return emitError("can only be used in 1-to-1 object FIFOs");
-  if (objFifo.forcesDMA())
-    return emitError("cannot allocate a shared memory module to objectfifo "
-                     "that asks for a dma transport");
-  if (objFifo.getRepeatCount().has_value())
-    return emitError("cannot allocate a shared memory module to objectfifo "
-                     "with set `repeat_count` attribute");
-  if (!objFifo.getDimensionsToStream().empty())
-    return emitError("cannot allocate a shared memory module to objectfifo "
-                     "with set dimensions attribute");
-  if (objFifo.usesStream())
-    return emitError("cannot allocate a shared memory module to objectfifo "
-                     "using stream port");
+  // A linked fifo that shares memory keeps its objects in the link's one
+  // pool, which a core fills or drains one pool object per acquire. Whether
+  // it shares depends on where its tiles are placed.
+  std::optional<ObjectFifoLinkOp> linked = objFifo.getLink();
+  if (std::optional<StringRef> reason = objFifo.dmaReason())
+    return emitError("cannot allocate a shared memory module to an objectfifo "
+                     "that moves by DMA: ")
+           << *reason;
+  if (LinkPoolMisfit misfit =
+          linked ? objFifo.linkPoolMisfit() : LinkPoolMisfit::None;
+      linked && misfit != LinkPoolMisfit::None) {
+    ObjectFifoLinkOp link = *linked;
+    auto producer = dyn_cast<TileOp>(objFifo.getProducerTile().getDefiningOp());
+    auto consumer =
+        dyn_cast<TileOp>(objFifo.getConsumerTiles()[0].getDefiningOp());
+    auto delegate = dyn_cast<TileOp>(getDelegateTile().getDefiningOp());
+    // A link without a link point is the link verifier's to report.
+    std::optional<Value> linkPoint = link.getOptionalSharedTile();
+    auto linkTile =
+        linkPoint ? dyn_cast<TileOp>(linkPoint->getDefiningOp()) : TileOp();
+    bool shared = producer && consumer && delegate && linkTile &&
+                  ObjectFifoCreateOp::allocatedHome(
+                      (*this)->getParentOfType<DeviceOp>().getTargetModel(),
+                      producer.getTileID(), consumer.getTileID(),
+                      delegate.getTileID(), linkTile.getTileID());
+    StringRef name = objFifo.name().getValue();
+    if (shared) {
+      InFlightDiagnostic diag = emitOpError("places @")
+                                << name << "'s objects in the link's pool";
+      switch (misfit) {
+      case LinkPoolMisfit::ObjectType: {
+        ObjectFifoCreateOp owner = link.getPoolOwner();
+        diag << ", whose objects are @" << owner.name().getValue() << "'s "
+             << owner.getElemType().getElementType()
+             << "; a fifo that shares memory with a link must have the pool's "
+                "object type (@"
+             << name << "'s is " << objFifo.getElemType().getElementType()
+             << ")";
+        break;
+      }
+      case LinkPoolMisfit::InitialValues:
+        diag << ", which starts with @" << link.getPoolOwner().name().getValue()
+             << "'s initial objects, "
+             << "but @" << name << " has initial objects of its own";
+        break;
+      case LinkPoolMisfit::MergeInput:
+        diag << ", but @" << name
+             << " is a merge's input, and a merge's inputs take turns filling "
+                "the pool through one DMA end";
+        break;
+      case LinkPoolMisfit::DispatchOutput:
+        diag << ", but @" << name
+             << " is a dispatch's output, and a dispatch's outputs take turns "
+                "draining the pool through one DMA end";
+        break;
+      case LinkPoolMisfit::BetweenLinks:
+        diag << ", but @" << name
+             << " is one link's output and another link's input, so its "
+                "objects would be both links' pools";
+        break;
+      case LinkPoolMisfit::None:
+        break;
+      }
+      return diag;
+    }
+  }
   for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
     if (auto other = dyn_cast<ObjectFifoAllocateOp>(op);
         other && other.getObjFifoName() == getObjFifoName())
@@ -1965,6 +2528,14 @@ ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoLinkOp::verify() {
+  for (Attribute name : llvm::concat<const Attribute>(
+           getFifoIns().getValue(), getFifoOuts().getValue())) {
+    auto flat = dyn_cast<FlatSymbolRefAttr>(name);
+    if (!flat || !isa_and_nonnull<ObjectFifoCreateOp>(
+                     SymbolTable::lookupNearestSymbolFrom(*this, flat)))
+      return emitOpError("names no objectfifo ") << name;
+  }
+
   if (isJoin() && isDistribute())
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
@@ -2015,6 +2586,18 @@ LogicalResult ObjectFifoLinkOp::verify() {
   if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
+  // getOptionalSharedTile reads only the first of a time link's inputs and
+  // outputs.
+  if (isTime()) {
+    for (ObjectFifoCreateOp out : getOutputObjectFifos())
+      if (out.getProducerTile() != *sharedTile)
+        return emitOpError("a time link's participants meet on its tile, but '")
+               << out.name().getValue() << "' is produced on another";
+    for (ObjectFifoCreateOp in : getInputObjectFifos())
+      if (!llvm::is_contained(in.getConsumerTiles(), *sharedTile))
+        return emitOpError("a time link's participants meet on its tile, but '")
+               << in.name().getValue() << "' is consumed on others";
+  }
 
   // A fifo has one producer, so one link at most fills it; each link reading
   // it takes one of its consumer ends on the link's tile. A fifo out of one
@@ -2272,32 +2855,37 @@ LogicalResult ObjectFifoLinkOp::verify() {
 }
 
 std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
+  std::vector<ObjectFifoCreateOp> fifoIn = getInputObjectFifos();
+  std::vector<ObjectFifoCreateOp> fifoOut = getOutputObjectFifos();
+  // A name that resolves to no fifo is the link verifier's to report.
+  if (fifoIn.size() < getFifoIns().size() ||
+      fifoOut.size() < getFifoOuts().size() || fifoIn.empty() ||
+      fifoOut.empty())
+    return {};
+
   // An input read by several links meets each at its consumer end on that
   // link's tile, whichever of its ends that is.
   if (isJoin()) {
-    Value tile = getOutputObjectFifos()[0].getProducerTile();
-    for (auto fifoIn : getInputObjectFifos())
-      if (!llvm::is_contained(fifoIn.getConsumerTiles(), tile))
+    Value tile = fifoOut[0].getProducerTile();
+    for (auto in : fifoIn)
+      if (!llvm::is_contained(in.getConsumerTiles(), tile))
         return {};
     return {tile};
   }
 
   if (isDistribute()) {
-    Value tile = getOutputObjectFifos()[0].getProducerTile();
-    for (auto fifoOut : getOutputObjectFifos())
-      if (fifoOut.getProducerTile() != tile)
+    Value tile = fifoOut[0].getProducerTile();
+    for (auto out : fifoOut)
+      if (out.getProducerTile() != tile)
         return {};
-    if (!llvm::is_contained(getInputObjectFifos()[0].getConsumerTiles(), tile))
+    if (!llvm::is_contained(fifoIn[0].getConsumerTiles(), tile))
       return {};
     return {tile};
   }
 
-  auto fifoIn = getInputObjectFifos();
-  if (auto fifoOut = getOutputObjectFifos();
-      !fifoIn.empty() && !fifoOut.empty())
-    for (auto consumerIn : fifoIn[0].getConsumerTiles())
-      if (consumerIn == fifoOut[0].getProducerTile())
-        return {fifoOut[0].getProducerTile()};
+  for (auto consumerIn : fifoIn[0].getConsumerTiles())
+    if (consumerIn == fifoOut[0].getProducerTile())
+      return {fifoOut[0].getProducerTile()};
   return {};
 }
 
@@ -2336,6 +2924,77 @@ LogicalResult ObjectFifoLinkOp::getStreamWindow(StreamWindow &window) {
           .getElementType()
           .getNumElements(),
       [&] { return emitOpError(); }, window);
+}
+
+std::optional<unsigned> ObjectFifoLinkOp::getOwnerConsumerIndex() {
+  ObjectFifoCreateOp owner = getPoolOwner();
+  if (!getOptionalSharedTile() ||
+      llvm::is_contained(getOutputObjectFifos(), owner))
+    return std::nullopt;
+  for (unsigned index = 0, e = owner.getConsumerTiles().size(); index < e;
+       ++index)
+    if (owner.getConsumerLink(index) == *this)
+      return index;
+  return std::nullopt;
+}
+
+int64_t ObjectFifoLinkOp::getPoolDepth() { return getPoolDepth(placedAt); }
+
+int64_t ObjectFifoLinkOp::getPoolDepth(TilePositions positions) {
+  return getPoolPlan().depthAt(getTargetModel(*this), positions);
+}
+
+LinkPoolPlan ObjectFifoLinkOp::getPoolPlan() {
+  LinkPoolPlan plan{getOptionalSharedTile().value_or(Value()), 0, {}};
+  StreamWindow window;
+  if (walksStream()) {
+    plan.depth = succeeded(getStreamWindow(window)) ? window.objects : 0;
+    return plan;
+  }
+  ObjectFifoCreateOp owner = getPoolOwner();
+  if (!owner.getAllocate()) {
+    std::optional<unsigned> index = getOwnerConsumerIndex();
+    plan.depth = index ? owner.dmaDepth(index) : owner.size();
+  }
+  // The owner's allocate puts both its ends in the pool; another
+  // participant's puts there only its end off the link's tile, the one its
+  // no-allocate twin keeps in a pool of its own (no core acquires on the
+  // link's tile).
+  std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
+  std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+  for (ObjectFifoCreateOp fifo : llvm::concat<ObjectFifoCreateOp>(ins, outs)) {
+    std::optional<ObjectFifoAllocateOp> alloc = fifo.getAllocate();
+    if (!alloc)
+      continue;
+    if (fifo == owner)
+      plan.depth = std::max<int64_t>(
+          {plan.depth, fifo.dmaDepth(std::nullopt), fifo.dmaDepth(0)});
+    else if (plan.linkTile && fifo.getConsumerTiles().size() == 1 &&
+             fifo.linkPoolMisfit() == LinkPoolMisfit::None)
+      plan.sharers.push_back(
+          {fifo.getProducerTile(), fifo.getConsumerTiles()[0],
+           alloc->getDelegateTile(),
+           llvm::is_contained(outs, fifo) ? fifo.dmaDepth(0)
+                                          : fifo.dmaDepth(std::nullopt)});
+  }
+  return plan;
+}
+
+int64_t LinkPoolPlan::depthAt(const AIETargetModel &target,
+                              TilePositions positions) const {
+  int64_t result = depth;
+  std::optional<TileID> link =
+      sharers.empty() ? std::nullopt : positions(linkTile);
+  for (const LinkPoolSharer &sharer : sharers) {
+    std::optional<TileID> producer = positions(sharer.producer);
+    std::optional<TileID> consumer = positions(sharer.consumer);
+    std::optional<TileID> delegate = positions(sharer.delegate);
+    if (link && producer && consumer && delegate &&
+        ObjectFifoCreateOp::allocatedHome(target, *producer, *consumer,
+                                          *delegate, link))
+      result = std::max(result, sharer.depth);
+  }
+  return result;
 }
 
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
@@ -2392,7 +3051,9 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoIns()) {
-        auto name = cast<FlatSymbolRefAttr>(sym);
+        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        if (!name)
+          continue;
         if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           inputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
@@ -2408,7 +3069,9 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
-        auto name = cast<FlatSymbolRefAttr>(sym);
+        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        if (!name)
+          continue;
         if (auto *st = mlir::SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
@@ -2686,19 +3349,29 @@ LogicalResult CascadeFlowOp::verify() {
   if (src.isMemTile() || dst.isMemTile())
     return emitOpError("memTile row has no cascade stream interface");
 
+  const auto &t = getTargetModel(*this);
+  // Which ways a cascade may run is the target's; an op built outside any
+  // device is checked for adjacency alone.
+  bool onTarget = (*this)->getParentOfType<AIETarget>() != nullptr;
+  if (onTarget && t.getCascadeSteps().empty())
+    return emitOpError("cascade not supported in ")
+           << stringifyAIEArch(t.getTargetArch());
+
   std::optional<int> srcCol = src.tryGetCol();
   std::optional<int> srcRow = src.tryGetRow();
   std::optional<int> dstCol = dst.tryGetCol();
   std::optional<int> dstRow = dst.tryGetRow();
 
   if (srcCol && srcRow && dstCol && dstRow) {
-    const auto &t = getTargetModel(*this);
     if (!t.isSouth(*srcCol, *srcRow, *dstCol, *dstRow) &&
         !t.isWest(*srcCol, *srcRow, *dstCol, *dstRow) &&
         !t.isNorth(*srcCol, *srcRow, *dstCol, *dstRow) &&
         !t.isEast(*srcCol, *srcRow, *dstCol, *dstRow)) {
       return emitOpError("tiles must be adjacent");
     }
+    if (onTarget && !t.isLegalCascade(*srcCol, *srcRow, *dstCol, *dstRow))
+      return emitOpError("source tile must be to the North or West of the "
+                         "destination tile");
   }
 
   return success();
@@ -2728,6 +3401,38 @@ TileOp CascadeFlowOp::getDestTileOp() {
 // ConfigureCascadeOp
 //===----------------------------------------------------------------------===//
 
+// The direction a cascade step (dstCol - srcCol, dstRow - srcRow) leaves the
+// source tile on; getCascadeSteps() only ever returns axis-aligned unit steps.
+static CascadeDir cascadeStepOutputDir(std::pair<int, int> step) {
+  if (step.first == 1)
+    return CascadeDir::East;
+  if (step.first == -1)
+    return CascadeDir::West;
+  return step.second == 1 ? CascadeDir::North : CascadeDir::South;
+}
+
+static CascadeDir oppositeCascadeDir(CascadeDir dir) {
+  switch (dir) {
+  case CascadeDir::North:
+    return CascadeDir::South;
+  case CascadeDir::South:
+    return CascadeDir::North;
+  case CascadeDir::East:
+    return CascadeDir::West;
+  case CascadeDir::West:
+    return CascadeDir::East;
+  }
+  llvm_unreachable("unhandled CascadeDir");
+}
+
+static std::string describeCascadeDirs(ArrayRef<CascadeDir> dirs) {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  llvm::interleave(
+      dirs, os, [&](CascadeDir d) { os << stringifyCascadeDir(d); }, " or ");
+  return s;
+}
+
 LogicalResult ConfigureCascadeOp::verify() {
   if (!isa<TileOp>(getTile().getDefiningOp()))
     return emitOpError("requires a placed tile (aie.tile), not a logical tile");
@@ -2742,16 +3447,21 @@ LogicalResult ConfigureCascadeOp::verify() {
   if (tile.isMemTile())
     return emitOpError("memTile row has no cascade stream interface");
 
-  if (isa<AIE2TargetModel>(t)) {
-    if (inputDir == CascadeDir::South || inputDir == CascadeDir::East) {
-      return emitOpError("input direction of cascade must be North or West on ")
-             << stringifyAIEArch(t.getTargetArch());
+  llvm::ArrayRef<std::pair<int, int>> steps = t.getCascadeSteps();
+  if (!steps.empty()) {
+    SmallVector<CascadeDir> legalOutputs, legalInputs;
+    for (std::pair<int, int> step : steps) {
+      legalOutputs.push_back(cascadeStepOutputDir(step));
+      legalInputs.push_back(oppositeCascadeDir(legalOutputs.back()));
     }
-    if (outputDir == CascadeDir::North || outputDir == CascadeDir::West) {
-      return emitOpError(
-                 "output direction of cascade must be South or East on ")
+    if (!llvm::is_contained(legalInputs, inputDir))
+      return emitOpError("input direction of cascade must be ")
+             << describeCascadeDirs(legalInputs) << " on "
              << stringifyAIEArch(t.getTargetArch());
-    }
+    if (!llvm::is_contained(legalOutputs, outputDir))
+      return emitOpError("output direction of cascade must be ")
+             << describeCascadeDirs(legalOutputs) << " on "
+             << stringifyAIEArch(t.getTargetArch());
   } else {
     return emitOpError("cascade not supported in ")
            << stringifyAIEArch(t.getTargetArch());
@@ -2901,9 +3611,8 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
       continue;
     llvm::sort(sources);
     llvm::sort(dests);
-    int idBits =
-        llvm::Log2_32_Ceil(device.getTargetModel().getMaxPacketId() + 1);
-    int mask = packetFlow.getMask().value_or((1 << idBits) - 1);
+    int mask = packetFlow.getMask().value_or(
+        device.getTargetModel().getPacketIdMask());
     auto [it, inserted] = packetFlowSeen.try_emplace(
         {packetFlow.IDInt(), mask, std::move(sources), std::move(dests)},
         packetFlow);
@@ -2914,6 +3623,39 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
           << " under mask 0x" << llvm::utohexstr(mask)
           << " is already declared between the same sources and destinations";
       diag.attachNote(it->second.getLoc()) << "the other packet flow is here";
+      return failure();
+    }
+  }
+  return success();
+}
+
+// Rejects two DMA programs on one tile starting the same channel: each would
+// queue its own chain on it, and the later never runs behind an endless one.
+static LogicalResult verifyNoSharedProgramChannels(DeviceOp device) {
+  std::map<std::tuple<Operation *, int, int, DMAChannelDir, int>,
+           std::pair<DMAStartOp, Operation *>>
+      starts;
+  for (DmaBody program : device.getOps<DmaBody>()) {
+    Operation *tile = cast<TileElement>(*program).getTile().getDefiningOp();
+    auto like = dyn_cast_or_null<TileLike>(tile);
+    std::optional<int> col = like ? like.tryGetCol() : std::nullopt;
+    std::optional<int> row = like ? like.tryGetRow() : std::nullopt;
+    Operation *key = col && row ? nullptr : tile;
+    for (DMAStartOp start : program.getDmaBody().getOps<DMAStartOp>()) {
+      if (start.getEndpoint())
+        continue;
+      auto [it, added] =
+          starts.try_emplace({key, col.value_or(-1), row.value_or(-1),
+                              start.getChannelDir(), start.getChannelIndex()},
+                             start, program);
+      if (added || it->second.second == program)
+        continue;
+      InFlightDiagnostic diag =
+          start.emitOpError()
+          << stringifyDMAChannelDir(start.getChannelDir()) << " channel "
+          << start.getChannelIndex()
+          << " is started by another DMA program on this tile too";
+      diag.attachNote(it->second.first.getLoc()) << "the other start is here";
       return failure();
     }
   }
@@ -3156,6 +3898,8 @@ LogicalResult DeviceOp::verify() {
     return failure();
   if (failed(verifyNoSharedCircuitPorts(*this)))
     return failure();
+  if (failed(verifyNoSharedProgramChannels(*this)))
+    return failure();
   if (failed(verifyNoSharedCircuitViaEgresses(*this))) {
     return failure();
   }
@@ -3333,8 +4077,8 @@ size_t LogicalTileOp::getNumDestConnections(WireBundle bundle) {
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA) {
     // Note source is correct here, since direction is reversed.
     if (isShimNOCorPLTile())
-      return targetModel.getNumDestShimMuxConnections(tile.col, tile.row,
-                                                      bundle);
+      return targetModel.getNumSourceShimMuxConnections(tile.col, tile.row,
+                                                        bundle);
     return targetModel.getNumSourceSwitchboxConnections(tile.col, tile.row,
                                                         bundle);
   }
@@ -3502,8 +4246,8 @@ size_t TileOp::getNumDestConnections(WireBundle bundle) {
   {
     // Note source is correct here, since direction is reversed.
     if (isShimNOCorPLTile())
-      return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
-                                                      bundle);
+      return targetModel.getNumSourceShimMuxConnections(getCol(), getRow(),
+                                                        bundle);
     return targetModel.getNumSourceSwitchboxConnections(getCol(), getRow(),
                                                         bundle);
   }
@@ -4001,19 +4745,152 @@ MemoryRun CoreOp::getStackRun() {
   return {getStackAddress().value_or(0), getEffectiveStackSize()};
 }
 
+int64_t CoreOp::getSectionAlignment(std::optional<int32_t> bank) {
+  if (!bank)
+    return getMeasuredDataAlignment().value_or(1);
+  auto alignments = getMeasuredBankAlignments();
+  if (alignments && *bank >= 0 &&
+      static_cast<size_t>(*bank) < alignments->size())
+    return std::max<int64_t>((*alignments)[*bank], 1);
+  return 1;
+}
+
+SmallVector<BufferOp> CoreOp::getSectionReservationBuffers(
+    ArrayRef<CoreSectionReservation> reservations) {
+  using Kind = CoreSectionReservation::Kind;
+  SmallVector<BufferOp> onTile;
+  (*this)->getParentOp()->walk([&](BufferOp buffer) {
+    if (buffer.getTile() == getTile())
+      onTile.push_back(buffer);
+  });
+  SmallVector<BufferOp> holders;
+  DenseSet<Operation *> claimed;
+  for (const CoreSectionReservation &held : reservations) {
+    auto holds = [&](BufferOp buffer) {
+      if (claimed.contains(buffer) || buffer.getAllocationSize() != held.bytes)
+        return false;
+      if (held.kind == Kind::DataRegion)
+        return static_cast<bool>(buffer.getCoreData());
+      return buffer.getBankReserved() &&
+             buffer.getAligned() == held.aligned() &&
+             (held.kind == Kind::Bank ? buffer.getMemBank() == held.at
+                                      : buffer.getAddress() == held.at);
+    };
+    auto *it = llvm::find_if(onTile, holds);
+    holders.push_back(it == onTile.end() ? BufferOp() : *it);
+    if (it != onTile.end())
+      claimed.insert(*it);
+  }
+  return holders;
+}
+
+SmallVector<CoreSectionReservation> CoreOp::getSectionReservations() {
+  using Kind = CoreSectionReservation::Kind;
+  SmallVector<CoreSectionReservation> held;
+  // A declared data_size wins over the measurement: it is a reservation the
+  // design asked for, and may deliberately exceed what this build measures.
+  int64_t data = getDataSize().value_or(getMeasuredDataSize().value_or(0));
+  if (data > 0)
+    held.push_back(
+        {Kind::DataRegion, data, 0, getSectionAlignment(std::nullopt)});
+  if (auto sizes = getMeasuredBankSizes())
+    for (auto [index, size] : llvm::enumerate(*sizes)) {
+      auto bank = static_cast<int32_t>(index);
+      if (size > 0)
+        held.push_back({Kind::Bank, size, bank, getSectionAlignment(bank)});
+    }
+  if (auto ranges = getMeasuredDataRanges())
+    for (size_t i = 0; i + 1 < ranges->size(); i += 2)
+      if ((*ranges)[i + 1] > 0)
+        held.push_back({Kind::Prebaked, (*ranges)[i + 1], (*ranges)[i]});
+  return held;
+}
+
 //===----------------------------------------------------------------------===//
 // BufferOp
 //===----------------------------------------------------------------------===//
 
+int64_t BufferOp::getSectionAlignment() {
+  if (!getCoreData() && !getBankReserved())
+    return 1;
+  for (Operation *user : getTile().getUsers())
+    if (auto core = dyn_cast<CoreOp>(user)) {
+      if (getCoreData())
+        return core.getSectionAlignment(std::nullopt);
+      std::optional<int32_t> bank = getMemBank();
+      return bank ? core.getSectionAlignment(bank) : 1;
+    }
+  return 1;
+}
+
 int64_t BufferOp::getAllocationSize() {
-  auto type = llvm::cast<MemRefType>(getType());
-  DataLayout dataLayout = DataLayout::closest(getOperation());
-  return type.getNumElements() * dataLayout.getTypeSize(type.getElementType());
+  return getMemRefSizeInBytes(llvm::cast<MemRefType>(getType()),
+                              DataLayout::closest(getOperation()));
 }
 
 LogicalResult BufferOp::verify() {
   if (UsesAreAccessible::verifyTrait(*this).failed()) {
     return failure();
+  }
+
+  if (auto init = getInitialValue()) {
+    auto initType = cast<ShapedType>(init->getType());
+    MemRefType type = getType();
+    if (initType.getShape() != type.getShape() ||
+        initType.getElementType() != type.getElementType())
+      return emitOpError("initial value of type ")
+             << initType << " does not cover the buffer's " << type;
+  }
+
+  if (FlatSymbolRefAttr resident = getResidentAttr()) {
+    auto module = (*this)->getParentOfType<mlir::ModuleOp>();
+    auto global = dyn_cast_or_null<memref::GlobalOp>(
+        module ? SymbolTable::lookupSymbolIn(module, resident.getValue())
+               : nullptr);
+    if (!global)
+      return emitOpError("resident names no memref.global ")
+             << resident << " at module scope";
+    if (global.getType() != getType())
+      return emitOpError("resident ")
+             << resident << "'s type " << global.getType()
+             << " does not match this buffer's " << getType();
+  }
+
+  // Each marks space held for a different reservation of the core's sections.
+  if (getCoreData() && getBankReserved()) {
+    return emitOpError("cannot be both core_data and bank_reserved; a buffer "
+                       "holds one reservation of a core's sections");
+  }
+
+  // A bank pin no placement can satisfy: one its address space excludes, or
+  // one past the banks of its tile type.
+  if (std::optional<int32_t> memBank = getMemBank()) {
+    SmallVector<int, 2> banks = banksFromMemorySpace(getType());
+    if (!banks.empty() && !llvm::is_contained(banks, *memBank)) {
+      auto diag = emitOpError("has address space for bank ") << banks.front();
+      if (banks.size() > 1)
+        diag << " or " << banks.back();
+      return diag << " but is pinned to bank " << *memBank
+                  << ". These constraints disagree";
+    }
+    if (auto tileLike =
+            dyn_cast_if_present<TileLike>(getTile().getDefiningOp());
+        tileLike && (tileLike.isCoreTile() || tileLike.isMemTile())) {
+      const AIETargetModel &targetModel = getTargetModel(*this);
+      std::optional<int> col = tileLike.tryGetCol();
+      std::optional<int> row = tileLike.tryGetRow();
+      for (int c = 0; !(col && row) && c < targetModel.columns(); ++c)
+        for (int r = 0; !(col && row) && r < targetModel.rows(); ++r)
+          if (targetModel.getTileType(c, r) == tileLike.getTileType()) {
+            col = c;
+            row = r;
+          }
+      if (col && row &&
+          (*memBank < 0 ||
+           *memBank >=
+               static_cast<int32_t>(targetModel.getNumBanks(*col, *row))))
+        return emitOpError("mem_bank attribute value is out of range");
+    }
   }
 
   // A logical tile stands for a placement the compiler has yet to choose, so
@@ -4057,6 +4934,41 @@ LogicalResult BufferOp::verify() {
     }
   }
   return success();
+}
+
+// Peano models a bank as an address space (`aiebase_resources.h`: a..d are
+// 5..8, 9..14 are pairs) and schedules loads on the strength of the qualifier,
+// while nothing placed the buffer to match. Reading it here makes that
+// assumption true rather than merely asserted.
+SmallVector<int, 2> xilinx::AIE::banksFromMemorySpace(Type type) {
+  auto memref = dyn_cast<MemRefType>(type);
+  if (!memref) {
+    return {};
+  }
+  auto space = dyn_cast_or_null<IntegerAttr>(memref.getMemorySpace());
+  if (!space) {
+    return {};
+  }
+  int64_t value = space.getInt();
+  if (value >= 5 && value <= 8) {
+    return {static_cast<int>(value - 5)};
+  }
+  switch (value) {
+  case 9:
+    return {0, 1};
+  case 10:
+    return {0, 2};
+  case 11:
+    return {0, 3};
+  case 12:
+    return {1, 2};
+  case 13:
+    return {1, 3};
+  case 14:
+    return {2, 3};
+  default:
+    return {};
+  }
 }
 
 // FIXME: make address assignment for buffers explicit and move this function to
@@ -4236,6 +5148,20 @@ static bool isBdPacketEnabled(DMABDOp bd) {
   if (Block *blk = bd->getBlock())
     return !blk->getOps<DMABDPACKETOp>().empty();
   return false;
+}
+
+LogicalResult xilinx::AIE::verifyDMAChannelIndex(Operation *op, TileLike tile,
+                                                 DMAChannelDir dir,
+                                                 int64_t channel) {
+  int64_t channels = dir == DMAChannelDir::MM2S
+                         ? tile.getNumDestConnections(WireBundle::DMA)
+                         : tile.getNumSourceConnections(WireBundle::DMA);
+  if (channel >= 0 && channel < channels)
+    return success();
+  return op->emitOpError() << stringifyDMAChannelDir(dir) << " channel "
+                           << channel << " is out of range: the tile has "
+                           << channels << " " << stringifyDMAChannelDir(dir)
+                           << " channels";
 }
 
 LogicalResult xilinx::AIE::verifyAssignedPacket(Operation *op,
@@ -5248,6 +6174,24 @@ LogicalResult DMABDPACKETOp::verify() {
   return success();
 }
 
+std::optional<int64_t> DMABDOp::getStaticLenInBytes() {
+  int64_t elems;
+  if (std::optional<int32_t> len = getConstantLen()) {
+    elems = static_cast<uint32_t>(*len);
+  } else {
+    // With runtime sizes/strides, an omitted len is their inner extent
+    // (AIEDMATasksToNPU), not the whole buffer.
+    if (hasLen() || !getSizes().empty() || !getStrides().empty())
+      return std::nullopt;
+    auto buffer = dyn_cast<MemRefType>(getBuffer().getType());
+    if (!buffer || !buffer.hasStaticShape())
+      return std::nullopt;
+    elems = buffer.getNumElements();
+  }
+  return llvm::checkedMul(
+      elems, static_cast<int64_t>(getBufferElementTypeWidthInBytes()));
+}
+
 uint32_t DMABDOp::getAxcacheOrDefault() {
   return getAxcache().value_or(
       getTargetModel(getOperation()).getDefaultAxCache());
@@ -5540,6 +6484,12 @@ LogicalResult DMAStartOp::verify() {
   }
   if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
     return failure();
+  if (auto program = dyn_cast<DmaBody>((*this)->getParentOp());
+      program && !getEndpoint() &&
+      failed(verifyDMAChannelIndex(
+          getOperation(), cast<TileLike>(program.getTile().getDefiningOp()),
+          getChannelDir(), getChannelIndex())))
+    return failure();
   SmallVector<DMABDOp> bds;
   if (getOutOfOrder()) {
     llvm::SmallPtrSet<Block *, 8> visited;
@@ -5712,6 +6662,13 @@ LogicalResult LockOp::verify() {
     if (int numLocks = targetModel.getNumLocks(tileType); *lockID >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
              << numLocks - 1 << ")";
+  }
+
+  if (std::optional<int32_t> init = getInit()) {
+    int64_t max = getTargetModel(*this).getMaxLockValue();
+    if (*init < 0 || *init > max)
+      return emitOpError("init value ")
+             << *init << " is outside the lock's range [0, " << max << "]";
   }
 
   return success();
@@ -6052,6 +7009,19 @@ LogicalResult ShimDMAAllocationOp::verify() {
     return emitOpError("tile must be a shim tile");
   }
 
+  if (ArrayAttr proofs = getConsumedByAttr()) {
+    if (getChannelDir() != DMAChannelDir::MM2S)
+      return emitOpError("consumed_by belongs on a shim input (MM2S)");
+    auto device = (*this)->getParentOfType<DeviceOp>();
+    for (auto proof : proofs.getAsRange<ConsumedByAttr>()) {
+      auto output = getForSymbol(device, proof.getOutput().getValue());
+      if (!output || output.getChannelDir() != DMAChannelDir::S2MM)
+        return emitOpError("consumed_by output ")
+               << proof.getOutput()
+               << " names no shim output (S2MM aie.shim_dma_allocation)";
+    }
+  }
+
   return verifyAssignedPacket(*this, getPacketAttr());
 }
 
@@ -6310,3 +7280,25 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
+
+bool xilinx::AIE::hasCoreAccess(DeviceOp device, Value tile,
+                                ObjectFifoCreateOp objFifo,
+                                ObjectFifoPort port) {
+  for (auto coreOp : device.getOps<CoreOp>()) {
+    if (coreOp.getTile() != tile) {
+      continue;
+    }
+    bool found = false;
+    coreOp.walk([&](Operation *op) {
+      if (auto acq = dyn_cast<ObjectFifoAcquireOp>(op)) {
+        found |= acq.getObjectFifo() == objFifo && acq.getPort() == port;
+      } else if (auto rel = dyn_cast<ObjectFifoReleaseOp>(op)) {
+        found |= rel.getObjectFifo() == objFifo && rel.getPort() == port;
+      }
+    });
+    if (found) {
+      return true;
+    }
+  }
+  return false;
+}

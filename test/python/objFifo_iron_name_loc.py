@@ -35,7 +35,7 @@ def test_fifo_name_locates_its_flow():
 
     with module.context:
         PassManager.parse(
-            "builtin.module(aie.device(aie-place-tiles,"
+            "builtin.module(aie-place-tiles,aie.device("
             "aie-objectFifo-stateful-transform,aie-create-pathfinder-flows))"
         ).run(module.operation)
     print("// lowered")

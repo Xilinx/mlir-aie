@@ -47,8 +47,8 @@
     // CHECK:         aie.use_lock(%[[OUT1_CONS_LOCK]], Release, %{{.*}})
     // CHECK:         aie.end
     // CHECK:       }
-    // CHECK:       aie.runtime_sequence(%arg0: memref<61x56xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
-    // CHECK:         aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 3416][0, 0, 0, 1]) {id = 0 : i64, metadata = @objFifo_in0__shim_alloc} : memref<61x56xi8>
+    // CHECK:       aie.runtime_sequence(%arg0: memref<64x64xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
+    // CHECK:         aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0, 1]) {id = 0 : i64, metadata = @objFifo_in0__shim_alloc} : memref<64x64xi8>
     // CHECK:         aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0, 1]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0__shim_alloc} : memref<64x64xi8>
     // CHECK:         aiex.npu.dma_wait {symbol = @objFifo_out0__shim_alloc}
     // CHECK:       }
@@ -164,8 +164,8 @@ module {
       aie.end
     }
 
-    aie.runtime_sequence(%arg0: memref<61x56xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 61, 56][0, 0, 56, 1]) {id = 0 : i64, metadata = @objFifo_in0} : memref<61x56xi8>
+    aie.runtime_sequence(%arg0: memref<64x64xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 0 : i64, metadata = @objFifo_in0} : memref<64x64xi8>
       aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<64x64xi8>
       aiex.npu.dma_wait { symbol = @objFifo_out0 }
     }

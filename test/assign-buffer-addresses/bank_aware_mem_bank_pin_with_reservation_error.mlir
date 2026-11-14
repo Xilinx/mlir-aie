@@ -23,6 +23,7 @@ module @too_large_around_the_pin {
     %tile_0_2 = aie.tile(0, 2)
     %mid = aie.buffer(%tile_0_2) {sym_name = "mid", mem_bank = 1 : i32} : memref<8192xi8>
     // expected-error @below {{could not be placed: this core's data sections (data_size) needs 45000 bytes}}
+    // expected-note @below {{this core keeps its own sections in 45000 bytes}}
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32, data_size = 45000 : i32}

@@ -115,9 +115,7 @@ public:
         }
       }
 
-      const int idMask = (1 << llvm::Log2_32_Ceil(
-                              device.getTargetModel().getMaxPacketId() + 1)) -
-                         1;
+      const int idMask = device.getTargetModel().getPacketIdMask();
       using MergeKey = std::pair<int, int>;
       std::map<MergeKey, SmallVector<Port, 4>> mergeIngresses;
       std::map<MergeKey, SmallVector<Operation *, 8>> mergeOps;
@@ -1021,8 +1019,7 @@ struct AIEFindFlowsPass
     }
 
     // Widest mask the target's packet ids can carry.
-    const int idMask =
-        (1 << llvm::Log2_32_Ceil(d.getTargetModel().getMaxPacketId() + 1)) - 1;
+    const int idMask = d.getTargetModel().getPacketIdMask();
 
     LiftedOps lifted;
     if (auto ref = d.getOverlayAttr()) {

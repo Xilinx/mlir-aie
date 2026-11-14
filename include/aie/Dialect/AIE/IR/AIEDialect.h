@@ -384,6 +384,10 @@ void printFlowVias(mlir::OpAsmPrinter &printer, mlir::Operation *op,
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
+// The banks a memref's address space names (5-8 one bank each, 9-14 a pair),
+// or none.
+llvm::SmallVector<int, 2> banksFromMemorySpace(mlir::Type type);
+
 // Trace Event Value Parsing/Printing (handles both string and typed enums)
 mlir::ParseResult parseTraceEvent(mlir::AsmParser &parser,
                                   mlir::Attribute &result);
@@ -413,6 +417,68 @@ struct StreamWindow {
   int64_t transfer() const;
 };
 
+// Where a tile sits, if known: a placed tile's coordinates, or a placer's
+// current position for a logical one.
+using TilePositions = llvm::function_ref<std::optional<TileID>(mlir::Value)>;
+
+// A link participant other than the pool's owner whose aie.objectfifo.allocate
+// may share the link's pool: its tiles, and the objects of its end off the
+// link's tile.
+struct LinkPoolSharer {
+  mlir::Value producer;
+  mlir::Value consumer;
+  mlir::Value delegate;
+  int64_t depth;
+};
+
+// What sizes a link's pool wherever tiles sit (ObjectFifoLinkOp::getPoolPlan):
+// the depth without sharers, and each participant that may share it.
+struct LinkPoolPlan {
+  mlir::Value linkTile;
+  int64_t depth;
+  llvm::SmallVector<LinkPoolSharer> sharers;
+  // The pool's depth where `positions` puts the tiles: a sharer counts where
+  // ObjectFifoCreateOp::allocatedHome finds it a home on the link's tile.
+  int64_t depthAt(const AIETargetModel &target, TilePositions positions) const;
+};
+
+// The DMA end aie-objectfifo-split gives a fifo on one tile, known before
+// placement.
+struct PlannedDmaEnd {
+  // BD ids the end takes, as ObjectFifoDmaEndpointOp::getNumBDs counts them.
+  int64_t bds;
+  // The pool this end walks.
+  mlir::Operation *pool;
+  // Tells a fifo's own consumer pools on the same tile apart.
+  int id;
+  // The pool's depth. Walked whole, a pool's ends take one BD id each.
+  int64_t depth;
+  // Whether one BD per side can walk the pool whole.
+  bool walkable;
+  // Bytes in each of the pool's objects.
+  int64_t objectBytes;
+  // Objects the split lays contiguously in one buffer; zero if none do.
+  int64_t contiguousObjects;
+  // The DMA channel the end pins, if any.
+  std::optional<int> channel;
+};
+
+// Why a fifo's objects cannot be its link's pool's objects
+// (ObjectFifoCreateOp::linkPoolMisfit).
+enum class LinkPoolMisfit {
+  None,
+  // The pool's owner has another object type.
+  ObjectType,
+  // The fifo has initial objects, but the pool starts with its owner's.
+  InitialValues,
+  // A merge's inputs take turns filling the pool through one DMA end.
+  MergeInput,
+  // A dispatch's outputs take turns draining the pool through one DMA end.
+  DispatchOutput,
+  // The fifo is one link's output and another's input.
+  BetweenLinks,
+};
+
 // One output of a StreamWindow: the first object it reads, counting the `top`
 // zero objects, and the lock units it takes before and gives back after.
 struct StreamWindowStep {
@@ -429,6 +495,11 @@ struct StreamWindowStep {
 
 namespace xilinx::AIE {
 
+// Whether a core on `tile` acquires or releases `fifo` through `port`, so
+// the split gives that end a core endpoint.
+bool hasCoreAccess(DeviceOp device, mlir::Value tile, ObjectFifoCreateOp fifo,
+                   ObjectFifoPort port);
+
 // The endpoints `end`'s `turns` names, each once, in order of first turn;
 // none when it takes no turns.
 llvm::SmallVector<ObjectFifoDmaEndpointOp>
@@ -442,6 +513,13 @@ int64_t turnPasses(llvm::ArrayRef<std::pair<int64_t, int64_t>> ends);
 // Whether packets leave `master` of `tile` with their header: not into a DMA,
 // nor down the shim's South to one, unless `keep` says.
 bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep);
+
+// Whether a route asking for `header`, null for no preference, carries
+// packet headers: aie-assign-packet-ids gives one to every route asking for
+// none when `packetSwDefault` (its packet-sw-objFifos) is set.
+inline bool isPacketSwitched(PacketInfoAttr header, bool packetSwDefault) {
+  return header || packetSwDefault;
+}
 
 // Whether `bundle` links a switchbox to a neighbouring one.
 inline bool isDirectional(WireBundle bundle) {
@@ -467,6 +545,15 @@ bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 // by its padding; `fallback` unless it has both.
 int64_t paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
                    llvm::ArrayRef<BDPadLayoutAttr> pads, int64_t fallback);
+
+// Bytes one value of `type` takes under `layout`.
+int64_t getMemRefSizeInBytes(mlir::MemRefType type,
+                             const mlir::DataLayout &layout);
+
+// Whether one iterating descriptor could walk a pool of `depth` objects on a
+// tile: a mem tile's pool, deeper than one object and no deeper than a lock
+// counts (ObjectFifoPoolOp::canWalkWhole, ObjectFifoCreateOp::plannedDmaEnd).
+bool walksWholeDepth(bool isMemTile, int64_t depth, int64_t maxLockValue);
 
 // The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
 // dimensions (outermost first) and its length in elements: none when it
@@ -526,6 +613,11 @@ mlir::LogicalResult verifyDMABDIteration(DMABDOp bd, AIETileType tileType);
 mlir::LogicalResult verifyAssignedPacket(mlir::Operation *op,
                                          PacketInfoAttr packet,
                                          llvm::StringRef what = "packet");
+
+// `channel` names one of `tile`'s DMA channels in `dir`. Callable from the
+// AIEX dialect.
+mlir::LogicalResult verifyDMAChannelIndex(mlir::Operation *op, TileLike tile,
+                                          DMAChannelDir dir, int64_t channel);
 
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult

@@ -7,11 +7,13 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/CheckedArithmetic.h"
 
 #include <tuple>
 
@@ -25,16 +27,28 @@ namespace xilinx::AIE {
 } // namespace xilinx::AIE
 
 ShimTransferSpans::ShimTransferSpans(
-    DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf) {
-  analyze(device, [&](DeviceOp owner, StringAttr symbol) {
+    DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf,
+    std::optional<Gates> gates, bool plannedOverlay)
+    : gates(std::move(gates)), context(device.getContext()),
+      overlayColumns(plannedOverlay ? device.getTargetModel().columns() : 0) {
+  auto inDevice = [&](DeviceOp owner, StringAttr symbol) {
     return owner == device ? endOf(symbol) : std::nullopt;
-  });
+  };
+  for (int column = 0; column < overlayColumns; ++column)
+    used.insert(overlayEnd(column));
+  analyze(device, inDevice);
+  if (this->gates)
+    analyzeGates(device, inDevice);
 }
 
 ShimTransferSpans::ShimTransferSpans(
     ModuleOp module,
-    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf) {
+    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf,
+    std::optional<Gates> gates)
+    : gates(std::move(gates)), context(module.getContext()) {
   analyze(module, endOf);
+  if (this->gates)
+    analyzeGates(module, endOf);
 }
 
 void ShimTransferSpans::analyze(
@@ -135,6 +149,9 @@ void ShimTransferSpans::analyze(
                              std::optional<int> column = {}) {
       if (!configured)
         return;
+      for (int planned = 0; planned < overlayColumns; ++planned)
+        if (!column || planned == *column)
+          synchronous(op, overlayEnd(planned), position[op], position[op]);
       for (auto alloc : configured.getOps<ShimDMAAllocationOp>()) {
         if (!AIEDialect::IsCtrlPktOverlayAttrHelper(root->getContext())
                  .isAttrPresent(alloc) ||
@@ -211,6 +228,10 @@ void ShimTransferSpans::analyze(
         transfer(op, wait.getSymbolAttr().getAttr(), false, true);
       } else if (auto configure = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
         tasks[configure.getResult()] = configure.getAlloc().getRootReference();
+      } else if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op)) {
+        StringAttr symbol = chain.getAllocAttr().getAttr();
+        tasks[chain.getResult()] = symbol;
+        transfer(op, symbol, true, false, chain.getResult());
       } else if (isa<AIEX::DMAStartTaskOp, AIEX::DMAAwaitTaskOp,
                      AIEX::DMAFreeTaskOp>(op)) {
         if (auto symbol = tasks.lookup(op->getOperand(0)))
@@ -265,19 +286,258 @@ void ShimTransferSpans::analyze(
         sends = false;
     // Receive ordering does not constrain when independent producers send.
     if (!sends)
-      permissions.try_emplace(endpoint->fifo);
+      receivers.insert(endpoint->fifo);
   });
   root->walk([&](RuntimeSequenceOp sequence) { summarize(sequence); });
+}
+
+void ShimTransferSpans::analyzeGates(
+    Operation *root,
+    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf) {
+  root->walk([&](RuntimeSequenceOp sequence) {
+    DeviceOp device = sequence->getParentOfType<DeviceOp>();
+    DenseMap<Operation *, int64_t> position, end;
+    int64_t next = 0;
+    std::function<void(Operation *)> number = [&](Operation *op) {
+      position[op] = next++;
+      for (Region &region : op->getRegions())
+        for (Block &block : region)
+          for (Operation &nested : block)
+            number(&nested);
+      end[op] = next - 1;
+    };
+    number(sequence);
+
+    auto &byFifo = spans.emplace_back();
+    DenseMap<Value, StringAttr> tasks;
+    DenseMap<Value, bool> tokens;
+    DenseMap<StringAttr, std::optional<int64_t>> moved;
+    // An end's transfers not yet awaited, over the loops around them: nullopt
+    // once one is issued that no await can take (no completion token, under a
+    // branch, or in a loop of unknown trips). An await under a branch, or in a
+    // loop that may not run, takes nothing; an issue there still spans the
+    // whole branch or loop.
+    DenseMap<StringAttr, std::optional<int64_t>> pending;
+    auto note = [&](Operation *op, StringAttr symbol, bool issues, bool awaits,
+                    bool tokened = false) {
+      std::optional<End> shimEnd = endOf(device, symbol);
+      if (!shimEnd)
+        return;
+      int64_t from = position[op], to = position[op];
+      for (Operation *parent = op->getParentOp(); parent != sequence;
+           parent = parent->getParentOp()) {
+        from = position[parent];
+        to = end[parent];
+      }
+      // A loop that may not run leaves an issue or await unconfirmed, the
+      // same as an unknown trip count.
+      std::optional<int64_t> runs = AIEX::staticExecutions(op);
+      if (runs == 0)
+        runs = std::nullopt;
+      Span &span = byFifo[shimEnd->fifo];
+      span.sends |= shimEnd->sends;
+      span.first = std::min(span.first, from);
+      span.last = std::max(span.last, to);
+      std::optional<int64_t> &waiting =
+          pending.try_emplace(shimEnd->fifo, 0).first->second;
+      if (issues) {
+        span.lastIssue = std::max(span.lastIssue, to);
+        waiting = waiting && runs && tokened ? llvm::checkedAdd(*waiting, *runs)
+                                             : std::nullopt;
+      } else if (runs) {
+        span.lastDone = std::max(span.lastDone, to);
+        if (awaits && waiting) {
+          waiting = std::max<int64_t>(*waiting - *runs, 0);
+          if (*waiting == 0)
+            span.lastAwaited = std::max(span.lastAwaited, to);
+        }
+      }
+    };
+    auto noteTask = [&](Operation *op, Value task, bool issues, bool awaits) {
+      if (StringAttr symbol = tasks.lookup(task))
+        note(op, symbol, issues, awaits, tokens.lookup(task));
+    };
+    // Adds the bytes `op` moves each time it runs, times the trip counts of
+    // the loops around it, to its end's total; nullopt where any is unknown.
+    auto count = [&](Operation *op, StringAttr symbol,
+                     std::optional<int64_t> bytes) {
+      std::optional<End> shimEnd = endOf(device, symbol);
+      if (!shimEnd)
+        return;
+      std::optional<int64_t> runs = AIEX::staticExecutions(op);
+      bytes = bytes && runs ? llvm::checkedMul(*bytes, *runs) : std::nullopt;
+      std::optional<int64_t> &total =
+          moved.try_emplace(shimEnd->fifo, 0).first->second;
+      total = total && bytes ? llvm::checkedAdd(*total, *bytes) : std::nullopt;
+    };
+    sequence.walk([&](Operation *op) {
+      if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op)) {
+        StringAttr symbol = memcpy.getMetadata().getRootReference();
+        note(op, symbol, true, false, memcpy.getIssueToken());
+        count(op, symbol, memcpy.getStaticBytesStreamed());
+      } else if (auto wait = dyn_cast<AIEX::NpuDmaWaitOp>(op))
+        note(op, wait.getSymbolAttr().getAttr(), false, true);
+      else if (auto configure = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
+        StringAttr symbol = configure.getAlloc().getRootReference();
+        tasks[configure.getResult()] = symbol;
+        tokens[configure.getResult()] = configure.getIssueToken();
+        count(op, symbol, configure.getStaticBytesStreamed());
+      } else if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op)) {
+        tasks[chain.getResult()] = chain.getAllocAttr().getAttr();
+        tokens[chain.getResult()] = chain.getIssueToken();
+        note(op, chain.getAllocAttr().getAttr(), true, false,
+             chain.getIssueToken());
+        count(op, chain.getAllocAttr().getAttr(), std::nullopt);
+      } else if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
+        noteTask(op, start.getTask(), true, false);
+      else if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
+        noteTask(op, await.getTask(), false, true);
+      // Freeing a task lets its BD ids be reused, which is only safe once its
+      // transfers are done.
+      else if (auto free = dyn_cast<AIEX::DMAFreeTaskOp>(op))
+        noteTask(op, free.getTask(), false, false);
+    });
+    for (auto &[fifo, bytes] : moved)
+      if (auto it = byFifo.find(fifo); it != byFifo.end())
+        it->second.bytes = bytes;
+  });
+}
+
+SmallVector<const ShimTransferSpans::Gate *>
+ShimTransferSpans::usableGates(StringAttr end) const {
+  if (auto it = usableGatesCache.find(end); it != usableGatesCache.end())
+    return it->second;
+  bool receives = llvm::any_of(spans, [&](const auto &byFifo) {
+    auto it = byFifo.find(end);
+    return it != byFifo.end() && !it->second.sends;
+  });
+  SmallVector<const Gate *> usable;
+  if (!gates || !receives) {
+    usable.push_back(nullptr);
+  } else if (auto it = gates->find(end); it != gates->end()) {
+    for (const Gate &gate : it->second)
+      if (contained(end, gate))
+        usable.push_back(&gate);
+  }
+  return usableGatesCache[end] = usable;
+}
+
+bool ShimTransferSpans::before(const DenseMap<StringAttr, Span> &byFifo,
+                               const Span &x, const Span &y,
+                               const Gate *gate) const {
+  if (x.sends || x.last >= y.first || x.lastDone <= x.lastIssue)
+    return false;
+  if (!gate)
+    return true;
+  auto input = byFifo.find(gate->input);
+  return x.lastAwaited > x.lastIssue && input != byFifo.end() &&
+         input->second.first > x.lastAwaited;
+}
+
+bool ShimTransferSpans::contained(StringAttr end, const Gate &gate) const {
+  return llvm::all_of(spans, [&](const DenseMap<StringAttr, Span> &byFifo) {
+    auto in = byFifo.find(gate.input), out = byFifo.find(end);
+    if (out == byFifo.end())
+      return in == byFifo.end();
+    const Span &drain = out->second;
+    std::optional<int64_t> filled = in == byFifo.end() ? 0 : in->second.bytes;
+    if (!filled || !drain.bytes || drain.lastAwaited <= drain.lastIssue)
+      return false;
+    return AIEX::balanceUnder(gate.proof, {{-1, *filled}},
+                              {{-1, *drain.bytes}}) == AIEX::Unbalanced::No;
+  });
+}
+
+bool ShimTransferSpans::gated(StringAttr a, StringAttr b) const {
+  if (!gates || unknown || overlaps.contains({a, b}))
+    return false;
+  // An end no sequence names is driven some other way, so nothing is known
+  // about when it is in flight.
+  auto named = [&](StringAttr end) {
+    if (auto it = namedCache.find(end); it != namedCache.end())
+      return it->second;
+    bool result = llvm::any_of(
+        spans, [&](const auto &byFifo) { return byFifo.contains(end); });
+    return namedCache[end] = result;
+  };
+  for (StringAttr end : {a, b})
+    if (!named(end))
+      return false;
+  // One gate per end serves every sequence, for its fill bound and its turn.
+  for (const Gate *ga : usableGates(a))
+    for (const Gate *gb : usableGates(b))
+      if (llvm::all_of(spans, [&](const DenseMap<StringAttr, Span> &byFifo) {
+            auto sa = byFifo.find(a), sb = byFifo.find(b);
+            return sa == byFifo.end() || sb == byFifo.end() ||
+                   before(byFifo, sa->second, sb->second, gb) ||
+                   before(byFifo, sb->second, sa->second, ga);
+          }))
+        return true;
+  return false;
+}
+
+StringAttr ShimTransferSpans::keyOf(RouteEndpointOp endpoint) {
+  return endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
+                                    : endpoint.getSymNameAttr();
+}
+
+std::optional<ShimTransferSpans::End>
+ShimTransferSpans::endOf(DeviceOp device, StringAttr symbol) {
+  Operation *op = SymbolTable::lookupNearestSymbolFrom(device, symbol);
+  if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(op)) {
+    if (endpoint.getBundle() != WireBundle::DMA ||
+        !endpoint.getTileLike().isShimTile())
+      return std::nullopt;
+    return End{keyOf(endpoint),
+               endpoint.getRouteDirection() == DMAChannelDir::MM2S};
+  }
+  auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(op);
+  if (!fifo)
+    return std::nullopt;
+  auto producer =
+      dyn_cast_or_null<TileLike>(fifo.getProducerTile().getDefiningOp());
+  return End{symbol, producer && producer.isShimTile()};
+}
+
+ShimTransferSpans::Gates ShimTransferSpans::provenGates(
+    DeviceOp device, function_ref<StringAttr(RouteEndpointOp)> keyOf) {
+  Gates gates;
+  for (auto input : device.getOps<RouteEndpointOp>()) {
+    StringAttr inputKey = input.getConsumedBy() ? keyOf(input) : StringAttr();
+    if (!inputKey)
+      continue;
+    for (auto proof : input.getConsumedByAttr().getAsRange<ConsumedByAttr>()) {
+      auto output = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
+          device, proof.getOutput());
+      if (StringAttr outputKey = output ? keyOf(output) : StringAttr())
+        gates[outputKey].push_back({inputKey, proof});
+    }
+  }
+  return gates;
 }
 
 bool ShimTransferSpans::isUsed(StringAttr endpoint) const {
   return used.contains(endpoint);
 }
 
+StringAttr ShimTransferSpans::overlayEnd(int column) const {
+  // Typed, so no symbol name (an untyped StringAttr) is ever this end.
+  return StringAttr::get("ctrlpkt_col" + Twine(column),
+                         IndexType::get(context));
+}
+
 bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
+  // gated is symmetric, so one call answers for both directions whenever
+  // both ends reach it.
+  std::optional<bool> symmetric;
   auto permits = [&](StringAttr from, StringAttr to) {
     if (auto it = permissions.find(from); it != permissions.end())
       return llvm::is_contained(it->second, to);
+    if (receivers.contains(from)) {
+      if (!symmetric)
+        symmetric = gated(from, to);
+      return *symmetric;
+    }
     return !unknown && isUsed(from) && isUsed(to) &&
            !overlaps.contains({from, to});
   };
@@ -286,11 +546,14 @@ bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
 
 SmallVector<SmallVector<unsigned>>
 ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
-  auto when = llvm::map_to_vector(
-      ends, [&](StringAttr end) { return lifetimes.lookup(end); });
+  static const SmallVector<std::tuple<unsigned, int64_t, int64_t>> kNoLifetime;
+  auto when = llvm::map_to_vector(ends, [&](StringAttr end) {
+    auto it = lifetimes.find(end);
+    return it == lifetimes.end() ? &kNoLifetime : &it->second;
+  });
   auto order = llvm::to_vector(llvm::seq<unsigned>(0, ends.size()));
-  llvm::stable_sort(order,
-                    [&](unsigned x, unsigned y) { return when[x] < when[y]; });
+  llvm::stable_sort(
+      order, [&](unsigned x, unsigned y) { return *when[x] < *when[y]; });
   SmallVector<SmallVector<unsigned>> result;
   for (unsigned end : order) {
     auto *group = llvm::find_if(result, [&](ArrayRef<unsigned> members) {
@@ -301,6 +564,40 @@ ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
       result.push_back({end});
     else
       group->push_back(end);
+  }
+  return result;
+}
+
+ShimTransferSpans::Plan
+ShimTransferSpans::plan(ArrayRef<StringAttr> ends, ArrayRef<StringAttr> names,
+                        ArrayRef<SharedChannel> shared) const {
+  Plan result;
+  result.sharedChannel.assign(ends.size(), std::nullopt);
+  for (auto [index, channel] : llvm::enumerate(shared)) {
+    if (channel.pinned)
+      continue;
+    SmallVector<unsigned> taken;
+    for (unsigned end : llvm::seq<unsigned>(0, ends.size()))
+      if (!result.sharedChannel[end] &&
+          llvm::is_contained(channel.listed, names[end]) &&
+          llvm::all_of(taken, [&](unsigned other) {
+            return apart(ends[end], ends[other]);
+          })) {
+        result.sharedChannel[end] = index;
+        taken.push_back(end);
+      }
+  }
+  SmallVector<unsigned> rest;
+  SmallVector<StringAttr> restEnds;
+  for (unsigned end : llvm::seq<unsigned>(0, ends.size()))
+    if (!result.sharedChannel[end]) {
+      rest.push_back(end);
+      restEnds.push_back(ends[end]);
+    }
+  for (auto &group : groups(restEnds)) {
+    auto &members = result.groups.emplace_back();
+    for (unsigned member : group)
+      members.push_back(rest[member]);
   }
   return result;
 }
@@ -321,6 +618,16 @@ struct AIEAnnotateShimSharingPass
             StringAttr::get(&getContext(), std::to_string(keys.size()));
       return it->second;
     };
+    ShimTransferSpans::Gates gates;
+    for (DeviceOp device : module.getOps<DeviceOp>())
+      for (auto &[output, proven] : ShimTransferSpans::provenGates(
+               device, [&](RouteEndpointOp endpoint) {
+                 return endpoint.getBundle() == WireBundle::DMA &&
+                                endpoint.getTileLike().isShimTile()
+                            ? key(endpoint)
+                            : StringAttr();
+               }))
+        llvm::append_range(gates[output], proven);
     ShimTransferSpans spans(
         module,
         [&](DeviceOp device,
@@ -347,7 +654,8 @@ struct AIEAnnotateShimSharingPass
           }
           return ShimTransferSpans::End{key(op), alloc.getChannelDir() ==
                                                      DMAChannelDir::MM2S};
-        });
+        },
+        std::move(gates));
     for (DeviceOp device : module.getOps<DeviceOp>()) {
       auto annotate = [&](Operation *op, Value tile, DMAChannelDir direction,
                           StringAttr identity) {

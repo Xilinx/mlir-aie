@@ -7,7 +7,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+
+#include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/DenseSet.h"
+
+#include <functional>
+#include <map>
+#include <numeric>
+#include <set>
+#include <vector>
 
 using namespace mlir;
 using namespace xilinx;
@@ -22,6 +32,12 @@ Value DMAChannelAnalysis::getTileKey(Value tile) {
   return tilesByCoordinate.try_emplace({*col, *row}, tile).first->second;
 }
 
+void DMAChannelAnalysis::claim(Value tile, DMAChannelDir dir, int channel,
+                               Operation *owner) {
+  if (usedChannels.try_emplace({getTileKey(tile), dir, channel}, owner).second)
+    claims.emplace_back(tile, dir, channel, owner);
+}
+
 DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   for (auto program : device.getOps<DmaBody>()) {
     for (Block &block : program.getDmaBody()) {
@@ -29,10 +45,8 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
         // The route endpoint it names claims the channel; see assignChannels.
         if (start.getEndpoint())
           continue;
-        usedChannels.try_emplace(std::make_tuple(getTileKey(program.getTile()),
-                                                 start.getChannelDir(),
-                                                 start.getChannelIndex()),
-                                 start.getOperation());
+        claim(program.getTile(), start.getChannelDir(), start.getChannelIndex(),
+              start);
       }
     }
   }
@@ -79,10 +93,7 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   // A task the runtime sequence configures on a channel by index programs that
   // channel, as a DMA body would.
   device.walk([&](AIEX::DMAConfigureTaskOp task) {
-    usedChannels.try_emplace(std::make_tuple(getTileKey(task.getTile()),
-                                             task.getDirection(),
-                                             (int)task.getChannel()),
-                             task.getOperation());
+    claim(task.getTile(), task.getDirection(), (int)task.getChannel(), task);
   });
 
   for (auto flow : device.getOps<PacketFlowOp>()) {
@@ -99,16 +110,24 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
                                 StreamClaim{dest, true});
   }
 
-  // Shim allocations reserve channels outside the DMA bodies above.
+  // Shim allocations reserve channels outside the DMA bodies above. A
+  // shareable allocation still holds its channel against unlisted ends, so
+  // it is a claim too; skip the control overlay's, which the placers count
+  // as the planned overlay channel.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    (AIEDialect::ShareableWithAttrHelper(allocOp->getContext())
-             .isAttrPresent(allocOp)
-         ? shareableChannels
-         : usedChannels)
-        .try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
-                                     allocOp.getChannelDir(),
-                                     (int)allocOp.getChannelIndex()),
-                     allocOp.getOperation());
+    MLIRContext *context = allocOp->getContext();
+    if (!AIEDialect::ShareableWithAttrHelper(context).isAttrPresent(allocOp)) {
+      claim(allocOp.getTile(), allocOp.getChannelDir(),
+            (int)allocOp.getChannelIndex(), allocOp);
+      continue;
+    }
+    shareableChannels.try_emplace(
+        std::make_tuple(getTileKey(allocOp.getTile()), allocOp.getChannelDir(),
+                        (int)allocOp.getChannelIndex()),
+        allocOp.getOperation());
+    if (!AIEDialect::IsCtrlPktOverlayAttrHelper(context).isAttrPresent(allocOp))
+      claims.emplace_back(allocOp.getTile(), allocOp.getChannelDir(),
+                          (int)allocOp.getChannelIndex(), allocOp);
   }
 }
 
@@ -233,4 +252,445 @@ LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,
                  "one circuit or only packet flows";
   diag.attachNote(it->second.owner->getLoc()) << "the other stream is here";
   return diag;
+}
+
+SmallVector<Block *> DMAChannelAnalysis::chainOf(DMAStartOp start) {
+  SmallVector<Block *> chain;
+  SmallPtrSet<Block *, 8> seen;
+  SmallVector<Block *> work{start.getDest()};
+  while (!work.empty()) {
+    Block *block = work.pop_back_val();
+    if (!seen.insert(block).second || block->getOps<DMABDOp>().empty())
+      continue;
+    chain.push_back(block);
+    if (auto next = dyn_cast<NextBDOp>(block->getTerminator()))
+      work.push_back(next.getDest());
+  }
+  return chain;
+}
+
+int64_t DMAChannelAnalysis::countBDs(DMAStartOp start) {
+  int64_t bds = 0;
+  for (Block *block : chainOf(start))
+    bds += llvm::range_size(block->getOps<DMABDOp>());
+  return bds;
+}
+
+DMAChannelAnalysis::TakenBDs::TakenBDs(DeviceOp device) {
+  for (auto program : device.getOps<DmaBody>())
+    for (Block &block : program.getDmaBody())
+      for (auto start : block.getOps<DMAStartOp>())
+        if (!start.getEndpointOp())
+          if (Operation *tile = program.getTile().getDefiningOp())
+            fixed[tile][start.getChannelIndex()] += countBDs(start);
+  unsigned order = 0;
+  AIEX::forEachRuntimePinnedBdId(
+      device,
+      [&](Operation *, Operation *tile, std::optional<int> channel,
+          int32_t id) { pinned[tile].try_emplace(id, Pin{order++, channel}); });
+}
+
+DenseMap<int, int64_t>
+DMAChannelAnalysis::TakenBDs::at(const AIETargetModel &target, int col, int row,
+                                 ArrayRef<Operation *> tiles) const {
+  auto here = [&](Operation *tile) {
+    auto like = dyn_cast<TileLike>(tile);
+    return llvm::is_contained(tiles, tile) ||
+           (like && like.tryGetCol() == col && like.tryGetRow() == row);
+  };
+  DenseMap<int, int64_t> taken;
+  for (auto &[tile, channels] : fixed)
+    if (here(tile))
+      for (auto [channel, bds] : channels)
+        taken[channel] += bds;
+  std::map<int32_t, Pin> ids;
+  for (auto &[tile, pins] : pinned)
+    if (here(tile))
+      for (auto [id, pin] : pins)
+        if (auto [it, added] = ids.try_emplace(id, pin);
+            !added && pin.order < it->second.order)
+          it->second = pin;
+  int numChannels = std::max(
+      target.getNumSourceSwitchboxConnections(col, row, WireBundle::DMA),
+      target.getNumDestSwitchboxConnections(col, row, WireBundle::DMA));
+  for (auto [id, pin] : ids)
+    for (int channel = 0, last = pin.channel.value_or(numChannels - 1);
+         channel <= last; ++channel)
+      if (target.isBdChannelAccessible(col, row, id, channel)) {
+        ++taken[channel];
+        break;
+      }
+  return taken;
+}
+
+SmallVector<std::pair<int, int>>
+DMAChannelAnalysis::TakenBDs::positions() const {
+  std::set<std::pair<int, int>> at;
+  auto add = [&](Operation *tile) {
+    auto like = dyn_cast<TileLike>(tile);
+    if (!like)
+      return;
+    if (auto col = like.tryGetCol(), row = like.tryGetRow(); col && row)
+      at.insert({*col, *row});
+  };
+  for (auto &entry : fixed)
+    add(entry.first);
+  for (auto &entry : pinned)
+    add(entry.first);
+  return {at.begin(), at.end()};
+}
+
+llvm::SmallVector<DMAChannelAnalysis::BDGroup>
+DMAChannelAnalysis::bdGroups(const AIETargetModel &target, int col, int row,
+                             int numChannels) {
+  uint32_t numBDs = target.getNumBDs(col, row);
+  SmallVector<BDGroup> groups;
+  for (int channel = 0; channel < numChannels; ++channel) {
+    llvm::BitVector ids(numBDs);
+    for (uint32_t bd = 0; bd < numBDs; ++bd)
+      if (target.isBdChannelAccessible(col, row, bd, channel))
+        ids.set(bd);
+    BDGroup merged{ids, {channel}};
+    for (auto *it = groups.begin(); it != groups.end();) {
+      if (!it->ids.anyCommon(merged.ids)) {
+        ++it;
+        continue;
+      }
+      merged.ids |= it->ids;
+      llvm::append_range(merged.channels, it->channels);
+      it = groups.erase(it);
+    }
+    groups.push_back(std::move(merged));
+  }
+  for (BDGroup &group : groups)
+    llvm::sort(group.channels);
+  return groups;
+}
+
+std::optional<SmallVector<int>>
+DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
+                                   int row, ArrayRef<BDPlanEnd> allEnds,
+                                   function_ref<bool(DMAChannelDir, int)> free,
+                                   function_ref<int64_t(int)> spent) {
+  int numChannels = std::max(
+      target.getNumSourceSwitchboxConnections(col, row, WireBundle::DMA),
+      target.getNumDestSwitchboxConnections(col, row, WireBundle::DMA));
+
+  // Channels whose BD ids overlap at all share one pool of ids, as bdRoom in
+  // aie-objectfifo-allocate counts them.
+  struct Group {
+    llvm::BitVector ids;
+    SmallVector<int> channels;
+    int64_t room = 0;
+  };
+  SmallVector<Group> groups;
+  for (BDGroup &group : bdGroups(target, col, row, numChannels))
+    groups.push_back({std::move(group.ids), std::move(group.channels), 0});
+  for (Group &group : groups) {
+    group.room = group.ids.count();
+    for (int channel : group.channels)
+      group.room -= spent(channel);
+  }
+
+  // An end pinning a channel takes it, whatever `free` says, and shares it
+  // with every end pinning it too; the rest are planned around them.
+  SmallVector<BDPlanEnd> ends;
+  SmallVector<unsigned> looseOf;
+  llvm::DenseSet<std::pair<int, int>> pinned;
+  for (auto [index, end] : llvm::enumerate(allEnds)) {
+    if (!end.pinned) {
+      ends.push_back(end);
+      looseOf.push_back(index);
+      continue;
+    }
+    int channel = *end.pinned;
+    auto *group = llvm::find_if(groups, [&](const Group &group) {
+      return llvm::is_contained(group.channels, channel);
+    });
+    if (group == groups.end())
+      return std::nullopt;
+    group->room -= end.bds;
+    pinned.insert({static_cast<int>(end.dir), *end.pinned});
+  }
+  if (llvm::any_of(groups, [](const Group &group) { return group.room < 0; }))
+    return std::nullopt;
+  auto open = [&](DMAChannelDir dir, int channel) {
+    return free(dir, channel) &&
+           !pinned.contains({static_cast<int>(dir), channel});
+  };
+
+  // Each end goes to a group, the most demanding first; a choice stands when
+  // every group's ends fit its ids and, within a direction, take distinct free
+  // channels below their bounds: the tightest bound first, each the lowest
+  // channel left, which finds a matching whenever one exists since the
+  // allowed channels of any two ends nest.
+  SmallVector<unsigned> order(ends.size());
+  std::iota(order.begin(), order.end(), 0);
+  auto shape = [&](unsigned end) {
+    return std::make_tuple(-ends[end].bds, static_cast<int>(ends[end].dir),
+                           ends[end].limit);
+  };
+  llvm::stable_sort(
+      order, [&](unsigned a, unsigned b) { return shape(a) < shape(b); });
+  SmallVector<unsigned> groupOf(ends.size());
+  SmallVector<int> channelOf(ends.size(), -1);
+  auto match = [&]() {
+    SmallVector<unsigned> byBound(ends.size());
+    std::iota(byBound.begin(), byBound.end(), 0);
+    llvm::stable_sort(byBound, [&](unsigned a, unsigned b) {
+      return ends[a].limit < ends[b].limit;
+    });
+    llvm::DenseSet<std::pair<int, int>> taken;
+    for (unsigned end : byBound) {
+      channelOf[end] = -1;
+      for (int channel : groups[groupOf[end]].channels) {
+        int dir = static_cast<int>(ends[end].dir);
+        if (channel < ends[end].limit && open(ends[end].dir, channel) &&
+            taken.insert({dir, channel}).second) {
+          channelOf[end] = channel;
+          break;
+        }
+      }
+      if (channelOf[end] < 0)
+        return false;
+    }
+    return true;
+  };
+  // The same nesting (bounds above) means a group's ends fit a direction
+  // exactly when, for every bound, no more of them have that bound or a
+  // tighter one than free channels lie below it. Checked as ends are placed:
+  // every completed choice matches, since no group ever holds more ends than
+  // it has channels.
+  SmallVector<int> bounds;
+  for (const BDPlanEnd &end : ends)
+    bounds.push_back(end.limit);
+  llvm::sort(bounds);
+  bounds.erase(llvm::unique(bounds), bounds.end());
+  size_t slots = 2 * bounds.size();
+  SmallVector<int64_t> below(groups.size() * slots, 0);
+  for (auto [g, group] : llvm::enumerate(groups))
+    for (DMAChannelDir dir : {DMAChannelDir::S2MM, DMAChannelDir::MM2S})
+      for (auto [i, bound] : llvm::enumerate(bounds))
+        for (int channel : group.channels)
+          below[g * slots + static_cast<int>(dir) * bounds.size() + i] +=
+              channel < bound && open(dir, channel);
+  SmallVector<int64_t> held(groups.size() * slots, 0);
+  auto fits = [&](unsigned g, DMAChannelDir dir) {
+    size_t base = g * slots + static_cast<int>(dir) * bounds.size();
+    int64_t tighter = 0;
+    for (size_t i = 0; i < bounds.size(); ++i) {
+      tighter += held[base + i];
+      if (tighter > below[base + i])
+        return false;
+    }
+    return true;
+  };
+  // Over every group at once, too many ends of a direction and bound fail
+  // before any is placed.
+  for (DMAChannelDir dir : {DMAChannelDir::S2MM, DMAChannelDir::MM2S}) {
+    int64_t tighter = 0;
+    for (size_t i = 0; i < bounds.size(); ++i) {
+      int64_t room = 0;
+      for (size_t g = 0; g < groups.size(); ++g)
+        room += below[g * slots + static_cast<int>(dir) * bounds.size() + i];
+      tighter += llvm::count_if(ends, [&](const BDPlanEnd &end) {
+        return end.dir == dir && end.limit == bounds[i];
+      });
+      if (tighter > room)
+        return std::nullopt;
+    }
+  }
+  // Ends of one shape are interchangeable, so each takes a group no lower
+  // than the one before it of its shape.
+  std::function<bool(size_t)> place = [&](size_t next) {
+    if (next == order.size())
+      return match();
+    unsigned end = order[next];
+    size_t slot = static_cast<int>(ends[end].dir) * bounds.size() +
+                  (llvm::lower_bound(bounds, ends[end].limit) - bounds.begin());
+    unsigned first = next > 0 && shape(order[next - 1]) == shape(end)
+                         ? groupOf[order[next - 1]]
+                         : 0;
+    for (unsigned g = first; g < groups.size(); ++g) {
+      if (groups[g].room < ends[end].bds)
+        continue;
+      ++held[g * slots + slot];
+      if (fits(g, ends[end].dir)) {
+        groupOf[end] = g;
+        groups[g].room -= ends[end].bds;
+        bool placed = place(next + 1);
+        groups[g].room += ends[end].bds;
+        if (placed) {
+          --held[g * slots + slot];
+          return true;
+        }
+      }
+      --held[g * slots + slot];
+    }
+    return false;
+  };
+  if (!place(0))
+    return std::nullopt;
+  SmallVector<int> result;
+  for (const BDPlanEnd &end : allEnds)
+    result.push_back(end.pinned ? *end.pinned : -1);
+  for (auto [loose, index] : llvm::enumerate(looseOf))
+    result[index] = channelOf[loose];
+  return result;
+}
+
+std::optional<unsigned> DMAChannelAnalysis::nextPoolToWalk(
+    ArrayRef<BDPlanEnd> ends, ArrayRef<unsigned> poolOf,
+    ArrayRef<BDWalkPool> pools, ArrayRef<bool> whole) {
+  SmallVector<int64_t> bds(pools.size(), 0);
+  for (auto [end, pool] : llvm::zip_equal(ends, poolOf))
+    bds[pool] += end.bds;
+  auto key = [&](unsigned pool) {
+    return std::make_tuple(pools[pool].depth, -pools[pool].objectBytes,
+                           bds[pool]);
+  };
+  std::optional<unsigned> next;
+  for (unsigned pool = 0, e = pools.size(); pool < e; ++pool)
+    if (pools[pool].walkable && !whole[pool] &&
+        (!next || key(pool) > key(*next)))
+      next = pool;
+  return next;
+}
+
+DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
+    const AIETargetModel &target, int col, int row, ArrayRef<BDPlanEnd> ends,
+    ArrayRef<unsigned> poolOf, ArrayRef<BDWalkPool> pools,
+    function_ref<bool(DMAChannelDir, int)> free,
+    function_ref<int64_t(int)> spent, unsigned maxSets) {
+  BDWalkSets result;
+  auto none = [](int) -> int64_t { return 0; };
+  auto fitsWalking = [&](ArrayRef<bool> whole, bool weighted) {
+    SmallVector<BDPlanEnd> planned;
+    for (auto [end, pool] : llvm::zip_equal(ends, poolOf))
+      planned.push_back({end.dir,
+                         !weighted     ? 0
+                         : whole[pool] ? 1
+                                       : end.bds,
+                         end.limit, end.pinned});
+    return planBDChannels(target, col, row, planned, free,
+                          weighted ? spent : function_ref<int64_t(int)>(none))
+        .has_value();
+  };
+  SmallVector<bool> whole(pools.size(), false);
+  if (!fitsWalking(whole, /*weighted=*/false)) {
+    result.channelShort = true;
+    return result;
+  }
+  if (fitsWalking(whole, /*weighted=*/true))
+    return result;
+
+  SmallVector<unsigned> ranked;
+  while (std::optional<unsigned> next =
+             nextPoolToWalk(ends, poolOf, pools, whole)) {
+    ranked.push_back(*next);
+    whole[*next] = true;
+  }
+  if (!fitsWalking(whole, /*weighted=*/true)) {
+    result.fits = false;
+    return result;
+  }
+  // Walking a pool only lowers its ends' BD ids, so a set holding one that
+  // fits fits too, without asking planBDChannels.
+  unsigned n = ranked.size();
+  assert(n < 32 && "each walkable pool draws a channel the plan above fit");
+  auto bytes = [&](uint32_t mask) {
+    int64_t total = 0;
+    for (unsigned bit = 0; bit < n; ++bit)
+      if (mask >> bit & 1)
+        total += pools[ranked[bit]].depth * pools[ranked[bit]].objectBytes;
+    return total;
+  };
+  // The final order needs no plan, so masks are sorted into it before any
+  // are tested: a subset always has fewer or equal bytes and a lower
+  // popcount than its supersets, so it still sorts before them, and the
+  // fitsMask shortcut below still only ever looks back at masks already
+  // tested.
+  SmallVector<uint32_t> order;
+  for (uint32_t mask = 1; mask < (uint32_t(1) << n); ++mask)
+    order.push_back(mask);
+  llvm::stable_sort(order, [&](uint32_t a, uint32_t b) {
+    int64_t aBytes = bytes(a), bBytes = bytes(b);
+    if (aBytes != bBytes)
+      return aBytes < bBytes;
+    if (llvm::popcount(a) != llvm::popcount(b))
+      return llvm::popcount(a) < llvm::popcount(b);
+    // Of two sets alike in size, the one holding the first-ranked pool that
+    // only one holds.
+    uint32_t differ = a ^ b;
+    return differ && (a & differ & -differ);
+  });
+  llvm::BitVector fitsMask(uint32_t(1) << n);
+  for (uint32_t mask : order) {
+    if (result.sets.size() >= maxSets)
+      break;
+    bool fits = llvm::any_of(llvm::seq<unsigned>(0, n), [&](unsigned bit) {
+      return (mask >> bit & 1) && fitsMask.test(mask & ~(uint32_t(1) << bit));
+    });
+    if (!fits) {
+      llvm::fill(whole, false);
+      for (unsigned bit = 0; bit < n; ++bit)
+        if (mask >> bit & 1)
+          whole[ranked[bit]] = true;
+      fits = fitsWalking(whole, /*weighted=*/true);
+    }
+    if (fits) {
+      fitsMask.set(mask);
+      SmallVector<unsigned> set;
+      for (unsigned bit = 0; bit < n; ++bit)
+        if (mask >> bit & 1)
+          set.push_back(ranked[bit]);
+      result.sets.push_back(std::move(set));
+      result.bytes.push_back(bytes(mask));
+    }
+  }
+  return result;
+}
+
+DMAChannelAnalysis::WalkChoice DMAChannelAnalysis::searchWalkProduct(
+    ArrayRef<SmallVector<int64_t>> bytes,
+    function_ref<bool(ArrayRef<unsigned>)> places, unsigned maxTries) {
+  using Choice = std::vector<unsigned>;
+  auto total = [&](const Choice &choice) {
+    int64_t sum = 0;
+    for (auto [tile, set] : llvm::enumerate(choice))
+      sum += bytes[tile][set];
+    return sum;
+  };
+  // Each tile's sets come cheapest first, so a choice's successors (one tile
+  // a set further) never cost less: popped in order, the first that places
+  // is the cheapest that does.
+  std::set<std::pair<int64_t, Choice>> frontier;
+  std::set<Choice> seen;
+  Choice first(bytes.size(), 0);
+  frontier.insert({total(first), first});
+  seen.insert(first);
+  WalkChoice result;
+  result.sets.assign(first.begin(), first.end());
+  for (unsigned tries = 0; !frontier.empty(); ++tries) {
+    if (tries == maxTries) {
+      result.stopped = true;
+      return result;
+    }
+    Choice choice = frontier.begin()->second;
+    frontier.erase(frontier.begin());
+    if (places(choice)) {
+      result.sets.assign(choice.begin(), choice.end());
+      result.placed = true;
+      return result;
+    }
+    for (unsigned tile = 0; tile < choice.size(); ++tile) {
+      if (choice[tile] + 1 >= bytes[tile].size())
+        continue;
+      Choice next = choice;
+      ++next[tile];
+      if (seen.insert(next).second)
+        frontier.insert({total(next), next});
+    }
+  }
+  return result;
 }

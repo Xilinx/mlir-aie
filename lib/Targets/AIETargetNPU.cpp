@@ -630,6 +630,23 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return failure();
   }
 
+  // A load_pdi reaching this translation skipped aie-expand-load-pdi, so it
+  // always resets the array; a later configuration's buffer resident on the
+  // same global as an earlier one's in this sequence finds it gone.
+  AIE::DeviceOp previousDevice;
+  for (Block &block : seq.getBody())
+    for (Operation &o : block)
+      if (auto loadPdiOp = dyn_cast<NpuLoadPdiOp>(o)) {
+        auto dev =
+            moduleOp.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
+        if (!dev)
+          continue;
+        if (previousDevice &&
+            failed(AIEX::checkNoSharedResident(loadPdiOp, previousDevice, dev)))
+          return failure();
+        previousDevice = dev;
+      }
+
   NpuConfigCache ownConfigs;
   TxnEncoder encoder(deviceOp, instructions, locmap, foldDDRAddrOffset,
                      configs ? *configs : ownConfigs);

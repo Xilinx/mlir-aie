@@ -8,6 +8,8 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -531,6 +533,10 @@ struct AIEInsertTraceFlowsPass
     // If channels are occupied, adjust: use free channel, redirect lateral,
     // or error.
     auto usedChannels = scanUsedS2MMChannels(device);
+    auto s2mmChannels = [&](int col) {
+      return static_cast<int>(
+          targetModel.getNumDestShimMuxConnections(col, 0, WireBundle::DMA));
+    };
 
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
@@ -539,7 +545,7 @@ struct AIEInsertTraceFlowsPass
         continue; // No conflicts on this shim
 
       const auto &usedSet = usedIt->second;
-      int freeCount = 2 - static_cast<int>(usedSet.size());
+      int freeCount = s2mmChannels(shimCol) - static_cast<int>(usedSet.size());
 
       if (freeCount <= 0) {
         // No channels free -- try lateral redirect
@@ -551,7 +557,7 @@ struct AIEInsertTraceFlowsPass
           });
           // Also treat columns with full shims as "active" for spare search
           for (auto &[fullCol, channels] : usedChannels) {
-            if (static_cast<int>(channels.size()) >= 2)
+            if (static_cast<int>(channels.size()) >= s2mmChannels(fullCol))
               activeColumns.insert(fullCol);
           }
           int spare =
@@ -578,7 +584,7 @@ struct AIEInsertTraceFlowsPass
       if (freeCount == 1) {
         // One channel free -- use it
         int freeChannel = -1;
-        for (int ch = 0; ch < 2; ch++) {
+        for (int ch = 0; ch < s2mmChannels(shimCol); ch++) {
           if (usedSet.count(ch) == 0) {
             freeChannel = ch;
             break;
@@ -591,7 +597,9 @@ struct AIEInsertTraceFlowsPass
     // Build channel descriptors and trace-to-channel assignments
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
-      std::set<int> available = {0, 1};
+      std::set<int> available;
+      for (int ch = 0; ch < s2mmChannels(shimCol); ch++)
+        available.insert(ch);
       auto usedIt = usedChannels.find(shimCol);
       if (usedIt != usedChannels.end()) {
         for (int ch : usedIt->second)
@@ -779,9 +787,11 @@ struct AIEInsertTraceFlowsPass
         }
       }
 
-      // Compute timer control address
-      uint32_t timerCtrlAddr =
-          computeTimerCtrlAddress(info.tile, targetModel, isMemTrace);
+      const RegisterInfo *timerReg = targetModel.lookupRegister(
+          "Timer_Control", info.tile.getTileID(), isMemTrace);
+      if (!timerReg)
+        return info.traceOp.emitError(
+            "Failed to lookup Timer_Control register");
 
       std::string broadcastEventName;
       if (info.tile.isShimTile()) {
@@ -799,23 +809,20 @@ struct AIEInsertTraceFlowsPass
                                  << broadcastEventName << "'";
         return failure();
       }
-      const RegisterInfo *timerReg = targetModel.lookupRegister(
-          "Timer_Control", info.tile.getTileID(), isMemTrace);
-      if (!timerReg)
-        llvm::report_fatal_error("Failed to lookup Timer_Control register");
       const BitFieldInfo *resetField = timerReg->getField("Reset_Event");
       if (!resetField)
-        llvm::report_fatal_error(
+        return info.traceOp.emitError(
             "Failed to lookup Reset_Event field in Timer_Control");
       auto timerCtrlValue =
           targetModel.encodeFieldValue(*resetField, *broadcastEvent);
       if (!timerCtrlValue)
-        llvm::report_fatal_error("Broadcast event does not fit in "
-                                 "Timer_Control's Reset_Event field");
+        return info.traceOp.emitError("Broadcast event does not fit in "
+                                      "Timer_Control's Reset_Event field");
 
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(),
-          AIEX::createConstantI32(builder, runtimeSeq.getLoc(), timerCtrlAddr),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                  timerReg->offset),
           AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
                                   *timerCtrlValue),
           nullptr, builder.getI32IntegerAttr(col),
@@ -872,9 +879,12 @@ struct AIEInsertTraceFlowsPass
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(), chanOffset));
 
         // 4e. DMA channel configuration — set Controller_ID from tile attribute
-        uint32_t ctrlAddr =
+        std::optional<uint32_t> ctrlAddr =
             computeCtrlAddress(DMAChannelDir::S2MM, chanDesc.channel,
                                shimInfo.shimTile, targetModel);
+        if (!ctrlAddr)
+          return shimInfo.shimTile.emitError(
+              "Failed to lookup the S2MM control register");
         ensureControllerIdAttr(shimInfo.shimTile, targetModel);
         auto ctrlIdAttr =
             shimInfo.shimTile->getAttrOfType<PacketInfoAttr>("controller_id");
@@ -883,24 +893,25 @@ struct AIEInsertTraceFlowsPass
         const RegisterInfo *ctrlReg = targetModel.lookupRegister(
             ctrlRegName, shimInfo.shimTile.getTileID());
         if (!ctrlReg)
-          llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
-                                   ctrlRegName);
+          return shimInfo.shimTile.emitError(llvm::Twine("Failed to lookup ") +
+                                             ctrlRegName);
         const BitFieldInfo *ctrlIdField = ctrlReg->getField("Controller_ID");
         if (!ctrlIdField)
-          llvm::report_fatal_error("Failed to lookup Controller_ID field in " +
-                                   llvm::Twine(ctrlRegName));
+          return shimInfo.shimTile.emitError(
+              "Failed to lookup Controller_ID field in " +
+              llvm::Twine(ctrlRegName));
         auto ctrlIdValue =
             targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.assignedId());
         if (!ctrlIdValue)
-          llvm::report_fatal_error("Controller ID does not fit in the "
-                                   "Controller_ID field");
+          return shimInfo.shimTile.emitError(
+              "Controller ID does not fit in the Controller_ID field");
         auto ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);
         if (!ctrlIdMask)
-          llvm::report_fatal_error(
+          return shimInfo.shimTile.emitError(
               "Controller_ID field does not fit in 32-bit register");
         xilinx::AIEX::NpuMaskWrite32Op::create(
             builder, runtimeSeq.getLoc(),
-            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), ctrlAddr),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *ctrlAddr),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *ctrlIdValue),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *ctrlIdMask),
             nullptr, builder.getI32IntegerAttr(shimCol),
@@ -913,25 +924,25 @@ struct AIEInsertTraceFlowsPass
         const RegisterInfo *queueReg = targetModel.lookupRegister(
             taskQueueRegName, shimInfo.shimTile.getTileID());
         if (!queueReg)
-          llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
-                                   taskQueueRegName);
+          return shimInfo.shimTile.emitError(llvm::Twine("Failed to lookup ") +
+                                             taskQueueRegName);
         const BitFieldInfo *tokenField =
             queueReg->getField("Enable_Token_Issue");
         const BitFieldInfo *bdIdField = queueReg->getField("Start_BD_ID");
         if (!tokenField || !bdIdField)
-          llvm::report_fatal_error(
+          return shimInfo.shimTile.emitError(
               "Failed to lookup Enable_Token_Issue or Start_BD_ID fields");
         auto tokenValue = targetModel.encodeFieldValue(*tokenField, 1);
         auto bdIdValue =
             targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
         if (!tokenValue)
-          llvm::report_fatal_error("Enable_Token_Issue does not fit in the "
-                                   "field of " +
-                                   llvm::Twine(taskQueueRegName));
+          return shimInfo.shimTile.emitError(
+              "Enable_Token_Issue does not fit in the field of " +
+              llvm::Twine(taskQueueRegName));
         if (!bdIdValue)
-          llvm::report_fatal_error("BD ID does not fit in the Start_BD_ID "
-                                   "field of " +
-                                   llvm::Twine(taskQueueRegName));
+          return shimInfo.shimTile.emitError(
+              "BD ID does not fit in the Start_BD_ID field of " +
+              llvm::Twine(taskQueueRegName));
         uint32_t queueValue = *tokenValue | *bdIdValue;
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
@@ -948,28 +959,29 @@ struct AIEInsertTraceFlowsPass
         auto userEvent1 = targetModel.lookupEvent(
             "USER_EVENT_1", shimInfo.shimTile.getTileID(), false);
         if (!userEvent1)
-          llvm::report_fatal_error("Failed to lookup USER_EVENT_1 event");
+          return shimInfo.shimTile.emitError(
+              "Failed to lookup USER_EVENT_1 event");
 
-        uint32_t shimTimerCtrlAddr =
-            computeTimerCtrlAddress(shimInfo.shimTile, targetModel, false);
         const RegisterInfo *shimTimerReg = targetModel.lookupRegister(
             "Timer_Control", shimInfo.shimTile.getTileID(), false);
         if (!shimTimerReg)
-          llvm::report_fatal_error("Failed to lookup shim Timer_Control");
+          return shimInfo.shimTile.emitError(
+              "Failed to lookup shim Timer_Control");
         const BitFieldInfo *shimResetField =
             shimTimerReg->getField("Reset_Event");
         if (!shimResetField)
-          llvm::report_fatal_error(
+          return shimInfo.shimTile.emitError(
               "Failed to lookup Reset_Event in shim Timer_Control");
         auto shimTimerCtrlValue =
             targetModel.encodeFieldValue(*shimResetField, *userEvent1);
         if (!shimTimerCtrlValue)
-          llvm::report_fatal_error("USER_EVENT_1 does not fit in shim "
-                                   "Timer_Control's Reset_Event field");
+          return shimInfo.shimTile.emitError(
+              "USER_EVENT_1 does not fit in shim "
+              "Timer_Control's Reset_Event field");
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
-                                    shimTimerCtrlAddr),
+                                    shimTimerReg->offset),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
                                     *shimTimerCtrlValue),
             nullptr, builder.getI32IntegerAttr(shimCol),
@@ -981,8 +993,8 @@ struct AIEInsertTraceFlowsPass
         const RegisterInfo *broadcastReg = targetModel.lookupRegister(
             broadcastRegName, shimInfo.shimTile.getTileID());
         if (!broadcastReg)
-          llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
-                                   broadcastRegName);
+          return shimInfo.shimTile.emitError(llvm::Twine("Failed to lookup ") +
+                                             broadcastRegName);
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
@@ -995,7 +1007,8 @@ struct AIEInsertTraceFlowsPass
         const RegisterInfo *eventGenReg = targetModel.lookupRegister(
             "Event_Generate", shimInfo.shimTile.getTileID());
         if (!eventGenReg)
-          llvm::report_fatal_error("Failed to lookup Event_Generate register");
+          return shimInfo.shimTile.emitError(
+              "Failed to lookup Event_Generate register");
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
@@ -1021,15 +1034,16 @@ struct AIEInsertTraceFlowsPass
       auto userEvent0 = targetModel.lookupEvent(
           "USER_EVENT_0", shimInfo.shimTile.getTileID(), false);
       if (!userEvent0)
-        llvm::report_fatal_error("Failed to lookup USER_EVENT_0 event");
+        return shimInfo.shimTile.emitError(
+            "Failed to lookup USER_EVENT_0 event");
 
       std::string broadcastRegName =
           "Event_Broadcast" + std::to_string(*shimInfo.stopBroadcast) + "_A";
       const RegisterInfo *broadcastReg = targetModel.lookupRegister(
           broadcastRegName, shimInfo.shimTile.getTileID());
       if (!broadcastReg)
-        llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
-                                 broadcastRegName);
+        return shimInfo.shimTile.emitError(llvm::Twine("Failed to lookup ") +
+                                           broadcastRegName);
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(),
           AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
@@ -1041,7 +1055,8 @@ struct AIEInsertTraceFlowsPass
       const RegisterInfo *stopEventGenReg = targetModel.lookupRegister(
           "Event_Generate", shimInfo.shimTile.getTileID());
       if (!stopEventGenReg)
-        llvm::report_fatal_error("Failed to lookup Event_Generate register");
+        return shimInfo.shimTile.emitError(
+            "Failed to lookup Event_Generate register");
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(),
           AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
@@ -1073,26 +1088,10 @@ private:
            tm.getDmaBdAddressOffset(col, row);
   }
 
-  // Compute DMA task queue address
-  uint32_t computeTaskQueueAddress(DMAChannelDir dir, int channel,
-                                   TileOp shimTile, const AIETargetModel &tm) {
-    std::string regName;
-    if (dir == DMAChannelDir::S2MM) {
-      regName =
-          (channel == 0) ? "DMA_S2MM_0_Task_Queue" : "DMA_S2MM_1_Task_Queue";
-    } else { // MM2S
-      regName =
-          (channel == 0) ? "DMA_MM2S_0_Task_Queue" : "DMA_MM2S_1_Task_Queue";
-    }
-    const RegisterInfo *reg = tm.lookupRegister(regName, shimTile.getTileID());
-    if (!reg)
-      llvm::report_fatal_error(llvm::Twine("Failed to lookup ") + regName);
-    return reg->offset;
-  }
-
   // Compute DMA control register address
-  uint32_t computeCtrlAddress(DMAChannelDir dir, int channel, TileOp shimTile,
-                              const AIETargetModel &tm) {
+  std::optional<uint32_t> computeCtrlAddress(DMAChannelDir dir, int channel,
+                                             TileOp shimTile,
+                                             const AIETargetModel &tm) {
     std::string regName;
     if (dir == DMAChannelDir::S2MM) {
       regName = (channel == 0) ? "DMA_S2MM_0_Ctrl" : "DMA_S2MM_1_Ctrl";
@@ -1101,18 +1100,7 @@ private:
     }
     const RegisterInfo *reg = tm.lookupRegister(regName, shimTile.getTileID());
     if (!reg)
-      llvm::report_fatal_error(llvm::Twine("Failed to lookup ") + regName);
-    return reg->offset;
-  }
-
-  // Compute timer control address based on tile type
-  uint32_t computeTimerCtrlAddress(TileOp tile, const AIETargetModel &tm,
-                                   bool isMemTrace) {
-    // Use register database to lookup Timer_Control for the appropriate module
-    const RegisterInfo *reg =
-        tm.lookupRegister("Timer_Control", tile.getTileID(), isMemTrace);
-    if (!reg)
-      llvm::report_fatal_error("Failed to lookup Timer_Control register");
+      return std::nullopt;
     return reg->offset;
   }
 
@@ -1148,7 +1136,8 @@ private:
 
   /// Scan the device for existing S2MM channel claims on shim tiles.
   /// Checks aie.flow destinations, aie.packet_flow destinations,
-  /// ShimDMAAllocationOp declarations, and objectFifos that end at a shim.
+  /// ShimDMAAllocationOp declarations, aie.route DMA ends, and objectFifos
+  /// that end at a shim.
   std::map<int, std::set<int>> scanUsedS2MMChannels(DeviceOp device) {
     std::map<int, std::set<int>> used; // shimCol -> set of used S2MM channels
 
@@ -1177,11 +1166,24 @@ private:
       }
     });
 
-    // This pass runs before objectFifo lowering, so an objectFifo that ends
-    // at a shim has no flow yet. Claim what its lowering will: every
-    // consumer pin first, then the lowest free S2MM channel for each
-    // unpinned consumer.
-    SmallVector<TileOp> unpinned;
+    // This pass runs before objectFifo lowering, so an objectFifo or route
+    // that ends at a shim has no flow yet. Claim what its lowering will:
+    // every pin first, then the lowest free S2MM channel for each unpinned
+    // end, except that unpinned fifo ends take one per group allocation
+    // shares, by the turns the design's #aie.consumed_by proofs give.
+    SmallVector<int> unpinned;
+    std::map<int, SmallVector<StringAttr>> unpinnedFifos;
+    device.walk([&](RouteEndpoint endpoint) {
+      auto tile = dyn_cast_or_null<TileOp>(endpoint.getTile().getDefiningOp());
+      if (!tile || !tile.isShimTile() ||
+          endpoint.getRouteBundle() != WireBundle::DMA ||
+          endpoint.getRouteDirection() != DMAChannelDir::S2MM)
+        return;
+      if (std::optional<int> pin = endpoint.getRouteChannel())
+        used[tile.getCol()].insert(*pin);
+      else
+        unpinned.push_back(tile.getCol());
+    });
     device.walk([&](ObjectFifoCreateOp fifo) {
       if (fifo.getPlio())
         return;
@@ -1193,11 +1195,26 @@ private:
         if (std::optional<int> pin = port ? port.channelIndex() : std::nullopt)
           used[tile.getCol()].insert(*pin);
         else
-          unpinned.push_back(tile);
+          unpinnedFifos[tile.getCol()].push_back(fifo.getSymNameAttr());
       }
     });
-    for (TileOp tile : unpinned) {
-      auto &channels = used[tile.getCol()];
+    std::optional<ShimTransferSpans> spans;
+    for (auto &[col, fifos] : unpinnedFifos) {
+      size_t groups = fifos.size();
+      if (groups > 1) {
+        if (!spans)
+          spans.emplace(
+              device,
+              [&](StringAttr symbol) {
+                return ShimTransferSpans::endOf(device, symbol);
+              },
+              Placer::provenShimGates(device));
+        groups = spans->plan(fifos, fifos, {}).groups.size();
+      }
+      unpinned.append(groups, col);
+    }
+    for (int col : unpinned) {
+      auto &channels = used[col];
       int ch = 0;
       while (channels.count(ch))
         ++ch;
