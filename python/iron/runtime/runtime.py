@@ -494,6 +494,11 @@ class Runtime(Declared, DeviceResources, Resolvable):
                 f"Runtime {self._name!r} belongs to configuration {owner!r}, "
                 f"not {configuration.name!r}."
             )
+        if configuration._enable_ctrl_pkts and configuration._trace_size:
+            raise ValueError(
+                "enable_ctrl_pkts does not support Runtime.call(): the called "
+                "sequence takes a control packet buffer that the call does not pass."
+            )
         values = [arg.op if isinstance(arg, RuntimeData) else arg for arg in args]
         run(self._name, values)
 
@@ -614,6 +619,8 @@ class Runtime(Declared, DeviceResources, Resolvable):
         trace_size: int | None = None,
         reuse_output_buffer: bool = False,
         egress_shim_col: int = 0,
+        ctrl_pkt_shim: ir.Value | None = None,
+        traced_tiles: list | None = None,
         implicit_configure_device_ref: str | None = None,
         device: Device | None = None,
     ) -> None:
@@ -637,6 +644,11 @@ class Runtime(Declared, DeviceResources, Resolvable):
             egress_shim_col: Forwarded from
                 [`Program.enable_trace`][aie.iron.program.Program.enable_trace]; see
                 there.
+            ctrl_pkt_shim: The shim tile that reads the trace units' status with
+                control packets, or ``None`` to not read them. Set by
+                [`Program.enable_trace`][aie.iron.program.Program.enable_trace]'s
+                ``enable_ctrl_pkts``.
+            traced_tiles: The tiles whose trace units ``ctrl_pkt_shim`` reads.
             implicit_configure_device_ref: The enclosing device symbol for an
                 implicit full-ELF ``aiex.npu.load_pdi``. ``None`` on the xclbin path.
             device: The [`Device`][aie.iron.Device] that places tiles the body
@@ -649,6 +661,18 @@ class Runtime(Declared, DeviceResources, Resolvable):
             for rt_data in self._block_data
             if rt_data is not None
         ]
+        # The control packets come from a trailing buffer the host passes ahead
+        # of the trace buffer, which trace lowering appends after this one.
+        # The index counts host buffers only: a scalar argument takes no slot.
+        ctrl_ddr_id = sum(
+            1
+            for rt_data in self._block_data
+            if rt_data is not None and not rt_data.is_scalar
+        )
+        if ctrl_pkt_shim is not None:
+            rt_dtypes.append(
+                try_convert_np_type_to_mlir_type(np.ndarray[(8,), np.dtype[np.uint32]])
+            )
         loc = loc or self._site.location()
         seq_op = RuntimeSequenceOp(sym_name=self._name, loc=loc, ip=ip)
         active = ActiveSequence(self, seq_op, device)
@@ -727,6 +751,19 @@ class Runtime(Declared, DeviceResources, Resolvable):
                 with traced_body(self._seq_fn):
                     self._seq_fn(*body_args)
                 active.finalize()
+
+            if ctrl_pkt_shim is not None:
+                assert trace_size is not None
+                trace_utils.config_ctrl_pkts_aie(
+                    traced_tiles,
+                    ctrl_pkt_shim,
+                    ctrl_ddr_id=ctrl_ddr_id,
+                    trace_ddr_id=ctrl_ddr_id + 1,
+                    output_offset=trace_size
+                    * trace_utils.utils.CTRL_PKT_TRACE_REGION_FACTOR,
+                    host_buffer_bytes=trace_size
+                    * trace_utils.utils.CTRL_PKT_BUFFER_FACTOR,
+                )
 
         if implicit_configure_device_ref is not None:
             self.load_pdi_first(entry_block, implicit_configure_device_ref)

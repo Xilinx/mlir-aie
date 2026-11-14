@@ -19,7 +19,14 @@ if TYPE_CHECKING:
 
     from ..npukernel import NPUKernel
 from ..trace import TraceConfig
-from ..trace.utils import create_ctrl_pkt, extract_tile
+from ..trace.utils import (
+    CTRL_PKT_BUFFER_FACTOR,
+    CTRL_PKT_MEM_ID,
+    CTRL_PKT_READS,
+    CTRL_PKT_TRACE_REGION_FACTOR,
+    create_ctrl_pkt,
+    extract_tile,
+)
 from . import bfloat16_safe_allclose
 from .tensor_class import NpuTensor
 
@@ -395,8 +402,8 @@ class HostRuntime(ABC):
             if trace_config.enable_ctrl_pkts:
                 # write ctrl packets
                 ctrl_pkts = [
-                    create_ctrl_pkt(1, 0, 0x32004),  # core status
-                    create_ctrl_pkt(1, 0, 0x340D8),  # trace status
+                    create_ctrl_pkt(1, 0, addr, pkt_id)  # trace status
+                    for addr, pkt_id in CTRL_PKT_READS
                 ]
                 # Pad to 8 words
                 ctrl_pkts += [0] * (8 - len(ctrl_pkts))
@@ -407,7 +414,7 @@ class HostRuntime(ABC):
             # Allocate extra space for control packets if enabled
             alloc_size = trace_config.trace_size
             if trace_config.enable_ctrl_pkts:
-                alloc_size = trace_config.trace_size * 4
+                alloc_size = trace_config.trace_size * CTRL_PKT_BUFFER_FACTOR
 
             trace_buff = tensor((alloc_size,), dtype=np.uint8)
             args.append(trace_buff)
@@ -440,8 +447,11 @@ class HostRuntime(ABC):
 
         if trace_config.enable_ctrl_pkts:
             trace_buff, ctrl_buff = cls._extract_prefix(
-                trace_buff, trace_config.trace_size, np.dtype(np.uint8)
+                trace_buff,
+                trace_config.trace_size * CTRL_PKT_TRACE_REGION_FACTOR,
+                np.dtype(np.uint8),
             )
+            trace_buff = trace_buff[: trace_config.trace_size]
         trace_buff = trace_buff.view(np.uint32).reshape(
             trace_config.trace_size // np.dtype(np.uint32).itemsize
         )
@@ -488,15 +498,32 @@ class HostRuntime(ABC):
             logger.debug("ctrl_buffer shape: %s", ctrl_buffer.shape)
             logger.debug("ctrl_buffer dtype: %s", ctrl_buffer.dtype)
             logger.debug("ctrl buffer: %s", [hex(d) for d in ctrl_buffer])
-            for i in range(ctrl_buffer.size // 2):
-                col, row, pkt_type, pkt_id = extract_tile(ctrl_buffer[i * 2])
-                overflow = True if (ctrl_buffer[i * 2 + 1] >> 8) == 3 else False
-                if overflow:
-                    logger.warning(
-                        "Trace overflow detected in tile(%d,%d). Trace results may be invalid.",
-                        row,
-                        col,
-                    )
+            # Each response is a packet header naming the tile it came from,
+            # followed by the Trace_Status register. The unused tail is zero.
+            overruns = []
+            responses = ctrl_buffer.view(np.uint32)
+            for i in range(responses.size // 2):
+                header, status = int(responses[i * 2]), int(responses[i * 2 + 1])
+                if header == 0:
+                    break
+                col, row, pkt_type, pkt_id = extract_tile(header)
+                # State, bits 9:8 of Trace_Status, is 0b11 on overrun
+                if (status >> 8) & 0x3 != 0x3:
+                    continue
+                if row == 0:
+                    module = "shim"
+                elif row == 1:
+                    module = "mem tile"
+                elif pkt_id == CTRL_PKT_MEM_ID:
+                    module = "memory module"
+                else:
+                    module = "core module"
+                overruns.append(f"tile({col},{row}) {module}")
+            if overruns:
+                raise HostRuntimeError(
+                    f"Trace overran in {', '.join(overruns)}: events after the "
+                    "overrun are missing. Trace fewer tiles per stream or fewer events."
+                )
 
     @classmethod
     def verify_results(cls, io_args, refs=None, verbosity=0):
