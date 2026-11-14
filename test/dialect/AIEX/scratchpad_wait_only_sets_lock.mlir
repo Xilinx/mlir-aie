@@ -21,9 +21,12 @@ module {
     aie.core(%t02) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %cmax = arith.constant 9223372036854775807 : index
-      scf.for %i = %c0 to %cmax step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         aiex.wait_scratchpad_parameters
+        scf.yield
       }
       aie.end
     }

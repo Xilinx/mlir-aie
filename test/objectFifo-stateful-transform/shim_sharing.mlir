@@ -1056,34 +1056,43 @@ module @gate_length_parameter {
     aie.core(%a) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %n = arith.constant 9223372036854775807 : index
-      scf.for %i = %c0 to %n step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %got = aie.objectfifo.acquire @in_a(Consume, 1) : memref<16xi32>
         %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
         aie.objectfifo.release @in_a(Consume, 1)
         aie.objectfifo.release @out_a(Produce, 1)
+        scf.yield
       }
       aie.end
     }
     aie.core(%b) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %n = arith.constant 9223372036854775807 : index
-      scf.for %i = %c0 to %n step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %got = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
         %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
         aie.objectfifo.release @in_b(Consume, 1)
         aie.objectfifo.release @out_b(Produce, 1)
+        scf.yield
       }
       aie.end
     }
     aie.core(%c) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %n = arith.constant 9223372036854775807 : index
-      scf.for %i = %c0 to %n step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
         aie.objectfifo.release @out_c(Produce, 1)
+        scf.yield
       }
       aie.end
     }
