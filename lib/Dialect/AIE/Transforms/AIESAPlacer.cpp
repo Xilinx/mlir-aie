@@ -1740,8 +1740,10 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
                        channels[end->dir == DMAChannelDir::MM2S],
                        end->end.channel});
   }
+  // The spill search tries only each position's cheapest set.
   DMAChannelAnalysis::BDWalkSets found = DMAChannelAnalysis::walkSetsThatFit(
-      *targetModel, col, row, planned, poolOf, pools, free, spent);
+      *targetModel, col, row, planned, poolOf, pools, free, spent,
+      /*maxSets=*/1);
   WalkSets sets;
   for (ArrayRef<unsigned> set : found.sets)
     sets.push_back(llvm::map_to_vector(
