@@ -2346,27 +2346,21 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     }
   {
     PoolLocks poolLocks(device);
-    bool semaphoreLocks =
-        targetModel->hasProperty(AIETargetModel::UsesSemaphoreLocks);
     for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
       if (!poolLocks.needsLocks(pool))
         continue;
-      SmallVector<Operation *> groups;
-      if (!semaphoreLocks && !pool.getLocks())
-        groups.push_back(pool);
-      if (semaphoreLocks)
-        for (auto segment : pool.getSegmentOps())
-          if (!(segment.getProduceLock() && segment.getConsumeLock()))
-            groups.push_back(segment);
+      SmallVector<Operation *> owners =
+          LockPlan::lockOwners(*targetModel, pool);
       SmallVector<int> counts =
-          LockPlan::groupCounts(*targetModel, pool.getDepth(), groups.size());
-      for (auto [index, entry] : llvm::enumerate(groups)) {
+          LockPlan::groupCounts(*targetModel, pool.getDepth(), owners.size());
+      for (auto [index, entry] : llvm::enumerate(owners)) {
         Operation *owner = entry;
         InputLockGroup &group = inputLockGroups.emplace_back();
         group.home = pool.getTile().getDefiningOp();
         group.locks = counts[index];
+        // A segment's locks serve the endpoints selecting it; a pool's, all.
         auto addUser = [&](Operation *endpoint, auto selected, bool dma) {
-          if (semaphoreLocks && !llvm::is_contained(selected, owner))
+          if (owner != pool && !llvm::is_contained(selected, owner))
             return;
           auto *tile = endpoint->getOperand(0).getDefiningOp();
           group.users.push_back(
