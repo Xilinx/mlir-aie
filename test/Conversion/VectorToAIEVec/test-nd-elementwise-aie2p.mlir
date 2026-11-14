@@ -110,7 +110,7 @@ func.func @mul_1x1x8x8_f32(%a: vector<1x1x8x8xf32>,
 
 // CHECK-LABEL: func @extf_into_contract_1x1x8x8
 // CHECK-NOT: arith.extf
-// CHECK: aievec.matmul_aie2p {{.*}} : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: aievec.matmul_aie2p_bfp16 {{.*}} into vector<8x8xf32>
 // CHECK-NOT: vector.contract
 func.func @extf_into_contract_1x1x8x8(%a: vector<1x1x8x8xbf16>,
                                       %b: vector<1x1x8x8xbf16>,
@@ -129,7 +129,9 @@ func.func @extf_into_contract_1x1x8x8(%a: vector<1x1x8x8xbf16>,
 // CHECK-LABEL: func @extf_into_contract_8x8
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>
 // CHECK-NOT: arith.extf
-// CHECK: aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK-NOT: vector.contract
 func.func @extf_into_contract_8x8(%a: vector<8x8xbf16>, %b: vector<8x8xbf16>,
                                   %c: vector<8x8xf32>) -> vector<8x8xf32> {
@@ -148,7 +150,7 @@ func.func @extf_into_contract_8x8(%a: vector<8x8xbf16>, %b: vector<8x8xbf16>,
 // CHECK-SAME: %[[A:[a-z0-9]+]]: vector<1x1x8x8xbf16>
 // CHECK: %[[UPS:.*]] = aievec.ups %[[A]] {{.*}} : vector<1x1x8x8xbf16>, vector<1x1x8x8xf32>
 // CHECK: %[[EXT:.*]] = aievec.cast %[[UPS]]
-// CHECK: aievec.matmul_aie2p {{.*}} : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: aievec.matmul_aie2p_bfp16 {{.*}} into vector<8x8xf32>
 // CHECK: return %{{.*}}, %[[EXT]]
 // CHECK-NOT: vector.contract
 func.func @extf_into_contract_and_return(%a: vector<1x1x8x8xbf16>,

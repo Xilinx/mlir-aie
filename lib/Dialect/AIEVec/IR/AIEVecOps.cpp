@@ -1450,6 +1450,60 @@ LogicalResult MatMulOp::verify() { return verifyMatMulOp(*this, false); }
 
 LogicalResult MatMulOp_AIE2P::verify() { return verifyMatMulOp(*this, true); }
 
+LogicalResult ToBFP16Op::verify() {
+  ArrayRef<int64_t> shape = getSource().getType().getShape();
+  int64_t rows = getTranspose() ? shape[1] : shape[0];
+  int64_t cols = getTranspose() ? shape[0] : shape[1];
+  if (cols != 8 || (rows != 8 && rows != 4))
+    return emitOpError("expects a tile of 8 or 4 rows of 8 values, got ")
+           << rows << "x" << cols;
+  return success();
+}
+
+static bool usedOnlyAsBFP16MatMul(ToBFP16Op op, bool lhs) {
+  return !op->use_empty() && llvm::all_of(op->getUses(), [&](OpOperand &use) {
+    auto mm = dyn_cast<MatMulBFP16Op_AIE2P>(use.getOwner());
+    unsigned first = lhs ? 0 : 2;
+    return mm && (use.getOperandNumber() == first ||
+                  use.getOperandNumber() == first + 1);
+  });
+}
+
+bool xilinx::aievec::isBFP16MatMulLhsOnly(ToBFP16Op op) {
+  return usedOnlyAsBFP16MatMul(op, /*lhs=*/true);
+}
+
+bool xilinx::aievec::isBFP16MatMulRhsOnly(ToBFP16Op op) {
+  return usedOnlyAsBFP16MatMul(op, /*lhs=*/false);
+}
+
+LogicalResult xilinx::aievec::expandBFP16MatMul(RewriterBase &rewriter,
+                                                MatMulOp_AIE2P op) {
+  auto lhsTy = cast<VectorType>(op.getLhs().getType());
+  auto rhsTy = cast<VectorType>(op.getRhs().getType());
+  auto accTy = cast<VectorType>(op.getAcc().getType());
+  std::optional<MatMulRecipe> recipe =
+      checkMatMulTile(/*aie2p=*/true, lhsTy, rhsTy, accTy,
+                      op.getLhsTransposed(), op.getRhsTransposed());
+  if (!recipe || (recipe->kind != MatMulRecipeKind::AIE2P_BFP16_8x8x8 &&
+                  recipe->kind != MatMulRecipeKind::AIE2P_BFP16_4x8x8))
+    return failure();
+  // bfp16 exponents are shared along k, so lhs is converted as [m, k] and
+  // rhs as [n, k].
+  Location loc = op.getLoc();
+  auto mantTy = VectorType::get({64}, rewriter.getI8Type());
+  auto expTy = VectorType::get({8}, rewriter.getI8Type());
+  auto unit = [&](bool b) { return b ? rewriter.getUnitAttr() : UnitAttr(); };
+  auto lhs = ToBFP16Op::create(rewriter, loc, mantTy, expTy, op.getLhs(),
+                               unit(op.getLhsTransposed()));
+  auto rhs = ToBFP16Op::create(rewriter, loc, mantTy, expTy, op.getRhs(),
+                               unit(!op.getRhsTransposed()));
+  rewriter.replaceOpWithNewOp<MatMulBFP16Op_AIE2P>(
+      op, accTy, lhs.getMantissas(), lhs.getExponents(), rhs.getMantissas(),
+      rhs.getExponents(), op.getAcc());
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ShuffleOp
 //===----------------------------------------------------------------------===//
