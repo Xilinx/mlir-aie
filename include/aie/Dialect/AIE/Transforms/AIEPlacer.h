@@ -1235,9 +1235,13 @@ private:
   // Every position whose memory a lock user at a position reaches, by
   // LockPlan::reaches, in position order and its own included.
   llvm::DenseMap<TileID, llvm::SmallVector<TileID>> lockReach;
-  // The locks the pools at each position take, and the move's changes.
+  // The locks each position's pools, lock ops and input pools take, the
+  // move's changes, and how many positions take more than they hold.
   llvm::DenseMap<TileID, int> currentLockDemand;
   llvm::SmallVector<std::pair<TileID, int>> lockUndo;
+  int positionsOverLocks = 0;
+  // The locks a tile op's lock ops and input pools take wherever it sits.
+  llvm::DenseMap<mlir::Operation *, int> homeLocks;
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
   // The rule pinned ends share channels by, and the pinned ends at each
   // position, whose channels count in currentDMAUsage once each.
@@ -1387,6 +1391,7 @@ private:
   void initResourceTracking();
   void addFifoContribution(size_t fifoIdx, int sign);
   void addRouteEndContribution(size_t endIdx, int sign);
+  void addLockDemand(TileID pos, int locks);
   void drawChannel(TileID position, bool output,
                    const std::optional<PinnedChannels::End> &pin, int sign);
   int updateResourcePenalty(

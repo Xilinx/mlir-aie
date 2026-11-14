@@ -465,9 +465,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       return;
     SmallVector<int> counts =
         LockPlan::groupCounts(*targetModel, depth, segments);
-    int locks = std::accumulate(counts.begin(), counts.end(), 0);
-    currentLockDemand[pos] += sign * locks;
-    lockUndo.push_back({pos, sign * locks});
+    addLockDemand(pos, sign * std::accumulate(counts.begin(), counts.end(), 0));
   };
   using LinkPool = FifoBufferInfo::LinkPool;
   auto chargeLinkPool = [&](TileID pos, const PlannedDmaEnd &end) {
@@ -591,9 +589,18 @@ void SAPlacer::drawChannel(TileID position, bool output,
   (output ? out : in) += taken;
 }
 
+void SAPlacer::addLockDemand(TileID pos, int locks) {
+  int &demand = currentLockDemand[pos];
+  int held = targetModel->getNumLocks(pos.col, pos.row);
+  positionsOverLocks += (demand + locks > held) - (demand > held);
+  demand += locks;
+  lockUndo.push_back({pos, locks});
+}
+
 void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentLockDemand.clear();
+  positionsOverLocks = 0;
   SmallVector<std::pair<unsigned, int64_t>> depths;
   auto at = [this](Value tile) { return positionOf(tile.getDefiningOp()); };
   for (auto [index, variable] : llvm::enumerate(variableLinks))
@@ -660,6 +667,16 @@ void SAPlacer::initResourceTracking() {
     if (std::optional<TileID> pos = positionOf(tile))
       for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
         pinUse.claim(*pos, claim, 1);
+  homeLocks.clear();
+  for (auto &[tile, locks] : fixedLocks)
+    homeLocks[tile] += locks;
+  for (const InputLockGroup &group : inputLockGroups)
+    homeLocks[group.home] += group.locks;
+  for (auto &[tile, locks] : homeLocks)
+    if (std::optional<TileID> pos = positionOf(tile))
+      addLockDemand(*pos, locks);
+  for (auto &[at, locks] : placedLocks)
+    addLockDemand(at, locks);
   runtimeBdAt.clear();
   for (auto &[shim, peak] : runtimeBdIds.users())
     if (std::optional<TileID> pos = positionOf(shim);
@@ -1342,26 +1359,7 @@ int SAPlacer::computeLockPenalty(bool *stopped,
   if (stopped)
     *stopped = false;
   // Each group taking its locks at home always fits there.
-  auto fitsAtHome = [&](const DenseMap<TileID, int> &atHome) {
-    return llvm::all_of(atHome, [&](const auto &entry) {
-      return entry.second <= static_cast<int>(targetModel->getNumLocks(
-                                 entry.first.col, entry.first.row));
-    });
-  };
-  if (fixedLocks.empty() && placedLocks.empty() && inputLockGroups.empty()
-          ? fitsAtHome(currentLockDemand)
-          : [&] {
-              DenseMap<TileID, int> atHome = currentLockDemand;
-              for (auto &[tile, locks] : fixedLocks)
-                if (std::optional<TileID> at = positionOf(tile))
-                  atHome[*at] += locks;
-              for (auto &[at, locks] : placedLocks)
-                atHome[at] += locks;
-              for (const InputLockGroup &group : inputLockGroups)
-                if (std::optional<TileID> at = positionOf(group.home))
-                  atHome[*at] += group.locks;
-              return fitsAtHome(atHome);
-            }())
+  if (!positionsOverLocks)
     return 0;
 
   auto groups = lockGroups();
@@ -1951,6 +1949,12 @@ int SAPlacer::updateResourcePenalty(
     for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op))
       pinUse.claim(currentPlacement[op], claim, 1);
   }
+
+  for (auto &[op, oldPos] : oldPlacements)
+    if (int locks = homeLocks.lookup(op)) {
+      addLockDemand(oldPos, -locks);
+      addLockDemand(currentPlacement[op], locks);
+    }
 
   // Add new static buffer and stack contributions
   for (auto &[op, _] : oldPlacements) {
@@ -2990,6 +2994,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   lockUndo.clear();
   int oldCoreOverflow = coreOverflowPenalty;
   SmallVector<TileID> oldCoreOverflowTiles = coreOverflowTiles;
+  int oldPositionsOverLocks = positionsOverLocks;
 
   // Apply moves: update placement maps and compute HPWL delta.
   for (auto &[t, _] : moves)
@@ -3069,6 +3074,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     sharedMemDestination = savedSharedMemDest;
     for (auto &[pos, delta] : lockUndo)
       currentLockDemand[pos] -= delta;
+    positionsOverLocks = oldPositionsOverLocks;
     cachedResourcePenalty = oldResPenalty;
     memSpilloverPenalty = oldMemSpillover;
     bdCountPenalty = oldBDCount;
