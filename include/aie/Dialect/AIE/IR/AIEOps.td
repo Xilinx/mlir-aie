@@ -1979,7 +1979,8 @@ def AIE_BufferOp
   }];
   let hasVerifier = 1;
 
-  // Plain bools: a default argument cannot use $_builder to make an attribute.
+  // The pre-resident builders; the first takes plain bools so it can default
+  // them, as a default argument cannot use $_builder to make an attribute.
   // clang-format off
   let builders = [
     OpBuilder<(ins "::mlir::Type":$buffer, "::mlir::Value":$tile,
@@ -1995,6 +1996,16 @@ def AIE_BufferOp
             mem_bank, core_data ? $_builder.getUnitAttr() : nullptr,
             bank_reserved ? $_builder.getUnitAttr() : nullptr,
             $_builder.getBoolAttr(aligned),
+            /*resident=*/::mlir::FlatSymbolRefAttr());
+    }]>,
+    OpBuilder<(ins "::mlir::Type":$buffer, "::mlir::Value":$tile,
+              "::mlir::StringAttr":$sym_name, "::mlir::IntegerAttr":$address,
+              "::mlir::ElementsAttr":$initial_value,
+              "::mlir::IntegerAttr":$mem_bank, "::mlir::UnitAttr":$core_data,
+              "::mlir::UnitAttr":$bank_reserved, "::mlir::BoolAttr":$aligned),
+             [{
+      build($_builder, $_state, buffer, tile, sym_name, address, initial_value,
+            mem_bank, core_data, bank_reserved, aligned,
             /*resident=*/::mlir::FlatSymbolRefAttr());
     }]>
   ];
