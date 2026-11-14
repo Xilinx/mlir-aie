@@ -969,7 +969,7 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
         return (last = *known) == 0;
       auto shaped = shapes(members, walk);
       last = attempt(shaped, inOrder(shaped.size()));
-      unplacedOf.insert(key, last);
+      unplacedOf.record(key, last);
       return last == 0;
     };
     // Walking changes no buffer's bytes in total, so when the component's
@@ -1012,7 +1012,7 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
   }
   int penalty = ((unplaced + 1023) / 1024) * config.memPenaltyPerKB;
   if (!charged)
-    spillPenaltyOf.insert(key, penalty);
+    spillPenaltyOf.record(key, penalty);
   return penalty;
 }
 
@@ -1691,12 +1691,13 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
   for (Operation *tile : physicalTiles.lookup(position))
     if (!llvm::is_contained(holders, tile))
       holders.push_back(tile);
-  std::vector<int64_t> depths;
+  std::vector<uintptr_t> key = {static_cast<uintptr_t>(layout->second.col),
+                                static_cast<uintptr_t>(layout->second.row),
+                                holders.size()};
+  for (Operation *tile : holders)
+    key.push_back(reinterpret_cast<uintptr_t>(tile));
   for (const VariableLink &variable : variableLinks)
-    depths.push_back(variable.depth);
-  std::tuple<TileID, std::vector<Operation *>, std::vector<int64_t>> key{
-      layout->second, std::vector<Operation *>(holders.begin(), holders.end()),
-      std::move(depths)};
+    key.push_back(static_cast<uintptr_t>(variable.depth));
   if (const BDShortfall *cached = bdShortfallOf.find(key)) {
     if (walkSets)
       *walkSets = cached->sets;
@@ -1773,7 +1774,7 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
     shortfall = found.channelShort ? std::max<int64_t>(0, total - ids)
                                    : std::max<int64_t>(1, total - ids);
   }
-  bdShortfallOf.insert(key, {shortfall, sets, bytes});
+  bdShortfallOf.record(std::move(key), {shortfall, sets, bytes});
   if (walkSets)
     *walkSets = std::move(sets);
   if (walkBytes)

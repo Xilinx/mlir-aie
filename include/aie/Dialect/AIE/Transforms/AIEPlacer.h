@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Transforms/AIEBoundedMemo.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
@@ -20,44 +21,12 @@
 
 #include <array>
 #include <deque>
-#include <list>
 #include <map>
 #include <random>
 #include <tuple>
 #include <unordered_map>
 
 namespace xilinx::AIE {
-
-/// A map that keeps its `capacity` most recently used entries.
-template <typename Key, typename Value>
-class LRUCache {
-public:
-  explicit LRUCache(size_t capacity) : capacity(capacity) {}
-  const Value *find(const Key &key) {
-    auto it = index.find(key);
-    if (it == index.end())
-      return nullptr;
-    order.splice(order.begin(), order, it->second);
-    return &it->second->second;
-  }
-  void clear() {
-    order.clear();
-    index.clear();
-  }
-  void insert(const Key &key, Value value) {
-    order.emplace_front(key, std::move(value));
-    index[key] = order.begin();
-    if (index.size() > capacity) {
-      index.erase(order.back().first);
-      order.pop_back();
-    }
-  }
-
-private:
-  size_t capacity;
-  std::list<std::pair<Key, Value>> order;
-  std::map<Key, typename std::list<std::pair<Key, Value>>::iterator> index;
-};
 
 /// Placement algorithm type for pass option
 enum class PlacerType { SequentialPlacer, SAPlacer };
@@ -1318,17 +1287,14 @@ private:
     llvm::SmallVector<int64_t> bytes;
   };
   // The shortfall of each set of logical tiles sharing a position, by its
-  // tiles in order.
-  LRUCache<
-      std::tuple<TileID, std::vector<mlir::Operation *>, std::vector<int64_t>>,
-      BDShortfall>
-      bdShortfallOf{1u << 16};
+  // BD layout's position, its tiles in order and every variable link's depth.
+  BoundedMemo<std::vector<uintptr_t>, BDShortfall> bdShortfallOf{1u << 16};
   // The bytes the spill search leaves unplaced in one spill component, by its
   // tiles' contents and each mem tile's walk set, keyed as bdShortfallOf is.
-  LRUCache<std::vector<uintptr_t>, int64_t> unplacedOf{1u << 16};
+  BoundedMemo<std::vector<uintptr_t>, int64_t> unplacedOf{1u << 16};
   // The spill penalty, by where every mem tile's holders sit, keyed as
   // bdShortfallOf is.
-  LRUCache<std::vector<int64_t>, int> spillPenaltyOf{1u << 14};
+  BoundedMemo<std::vector<int64_t>, int> spillPenaltyOf{1u << 14};
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
   llvm::DenseMap<TileID, TileID> bdLayoutOf;
