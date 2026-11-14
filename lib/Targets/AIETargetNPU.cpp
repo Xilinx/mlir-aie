@@ -636,8 +636,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   for (Block &block : seq.getBody())
     for (Operation &o : block)
       if (auto loadPdiOp = dyn_cast<NpuLoadPdiOp>(o)) {
-        auto dev =
-            moduleOp.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
+        FlatSymbolRefAttr ref = loadPdiOp.getDeviceRefAttr();
+        auto dev = ref ? moduleOp.lookupSymbol<AIE::DeviceOp>(ref) : nullptr;
         if (!dev)
           continue;
         if (previousDevice &&
