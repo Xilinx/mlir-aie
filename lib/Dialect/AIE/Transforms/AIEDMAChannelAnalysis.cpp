@@ -561,7 +561,7 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
     const AIETargetModel &target, int col, int row, ArrayRef<BDPlanEnd> ends,
     ArrayRef<unsigned> poolOf, ArrayRef<BDWalkPool> pools,
     function_ref<bool(DMAChannelDir, int)> free,
-    function_ref<int64_t(int)> spent) {
+    function_ref<int64_t(int)> spent, unsigned maxSets) {
   BDWalkSets result;
   auto none = [](int) -> int64_t { return 0; };
   auto fitsWalking = [&](ArrayRef<bool> whole, bool weighted) {
@@ -598,9 +598,36 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
   // fits fits too, without asking planBDChannels.
   unsigned n = ranked.size();
   assert(n < 32 && "each walkable pool draws a channel the plan above fit");
-  SmallVector<uint32_t> masks;
+  auto bytes = [&](uint32_t mask) {
+    int64_t total = 0;
+    for (unsigned bit = 0; bit < n; ++bit)
+      if (mask >> bit & 1)
+        total += pools[ranked[bit]].depth * pools[ranked[bit]].objectBytes;
+    return total;
+  };
+  // The final order needs no plan, so masks are sorted into it before any
+  // are tested: a subset always has fewer or equal bytes and a lower
+  // popcount than its supersets, so it still sorts before them, and the
+  // fitsMask shortcut below still only ever looks back at masks already
+  // tested.
+  SmallVector<uint32_t> order;
+  for (uint32_t mask = 1; mask < (uint32_t(1) << n); ++mask)
+    order.push_back(mask);
+  llvm::stable_sort(order, [&](uint32_t a, uint32_t b) {
+    int64_t aBytes = bytes(a), bBytes = bytes(b);
+    if (aBytes != bBytes)
+      return aBytes < bBytes;
+    if (llvm::popcount(a) != llvm::popcount(b))
+      return llvm::popcount(a) < llvm::popcount(b);
+    // Of two sets alike in size, the one holding the first-ranked pool that
+    // only one holds.
+    uint32_t differ = a ^ b;
+    return differ && (a & differ & -differ);
+  });
   llvm::BitVector fitsMask(uint32_t(1) << n);
-  for (uint32_t mask = 1; mask < (uint32_t(1) << n); ++mask) {
+  for (uint32_t mask : order) {
+    if (result.sets.size() >= maxSets)
+      break;
     bool fits = llvm::any_of(llvm::seq<unsigned>(0, n), [&](unsigned bit) {
       return (mask >> bit & 1) && fitsMask.test(mask & ~(uint32_t(1) << bit));
     });
@@ -613,34 +640,13 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
     }
     if (fits) {
       fitsMask.set(mask);
-      masks.push_back(mask);
+      SmallVector<unsigned> set;
+      for (unsigned bit = 0; bit < n; ++bit)
+        if (mask >> bit & 1)
+          set.push_back(ranked[bit]);
+      result.sets.push_back(std::move(set));
+      result.bytes.push_back(bytes(mask));
     }
-  }
-  auto bytes = [&](uint32_t mask) {
-    int64_t total = 0;
-    for (unsigned bit = 0; bit < n; ++bit)
-      if (mask >> bit & 1)
-        total += pools[ranked[bit]].depth * pools[ranked[bit]].objectBytes;
-    return total;
-  };
-  llvm::stable_sort(masks, [&](uint32_t a, uint32_t b) {
-    int64_t aBytes = bytes(a), bBytes = bytes(b);
-    if (aBytes != bBytes)
-      return aBytes < bBytes;
-    if (llvm::popcount(a) != llvm::popcount(b))
-      return llvm::popcount(a) < llvm::popcount(b);
-    // Of two sets alike in size, the one holding the first-ranked pool that
-    // only one holds.
-    uint32_t differ = a ^ b;
-    return differ && (a & differ & -differ);
-  });
-  for (uint32_t mask : masks) {
-    SmallVector<unsigned> set;
-    for (unsigned bit = 0; bit < n; ++bit)
-      if (mask >> bit & 1)
-        set.push_back(ranked[bit]);
-    result.sets.push_back(std::move(set));
-    result.bytes.push_back(bytes(mask));
   }
   return result;
 }

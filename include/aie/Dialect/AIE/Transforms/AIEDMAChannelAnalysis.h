@@ -17,6 +17,7 @@
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
+#include <limits>
 #include <optional>
 
 namespace xilinx::AIE {
@@ -167,17 +168,20 @@ public:
 
   /// Every set of walkable `pools` whose walk lets planBDChannels fit `ends`
   /// (`poolOf` gives each end's pool), ordered by the bytes the set walks
-  /// whole, then its size, then its members in nextPoolToWalk's order. Empty
+  /// whole, then its size, then its members in nextPoolToWalk's order; at
+  /// most `maxSets` of them, cheapest first (unbounded by default). Empty
   /// when the ends fit unwalked. At most 12 pools are walkable: each draws a
   /// channel of its own, and more ends than channels make `channelShort`.
-  /// aie-objectfifo-allocate and the SA placer both walk by this.
+  /// aie-objectfifo-allocate and the SA placer both walk by this; the SA only
+  /// ever takes the first set, so it should pass `maxSets=1`.
   static BDWalkSets
   walkSetsThatFit(const AIETargetModel &target, int col, int row,
                   llvm::ArrayRef<BDPlanEnd> ends,
                   llvm::ArrayRef<unsigned> poolOf,
                   llvm::ArrayRef<BDWalkPool> pools,
                   llvm::function_ref<bool(DMAChannelDir, int)> free,
-                  llvm::function_ref<int64_t(int)> spent);
+                  llvm::function_ref<int64_t(int)> spent,
+                  unsigned maxSets = std::numeric_limits<unsigned>::max());
 
   /// One walkSetsThatFit set per mem tile of a spill component
   /// (memTileSpillComponents), by index; `placed` when its buffers place,
