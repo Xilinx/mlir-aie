@@ -744,8 +744,8 @@ def AIEVec_FifoLdPopBFP16Op
           VectorOfLengthAndType<[32], [I32]>:$state, I32:$count,
           UnitAttr:$no_fill)>,
       Results<(outs LLVM_DefaultPointer:$next,
-          VectorOfLengthAndType<[32], [I32]>:$state_out,
-          I32:$count_out, VectorOfLengthAndType<[64], [I8]>:$mantissas,
+          VectorOfLengthAndType<[32], [I32]>:$state_out, I32:$count_out,
+          VectorOfLengthAndType<[64], [I8]>:$mantissas,
           VectorOfLengthAndType<[8], [I8]>:$exponents)> {
   let summary = "AIE2P next bfp16ebs8 block of a block-vector load stream";
   let description = [{
