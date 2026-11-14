@@ -436,8 +436,7 @@ struct AIEObjectFifoAllocatePass
       lastPlaced[placement] = BufferOp::create(
           builder, pool.getLoc(), type, placement, builder.getStringAttr(name),
           /*address=*/nullptr, init,
-          /*mem_bank=*/nullptr, /*core_data=*/nullptr,
-          /*bank_reserved=*/nullptr, /*aligned=*/nullptr, /*resident=*/nullptr);
+          /*mem_bank=*/nullptr, /*core_data=*/false);
       names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
     }
     pool.setBuffersAttr(builder.getArrayAttr(names));

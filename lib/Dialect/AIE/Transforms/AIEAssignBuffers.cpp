@@ -144,12 +144,9 @@ static LogicalResult materializeCoreSections(DeviceOp device) {
           /*mem_bank=*/
           held.kind == Kind::Bank ? builder.getI32IntegerAttr(held.at)
                                   : nullptr,
-          /*core_data=*/
-          held.kind == Kind::DataRegion ? builder.getUnitAttr() : nullptr,
-          /*bank_reserved=*/
-          held.kind == Kind::DataRegion ? nullptr : builder.getUnitAttr(),
-          /*aligned=*/held.aligned() ? nullptr : builder.getBoolAttr(false),
-          /*resident=*/nullptr);
+          /*core_data=*/held.kind == Kind::DataRegion,
+          /*bank_reserved=*/held.kind != Kind::DataRegion,
+          /*aligned=*/held.aligned());
       buffer->setAttr(SymbolTable::getSymbolAttrName(),
                       builder.getStringAttr(name));
     }
