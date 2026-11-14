@@ -101,6 +101,9 @@ struct AIEObjectFifoAllocatePass
   llvm::SetVector<Operation *> bdPlanned;
   /// Pools planTurnSharing walked whole (some walks are undone later).
   llvm::SetVector<Operation *> turnWalked;
+  /// hostMovesFirst's answer, by fifo: the runtime sequences it walks never
+  /// change once this pass starts.
+  DenseMap<StringAttr, bool> hostMovesFirstCache;
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
@@ -1579,6 +1582,14 @@ struct AIEObjectFifoAllocatePass
   /// through `fifo` before any wait: a turn chain waiting on that fifo's
   /// objects then waits on nothing the host does after the array has moved.
   bool hostMovesFirst(StringAttr fifo) {
+    if (auto it = hostMovesFirstCache.find(fifo);
+        it != hostMovesFirstCache.end())
+      return it->second;
+    bool result = hostMovesFirstUncached(fifo);
+    hostMovesFirstCache[fifo] = result;
+    return result;
+  }
+  bool hostMovesFirstUncached(StringAttr fifo) {
     SymbolTableCollection symbols;
     for (auto seq : device.getOps<RuntimeSequenceOp>()) {
       auto names = [&](Operation *op) {
@@ -2663,6 +2674,7 @@ struct AIEObjectFifoAllocatePass
     channelSharers.clear();
     bdPlanned.clear();
     turnWalked.clear();
+    hostMovesFirstCache.clear();
     bufferPlacements.clear();
     channelAssignments.clear();
     endpointStarts.clear();
