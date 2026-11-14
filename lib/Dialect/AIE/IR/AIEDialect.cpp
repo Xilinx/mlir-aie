@@ -4837,6 +4837,20 @@ LogicalResult BufferOp::verify() {
              << initType << " does not cover the buffer's " << type;
   }
 
+  if (FlatSymbolRefAttr resident = getResidentAttr()) {
+    auto module = (*this)->getParentOfType<mlir::ModuleOp>();
+    auto global = dyn_cast_or_null<memref::GlobalOp>(
+        module ? SymbolTable::lookupSymbolIn(module, resident.getValue())
+               : nullptr);
+    if (!global)
+      return emitOpError("resident names no memref.global ")
+             << resident << " at module scope";
+    if (global.getType() != getType())
+      return emitOpError("resident ")
+             << resident << "'s type " << global.getType()
+             << " does not match this buffer's " << getType();
+  }
+
   // Each marks space held for a different reservation of the core's sections.
   if (getCoreData() && getBankReserved()) {
     return emitOpError("cannot be both core_data and bank_reserved; a buffer "

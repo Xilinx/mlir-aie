@@ -1958,13 +1958,18 @@ def AIE_BufferOp
     records sizes instead, because its addresses are chosen after the measure;
     a prebaked one has them already, so the pass pins buffers around the
     extents rather than reserving room of its own.
+
+    `resident` names a module-level `memref.global` whose data this buffer
+    stays resident for, across a later configuration that reuses it without a
+    resetting reload; its type must match the buffer's.
   }];
 
   let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
       OptionalAttr<AIEI32Attr>:$address,
       OptionalAttr<ElementsAttr>:$initial_value,
       OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
-      UnitAttr:$bank_reserved, DefaultValuedAttr<BoolAttr, "true">:$aligned);
+      UnitAttr:$bank_reserved, DefaultValuedAttr<BoolAttr, "true">:$aligned,
+      OptionalAttr<FlatSymbolRefAttr>:$resident);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{
