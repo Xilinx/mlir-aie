@@ -33,6 +33,7 @@ module @does_not_fit {
   // expected-warning @below {{SA placer's resource estimate is over capacity}}
   aie.device(npu2_1col) {
     %s = aie.logical_tile<ShimNOCTile>(?, ?)
+    // expected-note@+1 {{memory spillover penalty=8790 on (0, 1)}}
     %m = aie.logical_tile<MemTile>(0, 1)
     %pin = aie.buffer(%m) {address = 262144 : i32} : memref<4096xi8>
     aie.objectfifo @in(%s, {%m}, 1 : i32) : !aie.objectfifo<memref<300032xi8>>

@@ -20,6 +20,7 @@ module @shared_out_of_order {
   aie.device(npu2) {
     %a = aie.logical_tile<CoreTile>(?, ?)
     %b = aie.logical_tile<CoreTile>(?, ?)
+    // expected-note-re@+1 {{BD ids penalty=20 on ({{[0-9]+}}, 1)}}
     %m = aie.logical_tile<MemTile>(?, ?)
     aie.objectfifo @fa(%a, {%m}, [2, 14]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>, out_of_order = true>, iter_count = 1 : i32, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @fb(%b, {%m}, [2, 14]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>, out_of_order = true>, iter_count = 1 : i32, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>

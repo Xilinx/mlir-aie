@@ -36,6 +36,7 @@ module @pinned {
   aie.device(npu2_2col) {
     %home = aie.tile(0, 0)
     %home1 = aie.tile(1, 0)
+    // expected-note@+1 {{DMA channels penalty=20 on (0, 0)}}
     %ls = aie.logical_tile<ShimNOCTile>(?, ?)
     %c2 = aie.tile(0, 2)
     %c3 = aie.tile(0, 3)

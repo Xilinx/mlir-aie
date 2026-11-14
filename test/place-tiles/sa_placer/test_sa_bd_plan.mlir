@@ -49,6 +49,7 @@ module @walked {
 module @join {
   aie.device(npu2) {
     %s = aie.logical_tile<ShimNOCTile>(?, ?)
+    // expected-note@+1 {{BD ids penalty=120 on (4, 1)}}
     %m = aie.logical_tile<MemTile>(?, ?)
     %t0 = aie.logical_tile<CoreTile>(?, ?)
     %t1 = aie.logical_tile<CoreTile>(?, ?)

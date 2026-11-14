@@ -44,6 +44,7 @@ module @does_not_fit {
   aie.device(npu2_2col) {
     %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
     %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    // expected-note@+1 {{memory spillover penalty=4560 on (0, 1)}}
     %m0 = aie.logical_tile<MemTile>(0, 1)
     %m1 = aie.logical_tile<MemTile>(1, 1)
     %r0 = aie.buffer(%m0) : memref<122240xi8>

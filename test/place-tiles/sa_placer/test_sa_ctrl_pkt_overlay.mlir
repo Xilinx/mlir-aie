@@ -20,6 +20,7 @@
 module @overlay_one_column {
   // expected-warning@+1 {{SA placer's resource estimate is over capacity (penalty=20)}}
   aie.device(npu2_1col) {
+    // expected-note@+1 {{DMA channels penalty=20 on (0, 0)}}
     %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
     %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
     %c = aie.logical_tile<CoreTile>(?, ?)
