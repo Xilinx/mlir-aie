@@ -405,18 +405,21 @@ void ShimTransferSpans::analyzeGates(
 
 SmallVector<const ShimTransferSpans::Gate *>
 ShimTransferSpans::usableGates(StringAttr end) const {
+  if (auto it = usableGatesCache.find(end); it != usableGatesCache.end())
+    return it->second;
   bool receives = llvm::any_of(spans, [&](const auto &byFifo) {
     auto it = byFifo.find(end);
     return it != byFifo.end() && !it->second.sends;
   });
-  if (!gates || !receives)
-    return {nullptr};
   SmallVector<const Gate *> usable;
-  if (auto it = gates->find(end); it != gates->end())
+  if (!gates || !receives) {
+    usable.push_back(nullptr);
+  } else if (auto it = gates->find(end); it != gates->end()) {
     for (const Gate &gate : it->second)
       if (contained(end, gate))
         usable.push_back(&gate);
-  return usable;
+  }
+  return usableGatesCache[end] = usable;
 }
 
 bool ShimTransferSpans::before(const DenseMap<StringAttr, Span> &byFifo,
@@ -450,9 +453,15 @@ bool ShimTransferSpans::gated(StringAttr a, StringAttr b) const {
     return false;
   // An end no sequence names is driven some other way, so nothing is known
   // about when it is in flight.
+  auto named = [&](StringAttr end) {
+    if (auto it = namedCache.find(end); it != namedCache.end())
+      return it->second;
+    bool result = llvm::any_of(
+        spans, [&](const auto &byFifo) { return byFifo.contains(end); });
+    return namedCache[end] = result;
+  };
   for (StringAttr end : {a, b})
-    if (llvm::none_of(spans,
-                      [&](const auto &byFifo) { return byFifo.contains(end); }))
+    if (!named(end))
       return false;
   // One gate per end serves every sequence, for its fill bound and its turn.
   for (const Gate *ga : usableGates(a))
@@ -518,11 +527,17 @@ StringAttr ShimTransferSpans::overlayEnd(int column) const {
 }
 
 bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
+  // gated is symmetric, so one call answers for both directions whenever
+  // both ends reach it.
+  std::optional<bool> symmetric;
   auto permits = [&](StringAttr from, StringAttr to) {
     if (auto it = permissions.find(from); it != permissions.end())
       return llvm::is_contained(it->second, to);
-    if (receivers.contains(from))
-      return gated(from, to);
+    if (receivers.contains(from)) {
+      if (!symmetric)
+        symmetric = gated(from, to);
+      return *symmetric;
+    }
     return !unknown && isUsed(from) && isUsed(to) &&
            !overlaps.contains({from, to});
   };
@@ -531,11 +546,14 @@ bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
 
 SmallVector<SmallVector<unsigned>>
 ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
-  auto when = llvm::map_to_vector(
-      ends, [&](StringAttr end) { return lifetimes.lookup(end); });
+  static const SmallVector<std::tuple<unsigned, int64_t, int64_t>> kNoLifetime;
+  auto when = llvm::map_to_vector(ends, [&](StringAttr end) {
+    auto it = lifetimes.find(end);
+    return it == lifetimes.end() ? &kNoLifetime : &it->second;
+  });
   auto order = llvm::to_vector(llvm::seq<unsigned>(0, ends.size()));
-  llvm::stable_sort(order,
-                    [&](unsigned x, unsigned y) { return when[x] < when[y]; });
+  llvm::stable_sort(
+      order, [&](unsigned x, unsigned y) { return *when[x] < *when[y]; });
   SmallVector<SmallVector<unsigned>> result;
   for (unsigned end : order) {
     auto *group = llvm::find_if(result, [&](ArrayRef<unsigned> members) {

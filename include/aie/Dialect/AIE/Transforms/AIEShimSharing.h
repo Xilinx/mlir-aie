@@ -193,6 +193,11 @@ private:
   llvm::SmallVector<llvm::DenseMap<mlir::StringAttr, Span>> spans;
   std::optional<Gates> gates;
   mlir::MLIRContext *context = nullptr;
+  /// usableGates' answer, by end: depends only on the immutable analysis.
+  mutable llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<const Gate *>>
+      usableGatesCache;
+  /// Whether some sequence names an end, by end.
+  mutable llvm::DenseMap<mlir::StringAttr, bool> namedCache;
   /// The columns with a planned overlay end, none without `plannedOverlay`.
   int overlayColumns = 0;
 };
