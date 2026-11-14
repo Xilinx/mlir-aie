@@ -384,6 +384,29 @@ bool AIEX::namesFifo(Operation *op, StringRef fifo,
          });
 }
 
+LogicalResult AIEX::checkNoSharedResident(Operation *reload,
+                                          AIE::DeviceOp before,
+                                          AIE::DeviceOp after) {
+  for (auto earlier : before.getOps<AIE::BufferOp>()) {
+    FlatSymbolRefAttr resident = earlier.getResidentAttr();
+    if (!resident)
+      continue;
+    for (auto later : after.getOps<AIE::BufferOp>()) {
+      if (later.getResidentAttr() != resident)
+        continue;
+      InFlightDiagnostic diag =
+          reload->emitOpError("resets the array between @")
+          << before.getSymName() << " and @" << after.getSymName()
+          << ", which both hold a buffer resident on " << resident
+          << "; needs --reconfig-teardown";
+      diag.attachNote(earlier.getLoc()) << "resident here";
+      diag.attachNote(later.getLoc()) << "resident here";
+      return diag;
+    }
+  }
+  return success();
+}
+
 std::string AIEX::scratchpadCommandName(AIE::RuntimeSequenceOp seq) {
   auto device = seq->getParentOfType<AIE::DeviceOp>();
   return (device.getSymName() + ":" + seq.getSymName()).str();

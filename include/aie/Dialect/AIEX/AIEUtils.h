@@ -182,6 +182,14 @@ Unbalanced balanceUnder(AIE::ConsumedByAttr proof, const Volume &in,
 // `fifo` by symbol.
 bool namesFifo(Operation *op, StringRef fifo, SymbolTableCollection &symbols);
 
+// A reload between two configurations of the device array in one runtime
+// sequence clears it (outside --reconfig-teardown), so a later
+// configuration's buffer resident on the same global as an earlier one's
+// finds it gone. Verifies `before` and `after` hold no buffer resident on
+// the same symbol, attaching the diagnostic to `reload`.
+LogicalResult checkNoSharedResident(Operation *reload, AIE::DeviceOp before,
+                                    AIE::DeviceOp after);
+
 // `device:sequence`, the name a host runs `seq` by.
 std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);
 

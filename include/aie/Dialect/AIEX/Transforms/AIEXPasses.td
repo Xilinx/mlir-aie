@@ -760,6 +760,11 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     A sequence whose first and last reset (or overlay load) name the same PDI
     gets one more of the other, so the next dispatch's first load is not skipped
     as cached. Under teardown no sequence needs this.
+
+    Without `teardown`, a reload between two configurations that each hold a
+    buffer `resident` on the same `memref.global` is an error: the reload
+    clears the array underneath that buffer. This is checked only within one
+    runtime sequence; a reload across separate dispatches is not.
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";
