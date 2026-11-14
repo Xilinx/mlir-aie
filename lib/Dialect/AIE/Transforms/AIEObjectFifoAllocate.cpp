@@ -433,7 +433,8 @@ struct AIEObjectFifoAllocatePass
       lastPlaced[placement] = BufferOp::create(
           builder, pool.getLoc(), type, placement, builder.getStringAttr(name),
           /*address=*/nullptr, init,
-          /*mem_bank=*/nullptr, /*core_data=*/nullptr);
+          /*mem_bank=*/nullptr, /*core_data=*/nullptr,
+          /*bank_reserved=*/nullptr, /*aligned=*/nullptr, /*resident=*/nullptr);
       names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
     }
     pool.setBuffersAttr(builder.getArrayAttr(names));
@@ -875,21 +876,18 @@ struct AIEObjectFifoAllocatePass
   int64_t bdRoom(TileLike tile, int col, int row, int channel,
                  const DenseMap<std::tuple<int, int, int>, int64_t> &demand) {
     const AIETargetModel &target = device.getTargetModel();
-    uint32_t numBDs = target.getNumBDs(col, row);
     int numChannels = std::max(tile.getNumSourceConnections(WireBundle::DMA),
                                tile.getNumDestConnections(WireBundle::DMA));
-    auto sharesBDs = [&](int other) {
-      for (uint32_t bd = 0; bd < numBDs; ++bd)
-        if (target.isBdChannelAccessible(col, row, bd, channel) &&
-            target.isBdChannelAccessible(col, row, bd, other))
-          return true;
-      return false;
-    };
-    int64_t room = target.getNumBDsForChannel(col, row, channel);
-    for (int other = 0; other < numChannels; ++other)
-      if (sharesBDs(other))
-        if (auto it = demand.find({col, row, other}); it != demand.end())
-          room -= it->second;
+    SmallVector<DMAChannelAnalysis::BDGroup> groups =
+        DMAChannelAnalysis::bdGroups(target, col, row, numChannels);
+    auto *group =
+        llvm::find_if(groups, [&](const DMAChannelAnalysis::BDGroup &g) {
+          return llvm::is_contained(g.channels, channel);
+        });
+    int64_t room = group->ids.count();
+    for (int other : group->channels)
+      if (auto it = demand.find({col, row, other}); it != demand.end())
+        room -= it->second;
     return room;
   }
 

@@ -340,12 +340,38 @@ DMAChannelAnalysis::TakenBDs::positions() const {
   return {at.begin(), at.end()};
 }
 
+llvm::SmallVector<DMAChannelAnalysis::BDGroup>
+DMAChannelAnalysis::bdGroups(const AIETargetModel &target, int col, int row,
+                             int numChannels) {
+  uint32_t numBDs = target.getNumBDs(col, row);
+  SmallVector<BDGroup> groups;
+  for (int channel = 0; channel < numChannels; ++channel) {
+    llvm::BitVector ids(numBDs);
+    for (uint32_t bd = 0; bd < numBDs; ++bd)
+      if (target.isBdChannelAccessible(col, row, bd, channel))
+        ids.set(bd);
+    BDGroup merged{ids, {channel}};
+    for (auto *it = groups.begin(); it != groups.end();) {
+      if (!it->ids.anyCommon(merged.ids)) {
+        ++it;
+        continue;
+      }
+      merged.ids |= it->ids;
+      llvm::append_range(merged.channels, it->channels);
+      it = groups.erase(it);
+    }
+    groups.push_back(std::move(merged));
+  }
+  for (BDGroup &group : groups)
+    llvm::sort(group.channels);
+  return groups;
+}
+
 std::optional<SmallVector<int>>
 DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
                                    int row, ArrayRef<BDPlanEnd> allEnds,
                                    function_ref<bool(DMAChannelDir, int)> free,
                                    function_ref<int64_t(int)> spent) {
-  uint32_t numBDs = target.getNumBDs(col, row);
   int numChannels = std::max(
       target.getNumSourceSwitchboxConnections(col, row, WireBundle::DMA),
       target.getNumDestSwitchboxConnections(col, row, WireBundle::DMA));
@@ -358,25 +384,9 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
     int64_t room = 0;
   };
   SmallVector<Group> groups;
-  for (int channel = 0; channel < numChannels; ++channel) {
-    llvm::BitVector ids(numBDs);
-    for (uint32_t bd = 0; bd < numBDs; ++bd)
-      if (target.isBdChannelAccessible(col, row, bd, channel))
-        ids.set(bd);
-    Group merged{ids, {channel}};
-    for (auto *it = groups.begin(); it != groups.end();) {
-      if (!it->ids.anyCommon(merged.ids)) {
-        ++it;
-        continue;
-      }
-      merged.ids |= it->ids;
-      llvm::append_range(merged.channels, it->channels);
-      it = groups.erase(it);
-    }
-    groups.push_back(std::move(merged));
-  }
+  for (BDGroup &group : bdGroups(target, col, row, numChannels))
+    groups.push_back({std::move(group.ids), std::move(group.channels), 0});
   for (Group &group : groups) {
-    llvm::sort(group.channels);
     group.room = group.ids.count();
     for (int channel : group.channels)
       group.room -= spent(channel);

@@ -11,6 +11,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -116,6 +117,15 @@ public:
     int limit;
     std::optional<int> pinned;
   };
+
+  /// Channels among `0..numChannels-1` at (`col`, `row`), grouped by whichever
+  /// BD ids any two in a group share, transitively.
+  struct BDGroup {
+    llvm::BitVector ids;
+    llvm::SmallVector<int> channels;
+  };
+  static llvm::SmallVector<BDGroup> bdGroups(const AIETargetModel &target,
+                                             int col, int row, int numChannels);
 
   /// A channel of the tile at (`col`, `row`) for each of `ends`: its pinned
   /// one, else one `free` leaves that no other end of its direction takes;
