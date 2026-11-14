@@ -1658,11 +1658,11 @@ struct AIEObjectFifoAllocatePass
     return found;
   }
 
-  /// Whether a chain moving `turns` over `ends` can walk each contiguous pool
-  /// with one descriptor per turn of its unrolled passes, each stepping over
-  /// the others' objects: they must divide the pool's objects.
-  static bool contiguousWalkersFit(ArrayRef<ObjectFifoDmaEndpointOp> ends,
-                                   ArrayRef<unsigned> turns) {
+  /// How many turns in `turns` land on each of `ends`, and the descriptors
+  /// each unrolled pass over it takes (0 for a pool already walked whole):
+  /// the pairs turnPasses takes.
+  static SmallVector<std::pair<int64_t, int64_t>>
+  turnCounts(ArrayRef<ObjectFifoDmaEndpointOp> ends, ArrayRef<unsigned> turns) {
     SmallVector<std::pair<int64_t, int64_t>> counts;
     for (auto [i, constEnd] : llvm::enumerate(ends)) {
       ObjectFifoDmaEndpointOp end = constEnd;
@@ -1670,6 +1670,15 @@ struct AIEObjectFifoAllocatePass
                                                    ? 0
                                                    : end.getNumDescriptors()});
     }
+    return counts;
+  }
+
+  /// Whether a chain moving `turns` over `ends` can walk each contiguous pool
+  /// with one descriptor per turn of its unrolled passes, each stepping over
+  /// the others' objects: they must divide the pool's objects.
+  static bool contiguousWalkersFit(ArrayRef<ObjectFifoDmaEndpointOp> ends,
+                                   ArrayRef<unsigned> turns) {
+    SmallVector<std::pair<int64_t, int64_t>> counts = turnCounts(ends, turns);
     int64_t passes = turnPasses(counts);
     for (auto [i, constEnd] : llvm::enumerate(ends)) {
       ObjectFifoDmaEndpointOp end = constEnd;
@@ -1924,14 +1933,8 @@ struct AIEObjectFifoAllocatePass
         // the peers' channel BDs, walking them whole takes one a turn.
         bool overflows = false;
         if (reason.empty()) {
-          SmallVector<std::pair<int64_t, int64_t>> counts;
-          for (auto [i, constPeer] : llvm::enumerate(peers)) {
-            ObjectFifoDmaEndpointOp peer = constPeer;
-            counts.push_back({llvm::count(turns.turns(), i),
-                              peer.getPoolOp().getContiguous()
-                                  ? 0
-                                  : peer.getNumDescriptors()});
-          }
+          SmallVector<std::pair<int64_t, int64_t>> counts =
+              turnCounts(peers, turns.turns());
           TileLike tile = peers.front().getTileLike();
           std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
           overflows =
