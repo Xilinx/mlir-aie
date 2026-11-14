@@ -264,6 +264,8 @@ struct SharedCoreObjects {
   // Canonical module, arch and stack space -> the object; empty on failure.
   std::map<std::string, std::shared_future<std::string>> objects;
   std::set<std::string> stems;
+  // The link files the objects read arrive once on stdin, for every attempt.
+  bool linkFilesReady = false;
 };
 
 // Produce a per-key object (.o) -- these are the core program memories. Both
@@ -1177,13 +1179,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // The device cache's key and every compile or link of a core read the files
   // the cores link; all of them are downstream of this view.
-  auto linkFilesReady = std::make_shared<bool>(false);
   auto &unplaced =
       awaitLinkFiles
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(routed.filter(
                 "awaitLinkFiles",
-                [linkFilesReady](const ModRef &) -> mlir::FailureOr<bool> {
-                  if (*linkFilesReady)
+                [sharedObjects](const ModRef &) -> mlir::FailureOr<bool> {
+                  if (sharedObjects->linkFilesReady)
                     return true;
                   if (verbose)
                     llvm::errs() << "aiecc: awaiting the link files\n";
@@ -1193,7 +1194,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                     "files were ready\n";
                     return mlir::failure();
                   }
-                  *linkFilesReady = true;
+                  sharedObjects->linkFilesReady = true;
                   return true;
                 }))
           : routed;
