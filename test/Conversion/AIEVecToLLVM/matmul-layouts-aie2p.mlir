@@ -18,8 +18,8 @@
 
 // CHECK-LABEL: func.func @bfp16_8x8x8_mk_kn(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK-DAG: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
-// CHECK-DAG: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK: %[[RTI:.*]] = llvm.bitcast %[[FB]] : vector<64xbf16> to vector<32xi32>
 // CHECK: %[[RTL:.*]] = vector.shuffle %[[RTI]], %[[RTI]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 // CHECK: %[[RTH:.*]] = vector.shuffle %[[RTI]], %[[RTI]] [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
@@ -39,8 +39,8 @@ func.func @bfp16_8x8x8_mk_kn(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>, %C : 
 
 // CHECK-LABEL: func.func @bfp16_8x8x8_mk_nk(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK-DAG: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
-// CHECK-DAG: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // COUNT-LABEL: func.func @bfp16_8x8x8_mk_nk(
 // COUNT-NOT: "xllvm.intr.aie2p.vshuffle"
 func.func @bfp16_8x8x8_mk_nk(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>, %C : vector<8x8xf32>) -> vector<8x8xf32> {
@@ -52,8 +52,7 @@ func.func @bfp16_8x8x8_mk_nk(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>, %C : 
 
 // CHECK-LABEL: func.func @bfp16_8x8x8_km_kn(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK-DAG: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
-// CHECK-DAG: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK: %[[LTI:.*]] = llvm.bitcast %[[FA]] : vector<64xbf16> to vector<32xi32>
 // CHECK: %[[LTL:.*]] = vector.shuffle %[[LTI]], %[[LTI]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 // CHECK: %[[LTH:.*]] = vector.shuffle %[[LTI]], %[[LTI]] [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
@@ -61,6 +60,7 @@ func.func @bfp16_8x8x8_mk_nk(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>, %C : 
 // CHECK: %[[LTM1:.*]] = llvm.mlir.constant(53 : i32) : i32
 // CHECK: "xllvm.intr.aie2p.vshuffle"(%[[LTL]], %[[LTH]], %[[LTM0]])
 // CHECK: "xllvm.intr.aie2p.vshuffle"(%[[LTL]], %[[LTH]], %[[LTM1]])
+// CHECK: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK: %[[RTI:.*]] = llvm.bitcast %[[FB]] : vector<64xbf16> to vector<32xi32>
 // CHECK: %[[RTL:.*]] = vector.shuffle %[[RTI]], %[[RTI]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 // CHECK: %[[RTH:.*]] = vector.shuffle %[[RTI]], %[[RTI]] [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
@@ -80,8 +80,7 @@ func.func @bfp16_8x8x8_km_kn(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>, %C : 
 
 // CHECK-LABEL: func.func @bfp16_8x8x8_km_nk(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK-DAG: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
-// CHECK-DAG: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK: %[[LTI:.*]] = llvm.bitcast %[[FA]] : vector<64xbf16> to vector<32xi32>
 // CHECK: %[[LTL:.*]] = vector.shuffle %[[LTI]], %[[LTI]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 // CHECK: %[[LTH:.*]] = vector.shuffle %[[LTI]], %[[LTI]] [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
@@ -89,6 +88,7 @@ func.func @bfp16_8x8x8_km_kn(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>, %C : 
 // CHECK: %[[LTM1:.*]] = llvm.mlir.constant(53 : i32) : i32
 // CHECK: "xllvm.intr.aie2p.vshuffle"(%[[LTL]], %[[LTH]], %[[LTM0]])
 // CHECK: "xllvm.intr.aie2p.vshuffle"(%[[LTL]], %[[LTH]], %[[LTM1]])
+// CHECK: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // COUNT-LABEL: func.func @bfp16_8x8x8_km_nk(
 // COUNT-COUNT-2: "xllvm.intr.aie2p.vshuffle"
 // COUNT-NOT: "xllvm.intr.aie2p.vshuffle"
@@ -101,8 +101,8 @@ func.func @bfp16_8x8x8_km_nk(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>, %C : 
 
 // CHECK-LABEL: func.func @bfp16_4x8x8_mk_kn(
 // CHECK-SAME: %[[A:.*]]: vector<4x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK-DAG: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<4x8xbf16> to vector<32xbf16>
-// CHECK-DAG: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<4x8xbf16> to vector<32xbf16>
+// CHECK: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK: %[[RTI:.*]] = llvm.bitcast %[[FB]] : vector<64xbf16> to vector<32xi32>
 // CHECK: %[[RTL:.*]] = vector.shuffle %[[RTI]], %[[RTI]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 // CHECK: %[[RTH:.*]] = vector.shuffle %[[RTI]], %[[RTI]] [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
@@ -122,8 +122,8 @@ func.func @bfp16_4x8x8_mk_kn(%A : vector<4x8xbf16>, %B : vector<8x8xbf16>, %C : 
 
 // CHECK-LABEL: func.func @bfp16_4x8x8_mk_nk(
 // CHECK-SAME: %[[A:.*]]: vector<4x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK-DAG: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<4x8xbf16> to vector<32xbf16>
-// CHECK-DAG: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<4x8xbf16> to vector<32xbf16>
+// CHECK: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // COUNT-LABEL: func.func @bfp16_4x8x8_mk_nk(
 // COUNT-NOT: "xllvm.intr.aie2p.vshuffle"
 func.func @bfp16_4x8x8_mk_nk(%A : vector<4x8xbf16>, %B : vector<8x8xbf16>, %C : vector<4x8xf32>) -> vector<4x8xf32> {
@@ -135,11 +135,11 @@ func.func @bfp16_4x8x8_mk_nk(%A : vector<4x8xbf16>, %B : vector<8x8xbf16>, %C : 
 
 // CHECK-LABEL: func.func @bfp16_4x8x8_km_kn(
 // CHECK-SAME: %[[A:.*]]: vector<8x4xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK-DAG: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x4xbf16> to vector<32xbf16>
-// CHECK-DAG: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x4xbf16> to vector<32xbf16>
 // CHECK: %[[LTI:.*]] = llvm.bitcast %[[FA]] : vector<32xbf16> to vector<16xi32>
 // CHECK: %[[LTM:.*]] = llvm.mlir.constant(28 : i32) : i32
 // CHECK: "xllvm.intr.aie2p.vshuffle"(%[[LTI]], %[[LTI]], %[[LTM]])
+// CHECK: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK: %[[RTI:.*]] = llvm.bitcast %[[FB]] : vector<64xbf16> to vector<32xi32>
 // CHECK: %[[RTL:.*]] = vector.shuffle %[[RTI]], %[[RTI]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 // CHECK: %[[RTH:.*]] = vector.shuffle %[[RTI]], %[[RTI]] [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
@@ -159,11 +159,11 @@ func.func @bfp16_4x8x8_km_kn(%A : vector<8x4xbf16>, %B : vector<8x8xbf16>, %C : 
 
 // CHECK-LABEL: func.func @bfp16_4x8x8_km_nk(
 // CHECK-SAME: %[[A:.*]]: vector<8x4xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK-DAG: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x4xbf16> to vector<32xbf16>
-// CHECK-DAG: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
+// CHECK: %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x4xbf16> to vector<32xbf16>
 // CHECK: %[[LTI:.*]] = llvm.bitcast %[[FA]] : vector<32xbf16> to vector<16xi32>
 // CHECK: %[[LTM:.*]] = llvm.mlir.constant(28 : i32) : i32
 // CHECK: "xllvm.intr.aie2p.vshuffle"(%[[LTI]], %[[LTI]], %[[LTM]])
+// CHECK: %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // COUNT-LABEL: func.func @bfp16_4x8x8_km_nk(
 // COUNT-COUNT-1: "xllvm.intr.aie2p.vshuffle"
 // COUNT-NOT: "xllvm.intr.aie2p.vshuffle"

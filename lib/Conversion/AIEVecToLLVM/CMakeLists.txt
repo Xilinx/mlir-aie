@@ -18,6 +18,7 @@ add_mlir_conversion_library(MLIRAIEVecToLLVM
   MLIRAIEVecUtils
   MLIRLLVMCommonConversion
   MLIRLLVMDialect
+  MLIRMemRefDialect
   MLIRTransforms
   MLIRXLLVMDialect
   )

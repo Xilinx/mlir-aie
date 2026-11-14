@@ -620,6 +620,10 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
       }
       // Detect bf16 matmul ops — these need conv_even rounding to avoid
       // systematic negative bias from floor rounding in BFP16 arithmetic.
+      // On AIE2P a bf16 matmul is a bfp16 one: aievec.to_bfp16 converts its
+      // bf16 operands, and aievec.matmul_aie2p_bfp16 may take them loaded.
+      if (opName == "aievec.to_bfp16" || opName == "aievec.matmul_aie2p_bfp16")
+        hasBF16Matmul = true;
       if (opName == "aievec.matmul" || opName == "aievec.matmul_aie2p") {
         if (childOp->getNumOperands() > 0) {
           auto lhsType = childOp->getOperand(0).getType();

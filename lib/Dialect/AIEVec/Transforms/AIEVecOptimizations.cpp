@@ -8,11 +8,15 @@
 // with more complex, and performant AIEVec ops.
 //===----------------------------------------------------------------------===//
 
+#include "BFP16MatMulOperands.h"
 #include "FoldMulAddChainToConvOp.h"
+#include "mlir/IR/Dominance.h"
+#include "mlir/Transforms/CSE.h"
 
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
@@ -207,6 +211,30 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
+// Expands bf16 matmuls with a bfp16 recipe so that later patterns can
+// rewrite the conversions.
+struct ExpandBFP16MatMulPattern
+    : public OpConversionPattern<aievec::MatMulOp_AIE2P> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::MatMulOp_AIE2P op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    return aievec::expandBFP16MatMul(rewriter, op);
+  }
+};
+
+static bool isBFP16MatMul(aievec::MatMulOp_AIE2P op) {
+  std::optional<aievec::MatMulRecipe> recipe = aievec::checkMatMulTile(
+      /*aie2p=*/true, cast<VectorType>(op.getLhs().getType()),
+      cast<VectorType>(op.getRhs().getType()),
+      cast<VectorType>(op.getAcc().getType()), op.getLhsTransposed(),
+      op.getRhsTransposed());
+  return recipe &&
+         (recipe->kind == aievec::MatMulRecipeKind::AIE2P_BFP16_8x8x8 ||
+          recipe->kind == aievec::MatMulRecipeKind::AIE2P_BFP16_4x8x8);
+}
+
 //===----------------------------------------------------------------------===//
 // Legalizations
 //===----------------------------------------------------------------------===//
@@ -290,9 +318,41 @@ struct AIEVecTransformationPass
       populateAIEVecV2TransformationPatterns(patterns);
       configureAIEVecV2TransformationLegalizations(target);
     }
+    if (targetInfo->isAIE2P()) {
+      patterns.add<ExpandBFP16MatMulPattern>(context);
+      target.addLegalOp<aievec::ToBFP16Op, aievec::MatMulBFP16Op_AIE2P>();
+      target.addDynamicallyLegalOp<aievec::MatMulOp_AIE2P>(
+          [](aievec::MatMulOp_AIE2P op) { return !isBFP16MatMul(op); });
+    }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
+      return;
+    }
+
+    if (targetInfo->isAIE2P()) {
+      // A tile that feeds several matmuls is converted once.
+      IRRewriter rewriter(context);
+      DominanceInfo domInfo(op);
+      eliminateCommonSubExpressions(rewriter, domInfo, op);
+      // Replace decoded tiles by their blocks before hoisting conversions,
+      // so that the hoisting pattern does not pick up those tiles.
+      RewritePatternSet decoded(context);
+      populateReadDecodedBFP16Patterns(decoded);
+      if (failed(applyPatternsGreedily(op, std::move(decoded)))) {
+        signalPassFailure();
+        return;
+      }
+      RewritePatternSet hoist(context);
+      populateHoistBFP16ConversionPatterns(hoist);
+      if (failed(applyPatternsGreedily(op, std::move(hoist)))) {
+        signalPassFailure();
+        return;
+      }
+      RewritePatternSet streams(context);
+      populateBFP16LoadStreamPatterns(streams);
+      if (failed(applyPatternsGreedily(op, std::move(streams))))
+        signalPassFailure();
     }
   }
 };

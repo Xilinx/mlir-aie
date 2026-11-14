@@ -17,6 +17,7 @@
 
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -88,6 +89,19 @@ std::optional<MatMulRecipe> checkMatMulTile(
     bool aie2p, mlir::VectorType lhsTy, mlir::VectorType rhsTy,
     mlir::VectorType accTy, bool lhsTransposed, bool rhsTransposed,
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError = nullptr);
+
+// Rewrites the bf16 matmul `op` into an aievec.to_bfp16 of each operand
+// followed by aievec.matmul_aie2p_bfp16. Fails unless `op` uses a bfp16
+// recipe.
+mlir::LogicalResult expandBFP16MatMul(mlir::RewriterBase &rewriter,
+                                      MatMulOp_AIE2P op);
+
+// Return true if every use of `op` is the lhs (respectively rhs) operand of
+// an aievec.matmul_aie2p_bfp16. The lowering of aievec.to_bfp16 widens the
+// two operands of a matmul differently: an lhs-only tile in two 32-lane
+// halves, an rhs-only tile by a bf16 multiply with 1.0.
+bool isBFP16MatMulLhsOnly(ToBFP16Op op);
+bool isBFP16MatMulRhsOnly(ToBFP16Op op);
 
 } // namespace xilinx::aievec
 
