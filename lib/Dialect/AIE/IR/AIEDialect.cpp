@@ -1012,6 +1012,11 @@ int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
   return getMemRefSizeInBytes(getElemType(), DataLayout::closest(*this));
 }
 
+bool xilinx::AIE::walksWholeDepth(bool isMemTile, int64_t depth,
+                                  int64_t maxLockValue) {
+  return isMemTile && depth > 1 && depth <= maxLockValue;
+}
+
 std::vector<ObjectFifoSegmentOp> ObjectFifoPoolOp::getSegmentOps() {
   auto ops = getSegments().getOps<ObjectFifoSegmentOp>();
   return {ops.begin(), ops.end()};
@@ -1049,11 +1054,11 @@ StringRef ObjectFifoPoolOp::getBaseName() {
 
 bool ObjectFifoPoolOp::canWalkWhole() {
   auto device = (*this)->getParentOfType<DeviceOp>();
-  return getTileLike().isMemTile() && !getContiguous() &&
-         getSegmentOps().size() == 1 && !getRepeatCount() && !getBuffers() &&
-         getDepth() > 1 &&
-         getDepth() <=
-             static_cast<int>(device.getTargetModel().getMaxLockValue()) &&
+  return walksWholeDepth(
+             getTileLike().isMemTile(), getDepth(),
+             static_cast<int64_t>(device.getTargetModel().getMaxLockValue())) &&
+         !getContiguous() && getSegmentOps().size() == 1 && !getRepeatCount() &&
+         !getBuffers() &&
          llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
                       [&](ObjectFifoDmaEndpointOp end) {
                         auto dims = end.getDimensions();
@@ -2278,7 +2283,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
       drains ? getProdPortAttr() : getConsumerPort(*consumer);
   std::optional<int> channel = port ? port.channelIndex() : std::nullopt;
   auto walkable = [&](int64_t depth) {
-    return tileLike.isMemTile() && depth > 1 && depth <= maxLock;
+    return walksWholeDepth(tileLike.isMemTile(), depth, maxLock);
   };
 
   ObjectFifoLinkOp link =

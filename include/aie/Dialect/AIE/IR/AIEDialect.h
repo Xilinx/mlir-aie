@@ -550,6 +550,11 @@ int64_t paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
 int64_t getMemRefSizeInBytes(mlir::MemRefType type,
                              const mlir::DataLayout &layout);
 
+// Whether one iterating descriptor could walk a pool of `depth` objects on a
+// tile: a mem tile's pool, deeper than one object and no deeper than a lock
+// counts (ObjectFifoPoolOp::canWalkWhole, ObjectFifoCreateOp::plannedDmaEnd).
+bool walksWholeDepth(bool isMemTile, int64_t depth, int64_t maxLockValue);
+
 // The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
 // dimensions (outermost first) and its length in elements: none when it
 // becomes one linear transfer, else its size-1 dimensions dropped. nullopt
