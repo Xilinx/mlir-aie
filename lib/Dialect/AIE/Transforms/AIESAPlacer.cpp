@@ -2431,20 +2431,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
       channelAnalysis.emplace(device).getChannelClaims();
   buildRouteModel(device, collected.flows, collected.pktFlows, collected.routes,
                   claims);
-  claimsOf.clear();
-  for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
-    claimsOf[claim.tile.getDefiningOp()].push_back(claim);
-  shareableShimEnds =
-      collectShareableShimEnds(device, objectFifos, collected.rank);
-  collectOverlayUses(device);
+  buildShimModel(device, objectFifos, claims, collected.rank);
   overlayTiles = overlayTileOps();
-  shimSpans.emplace(
-      device,
-      [&](StringAttr symbol) {
-        return ShimTransferSpans::endOf(device, symbol);
-      },
-      provenShimGates(device), controlOverlay);
-  runtimeBdIds = RuntimeBdIds(device, *targetModel);
   takenBDs = DMAChannelAnalysis::TakenBDs(device);
   logicalMemTiles.clear();
   for (auto tile : device.getOps<LogicalTileOp>())

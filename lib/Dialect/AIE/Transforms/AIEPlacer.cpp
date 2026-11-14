@@ -242,10 +242,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   namedChannels.clear();
   llvm::DenseMap<Operation *, Operation *> demandKeys;
   DMAChannelAnalysis channelAnalysis(device);
-  claimsOf.clear();
-  for (const DMAChannelAnalysis::ChannelClaim &claim :
-       channelAnalysis.getChannelClaims())
-    claimsOf[claim.tile.getDefiningOp()].push_back(claim);
   for (auto &[tile, inOut] : flowChannelDemand(
            flows, pktFlows, routes, channelAnalysis.getChannelClaims(),
            &namedChannels, &demandKeys)) {
@@ -254,18 +250,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   }
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
-  runtimeBdIds = RuntimeBdIds(device, *targetModel);
-  shareableShimEnds =
-      collectShareableShimEnds(device, objectFifos, collected.rank, demandKeys);
-  shimSpans.emplace(
-      device,
-      [&](StringAttr symbol) {
-        return ShimTransferSpans::endOf(device, symbol);
-      },
-      provenShimGates(device), controlOverlay);
+  buildShimModel(device, objectFifos, channelAnalysis.getChannelClaims(),
+                 collected.rank, demandKeys);
   shimTilesAt.clear();
   overlayTilesAt.clear();
-  collectOverlayUses(device);
   // Seed each physical tile op's position with the ends, flows and claims it
   // already holds.
   for (TileOp placed : device.getOps<TileOp>()) {
@@ -1721,6 +1709,26 @@ int Placer::shimChannelsSaved(const ShimTransferSpans &spans,
       shared.emplace_back(listed, llvm::is_contained(pinned, channel));
   ShimTransferSpans::Plan plan = spans.plan(ends, ends, shared);
   return static_cast<int>(ends.size() - plan.groups.size());
+}
+
+void Placer::buildShimModel(
+    DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos,
+    ArrayRef<DMAChannelAnalysis::ChannelClaim> claims,
+    const DenseMap<Operation *, unsigned> &rank,
+    const DenseMap<Operation *, Operation *> &routeKeys) {
+  claimsOf.clear();
+  for (const DMAChannelAnalysis::ChannelClaim &claim : claims)
+    claimsOf[claim.tile.getDefiningOp()].push_back(claim);
+  runtimeBdIds = RuntimeBdIds(device, *targetModel);
+  shareableShimEnds =
+      collectShareableShimEnds(device, objectFifos, rank, routeKeys);
+  collectOverlayUses(device);
+  shimSpans.emplace(
+      device,
+      [&](StringAttr symbol) {
+        return ShimTransferSpans::endOf(device, symbol);
+      },
+      provenShimGates(device), controlOverlay);
 }
 
 std::optional<Placer::PinnedChannels::End>

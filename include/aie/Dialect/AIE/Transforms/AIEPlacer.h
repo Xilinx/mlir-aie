@@ -389,6 +389,29 @@ public:
   };
 
 protected:
+  // DMAChannelAnalysis::getChannelClaims(), grouped by the tile op owning
+  // each: the channels its claims take by index hold them from pinned ends
+  // placed with it.
+  llvm::DenseMap<mlir::Operation *,
+                 llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
+      claimsOf;
+  // Shim channels count one per end until a shim tile runs out; then ends
+  // never in flight together count once, as allocation will share them.
+  std::optional<ShimTransferSpans> shimSpans;
+  ShareableShimEnds shareableShimEnds;
+  // A shim tile is also charged for the runtime BD ids its tile ops' tasks
+  // lack.
+  RuntimeBdIds runtimeBdIds;
+  // Builds the members above and overlayUses for `device`, whose channel
+  // claims are `claims`; `rank` and `routeKeys` as collectShareableShimEnds
+  // takes them.
+  void buildShimModel(DeviceOp device,
+                      llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+                      llvm::ArrayRef<DMAChannelAnalysis::ChannelClaim> claims,
+                      const llvm::DenseMap<mlir::Operation *, unsigned> &rank,
+                      const llvm::DenseMap<mlir::Operation *, mlir::Operation *>
+                          &routeKeys = {});
+
   // Whether the control overlay takes an MM2S channel on `tile`.
   bool overlayChannels(TileID tile) const {
     return controlOverlay && targetModel->isShimNOCTile(tile.col, tile.row);
@@ -554,10 +577,6 @@ private:
   // The compute tiles cores-per-col leaves to unpinned logical cores.
   int placeableCores = 0;
 
-  // Shim channels are counted one per end until a shim tile runs out; then
-  // ends never in flight together count once, as allocation will share them.
-  std::optional<ShimTransferSpans> shimSpans;
-  ShareableShimEnds shareableShimEnds;
   llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> shimTilesAt;
   // The tile ops placed at each position, whose overlayUses count there.
   llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> overlayTilesAt;
@@ -642,17 +661,11 @@ private:
   llvm::DenseMap<TileID, int> broadcastFanoutUsed;
   void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
-  RuntimeBdIds runtimeBdIds;
-
   // Pinned objectFIFO ends: the rule, their positions, and each tile op's own.
   PinnedChannels pinnedRule;
   PinnedChannelUse pinsAt;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<PinnedChannels::End>>
       pinnedEnds;
-  // DMAChannelAnalysis::getChannelClaims(), grouped by the tile op owning each.
-  llvm::DenseMap<mlir::Operation *,
-                 llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
-      claimsOf;
 
   // True if `tile`'s stream ports and BDs still fit `logicalTile`'s demand on
   // top of what earlier placements use.
@@ -1301,11 +1314,6 @@ private:
   // What aie-objectfifo-allocate plans a tile's BD ids around: the channels
   // and ids its own programs and pinned runtime ids already hold.
   std::optional<DMAChannelAnalysis> channelAnalysis;
-  // The channels each tile op's claims take by index, which hold them from
-  // pinned ends placed with it.
-  llvm::DenseMap<mlir::Operation *,
-                 llvm::SmallVector<DMAChannelAnalysis::ChannelClaim>>
-      claimsOf;
   DMAChannelAnalysis::TakenBDs takenBDs;
   llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> physicalTiles;
   // Every logical mem tile, objectFIFO ends or not: its programs hold BD ids
@@ -1316,16 +1324,11 @@ private:
   int dmaPenalty = 0;
   llvm::DenseMap<TileID, int> dmaPenaltyAt;
   llvm::SmallVector<std::pair<TileID, int>> dmaUndo;
-  // An over-full shim tile is charged only for the channels allocation
-  // still needs once ends never in flight together share them.
-  std::optional<ShimTransferSpans> shimSpans;
-  ShareableShimEnds shareableShimEnds;
   // The tile ops overlayUses names, which the overlay's channel weighs where
   // they are.
   llvm::SmallVector<mlir::Operation *> overlayTiles;
-  // A shim tile is also charged for the runtime BD ids its LTOs' tasks lack:
-  // that charge at each shim position, and what the last move overwrote.
-  RuntimeBdIds runtimeBdIds;
+  // The runtime BD-id charge at each shim position, and what the last move
+  // overwrote.
   llvm::DenseMap<TileID, int> runtimeBdAt;
   llvm::SmallVector<std::pair<TileID, int>> runtimeBdUndo;
 
