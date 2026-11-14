@@ -711,10 +711,94 @@ void SAPlacer::initResourceTracking() {
   dmaPenalty = computeDMAChannelPenalty();
   coreOverflowTiles = overflowingCoreTiles();
   coreOverflowPenalty = computeCoreOverflowPenalty();
+  cuts = StreamCuts(*targetModel);
+  portsAt.clear();
+  columnSouthPorts.clear();
+  for (int col = 0; col < targetModel->columns(); ++col) {
+    for (int row = 0; row < targetModel->rows(); ++row)
+      portsAt.push_back(
+          {static_cast<int>(targetModel->getNumSourceSwitchboxConnections(
+               col, row, WireBundle::North)),
+           static_cast<int>(targetModel->getNumDestSwitchboxConnections(
+               col, row, WireBundle::North)),
+           static_cast<int>(targetModel->getNumSourceSwitchboxConnections(
+               col, row, WireBundle::South)),
+           static_cast<int>(targetModel->getNumDestSwitchboxConnections(
+               col, row, WireBundle::South))});
+    // A column's cores take their objectFIFOs through its lowest core's
+    // South ports.
+    int bottom = 0;
+    while (bottom < targetModel->rows() &&
+           !targetModel->isCoreTile(col, bottom))
+      ++bottom;
+    columnSouthPorts.push_back(
+        bottom < targetModel->rows()
+            ? static_cast<int>(targetModel->getNumSourceSwitchboxConnections(
+                  col, bottom, WireBundle::South))
+            : 0);
+  }
+  streamsAt.clear();
+  incomingAt.clear();
+  incomingCount.clear();
+  portsOver = 0;
+  for (auto &[op, _] : streamDemand)
+    if (std::optional<TileID> at = positionOf(op))
+      chargeStreams(op, *at, 1);
+  netStreams.clear();
+  auto placed = [this](Operation *op) { return positionOf(op); };
+  for (auto [index, net] : llvm::enumerate(streamNets)) {
+    auto &[src, dsts] = netStreams[index];
+    if (streamOf(net, placed, src, dsts))
+      cuts.add(src, dsts, net.packet, 1);
+  }
+  streamCutPenalty = config.streamCutPenaltyPerChannel * cuts.over();
   cachedResourcePenalty = memSpilloverPenalty + coreOverflowPenalty +
                           computeLockPenalty() + dmaPenalty + bdCountPenalty +
-                          delegatePenalty;
-  cachedPressure = computeMemoryPressure();
+                          delegatePenalty + streamCutPenalty;
+  cachedPressure = computeMemoryPressure() + computeStreamPressure();
+}
+
+int SAPlacer::portExcess(TileID at) const {
+  StreamDemand streams = streamsAt.lookup(at);
+  const StreamDemand &ports = portsAt[at.col * targetModel->rows() + at.row];
+  return std::max(0, streams.northIn - ports.northIn) +
+         std::max(0, streams.southIn - ports.southIn) +
+         std::max(0, streams.northOut - ports.northOut) +
+         std::max(0, streams.southOut - ports.southOut);
+}
+
+int SAPlacer::columnExcess(int col) const {
+  return std::max(0, incomingAt.lookup(col) - columnSouthPorts[col]);
+}
+
+void SAPlacer::chargeStreams(Operation *op, TileID at, int sign) {
+  auto demand = streamDemand.find(op);
+  if (demand == streamDemand.end())
+    return;
+  portsOver -= portExcess(at);
+  StreamDemand &streams = streamsAt[at];
+  streams.northIn += sign * demand->second.northIn;
+  streams.northOut += sign * demand->second.northOut;
+  streams.southIn += sign * demand->second.southIn;
+  streams.southOut += sign * demand->second.southOut;
+  portsOver += portExcess(at);
+  auto incoming = incomingFifos.find(op);
+  if (incoming == incomingFifos.end())
+    return;
+  portsOver -= columnExcess(at.col);
+  for (Operation *fifo : incoming->second) {
+    int &count = incomingCount[{at.col, fifo}];
+    if (!count || count + sign == 0)
+      incomingAt[at.col] += sign;
+    count += sign;
+  }
+  portsOver += columnExcess(at.col);
+}
+
+int SAPlacer::computeStreamPressure() const {
+  return static_cast<int>(config.streamNearWeight *
+                              cuts.near(config.streamNearFraction) +
+                          config.portOverWeight * portsOver);
 }
 
 int SAPlacer::computeMemoryPressure() const {
@@ -1929,6 +2013,15 @@ int SAPlacer::updateResourcePenalty(
   }
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, -1);
+  SetVector<unsigned> movedNets;
+  for (auto &[op, _] : oldPlacements)
+    if (auto nets = streamNetsOf.find(op); nets != streamNetsOf.end())
+      movedNets.insert_range(nets->second);
+  for (unsigned net : movedNets) {
+    auto stream = netStreams.find(net);
+    cuts.add(stream->second.first, stream->second.second,
+             streamNets[net].packet, -1);
+  }
   for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, -1);
@@ -1946,6 +2039,17 @@ int SAPlacer::updateResourcePenalty(
   }));
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, +1);
+  auto placed = [this](Operation *op) { return positionOf(op); };
+  for (unsigned net : movedNets) {
+    auto &[src, dsts] = netStreams[net];
+    if (streamOf(streamNets[net], placed, src, dsts))
+      cuts.add(src, dsts, streamNets[net].packet, 1);
+  }
+  streamCutPenalty = config.streamCutPenaltyPerChannel * cuts.over();
+  for (auto &[op, oldPos] : oldPlacements) {
+    chargeStreams(op, oldPos, -1);
+    chargeStreams(op, currentPlacement[op], 1);
+  }
   for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, +1);
@@ -2046,7 +2150,7 @@ int SAPlacer::updateResourcePenalty(
 
   cachedResourcePenalty = memSpilloverPenalty + coreOverflowPenalty +
                           computeLockPenalty() + dmaPenalty + bdCountPenalty +
-                          delegatePenalty;
+                          delegatePenalty + streamCutPenalty;
   return cachedResourcePenalty;
 }
 
@@ -2417,6 +2521,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
+  buildStreamNets(device, collected);
+  buildStreamDemand(objectFifos);
   if (pinnedRule.failed())
     return failure();
   llvm::ArrayRef<DMAChannelAnalysis::ChannelClaim> claims =
@@ -2852,7 +2958,7 @@ void SAPlacer::initializeSAState() {
   initResourceTracking();
 
   cascadePen = computePairingPenalty();
-  int memPressure = computeMemoryPressure();
+  int memPressure = computeMemoryPressure() + computeStreamPressure();
   totalCost =
       computeTotalHPWL() + getResourcePenalty() + cascadePen + memPressure;
 
@@ -2948,7 +3054,7 @@ void SAPlacer::runSAMainLoop() {
       initResourceTracking();
       cascadePen = computePairingPenalty();
       totalCost = computeTotalHPWL() + getResourcePenalty() + cascadePen +
-                  computeMemoryPressure();
+                  computeMemoryPressure() + computeStreamPressure();
     }
 
     schedule.cool();
@@ -2972,6 +3078,9 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   int oldCoreOverflow = coreOverflowPenalty;
   SmallVector<TileID> oldCoreOverflowTiles = coreOverflowTiles;
   int oldPositionsOverLocks = positionsOverLocks;
+  StreamCuts oldCuts = cuts;
+  int oldStreamCut = streamCutPenalty;
+  int oldPortsOver = portsOver;
 
   // Apply moves: update placement maps and compute HPWL delta.
   for (auto &[t, _] : moves)
@@ -2996,7 +3105,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
                                 })
                        ? computePairingPenalty()
                        : cascadePen;
-  int newPressure = computeMemoryPressure();
+  int newPressure = computeMemoryPressure() + computeStreamPressure();
   int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
               (newCascade - oldCascade) + (newPressure - oldPressure);
 
@@ -3047,6 +3156,9 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
         }));
     rollbackMove();
     positionsOverLocks = oldPositionsOverLocks;
+    cuts = std::move(oldCuts);
+    streamCutPenalty = oldStreamCut;
+    portsOver = oldPortsOver;
     cachedResourcePenalty = oldResPenalty;
     memSpilloverPenalty = oldMemSpillover;
     bdCountPenalty = oldBDCount;
@@ -3069,6 +3181,10 @@ void SAPlacer::commitMove() {
   bdShortfallAt.commit();
   dmaPenaltyAt.commit();
   runtimeBdAt.commit();
+  netStreams.commit();
+  streamsAt.commit();
+  incomingAt.commit();
+  incomingCount.commit();
   pinLog.clear();
   claimLog.clear();
   coreFifoLog.clear();
@@ -3084,6 +3200,10 @@ void SAPlacer::rollbackMove() {
   bdShortfallAt.rollback();
   dmaPenaltyAt.rollback();
   runtimeBdAt.rollback();
+  netStreams.rollback();
+  streamsAt.rollback();
+  incomingAt.rollback();
+  incomingCount.rollback();
   for (auto &[at, end, sign] : llvm::reverse(pinLog))
     pinUse.place(at, end, -sign);
   for (auto &[at, claim, sign] : llvm::reverse(claimLog))
@@ -3100,13 +3220,14 @@ void SAPlacer::rollbackMove() {
 void SAPlacer::printPlacementStats(int64_t elapsedMs) const {
   int finalHPWL = computeTotalHPWL();
   int finalHardPenalty = getResourcePenalty();
-  int finalPressure = computeMemoryPressure();
+  int finalPressure = computeMemoryPressure() + computeStreamPressure();
   int finalCascade = computePairingPenalty();
   bool isLegal = (finalHardPenalty == 0 && finalCascade == 0);
 
   llvm::dbgs() << "[SA] seed=" << rngSeed << " Final HPWL=" << finalHPWL
                << ", resPenalty=" << finalHardPenalty
                << ", pressure=" << finalPressure << ", cascade=" << finalCascade
+               << ", cut=" << cuts.over()
                << ", legal=" << (isLegal ? "yes" : "NO") << "\n";
   llvm::dbgs() << "[SA] " << schedule.getIteration() << " iters, "
                << movableTiles.size() << " tiles, " << nets.size() << " nets, "
@@ -3222,7 +3343,8 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
 }
 
 void SAPlacer::explainPenalties(InFlightDiagnostic &diag) {
-  SmallVector<TileID> spill, core, locks, channels, bds, delegates, pairing;
+  SmallVector<TileID> spill, core, locks, channels, bds, delegates, pairing,
+      none;
   int spillPenalty = computeMemSpilloverPenalty(&spill);
   int corePenalty = computeCoreOverflowPenalty(&core);
   int lockPenalty = computeLockPenalty(nullptr, &locks);
@@ -3244,6 +3366,7 @@ void SAPlacer::explainPenalties(InFlightDiagnostic &diag) {
     }
   }
   int delegatePenalty = computeDelegatePenalty(&delegates);
+  int cutPenalty = config.streamCutPenaltyPerChannel * cuts.over();
   int pairingPenalty = computePairingPenalty(&pairing);
 
   // The tuner reads these names.
@@ -3254,7 +3377,8 @@ void SAPlacer::explainPenalties(InFlightDiagnostic &diag) {
       {"DMA channels", channelPenalty, channels},
       {"BD ids", bdPenalty, bds},
       {"delegates", delegatePenalty, delegates},
-      {"cascade and shared memory pairing", pairingPenalty, pairing}};
+      {"cascade and shared memory pairing", pairingPenalty, pairing},
+      {"stream cuts", cutPenalty, none}};
   for (auto &[term, penalty, tiles] : terms) {
     if (!penalty)
       continue;

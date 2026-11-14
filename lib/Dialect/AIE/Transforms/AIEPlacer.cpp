@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -25,6 +26,7 @@
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <numeric>
 
@@ -250,6 +252,22 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   }
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
+  columnStreamsUsed.clear();
+  columnIncomingFifos.clear();
+  broadcastFanoutUsed.clear();
+  for (auto &[op, demand] : streamDemand)
+    if (auto tile = dyn_cast<TileOp>(op))
+      if (tile.isCoreTile())
+        recordColumnStreamUsage(op, tile.getCol());
+  for (auto &[op, fanout] : broadcastFanout)
+    if (auto tile = dyn_cast<TileOp>(op))
+      broadcastFanoutUsed[{tile.getCol(), tile.getRow()}] += fanout;
+  buildStreamNets(device, collected);
+  placedCuts = StreamCuts(*targetModel);
+  cutNets.clear();
+  cutNets.resize(streamNets.size());
+  for (TileOp tile : device.getOps<TileOp>())
+    addPlacedStreams(tile);
   buildShimModel(device, objectFifos, channelAnalysis.getChannelClaims(),
                  collected.rank, demandKeys);
   shimTilesAt.clear();
@@ -892,7 +910,8 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
           (inputs.isReservedForOther(logicalTile.getOperation(), candidate) ||
            !leavesPeerRoom(candidate)))
         continue;
-      if (pass == 0 && !fitsColumnStreams(candidate))
+      if (pass == 0 && (!fitsColumnStreams(candidate) ||
+                        raisesStreamCuts(logicalTile, candidate)))
         continue;
       result.sawConstraintMatch = true;
       if (!satisfiesAdjacency(logicalTile, candidate, inputs.bufferAdjacency,
@@ -1415,6 +1434,7 @@ void SequentialPlacer::recordPlacement(LogicalTileOp logicalTile, TileID tile,
                                        PlacementContext &ctx,
                                        StringRef debugLabel) {
   result[logicalTile] = tile;
+  addPlacedStreams(logicalTile);
   LLVM_DEBUG(llvm::dbgs() << DEBUG_TYPE << ": placed " << debugLabel << " LTO "
                           << logicalTile.getLoc() << " at (" << tile.col << ", "
                           << tile.row << ")\n");
@@ -2639,6 +2659,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   }
 
   result[logicalTile] = *maybeTile;
+  addPlacedStreams(logicalTile);
   LLVM_DEBUG({
     auto showCol = [](std::optional<int> c) {
       return c ? std::to_string(*c) : std::string("none");
@@ -2744,7 +2765,8 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     // capacity.
     if (!mergeLogicalTiles && assignedNonCoreTiles.contains(tile))
       continue;
-    if (withinBudgets && !fitsStreamAndBdBudgets(logicalTile, tile))
+    if (withinBudgets && (!fitsStreamAndBdBudgets(logicalTile, tile) ||
+                          raisesStreamCuts(logicalTile, tile)))
       continue;
     if (apartByName &&
         namedClash(logicalTile, overlayTilesAt.lookup(tile)).has_value())
@@ -2878,14 +2900,10 @@ void SequentialPlacer::recordColumnStreamUsage(Operation *tile, int col) {
   used.southIn = incoming.size();
 }
 
-void SequentialPlacer::buildStreamDemand(
-    ArrayRef<ObjectFifoCreateOp> objectFifos) {
+void Placer::buildStreamDemand(ArrayRef<ObjectFifoCreateOp> objectFifos) {
   streamDemand.clear();
-  columnStreamsUsed.clear();
   incomingFifos.clear();
-  columnIncomingFifos.clear();
   broadcastFanout.clear();
-  broadcastFanoutUsed.clear();
   // Rows rise from shims through memtiles to cores, so a stream to a higher
   // rank leaves through the North port and arrives through the South port.
   auto rank = [](Operation *op) -> std::optional<int> {
@@ -2925,13 +2943,161 @@ void SequentialPlacer::buildStreamDemand(
     if (south)
       streamDemand[producer].southOut++;
   }
-  for (auto &[op, demand] : streamDemand)
-    if (auto tile = dyn_cast<TileOp>(op))
-      if (tile.isCoreTile())
-        recordColumnStreamUsage(op, tile.getCol());
-  for (auto &[op, fanout] : broadcastFanout)
-    if (auto tile = dyn_cast<TileOp>(op))
-      broadcastFanoutUsed[{tile.getCol(), tile.getRow()}] += fanout;
+}
+
+StreamCuts::StreamCuts(const AIETargetModel &target)
+    : columns(target.columns()) {
+  int rows = target.rows();
+  size_t cuts = 2 * std::max(columns - 1, 0) + 2 * std::max(rows - 1, 0);
+  capacity.assign(cuts, 0);
+  circuits.assign(cuts, 0);
+  packets.assign(cuts, 0);
+  // Each wire from a switchbox to its neighbour's, through a port both have.
+  auto wires = [&](TileID a, TileID b, WireBundle out, WireBundle in) {
+    auto [rowCut, below, up] = boundaryOf(a, b);
+    capacity[indexOf(rowCut, below, up)] +=
+        std::min(target.getNumDestSwitchboxConnections(a.col, a.row, out),
+                 target.getNumSourceSwitchboxConnections(b.col, b.row, in));
+  };
+  for (int col = 0; col < columns; ++col)
+    for (int row = 0; row < rows; ++row) {
+      TileID at{col, row};
+      if (col + 1 < columns) {
+        TileID east{col + 1, row};
+        wires(at, east, WireBundle::East, WireBundle::West);
+        wires(east, at, WireBundle::West, WireBundle::East);
+      }
+      if (row + 1 < rows) {
+        TileID north{col, row + 1};
+        wires(at, north, WireBundle::North, WireBundle::South);
+        wires(north, at, WireBundle::South, WireBundle::North);
+      }
+    }
+}
+
+unsigned StreamCuts::indexOf(bool rows, int below, bool up) const {
+  return (rows ? 2 * (columns - 1) : 0) + 2 * below + up;
+}
+
+void StreamCuts::add(TileID src, ArrayRef<TileID> dsts, bool packet, int sign) {
+  if (dsts.empty())
+    return;
+  SmallVectorImpl<int> &streams = packet ? packets : circuits;
+  auto cross = [&](bool rows, int from, int to, bool up) {
+    for (int below = from; below < to; ++below)
+      streams[indexOf(rows, below, up)] += sign;
+  };
+  auto [minCol, maxCol] =
+      std::minmax_element(dsts.begin(), dsts.end(),
+                          [](TileID a, TileID b) { return a.col < b.col; });
+  auto [minRow, maxRow] =
+      std::minmax_element(dsts.begin(), dsts.end(),
+                          [](TileID a, TileID b) { return a.row < b.row; });
+  cross(false, src.col, maxCol->col, true);
+  cross(false, minCol->col, src.col, false);
+  cross(true, src.row, maxRow->row, true);
+  cross(true, minRow->row, src.row, false);
+}
+
+int StreamCuts::over() const {
+  int missing = 0;
+  for (auto [cap, circuit, packet] : llvm::zip(capacity, circuits, packets))
+    missing += std::max(0, circuit + (packet > 0) - cap);
+  return missing;
+}
+
+int64_t StreamCuts::near(double fraction) const {
+  int64_t total = 0;
+  for (auto [cap, circuit, packet] : llvm::zip(capacity, circuits, packets)) {
+    int64_t past = circuit + (packet > 0) -
+                   static_cast<int64_t>(std::floor(fraction * cap));
+    if (past > 0)
+      total += past * past;
+  }
+  return total;
+}
+
+void Placer::buildStreamNets(DeviceOp device, const CollectedOps &collected) {
+  streamNets.clear();
+  streamNetsOf.clear();
+  llvm::StringMap<Operation *> delegates;
+  for (ObjectFifoAllocateOp alloc : collected.objectFifoAllocates)
+    delegates[alloc.getObjFifoName()] = alloc.getDelegateTile().getDefiningOp();
+  for (ObjectFifoCreateOp fifo : collected.objectFifos) {
+    StreamNet &net = streamNets.emplace_back();
+    net.src = fifo.getProducerTile().getDefiningOp();
+    for (Value consumer : fifo.getConsumerTiles())
+      net.dsts.push_back(consumer.getDefiningOp());
+    net.packet = isPacketSwitched(fifo.packetHeader(), packetSwitched);
+    net.mayShare = !fifo.dmaReason();
+    net.delegate = delegates.lookup(fifo.getSymName());
+    if (std::optional<ObjectFifoLinkOp> link = fifo.getLink())
+      if (std::optional<Value> tile = link->getOptionalSharedTile())
+        net.link = tile->getDefiningOp();
+  }
+  for (FlowOp flow : collected.flows)
+    streamNets.push_back({flow.getSource().getDefiningOp(),
+                          {flow.getDest().getDefiningOp()},
+                          /*packet=*/false});
+  for (PacketFlowOp flow : collected.pktFlows) {
+    SmallVector<Operation *, 2> sources, dests;
+    for (auto source : flow.getOps<PacketSourceOp>())
+      sources.push_back(source.getTile().getDefiningOp());
+    for (auto dest : flow.getOps<PacketDestOp>())
+      dests.push_back(dest.getTile().getDefiningOp());
+    for (Operation *source : sources)
+      streamNets.push_back({source, dests, /*packet=*/true});
+  }
+  for (RouteOp route : collected.routes) {
+    auto tileOf = [&](StringRef name) -> Operation * {
+      auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(
+          device, StringAttr::get(device.getContext(), name));
+      return endpoint ? endpoint.getTile().getDefiningOp() : nullptr;
+    };
+    SmallVector<Operation *, 2> dests;
+    for (StringRef dest : route.getDestinationNames())
+      dests.push_back(tileOf(dest));
+    bool packet = isPacketSwitched(route.getPacketAttr(), packetSwitched);
+    for (StringRef source : route.getSourceNames())
+      streamNets.push_back({tileOf(source), dests, packet});
+  }
+  for (auto [index, net] : llvm::enumerate(streamNets)) {
+    SetVector<Operation *> tiles;
+    tiles.insert(net.src);
+    tiles.insert(net.dsts.begin(), net.dsts.end());
+    tiles.insert(net.delegate);
+    tiles.insert(net.link);
+    for (Operation *tile : tiles)
+      if (tile)
+        streamNetsOf[tile].push_back(index);
+  }
+}
+
+bool Placer::streamOf(const StreamNet &net,
+                      function_ref<std::optional<TileID>(Operation *)> at,
+                      TileID &src, SmallVectorImpl<TileID> &dsts) const {
+  dsts.clear();
+  std::optional<TileID> from = net.src ? at(net.src) : std::nullopt;
+  if (!from)
+    return false;
+  src = *from;
+  std::optional<TileID> delegate, link;
+  if (net.mayShare) {
+    if (net.delegate && !(delegate = at(net.delegate)))
+      return false;
+    if (net.link && !(link = at(net.link)))
+      return false;
+  }
+  for (Operation *dst : net.dsts) {
+    std::optional<TileID> to = dst ? at(dst) : std::nullopt;
+    if (!to)
+      return false;
+    if (!net.mayShare || ObjectFifoCreateOp::sharedMemoryOf(
+                             *targetModel, src, *to, delegate, link) ==
+                             AIETargetModel::SharedMemory::None)
+      dsts.push_back(*to);
+  }
+  return !dsts.empty();
 }
 
 Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
@@ -3192,6 +3358,40 @@ bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
   int before = runtimeBdIds.shortfall(onTile, tile);
   onTile.push_back(logicalTile);
   return runtimeBdIds.shortfall(onTile, tile) == before;
+}
+
+bool SequentialPlacer::raisesStreamCuts(Operation *logicalTile,
+                                        TileID tile) const {
+  auto at = [&](Operation *op) -> std::optional<TileID> {
+    if (op == logicalTile)
+      return tile;
+    if (auto placed = dyn_cast<TileOp>(op))
+      return placed.getTileID();
+    return getPlacement(op);
+  };
+  StreamCuts cuts = placedCuts;
+  int before = cuts.over();
+  TileID src;
+  SmallVector<TileID> dsts;
+  for (unsigned net : streamNetsOf.lookup(logicalTile))
+    if (!cutNets.test(net) && streamOf(streamNets[net], at, src, dsts))
+      cuts.add(src, dsts, streamNets[net].packet, 1);
+  return cuts.over() > before;
+}
+
+void SequentialPlacer::addPlacedStreams(Operation *logicalTile) {
+  auto at = [&](Operation *op) -> std::optional<TileID> {
+    if (auto placed = dyn_cast<TileOp>(op))
+      return placed.getTileID();
+    return getPlacement(op);
+  };
+  TileID src;
+  SmallVector<TileID> dsts;
+  for (unsigned net : streamNetsOf.lookup(logicalTile))
+    if (!cutNets.test(net) && streamOf(streamNets[net], at, src, dsts)) {
+      placedCuts.add(src, dsts, streamNets[net].packet, 1);
+      cutNets.set(net);
+    }
 }
 
 void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,

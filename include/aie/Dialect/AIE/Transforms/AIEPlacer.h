@@ -15,6 +15,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SortedVectorMap.h"
@@ -50,6 +51,28 @@ struct StreamDemand {
     southOut += other.southOut;
     return *this;
   }
+};
+
+// The streams each boundary between neighbouring rows or columns carries one
+// way, against the channels across it, as Pathfinder::cutOverflow counts
+// them: every circuit tree crossing it takes a channel, and the packet flows
+// crossing it one more. Demand counts only streams sure to be routed and
+// capacity every wire, so a placement over it cannot route.
+class StreamCuts {
+public:
+  StreamCuts() = default;
+  explicit StreamCuts(const AIETargetModel &target);
+  // Adds (`sign` 1) or removes (-1) a stream from `src` to `dsts`.
+  void add(TileID src, llvm::ArrayRef<TileID> dsts, bool packet, int sign);
+  // The channels the boundaries are short of.
+  int over() const;
+  // The squared streams past `fraction` of each boundary's channels.
+  int64_t near(double fraction) const;
+
+private:
+  unsigned indexOf(bool rows, int below, bool up) const;
+  int columns = 0;
+  llvm::SmallVector<int, 32> capacity, circuits, packets;
 };
 
 // maps logical tile operations to physical coordinates
@@ -442,6 +465,39 @@ protected:
   void collectOverlayUses(DeviceOp device);
   llvm::SmallVector<mlir::Operation *> overlayTileOps() const;
 
+  // North/South streams of each tile's ObjectFifos: a memtile has 6
+  // DMA inputs but only 4 streams from the core above, and no East/West.
+  llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
+  // Broadcast consumers in one column share a single incoming stream.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
+      incomingFifos;
+  // Extra broadcast destinations beyond the first, which uses one DMA channel.
+  llvm::DenseMap<mlir::Operation *, int> broadcastFanout;
+  void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // A stream routing will need, from one tile op to others. Consumers of an
+  // objectFIFO that share memory with its producer
+  // (ObjectFifoCreateOp::sharedMemoryOf, through its allocate's delegate and
+  // its link's tile) take none of it.
+  struct StreamNet {
+    mlir::Operation *src;
+    llvm::SmallVector<mlir::Operation *, 2> dsts;
+    bool packet;
+    // An objectFIFO dmaReason() leaves to sharedMemoryOf.
+    bool mayShare = false;
+    mlir::Operation *delegate = nullptr;
+    mlir::Operation *link = nullptr;
+  };
+  llvm::SmallVector<StreamNet> streamNets;
+  // The nets each tile op is an end, delegate or link tile of.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned>> streamNetsOf;
+  void buildStreamNets(DeviceOp device, const CollectedOps &collected);
+  // The stream `net` routes where `at` puts tile ops, into `src` and `dsts`;
+  // false while an end is unplaced, or when no consumer takes a stream.
+  bool streamOf(const StreamNet &net,
+                llvm::function_ref<std::optional<TileID>(mlir::Operation *)> at,
+                TileID &src, llvm::SmallVectorImpl<TileID> &dsts) const;
+
   // flowChannelDemand's `named`, by tile op.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
       namedChannels;
@@ -646,20 +702,20 @@ private:
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
-  // North/South streams of each tile's ObjectFifos: a memtile has 6
-  // DMA inputs but only 4 streams from the core above, and no East/West.
-  llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
   // Aggregate traffic between a column's cores and the tiles below them.
   llvm::DenseMap<int, StreamDemand> columnStreamsUsed;
-  // Broadcast consumers in one column share a single incoming stream.
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
-      incomingFifos;
   llvm::DenseMap<int, llvm::DenseSet<mlir::Operation *>> columnIncomingFifos;
   void recordColumnStreamUsage(mlir::Operation *tile, int col);
-  // Extra broadcast destinations beyond the first, which uses one DMA channel.
-  llvm::DenseMap<mlir::Operation *, int> broadcastFanout;
   llvm::DenseMap<TileID, int> broadcastFanoutUsed;
-  void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+  // The cuts of the stream nets whose ends are all placed, and which those
+  // are.
+  StreamCuts placedCuts;
+  llvm::BitVector cutNets;
+  // Whether placing `logicalTile` at `tile` leaves the boundaries shorter of
+  // channels than they are.
+  bool raisesStreamCuts(mlir::Operation *logicalTile, TileID tile) const;
+  // Adds the stream nets `logicalTile`, now placed, completes.
+  void addPlacedStreams(mlir::Operation *logicalTile);
 
   // Pinned objectFIFO ends: the rule, their positions, and each tile op's own.
   PinnedChannels pinnedRule;
@@ -927,6 +983,14 @@ struct SAConfig {
   // Memory pressure (cost 4)
   int pressurePerKB = 3;           // quadratic pressure above threshold
   double pressureThreshold = 0.75; // utilization fraction triggering pressure
+
+  // Stream demand: per channel a row or column boundary is short of (hard),
+  // per squared stream past a fraction of its channels (soft), and per
+  // North/South port over a tile's or a column's (soft).
+  int streamCutPenaltyPerChannel = 20;
+  int streamNearWeight = 3;
+  double streamNearFraction = 0.75;
+  int portOverWeight = 10;
 
   // Adaptive cooling
   double coolFast = 0.995;        // accept ratio > 96%: cool faster
@@ -1366,6 +1430,28 @@ private:
   // The tile ops overlayUses names, which the overlay's channel weighs where
   // they are.
   llvm::SmallVector<mlir::Operation *> overlayTiles;
+  // The streams each row and column boundary carries, and the penalty for
+  // the channels they are short of.
+  StreamCuts cuts;
+  int streamCutPenalty = 0;
+  // Each stream net's stream as cuts counts it; no destinations for none.
+  JournaledMap<unsigned, std::pair<TileID, llvm::SmallVector<TileID, 2>>>
+      netStreams;
+  // The North/South streams at each position, how many objectFIFOs enter
+  // each column's cores and the cores each enters there, and the ports those
+  // overrun.
+  JournaledMap<TileID, StreamDemand> streamsAt;
+  JournaledMap<int, int> incomingAt;
+  JournaledMap<std::pair<int, mlir::Operation *>, int> incomingCount;
+  int portsOver = 0;
+  // Each position's North/South ports, by column then row, and each
+  // column's lowest core's South inputs.
+  llvm::SmallVector<StreamDemand> portsAt;
+  llvm::SmallVector<int> columnSouthPorts;
+  // Adds (`sign` 1) or removes (-1) the streams of tile op `op` at `at`.
+  void chargeStreams(mlir::Operation *op, TileID at, int sign);
+  int portExcess(TileID at) const;
+  int columnExcess(int col) const;
   // The runtime BD-id charge at each shim position.
   JournaledMap<TileID, int> runtimeBdAt;
 
@@ -1469,6 +1555,9 @@ private:
   lockGroups() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
+  // The soft stream terms: boundaries near their channels, and North/South
+  // ports over a tile's or a column's.
+  int computeStreamPressure() const;
   int computeAdjacencyPenalty(
       const Adjacency &adj, llvm::ArrayRef<std::pair<int, int>> validOffsets,
       int weight, llvm::SmallVectorImpl<TileID> *charged = nullptr) const;
