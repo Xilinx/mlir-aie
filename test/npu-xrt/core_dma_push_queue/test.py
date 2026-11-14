@@ -16,7 +16,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import In, ObjectFifo, Out, Packet, Program, Runtime, Transport, Worker
-from aie.helpers.dialects.scf import _for as range_
+from aie.helpers.dialects.scf import _for as range_, forever_
 
 LINE_LEN = 8
 # One push covers 256 objects, so this takes two.
@@ -27,7 +27,7 @@ LINE_TY = np.ndarray[(LINE_LEN,), np.dtype[np.int32]]
 
 
 def pass_through(of_in, of_out):
-    for _ in range_(sys.maxsize):
+    for _ in forever_():
         src = of_in.acquire(1)
         dst = of_out.acquire(1)
         for b in range_(LINE_LEN):
@@ -37,7 +37,7 @@ def pass_through(of_in, of_out):
 
 
 def add_one(of_in, of_out):
-    for _ in range_(sys.maxsize):
+    for _ in forever_():
         src = of_in.acquire(1)
         dst = of_out.acquire(1)
         for b in range_(LINE_LEN):

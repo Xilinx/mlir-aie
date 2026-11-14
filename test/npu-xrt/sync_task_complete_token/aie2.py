@@ -10,13 +10,12 @@
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe
 
-import sys
 
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 
 dtype = T.i32
 output_sz = 16
@@ -52,7 +51,7 @@ def design():
             # Core
             @core(tiles[2][0])
             def core_body():
-                for _ in range_(sys.maxsize):
+                for _ in forever_():
                     elem_output = fifo_output.acquire(ObjectFifoPort.Produce, 1)
                     elem_output[0] = 0
                     for _ in range_(16):

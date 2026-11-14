@@ -3,7 +3,6 @@
 #
 
 # RUN: %python %s | FileCheck %s
-import sys
 
 import numpy as np
 from aie.extras.dialects import memref
@@ -22,7 +21,7 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.dialects.aiex import dma_wait, npu_dma_memcpy_nd, runtime_sequence
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 from util import construct_and_print_module
 
 DMA = WireBundle.DMA
@@ -59,7 +58,7 @@ def my_vector_scalar(module):
         @core(M)
         def core_body():
             # Effective while(1)
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 # Number of sub-vector "tile" iterations
                 for _ in range_(N_div_n):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
@@ -142,7 +141,7 @@ def my_matmul(module):
 
         @core(M)
         def core_body():
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 for _ in range_(tiles):
                     elem_out = of_outC.acquire(ObjectFifoPort.Produce, 1)
                     zero(elem_out)

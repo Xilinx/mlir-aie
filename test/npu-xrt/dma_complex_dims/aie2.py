@@ -17,7 +17,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 from aie.helpers.taplib import TensorAccessPattern
 
 
@@ -105,7 +105,7 @@ def my_passthrough(m, k, K, r, s):
             # Compute tile just passes, doesn't do any operation
             @core(ComputeTile)
             def core_body():
-                for _ in range_(sys.maxsize):
+                for _ in forever_():
                     for _ in range_(K // k):
                         elem_in = of_in_mem_to_comp.acquire(ObjectFifoPort.Consume, 1)
                         elem_out = of_out_comp_to_mem.acquire(ObjectFifoPort.Produce, 1)

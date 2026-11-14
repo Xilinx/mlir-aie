@@ -16,7 +16,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 
 N = 4096
 dev = AIEDevice.npu1_1col
@@ -59,7 +59,7 @@ def compute_repeat():
             # Compute tile
             @core(ComputeTile)
             def core_body():
-                for _ in range_(sys.maxsize):
+                for _ in forever_():
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
                     for i in range_(N):
