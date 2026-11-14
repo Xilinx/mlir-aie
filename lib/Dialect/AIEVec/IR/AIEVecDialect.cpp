@@ -5,9 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The dialect's constructor, which loads the LLVM dialect for the FIFO
-// stream address type. Kept apart from AIEVecOps.cpp: its using namespace
-// llvm makes Type ambiguous once LLVMDialect.h is included.
+// The dialect's constructor, which loads the LLVM dialect. LLVMDialect.h is
+// included here alone: next to `using namespace llvm` it makes `Type`
+// ambiguous.
 
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 

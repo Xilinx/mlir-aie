@@ -21,7 +21,7 @@
 // CHECK-COUNT-3: aievec.fifo_st_push_bfp16
 // CHECK: scf.for
 // CHECK: aievec.fifo_start %kb
-// CHECK: scf.for {{.*}} iter_args
+// CHECK: scf.for {{.*}} iter_args({{.*}}) -> (!llvm.ptr, vector<32xi32>, i32)
 // CHECK: aievec.load_bfp16 %[[QB]]
 // CHECK: aievec.fifo_ld_pop_bfp16
 // CHECK: aievec.matmul_aie2p_bfp16

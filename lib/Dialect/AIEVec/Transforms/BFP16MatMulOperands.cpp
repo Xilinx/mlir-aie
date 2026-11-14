@@ -35,8 +35,8 @@ using namespace xilinx::aievec;
 
 namespace {
 
-/// The type of a FIFO stream's address: a pointer, so that a loop carries
-/// it as one.
+/// The type of a FIFO stream's address. Loops carry it as a pointer, not as
+/// an integer converted at every access.
 Type fifoAddrType(MLIRContext *ctx) { return LLVM::LLVMPointerType::get(ctx); }
 
 constexpr int64_t kTile = 64;    // Values in an 8x8 tile.

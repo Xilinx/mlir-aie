@@ -43,3 +43,20 @@ func.func @blocks(%b: memref<576xi8>, %o: index) -> (vector<64xi8>, vector<64xi8
   %w1, %ws1, %wn1 = aievec.fifo_st_push_bfp16 %w, %ws, %wn, %m0, %e0 : vector<32xi32>, vector<64xi8>, vector<8xi8> -> vector<32xi32>
   return %m1, %m2 : vector<64xi8>, vector<64xi8>
 }
+
+// A stream's address is a pointer, which loops and functions pass along.
+// CHECK-LABEL: func.func @stream_through_loop
+// CHECK-SAME: %{{.*}}: !llvm.ptr
+// CHECK: scf.for {{.*}} -> (!llvm.ptr, vector<32xi32>, i32)
+// CHECK: aievec.fifo_st_push_bfp16
+func.func @stream_through_loop(%a: !llvm.ptr, %s: vector<32xi32>, %n: i32, %m: vector<64xi8>, %e: vector<8xi8>) -> !llvm.ptr {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %r:3 = scf.for %i = %c0 to %c4 step %c1 iter_args(%x = %a, %y = %s, %z = %n) -> (!llvm.ptr, vector<32xi32>, i32) {
+    %a1, %s1, %n1 = aievec.fifo_st_push_bfp16 %x, %y, %z, %m, %e : vector<32xi32>, vector<64xi8>, vector<8xi8> -> vector<32xi32>
+    scf.yield %a1, %s1, %n1 : !llvm.ptr, vector<32xi32>, i32
+  }
+  return %r#0 : !llvm.ptr
+}
+
