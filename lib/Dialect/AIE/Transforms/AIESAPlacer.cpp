@@ -523,10 +523,8 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
         bufTile = *delegatePos;
       } else if (shared == SharedMemory::Either) {
         if (sign > 0) {
-          int64_t prodUsed =
-              currentMemUsage.count(prodPos) ? currentMemUsage[prodPos] : 0;
-          int64_t consUsed =
-              currentMemUsage.count(consPos) ? currentMemUsage[consPos] : 0;
+          int64_t prodUsed = currentMemUsage.lookup(prodPos);
+          int64_t consUsed = currentMemUsage.lookup(consPos);
           bufTile = (prodUsed <= consUsed) ? prodPos : consPos;
           // Only track shared-mem destination for single-consumer fifos.
           // allocate ops require all endpoints share access to the delegate
@@ -584,7 +582,11 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
 void SAPlacer::drawChannel(TileID position, bool output,
                            const std::optional<PinnedChannels::End> &pin,
                            int sign) {
-  int taken = pin ? pinUse.place(position, *pin, sign) : sign;
+  int taken = sign;
+  if (pin) {
+    taken = pinUse.place(position, *pin, sign);
+    pinLog.push_back({position, *pin, sign});
+  }
   auto &[in, out] = currentDMAUsage[position];
   (output ? out : in) += taken;
 }
@@ -594,7 +596,6 @@ void SAPlacer::addLockDemand(TileID pos, int locks) {
   int held = targetModel->getNumLocks(pos.col, pos.row);
   positionsOverLocks += (demand + locks > held) - (demand > held);
   demand += locks;
-  lockUndo.push_back({pos, locks});
 }
 
 void SAPlacer::initResourceTracking() {
@@ -682,7 +683,6 @@ void SAPlacer::initResourceTracking() {
     if (std::optional<TileID> pos = positionOf(shim);
         pos && !runtimeBdAt.contains(*pos))
       chargeRuntimeBds(*pos);
-  runtimeBdUndo.clear();
 
   spillTiles.clear();
   for (auto &[op, _] : memTileEnds)
@@ -1168,7 +1168,6 @@ SmallVector<TileID> SAPlacer::refreshCoreUnplaced() {
   for (TileID pos : coreDirty) {
     if (targetModel->getTileType(pos.col, pos.row) != AIETileType::CoreTile)
       continue;
-    coreUndo.push_back({pos, coreUnplacedAt.lookup(pos)});
     coreUnplacedAt[pos] = coreUnplaced(pos);
     changed.push_back(pos);
   }
@@ -1631,9 +1630,8 @@ void SAPlacer::chargeRuntimeBds(TileID pos) {
     if (auto at = currentPlacement.find(lt);
         at != currentPlacement.end() && at->second == pos)
       onTile.push_back(lt);
-  int &at = runtimeBdAt[pos];
-  runtimeBdUndo.push_back({pos, at});
-  at = runtimeBdIds.shortfall(onTile, pos) * config.dmaPenaltyPerChannel;
+  runtimeBdAt[pos] =
+      runtimeBdIds.shortfall(onTile, pos) * config.dmaPenaltyPerChannel;
 }
 
 int SAPlacer::computeDMAChannelPenalty() {
@@ -1788,7 +1786,7 @@ int SAPlacer::computeBDCountPenalty() {
   int64_t penalty = 0;
   for (auto &[tile, ends] : memTileEnds) {
     std::optional<TileID> at = positionOf(tile);
-    if (!at || bdShortfallAt.count(*at))
+    if (!at || bdShortfallAt.contains(*at))
       continue;
     int64_t shortfall = bdShortfall(*at, memTilesAt(*at));
     bdShortfallAt[*at] = shortfall;
@@ -1932,8 +1930,10 @@ int SAPlacer::updateResourcePenalty(
   for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, -1);
-    for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op))
+    for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op)) {
       pinUse.claim(currentPlacement[op], claim, -1);
+      claimLog.push_back({currentPlacement[op], claim, -1});
+    }
   }
 
   // Restore new positions and add new contributions
@@ -1947,8 +1947,10 @@ int SAPlacer::updateResourcePenalty(
   for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, +1);
-    for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op))
+    for (const DMAChannelAnalysis::ChannelClaim &claim : claimsOf.lookup(op)) {
       pinUse.claim(currentPlacement[op], claim, 1);
+      claimLog.push_back({currentPlacement[op], claim, 1});
+    }
   }
 
   for (auto &[op, oldPos] : oldPlacements)
@@ -1967,7 +1969,6 @@ int SAPlacer::updateResourcePenalty(
     if (stackIt != stackSizes.end())
       currentMemUsage[newPos] += stackIt->second;
   }
-  coreUndo.clear();
   for (auto &[op, oldPos] : oldPlacements)
     if (coreContents.count(op)) {
       coreDirty.insert(oldPos);
@@ -1994,7 +1995,6 @@ int SAPlacer::updateResourcePenalty(
   };
   if (reads(spillTiles) || !replannedLinks.empty())
     memSpilloverPenalty = computeMemSpilloverPenalty();
-  bdUndo.clear();
   SmallVector<TileID> bdTouched;
   for (ReplannedLink replanned : replannedLinks)
     if (std::optional<TileID> pos =
@@ -2009,7 +2009,6 @@ int SAPlacer::updateResourcePenalty(
           bdTouched.push_back(pos);
   for (TileID pos : bdTouched) {
     int64_t &at = bdShortfallAt[pos];
-    bdUndo.push_back({pos, at});
     bdCountPenalty -= static_cast<int>(at * config.dmaPenaltyPerChannel);
     at = bdShortfall(pos, memTilesAt(pos));
     bdCountPenalty += static_cast<int>(at * config.dmaPenaltyPerChannel);
@@ -2032,15 +2031,12 @@ int SAPlacer::updateResourcePenalty(
       if (auto it = currentPlacement.find(end); it != currentPlacement.end())
         dmaTouched.insert(it->second);
   }
-  runtimeBdUndo.clear();
   for (auto &[op, oldPos] : oldPlacements)
     if (runtimeBdIds.uses(op))
       for (TileID pos : {oldPos, currentPlacement[op]})
         chargeRuntimeBds(pos);
-  dmaUndo.clear();
   for (TileID tile : dmaTouched) {
     int &at = dmaPenaltyAt[tile];
-    dmaUndo.push_back({tile, at});
     int now = computeTileDMAPenalty(tile);
     dmaPenalty += now - at;
     at = now;
@@ -2968,19 +2964,15 @@ void SAPlacer::runSAMainLoop() {
 //===----------------------------------------------------------------------===//
 
 void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
-  // Snapshot state for revert on rejection.
+  // What the move changes is journaled from here, and the terms it may
+  // recompute are kept, for a rejection to restore.
+  commitMove();
   SmallVector<std::pair<Operation *, TileID>> oldPlacements;
   for (auto &[t, _] : moves)
     oldPlacements.push_back({t, currentPlacement[t]});
   int oldResPenalty = cachedResourcePenalty;
   int oldMemSpillover = memSpilloverPenalty, oldBDCount = bdCountPenalty,
       oldDelegate = delegatePenalty, oldDMA = dmaPenalty;
-  auto savedMemUsage = currentMemUsage;
-  auto savedDMAUsage = currentDMAUsage;
-  PinnedChannelUse savedPins = pinUse;
-  auto savedSharedMemDest = sharedMemDestination;
-  coreFifoLog.clear();
-  lockUndo.clear();
   int oldCoreOverflow = coreOverflowPenalty;
   SmallVector<TileID> oldCoreOverflowTiles = coreOverflowTiles;
   int oldPositionsOverLocks = positionsOverLocks;
@@ -3057,36 +3049,52 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
         llvm::map_to_vector(replannedLinks, [](ReplannedLink replanned) {
           return std::make_pair(replanned.index, replanned.from);
         }));
-    currentMemUsage = savedMemUsage;
-    currentDMAUsage = savedDMAUsage;
-    pinUse = savedPins;
-    sharedMemDestination = savedSharedMemDest;
-    for (auto &[pos, delta] : lockUndo)
-      currentLockDemand[pos] -= delta;
+    rollbackMove();
     positionsOverLocks = oldPositionsOverLocks;
     cachedResourcePenalty = oldResPenalty;
     memSpilloverPenalty = oldMemSpillover;
     bdCountPenalty = oldBDCount;
     delegatePenalty = oldDelegate;
     dmaPenalty = oldDMA;
-    for (auto &[tile, at] : dmaUndo)
-      dmaPenaltyAt[tile] = at;
-    for (auto &[pos, at] : llvm::reverse(runtimeBdUndo))
-      runtimeBdAt[pos] = at;
-    for (auto &[tile, at] : llvm::reverse(bdUndo))
-      bdShortfallAt[tile] = at;
-    for (auto &[pos, bytes, count] : llvm::reverse(coreFifoLog)) {
-      BufferCounts &held = coreFifoBuffers[pos];
-      if ((held[bytes] -= count) == 0)
-        held.erase(held.find(bytes));
-    }
-    for (auto &[pos, unplaced] : llvm::reverse(coreUndo))
-      coreUnplacedAt[pos] = unplaced;
     coreOverflowPenalty = oldCoreOverflow;
     coreOverflowTiles = std::move(oldCoreOverflowTiles);
     rejectedMoves++;
     schedule.record(false);
   }
+}
+
+void SAPlacer::commitMove() {
+  currentMemUsage.commit();
+  currentLockDemand.commit();
+  currentDMAUsage.commit();
+  sharedMemDestination.commit();
+  coreFifoBuffers.commit();
+  coreUnplacedAt.commit();
+  bdShortfallAt.commit();
+  dmaPenaltyAt.commit();
+  runtimeBdAt.commit();
+  pinLog.clear();
+  claimLog.clear();
+  coreFifoLog.clear();
+}
+
+void SAPlacer::rollbackMove() {
+  currentMemUsage.rollback();
+  currentLockDemand.rollback();
+  currentDMAUsage.rollback();
+  sharedMemDestination.rollback();
+  coreFifoBuffers.rollback();
+  coreUnplacedAt.rollback();
+  bdShortfallAt.rollback();
+  dmaPenaltyAt.rollback();
+  runtimeBdAt.rollback();
+  for (auto &[at, end, sign] : llvm::reverse(pinLog))
+    pinUse.place(at, end, -sign);
+  for (auto &[at, claim, sign] : llvm::reverse(claimLog))
+    pinUse.claim(at, claim, -sign);
+  pinLog.clear();
+  claimLog.clear();
+  coreFifoLog.clear();
 }
 
 //===----------------------------------------------------------------------===//

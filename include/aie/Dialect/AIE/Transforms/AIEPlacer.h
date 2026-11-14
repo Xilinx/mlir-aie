@@ -1025,6 +1025,45 @@ struct NetInfo {
   bool isMulticast = false; // >4 consumers triggers 2x HPWL penalty
 };
 
+/// A DenseMap that notes what each write through operator[] overwrote, so
+/// rollback() can restore it as of the last commit().
+template <typename Key, typename Value>
+class JournaledMap {
+public:
+  using Map = llvm::DenseMap<Key, Value>;
+  Value &operator[](const Key &key) {
+    auto [it, added] = map.try_emplace(key);
+    saved.emplace_back(key,
+                       added ? std::nullopt : std::optional<Value>(it->second));
+    return it->second;
+  }
+  Value lookup(const Key &key) const { return map.lookup(key); }
+  typename Map::const_iterator find(const Key &key) const {
+    return map.find(key);
+  }
+  bool contains(const Key &key) const { return map.contains(key); }
+  typename Map::const_iterator begin() const { return map.begin(); }
+  typename Map::const_iterator end() const { return map.end(); }
+  void clear() {
+    map.clear();
+    saved.clear();
+  }
+  void commit() { saved.clear(); }
+  void rollback() {
+    for (auto &[key, old] : llvm::reverse(saved)) {
+      if (old)
+        map[key] = std::move(*old);
+      else
+        map.erase(key);
+    }
+    saved.clear();
+  }
+
+private:
+  Map map;
+  llvm::SmallVector<std::pair<Key, std::optional<Value>>> saved;
+};
+
 // Simulated annealing placement algorithm
 //
 // Uses HPWL (half-perimeter wire length) cost with incremental bounding-box
@@ -1211,25 +1250,30 @@ private:
   // Resource tracking
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>>
       tileToFifoIndices;
-  llvm::DenseMap<TileID, int64_t> currentMemUsage;
+  // Every map a move writes is journaled, and a rejected move rolls them
+  // back (rejectMove).
+  JournaledMap<TileID, int64_t> currentMemUsage;
   // Lock packings the moves repeat, the costliest to search again.
   mutable LockPlan::Memo lockMemo{64};
   // Every position whose memory a lock user at a position reaches, by
   // LockPlan::reaches, in position order and its own included.
   llvm::DenseMap<TileID, llvm::SmallVector<TileID>> lockReach;
-  // The locks each position's pools, lock ops and input pools take, the
-  // move's changes, and how many positions take more than they hold.
-  llvm::DenseMap<TileID, int> currentLockDemand;
-  llvm::SmallVector<std::pair<TileID, int>> lockUndo;
+  // The locks each position's pools, lock ops and input pools take, and how
+  // many positions take more than they hold.
+  JournaledMap<TileID, int> currentLockDemand;
   int positionsOverLocks = 0;
   // The locks a tile op's lock ops and input pools take wherever it sits.
   llvm::DenseMap<mlir::Operation *, int> homeLocks;
-  llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
+  JournaledMap<TileID, std::pair<int, int>> currentDMAUsage;
   // The rule pinned ends share channels by, and the pinned ends at each
-  // position, whose channels count in currentDMAUsage once each.
+  // position, whose channels count in currentDMAUsage once each. The move's
+  // changes to pinUse are logged, each undone by its inverse.
   PinnedChannels pinnedRule;
   PinnedChannelUse pinUse;
-  llvm::DenseMap<size_t, TileID> sharedMemDestination;
+  llvm::SmallVector<std::tuple<TileID, PinnedChannels::End, int>> pinLog;
+  llvm::SmallVector<std::tuple<TileID, DMAChannelAnalysis::ChannelClaim, int>>
+      claimLog;
+  JournaledMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
   // The resource terms that read only some tiles' positions, kept so a move
   // recomputes one only when it moves a tile the term reads.
@@ -1248,16 +1292,14 @@ private:
   // ObjectFIFO buffers by size, and how many of each.
   using BufferCounts = llvm::SortedVectorMap<int64_t, int, 4>;
   // The objectFIFO buffers on each core tile.
-  llvm::DenseMap<TileID, BufferCounts> coreFifoBuffers;
-  // Charges chargeCoreFifo applied in the current move, for undo and for
-  // the tiles it changed.
+  JournaledMap<TileID, BufferCounts> coreFifoBuffers;
+  // Charges chargeCoreFifo applied in the current move, which tell the
+  // tiles it changed.
   llvm::SmallVector<std::tuple<TileID, int64_t, int>> coreFifoLog;
   // coreUnplaced of each core tile.
-  llvm::DenseMap<TileID, int64_t> coreUnplacedAt;
+  JournaledMap<TileID, int64_t> coreUnplacedAt;
   // The tiles whose ops the current move changed.
   llvm::DenseSet<TileID> coreDirty;
-  // What the last move overwrote in coreUnplacedAt.
-  llvm::SmallVector<std::pair<TileID, int64_t>> coreUndo;
   // The core overflow penalty, kept while no tile it reads changes, and the
   // overflowing tiles it was computed for.
   int coreOverflowPenalty = 0;
@@ -1289,9 +1331,7 @@ private:
   // so every cache below that reads a position's ends or buffers also keys
   // on every variable link's depth, not the tiles' positions alone.
   // The BD ids the mem tile ends at each position are short of.
-  llvm::DenseMap<TileID, int64_t> bdShortfallAt;
-  // What the last move overwrote in bdShortfallAt.
-  llvm::SmallVector<std::pair<TileID, int64_t>> bdUndo;
+  JournaledMap<TileID, int64_t> bdShortfallAt;
   using WalkSets =
       llvm::SmallVector<llvm::SmallVector<std::pair<mlir::Operation *, int>>>;
   struct BDShortfall {
@@ -1320,17 +1360,14 @@ private:
   // and channels wherever it is placed.
   llvm::SmallVector<mlir::Operation *> logicalMemTiles;
   int cachedPressure = 0;
-  // The DMA-channel term per tile, and what the last move overwrote in it.
+  // The DMA-channel term, and its part at each tile.
   int dmaPenalty = 0;
-  llvm::DenseMap<TileID, int> dmaPenaltyAt;
-  llvm::SmallVector<std::pair<TileID, int>> dmaUndo;
+  JournaledMap<TileID, int> dmaPenaltyAt;
   // The tile ops overlayUses names, which the overlay's channel weighs where
   // they are.
   llvm::SmallVector<mlir::Operation *> overlayTiles;
-  // The runtime BD-id charge at each shim position, and what the last move
-  // overwrote.
-  llvm::DenseMap<TileID, int> runtimeBdAt;
-  llvm::SmallVector<std::pair<TileID, int>> runtimeBdUndo;
+  // The runtime BD-id charge at each shim position.
+  JournaledMap<TileID, int> runtimeBdAt;
 
   // Cascade
   Adjacency cascadeAdjacency;
@@ -1407,7 +1444,7 @@ private:
   /// With `bdIds`, sets it to the part a shim tile's runtime BD ids take.
   int computeTileDMAPenalty(TileID tilePos, int *bdIds = nullptr) const;
   /// Charges `pos` for the runtime BD ids the shims there lack, in
-  /// runtimeBdAt, noting what it overwrote in runtimeBdUndo.
+  /// runtimeBdAt.
   void chargeRuntimeBds(TileID pos);
   /// Fills `bdShortfallAt` and returns the penalty it gives.
   int computeBDCountPenalty();
@@ -1449,6 +1486,10 @@ private:
 
   // Move methods
   void tryMove(llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
+  /// Starts journaling a move's changes afresh.
+  void commitMove();
+  /// Undoes every journaled change since commitMove().
+  void rollbackMove();
   bool
   generateMove(llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
   int evaluateMove(
