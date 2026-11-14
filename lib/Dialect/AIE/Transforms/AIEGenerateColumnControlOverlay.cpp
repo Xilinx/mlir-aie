@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
@@ -250,34 +251,25 @@ struct AIEGenerateColumnControlOverlayPass
   static llvm::SmallSet<AIE::TileID, 4>
   collectTokenIssuingTiles(ArrayRef<DeviceOp> devices) {
     llvm::SmallSet<AIE::TileID, 4> tiles;
-    auto addTile = [&](Value tileValue) {
-      if (!tileValue)
-        return;
-      if (auto tile = dyn_cast_or_null<TileOp>(tileValue.getDefiningOp()))
-        tiles.insert({tile.colIndex(), tile.rowIndex()});
-    };
     for (DeviceOp device : devices) {
       for (TileOp tile : device.getOps<TileOp>())
         if (tile.isShimNOCorPLTile())
           tiles.insert(tile.getTileID());
+      SymbolTable symbols(device);
       device.walk([&](Operation *op) {
-        if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
-          if (task.getIssueToken())
-            addTile(task.getTile());
-        } else if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
-          if (!task.getIssueToken())
-            return;
-          Operation *endpoint =
-              SymbolTable::lookupSymbolIn(device, task.getAlloc());
-          if (auto route = dyn_cast_or_null<RouteEndpointOp>(endpoint))
-            addTile(route.getTile());
-          else if (auto alloc = dyn_cast_or_null<ShimDMAAllocationOp>(endpoint))
-            addTile(alloc.getTile());
-        } else if (auto push = dyn_cast<AIEX::NpuPushQueueOp>(op)) {
+        bool issuesToken = false;
+        if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op))
+          issuesToken = bool(task.getIssueToken());
+        else if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
+          issuesToken = bool(task.getIssueToken());
+        if (issuesToken)
+          if (auto tile = dyn_cast_or_null<TileOp>(
+                  AIEX::getRuntimeDmaTile(op, symbols)))
+            tiles.insert(tile.getTileID());
+        if (auto push = dyn_cast<AIEX::NpuPushQueueOp>(op))
           if (push.getIssueToken())
             tiles.insert({static_cast<int>(push.getColumn()),
                           static_cast<int>(push.getRow())});
-        }
       });
     }
     return tiles;
