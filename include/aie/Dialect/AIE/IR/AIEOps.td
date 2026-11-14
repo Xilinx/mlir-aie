@@ -1979,6 +1979,30 @@ def AIE_BufferOp
   }];
   let hasVerifier = 1;
 
+  // The generated builder from before `resident` existed, kept so a caller
+  // naming no resident global does not have to spell it out: its defaults
+  // for core_data, bank_reserved and aligned match what that builder gave.
+  // core_data/bank_reserved/aligned take plain bool here (not the UnitAttr/
+  // BoolAttr the full builder below takes), since a default argument cannot
+  // name another parameter (an attribute default needs $_builder to build).
+  let builders = [
+    OpBuilder<(ins "::mlir::Type":$buffer, "::mlir::Value":$tile,
+              CArg<"::mlir::StringAttr", "{}">:$sym_name,
+              CArg<"::mlir::IntegerAttr", "{}">:$address,
+              CArg<"::mlir::ElementsAttr", "{}">:$initial_value,
+              CArg<"::mlir::IntegerAttr", "{}">:$mem_bank,
+              CArg<"bool", "false">:$core_data,
+              CArg<"bool", "false">:$bank_reserved,
+              CArg<"bool", "true">:$aligned),
+             [{
+      build($_builder, $_state, buffer, tile, sym_name, address, initial_value,
+            mem_bank, core_data ? $_builder.getUnitAttr() : nullptr,
+            bank_reserved ? $_builder.getUnitAttr() : nullptr,
+            $_builder.getBoolAttr(aligned),
+            /*resident=*/::mlir::FlatSymbolRefAttr());
+    }]>
+  ];
+
   let extraClassDeclaration = [{
     bool hasName() {
       return bool(getOperation()->getAttrOfType<mlir::StringAttr>(
