@@ -3898,12 +3898,21 @@ using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
 // 2^23 + 32768, as an f32 vector (bf16 has no such value).
 template <typename SrcOpTy>
 struct LowerVectorIntToFPI16BF16AIE2pPattern : OpConversionPattern<SrcOpTy> {
-  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
   using OpAdaptor = typename SrcOpTy::Adaptor;
   static constexpr bool isSigned = std::is_same_v<SrcOpTy, arith::SIToFPOp>;
 
-  static Value emitMagicSiToFp(ConversionPatternRewriter &rewriter,
-                               Location loc, Value srcI16, unsigned lanes) {
+  // `accumulatorAdd`: add the magic constant on the accumulator
+  // (aievec.add_elem, AIE2P only) rather than as an arith.addi.
+  LowerVectorIntToFPI16BF16AIE2pPattern(MLIRContext *context,
+                                        bool accumulatorAdd,
+                                        PatternBenefit benefit)
+      : OpConversionPattern<SrcOpTy>(context, benefit),
+        accumulatorAdd(accumulatorAdd) {}
+
+  bool accumulatorAdd;
+
+  Value emitMagicSiToFp(ConversionPatternRewriter &rewriter, Location loc,
+                        Value srcI16, unsigned lanes) const {
     Type i16Ty = rewriter.getI16Type();
     Type i32Ty = rewriter.getI32Type();
     Type bf16Ty = rewriter.getBF16Type();
@@ -3931,9 +3940,12 @@ struct LowerVectorIntToFPI16BF16AIE2pPattern : OpConversionPattern<SrcOpTy> {
       srcI16 = arith::XOrIOp::create(rewriter, loc, srcI16, flip);
     }
     Value vAccI = aievec::UPSOp::create(rewriter, loc, vecI32, srcI16);
-    // on the accumulator, where the operands are
     Value vSumI =
-        aievec::AddElemOp::create(rewriter, loc, vecI32, vAccI, magicAccI);
+        accumulatorAdd
+            ? aievec::AddElemOp::create(rewriter, loc, vecI32, vAccI, magicAccI)
+                  .getResult()
+            : arith::AddIOp::create(rewriter, loc, vAccI, magicAccI)
+                  .getResult();
     Value vSumAccF = aievec::CastOp::create(rewriter, loc, vecF32, vSumI,
                                             /*isResAcc=*/true);
     Value subtrahend = magicAccF;
@@ -5341,9 +5353,8 @@ populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns) {
   // bf16. Higher benefit than the generic per-lane scalarise pattern; runs
   // on AIE2 too but only fires when the legality predicate marks the op
   // illegal (currently AIE2P only).
-  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern,
-               LowerVectorUIToFPI16BF16AIE2pPattern>(patterns.getContext(),
-                                                     /*benefit=*/3);
+  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern>(
+      patterns.getContext(), /*accumulatorAdd=*/false, /*benefit=*/3);
   // clang-format on
 }
 
@@ -5853,6 +5864,9 @@ static void populateAIEVecV2PConversionPatterns(
   patterns.add<ConvertVectorFMAOpToAIEVecFMAElemOpAIE2PPattern,
                ConvertMulFToAIEVecMulElemOpAIE2PPattern>(patterns.getContext(),
                                                          /*benefit=*/2);
+  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern,
+               LowerVectorUIToFPI16BF16AIE2pPattern>(
+      patterns.getContext(), /*accumulatorAdd=*/true, /*benefit=*/4);
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
   populateAIE2PShufflePlannerPatterns(patterns, std::move(planner));

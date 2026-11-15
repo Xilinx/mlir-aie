@@ -128,3 +128,18 @@ func.func @mulf_32_into_add_and_out(%a: vector<32xbf16>, %b: vector<32xbf16>, %c
   %3 = arith.addf %2, %c : vector<32xf32>
   return %2, %3 : vector<32xf32>, vector<32xf32>
 }
+
+// -----
+
+// A 64-lane multiply with bf16 inputs feeding an add stays a multiply and an
+// add: the FMA lowering takes 16 or 32 lanes.
+// CHECK-LABEL: func @mulf_64_into_add
+// AIE2P-NOT: vector.fma
+// AIE2P: aievec.mul_elem {{.*}} : vector<64xbf16>, vector<64xbf16>, vector<64xf32>
+func.func @mulf_64_into_add(%a: vector<64xbf16>, %b: vector<64xbf16>, %c: vector<64xf32>) -> vector<64xf32> {
+  %0 = arith.extf %a : vector<64xbf16> to vector<64xf32>
+  %1 = arith.extf %b : vector<64xbf16> to vector<64xf32>
+  %2 = arith.mulf %0, %1 : vector<64xf32>
+  %3 = arith.addf %2, %c : vector<64xf32>
+  return %3 : vector<64xf32>
+}

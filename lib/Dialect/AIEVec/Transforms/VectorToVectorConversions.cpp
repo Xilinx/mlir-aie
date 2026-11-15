@@ -919,7 +919,10 @@ struct FuseExactMulAddFPattern : public OpRewritePattern<arith::AddFOp> {
 
   LogicalResult matchAndRewrite(arith::AddFOp op,
                                 PatternRewriter &rewriter) const override {
-    if (!isF32Vector(op.getType()))
+    // The AIE2P FMA lowering takes 1-D vectors of 16 or 32 lanes.
+    auto type = dyn_cast<VectorType>(op.getType());
+    if (!isF32Vector(op.getType()) || type.getRank() != 1 ||
+        (type.getNumElements() != 16 && type.getNumElements() != 32))
       return failure();
     for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
                                    std::pair(op.getRhs(), op.getLhs())}) {
