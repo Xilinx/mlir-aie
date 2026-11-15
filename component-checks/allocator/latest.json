@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "43551014799",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43551014799",
- "date": "2026-11-14T03:19:15+00:00",
+ "id": "43671978577",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43671978577",
+ "date": "2026-11-15T03:21:14+00:00",
  "commit": {
-  "id": "01c12afe7bf8a0e82544cd02e35881807e0abf27",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/01c12afe7bf8a0e82544cd02e35881807e0abf27",
-  "message": "[AIEVec] Mark a scalar trunci illegal only if the scalar SRS pattern converts it (#4051)",
-  "timestamp": "2026-11-13T23:06:08Z"
+  "id": "d68cfdd26f4a9f85aa016e0cf2efb9aa7548cacd",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/d68cfdd26f4a9f85aa016e0cf2efb9aa7548cacd",
+  "message": "[AIEVec] Carry bfp16 FIFO stream addresses as pointers (#4061)",
+  "timestamp": "2026-11-14T06:04:56Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V74 80-Core Processor",
+ "device": "AMD EPYC 7763 64-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "01c12afe7b",
-  "cpu": "AMD EPYC 9V74 80-Core Processor"
+  "commit": "d68cfdd26f",
+  "cpu": "AMD EPYC 7763 64-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 242.9,
+    "value": 233.2,
     "unit": "s"
    }
   }

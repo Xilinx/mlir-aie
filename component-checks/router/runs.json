@@ -845,6 +845,35 @@
     "npu2/hops-off/seed=207710284+1/mutator multi-source crash"
    ],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "43671978577",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43671978577",
+   "date": "2026-11-15T03:21:14+00:00",
+   "commit": {
+    "id": "d68cfdd26f4a9f85aa016e0cf2efb9aa7548cacd",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/d68cfdd26f4a9f85aa016e0cf2efb9aa7548cacd",
+    "message": "[AIEVec] Carry bfp16 FIFO stream addresses as pointers (#4061)",
+    "timestamp": "2026-11-14T06:04:56Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "d68cfdd26f",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 1,
+   "failed": [
+    "npu2/hops-on/seed=207720299+1/mutator port-cap crash"
+   ],
+   "truncated": []
   }
  ]
 }

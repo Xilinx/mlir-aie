@@ -813,6 +813,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "43671978577",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43671978577",
+   "date": "2026-11-15T03:21:14+00:00",
+   "commit": {
+    "id": "d68cfdd26f4a9f85aa016e0cf2efb9aa7548cacd",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/d68cfdd26f4a9f85aa016e0cf2efb9aa7548cacd",
+    "message": "[AIEVec] Carry bfp16 FIFO stream addresses as pointers (#4061)",
+    "timestamp": "2026-11-14T06:04:56Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "d68cfdd26f",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
