@@ -179,6 +179,12 @@ def AddAccFloatAIE2IntrOp
       Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$lhs,
           VectorOfLengthAndType<[8], [I64]>:$rhs, I32:$conf)>;
 
+def AddACC2048AIE2pIntrOp
+    : AIEVec2p_IntrOp<"ACC2048.add.conf",
+                      [TypeIs<"res", VectorOfLengthAndType<[32], [I64]>>]>,
+      Arguments<(ins VectorOfLengthAndType<[32], [I64]>:$lhs,
+          VectorOfLengthAndType<[32], [I64]>:$rhs, I32:$conf)>;
+
 def AddACC2048AccFloatAIE2pIntrOp
     : AIEVec2p_IntrOp<"ACC2048.accfloat.add.conf",
                       [TypeIs<"res", VectorOfLengthAndType<[64], [F32]>>]>,

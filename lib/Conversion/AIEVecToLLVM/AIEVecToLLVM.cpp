@@ -512,6 +512,55 @@ public:
 using AddElemOpAIE2pConversion =
     AccFloatAddSubAIE2pConversion<aievec::AddElemOp,
                                   xllvm::AddACC2048AccFloatAIE2pIntrOp>;
+
+// AIE2p version of AddElemOp conversion for i32: the 2048-bit accumulator's
+// integer add, whose 64 lanes of 32 bits are carried as 32 of i64. An operand
+// with fewer lanes is padded with poison, and the low lanes of the result are
+// kept, as for f32.
+class AddElemOpI32AIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::AddElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::AddElemOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::AddElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    constexpr int64_t accLanes = 64;
+    Location loc = op.getLoc();
+    auto type = cast<VectorType>(adaptor.getLhs().getType());
+    int64_t lanes = type.getNumElements();
+    if (!type.getElementType().isInteger(32) || type.getRank() != 1 ||
+        accLanes % lanes != 0 || lanes % 2 != 0)
+      return failure();
+    auto accI64Type = VectorType::get({accLanes / 2}, rewriter.getI64Type());
+    auto i64Type = VectorType::get({lanes / 2}, rewriter.getI64Type());
+    auto lowLanes = [](int64_t n, int64_t size) {
+      SmallVector<int64_t> mask(size, -1);
+      std::iota(mask.begin(), mask.begin() + std::min(n, size), 0);
+      return mask;
+    };
+    Value lhs =
+        LLVM::BitcastOp::create(rewriter, loc, i64Type, adaptor.getLhs());
+    Value rhs =
+        LLVM::BitcastOp::create(rewriter, loc, i64Type, adaptor.getRhs());
+    if (lanes != accLanes) {
+      SmallVector<int64_t> padMask = lowLanes(lanes / 2, accLanes / 2);
+      lhs = vector::ShuffleOp::create(rewriter, loc, lhs, lhs, padMask);
+      rhs = vector::ShuffleOp::create(rewriter, loc, rhs, rhs, padMask);
+    }
+    // conf 0 selects the 32-bit integer datapath.
+    auto confCst = LLVM::ConstantOp::create(
+        rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+    Value result = xllvm::AddACC2048AIE2pIntrOp::create(
+        rewriter, loc, accI64Type, lhs, rhs, confCst);
+    if (lanes != accLanes)
+      result = vector::ShuffleOp::create(rewriter, loc, result, result,
+                                         lowLanes(lanes / 2, lanes / 2));
+    rewriter.replaceOp(op,
+                       LLVM::BitcastOp::create(rewriter, loc, type, result));
+    return success();
+  }
+};
 using SubElemOpAIE2pConversion =
     AccFloatAddSubAIE2pConversion<aievec::SubElemOp,
                                   xllvm::SubACC2048AccFloatAIE2pIntrOp>;
@@ -5469,6 +5518,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   // Takes precedence over the common pattern, which emits the AIE2 intrinsic.
   patterns.add<ShuffleOpAIE2pConversion>(converter, /*benefit=*/2);
   // Patterns specific to AIE2p backend
+  patterns.add<AddElemOpI32AIE2pConversion>(converter, /*benefit=*/2);
   patterns.add<AddElemOpAIE2pConversion, SubElemOpAIE2pConversion>(converter);
   patterns.add<NegOpAIE2pConversion>(converter);
   patterns.add<MulElemOpAIE2pConversion>(converter);
