@@ -881,6 +881,11 @@ struct EmulateMulFInBF16Pattern : public OpRewritePattern<arith::MulFOp> {
   }
 };
 
+static bool contracts(arith::FastMathFlagsAttr flags) {
+  return flags &&
+         bitEnumContainsAll(flags.getValue(), arith::FastMathFlags::contract);
+}
+
 /// Pattern to fold an f32 multiply into the add that is its only user, as a
 /// vector.fma with bf16 inputs. Only when both ops allow contraction: the
 /// fused result can differ where the product underflows or overflows.
@@ -889,10 +894,6 @@ struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
 
   LogicalResult matchAndRewrite(arith::AddFOp op,
                                 PatternRewriter &rewriter) const override {
-    auto contracts = [](arith::FastMathFlagsAttr flags) {
-      return flags && bitEnumContainsAll(flags.getValue(),
-                                         arith::FastMathFlags::contract);
-    };
     if (!isF32Vector(op.getType()) || !contracts(op.getFastmathAttr()))
       return failure();
     for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
@@ -911,9 +912,9 @@ struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
   }
 };
 
-/// Pattern to fold an f32 multiply of two bf16 values into the add that is
-/// its only user, as a vector.fma. The product of two bf16 values is exact in
-/// f32, so the fused op rounds as the two ops do.
+/// FuseMulAddFInBF16Pattern for a multiply whose inputs already hold bf16
+/// values, outside bf16 emulation; likewise only when both ops allow
+/// contraction.
 struct FuseExactMulAddFPattern : public OpRewritePattern<arith::AddFOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -922,12 +923,14 @@ struct FuseExactMulAddFPattern : public OpRewritePattern<arith::AddFOp> {
     // The AIE2P FMA lowering takes 1-D vectors of 16 or 32 lanes.
     auto type = dyn_cast<VectorType>(op.getType());
     if (!isF32Vector(op.getType()) || type.getRank() != 1 ||
-        (type.getNumElements() != 16 && type.getNumElements() != 32))
+        (type.getNumElements() != 16 && type.getNumElements() != 32) ||
+        !contracts(op.getFastmathAttr()))
       return failure();
     for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
                                    std::pair(op.getRhs(), op.getLhs())}) {
       auto mulOp = mulOperand.getDefiningOp<arith::MulFOp>();
-      if (!mulOp || !mulOp->hasOneUse() || !holdsBF16(mulOp.getLhs()) ||
+      if (!mulOp || !mulOp->hasOneUse() ||
+          !contracts(mulOp.getFastmathAttr()) || !holdsBF16(mulOp.getLhs()) ||
           !holdsBF16(mulOp.getRhs()))
         continue;
       rewriter.replaceOpWithNewOp<vector::FMAOp>(op, mulOp.getLhs(),
