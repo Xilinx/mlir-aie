@@ -438,8 +438,13 @@ static void collectParts(PatternRewriter &rewriter, Location loc, Value v,
   if (auto vcast = v.getDefiningOp<CastOp>()) {
     SmallVector<Value> inner;
     collectParts(rewriter, loc, vcast.getSource(), lanes, inner);
-    for (Value part : inner)
-      parts.push_back(CastOp::create(rewriter, loc, part, vcast.getIsResAcc()));
+    Type elemType = vcast.getResult().getType().getElementType();
+    for (Value part : inner) {
+      auto partType = VectorType::get(
+          cast<VectorType>(part.getType()).getShape(), elemType);
+      parts.push_back(
+          CastOp::create(rewriter, loc, partType, part, vcast.getIsResAcc()));
+    }
     return;
   }
   if (auto concat = v.getDefiningOp<vector::ShuffleOp>()) {

@@ -82,6 +82,12 @@
 // NOCHAIN: %[[J:.*]] = vector.shuffle {{.*}} : vector<32xi16>, vector<32xi16>
 // NOCHAIN: aievec.ups %[[J]] {{.*}} : vector<64xi16>, vector<64xi32>
 
+// A cast that changes the element type keeps it on each part.
+// CHECK-LABEL: func.func @ups_cast_to_f32
+// CHECK-NOT: vector<64x
+// CHECK-COUNT-4: aievec.cast {{.*}} : vector<16xi32>, vector<16xf32>
+// CHECK-COUNT-4: vector.store {{.*}} : memref<64xf32>, vector<16xf32>
+
 // CHECK-LABEL: func.func @narrow
 // CHECK: vector.load {{.*}} : memref<64xf32>, vector<16xf32>
 // CHECK-NOT: vector.load
@@ -136,6 +142,14 @@ module {
     %v = vector.load %in[%c0] : memref<64xi16>, vector<64xi16>
     %u = aievec.ups %v {shift = 0 : i8} : vector<64xi16>, vector<64xi32>
     return %u : vector<64xi32>
+  }
+  func.func @ups_cast_to_f32(%in: memref<64xi16>, %out: memref<64xf32>) {
+    %c0 = arith.constant 0 : index
+    %v = vector.load %in[%c0] : memref<64xi16>, vector<64xi16>
+    %u = aievec.ups %v {shift = 0 : i8} : vector<64xi16>, vector<64xi32>
+    %c = aievec.cast %u {isResAcc = false} : vector<64xi32>, vector<64xf32>
+    vector.store %c, %out[%c0] : memref<64xf32>, vector<64xf32>
+    return
   }
   func.func @narrow(%a: memref<64xf32>) {
     %c0 = arith.constant 0 : index
