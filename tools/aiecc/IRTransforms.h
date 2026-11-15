@@ -1693,8 +1693,7 @@ struct SplitConcatStoresPass
 
 // Per-core LLVM-lowering pipeline. Destructive: extracts the CoreOp at
 // (col, row) and removes the `aie.device` wrapper. col/row=-1 means
-// "all cores" (unified mode). `optLevel` >= 3 adds
-// aievec-split-load-ups-chains.
+// "all cores" (unified mode).
 inline std::unique_ptr<mlir::PassManager>
 getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
                             int col, int row, llvm::StringRef aieTarget,
@@ -1714,8 +1713,11 @@ getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
   pm->addPass(xilinx::AIEX::createAIEXToStandardPass());
 
   // Matches aievec.ups, so it must run before the AIEVec-to-LLVM lowering.
-  if (optLevel >= 3) {
-    pm->addPass(xilinx::aievec::createSplitVectorLoadUpsChainsPass());
+  bool chains = optLevel >= 3;
+  bool wideAccesses = llvm::StringRef(aieTarget).equals_insensitive("aie2p");
+  if (chains || wideAccesses) {
+    pm->addPass(xilinx::aievec::createSplitVectorLoadUpsChainsPass(
+        chains, wideAccesses));
   }
 
   xilinx::ConvertAIEVecToLLVMOptions aievecOpts;

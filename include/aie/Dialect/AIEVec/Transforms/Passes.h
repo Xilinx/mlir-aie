@@ -62,6 +62,10 @@ namespace aievec {
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createSplitVectorLoadUpsChainsPass();
+// `chains`: the ups, srs and bfp16 matmul lhs chains; `wideAccesses`: then
+// every other 1024- and 2048-bit load and store (AIE2P).
+std::unique_ptr<mlir::Pass>
+createSplitVectorLoadUpsChainsPass(bool chains, bool wideAccesses);
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
