@@ -409,15 +409,8 @@ LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
 }
 
 LogicalResult emitAttachToGroupOp(CertAttachToGroupOp groupOp,
-                                  std::string &text, std::string &data,
-                                  llvm::StringRef outputPath) {
+                                  std::string &text, std::string &data) {
   LogicalResult result = success();
-
-  // Process sections first (they may be referenced by main code)
-  for (auto section : groupOp.getBody().getOps<CertSectionOp>()) {
-    if (failed(emitSection(section, text, outputPath)))
-      result = failure();
-  }
 
   if (groupOp.getGroupId())
     text += ".attach_to_group " + std::to_string(groupOp.getGroupId()) + "\n\n";
@@ -581,7 +574,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   // Sections are hoisted ahead of the executable stream: they are labeled
   // `.include` blocks, not pages, and the code below them may reference them
   // (e.g. `LOAD_PDI 1, @config_device`), so their labels must already be
-  // defined. `emitAttachToGroupOp` hoists a group's sections the same way.
+  // defined. Sections only appear at device level.
   for (auto section : deviceOp.getBody()->getOps<CertSectionOp>()) {
     if (failed(emitSection(section, text[0], outputPath)))
       result = failure();
@@ -598,8 +591,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
         result = failure();
     } else if (auto grp = dyn_cast<CertAttachToGroupOp>(&op)) {
       size_t block = blockFor(grp.getGroupId());
-      if (failed(
-              emitAttachToGroupOp(grp, text[block], data[block], outputPath)))
+      if (failed(emitAttachToGroupOp(grp, text[block], data[block])))
         result = failure();
     } else if (auto chain = dyn_cast<CertUcDmaChainOp>(&op)) {
       std::set<uint32_t> users = {0};
