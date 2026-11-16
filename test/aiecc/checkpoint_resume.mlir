@@ -17,25 +17,25 @@
 // RUN: rm -rf %t && mkdir -p %t
 
 // Straight-through reference build.
-// RUN: aiecc -j1 --get-npu-insts --get-xclbin --npu-insts-name=%t/ref_insts.bin --xclbin-name=%t/ref.xclbin --tmpdir=%t/ref.prj %s
+// RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/ref_insts.bin --xclbin-name=%t/ref.xclbin --tmpdir=%t/ref.prj %s
 
 // Cut 1: per-core objects. Checkpoint at the object compile edge, drop the
 // produced insts, then resume to completion and compare.
-// RUN: aiecc -j1 --get-npu-insts --get-xclbin --npu-insts-name=%t/obj_insts.bin --xclbin-name=%t/obj.xclbin --tmpdir=%t/obj.prj --cut='objects_{0}.o' --checkpoint=%t/obj.ckpt %s
+// RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/obj_insts.bin --xclbin-name=%t/obj.xclbin --tmpdir=%t/obj.prj --cut='objects_{0}.o' --checkpoint=%t/obj.ckpt %s
 // RUN: rm -f %t/obj_insts.bin
-// RUN: aiecc -j1 --resume=%t/obj.ckpt/manifest.json
+// RUN: aiecc --resume=%t/obj.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/obj_insts.bin
 
 // Cut 2: linked core ELFs.
-// RUN: aiecc -j1 --get-npu-insts --get-xclbin --npu-insts-name=%t/elf_insts.bin --xclbin-name=%t/elf.xclbin --tmpdir=%t/elf.prj --cut='elfs_{0}.elf' --checkpoint=%t/elf.ckpt %s
+// RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/elf_insts.bin --xclbin-name=%t/elf.xclbin --tmpdir=%t/elf.prj --cut='elfs_{0}.elf' --checkpoint=%t/elf.ckpt %s
 // RUN: rm -f %t/elf_insts.bin
-// RUN: aiecc -j1 --resume=%t/elf.ckpt/manifest.json
+// RUN: aiecc --resume=%t/elf.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/elf_insts.bin
 
 // Cut 3: PDI (immediately before xclbin assembly).
-// RUN: aiecc -j1 --get-npu-insts --get-xclbin --npu-insts-name=%t/pdi_insts.bin --xclbin-name=%t/pdi.xclbin --tmpdir=%t/pdi.prj --cut='{0}.pdi' --checkpoint=%t/pdi.ckpt %s
+// RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/pdi_insts.bin --xclbin-name=%t/pdi.xclbin --tmpdir=%t/pdi.prj --cut='{0}.pdi' --checkpoint=%t/pdi.ckpt %s
 // RUN: rm -f %t/pdi_insts.bin
-// RUN: aiecc -j1 --resume=%t/pdi.ckpt/manifest.json
+// RUN: aiecc --resume=%t/pdi.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/pdi_insts.bin
 
 // RUN: aiecc -j1 --get-full-elf --full-elf-name=acquires.elf --output-dir=%t/acquires.out --cut=physical_with_elfs.mlir --checkpoint=%t/acquires.ckpt --tmpdir=%t/acquires.prj %s
