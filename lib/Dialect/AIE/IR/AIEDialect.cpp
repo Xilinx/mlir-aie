@@ -612,6 +612,40 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   return success();
 }
 
+static ParseResult
+parseLockAcquireList(AsmParser &parser,
+                     SmallVectorImpl<LockAcquireAttr> &acquires) {
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&]() {
+    LockAcquireAttr acquire;
+    if (failed(parser.parseCustomAttributeWithFallback(acquire)))
+      return failure();
+    acquires.push_back(acquire);
+    return success();
+  });
+}
+
+static void printLockAcquireList(AsmPrinter &printer,
+                                 ArrayRef<LockAcquireAttr> acquires) {
+  printer << '[';
+  llvm::interleaveComma(acquires, printer, [&](LockAcquireAttr acquire) {
+    printer.printStrippedAttrOrType(acquire);
+  });
+  printer << ']';
+}
+
+LogicalResult
+LockAcquireAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                        int32_t column, int32_t row, int32_t lock_id,
+                        LockAction action, int32_t value) {
+  if (column < 0 || row < 0 || lock_id < 0)
+    return emitError() << "lock column, row, and ID must be non-negative";
+  if (action != LockAction::Acquire &&
+      action != LockAction::AcquireGreaterEqual)
+    return emitError() << "expected Acquire or AcquireGreaterEqual, got "
+                       << stringifyLockAction(action);
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ObjectFifoTransportAttr
 //===----------------------------------------------------------------------===//
@@ -3906,6 +3940,26 @@ LogicalResult CoreOp::verify() {
   // Where the stack sits. A pin the allocator could never honor is a user
   // constraint, so it is rejected here rather than at placement.
   const auto &targetModel = getTargetModel(*this);
+  if (auto summary = getLockAcquiresAttr()) {
+    for (LockAcquireAttr acquire : summary.getAcquires()) {
+      int32_t column = acquire.getColumn();
+      int32_t row = acquire.getRow();
+      if (column >= targetModel.columns() || row >= targetModel.rows())
+        return emitOpError(
+                   "lock_acquires references a tile outside the device: ")
+               << "(" << column << ", " << row << ")";
+      if (static_cast<uint32_t>(acquire.getLockId()) >=
+          targetModel.getNumLocks(column, row))
+        return emitOpError("lock_acquires references an invalid lock ID ")
+               << acquire.getLockId() << " on tile (" << column << ", " << row
+               << ")";
+      if (acquire.getAction() == LockAction::AcquireGreaterEqual &&
+          !targetModel.hasProperty(AIETargetModel::UsesSemaphoreLocks))
+        return emitOpError(
+            "lock_acquires uses AcquireGreaterEqual on a target without "
+            "semaphore locks");
+    }
+  }
   int64_t localMem = targetModel.getLocalMemorySize();
   auto validAlignment = [localMem](int64_t alignment) {
     return alignment > 0 && alignment <= localMem &&

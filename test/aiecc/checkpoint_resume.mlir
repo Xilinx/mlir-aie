@@ -38,10 +38,12 @@
 // RUN: aiecc -j1 --resume=%t/pdi.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/pdi_insts.bin
 
-// RUN: aiecc -j1 --get-full-elf --cut=physical_with_elfs.mlir --checkpoint=%t/acquires.ckpt --tmpdir=%t/acquires.prj %s
+// RUN: aiecc -j1 --get-full-elf --full-elf-name=acquires.elf --output-dir=%t/acquires.out --cut=physical_with_elfs.mlir --checkpoint=%t/acquires.ckpt --tmpdir=%t/acquires.prj %s
 // RUN: FileCheck %s --check-prefix=ACQUIRES < %t/acquires.ckpt/physical_with_elfs.mlir/physical_with_elfs.mlir
-// ACQUIRES: aie.teardown_lock_acquires = [array<i32: 0, 2, {{[0-9]+}}, 1, 1>]
-// ACQUIRES-SAME: elf_file =
+// RUN: aiecc -j1 --resume=%t/acquires.ckpt/manifest.json
+// RUN: test -s %t/acquires.out/acquires.elf
+// ACQUIRES: elf_file =
+// ACQUIRES-SAME: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = {{[0-9]+}}, action = AcquireGreaterEqual, value = 1>]>
 
 module {
   aie.device(npu1_1col) {

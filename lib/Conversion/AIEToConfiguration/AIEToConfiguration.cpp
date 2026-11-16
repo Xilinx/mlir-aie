@@ -23,6 +23,7 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Debug.h"
 
 extern "C" {
@@ -814,10 +815,8 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
 
 namespace {
 
-constexpr llvm::StringLiteral coreLockAcquiresAttr =
-    "aie.teardown_lock_acquires";
 using LockAddress = std::tuple<int32_t, int32_t, int32_t>;
-using LockAcquire = std::pair<bool, int32_t>;
+using LockAcquire = std::pair<LockAction, int32_t>;
 
 static std::optional<LockAddress> getLockAddress(UseLockOp use) {
   auto lock = use.getLock().getDefiningOp<LockOp>();
@@ -834,13 +833,13 @@ static std::optional<LockAcquire> getLockAcquire(UseLockOp use) {
   APInt value;
   if (!matchPattern(use.getValue(), m_ConstantInt(&value)))
     return std::nullopt;
-  return LockAcquire{use.acquireGE(), value.getSExtValue()};
+  return LockAcquire{use.getAction(), value.getSExtValue()};
 }
 
-static ArrayAttr collectCoreLockAcquires(CoreOp core) {
+static CoreLockAcquiresAttr collectCoreLockAcquires(CoreOp core) {
   if (core.getElfFile())
-    return core->getAttrOfType<ArrayAttr>(coreLockAcquiresAttr);
-  std::set<std::array<int32_t, 5>> uniqueAcquires;
+    return core.getLockAcquiresAttr();
+  llvm::SetVector<LockAcquireAttr> acquires;
   llvm::DenseSet<Operation *> visited;
   SmallVector<Operation *> pending{core};
   bool unknown = false;
@@ -858,8 +857,9 @@ static ArrayAttr collectCoreLockAcquires(CoreOp core) {
         return;
       }
       auto [column, row, lockId] = *address;
-      auto [greaterEqual, value] = *acquire;
-      uniqueAcquires.insert({column, row, lockId, greaterEqual, value});
+      auto [action, value] = *acquire;
+      acquires.insert(LockAcquireAttr::get(core.getContext(), column, row,
+                                           lockId, action, value));
     });
     operation->walk([&](func::CallOp call) {
       auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
@@ -871,12 +871,8 @@ static ArrayAttr collectCoreLockAcquires(CoreOp core) {
     });
     operation->walk([&](func::CallIndirectOp) { unknown = true; });
   }
-  SmallVector<Attribute> acquires;
-  for (const auto &acquire : uniqueAcquires)
-    acquires.push_back(DenseI32ArrayAttr::get(core.getContext(), acquire));
-  if (unknown)
-    acquires.push_back(UnitAttr::get(core.getContext()));
-  return ArrayAttr::get(core.getContext(), acquires);
+  return CoreLockAcquiresAttr::get(core.getContext(), !unknown,
+                                   acquires.getArrayRef());
 }
 
 struct LockAcquireSummary {
@@ -889,10 +885,10 @@ struct LockAcquireSummary {
       return std::nullopt;
     int32_t lowerBound = 0;
     std::optional<int32_t> equality;
-    for (auto [greaterEqual, value] : acquires) {
+    for (auto [action, value] : acquires) {
       if (value < 0 || static_cast<uint32_t>(value) > maximum)
         return std::nullopt;
-      if (greaterEqual && value != 0) {
+      if (action == LockAction::AcquireGreaterEqual && value != 0) {
         lowerBound = std::max(lowerBound, value);
       } else {
         if (equality && *equality != value)
@@ -917,33 +913,26 @@ struct CoreLockAcquireAnalysis {
       auto summary = collectCoreLockAcquires(core);
       if (!summary) {
         core.emitWarning("teardown cannot determine lock acquires for an ELF "
-                         "without aie.teardown_lock_acquires; skipping device "
+                         "without lock_acquires; skipping device "
                          "lock draining");
         unsupported.insert(core);
         continue;
       }
-      for (Attribute attribute : summary) {
-        auto entry = dyn_cast<DenseI32ArrayAttr>(attribute);
-        if (!entry || entry.size() != 5) {
-          unsupported.insert(core);
-          continue;
-        }
-        auto values = entry.asArrayRef();
-        LockAddress address{values[0], values[1], values[2]};
-        auto &lock = locks[address];
-        lock.acquires.emplace(values[3] != 0, values[4]);
-        lock.unknown |=
-            values[0] < 0 || values[0] >= model.columns() || values[1] < 0 ||
-            values[1] >= model.rows() || values[3] < 0 || values[3] > 1 ||
-            values[2] < 0 ||
-            !model.getLocalLockAddress(values[2], TileID{values[0], values[1]});
-        if (coreLocks[core].insert(address).second)
-          lock.cores.push_back(core);
-      }
-      if (unsupported.contains(core))
+      if (!summary.getComplete()) {
         core.emitWarning("teardown cannot determine every lock acquire: "
                          "unresolved locks, dynamic values, or opaque callees; "
                          "skipping device lock draining");
+        unsupported.insert(core);
+        continue;
+      }
+      for (LockAcquireAttr acquire : summary.getAcquires()) {
+        LockAddress address{acquire.getColumn(), acquire.getRow(),
+                            acquire.getLockId()};
+        auto &lock = locks[address];
+        lock.acquires.emplace(acquire.getAction(), acquire.getValue());
+        if (coreLocks[core].insert(address).second)
+          lock.cores.push_back(core);
+      }
     }
     if (!unsupported.empty()) {
       for (auto core : device.getOps<CoreOp>())
@@ -1046,7 +1035,7 @@ insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
 void xilinx::AIE::recordCoreLockAcquires(DeviceOp device) {
   for (auto core : device.getOps<CoreOp>())
     if (auto summary = collectCoreLockAcquires(core))
-      core->setAttr(coreLockAcquiresAttr, summary);
+      core.setLockAcquiresAttr(summary);
 }
 
 LogicalResult xilinx::AIE::generateAndInsertTeardownOps(

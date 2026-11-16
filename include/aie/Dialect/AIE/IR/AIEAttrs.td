@@ -86,6 +86,36 @@ def LockBlocking : I32EnumAttr<"LockBlocking", "lock operation is blocking",
   let cppNamespace = "xilinx::AIE";
 }
 
+def LockAcquireAttr : AttrDef<AIE_Dialect, "LockAcquire", []> {
+  let mnemonic = "lock_acquire";
+  let summary = "An acquire condition on a physical lock";
+  let description = [{
+    Identifies a lock by its owner tile and lock ID. The action uses the same
+    `Acquire` and `AcquireGreaterEqual` cases as `aie.use_lock`. The value
+    records the requested count; teardown checks whether a writable counter
+    value can satisfy it.
+  }];
+  let parameters = (ins "int32_t":$column, "int32_t":$row, "int32_t":$lock_id,
+      EnumParameter<LockAction>:$action, "int32_t":$value);
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
+def CoreLockAcquiresAttr : AttrDef<AIE_Dialect, "CoreLockAcquires", []> {
+  let mnemonic = "core_lock_acquires";
+  let summary = "The known acquire conditions of a core";
+  let description = [{
+    Retains acquire conditions after core compilation removes `aie.use_lock`
+    operations. `complete = true` declares that the list covers every acquire
+    the core can issue. An empty complete list declares no acquires.
+    `complete = false` records that some acquires are unknown.
+  }];
+  let parameters = (ins "bool":$complete,
+      ArrayRefParameter<"LockAcquireAttr">:$acquires);
+  let assemblyFormat = "`<` `complete` `=` $complete `,` `acquires` `=` "
+                       "custom<LockAcquireList>($acquires) `>`";
+}
+
 def AIEArch
     : I32EnumAttr<"AIEArch", "AIE Architecture",
                   [I32EnumAttrCase<"AIE1", 1>, I32EnumAttrCase<"AIE2", 2>,
@@ -140,27 +170,23 @@ def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
     buffer descriptor;
   }];
 
-  let parameters = (ins
-    "uint32_t" : $size,
-    "uint32_t" : $stride
-  );
+  let parameters = (ins "uint32_t":$size, "uint32_t":$stride);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
 def BDDimLayoutArrayAttr : ArrayOfAttr<
-    /*dialect*/AIE_Dialect,
-    /*attrName*/"BDDimLayoutArray",
-    /*attrMnemonic*/"bd_dim_layout_array",
-    /*eltName*/BDDimLayoutAttr.cppClassName
->;
+                               /*dialect*/ AIE_Dialect,
+                               /*attrName*/ "BDDimLayoutArray",
+                               /*attrMnemonic*/ "bd_dim_layout_array",
+                               /*eltName*/ BDDimLayoutAttr.cppClassName>;
 
-def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
-    /*dialect*/AIE_Dialect,
-    /*attrName*/"BDDimLayoutArrayArray",
-    /*attrMnemonic*/"bd_dim_layout_array_array",
-    /*eltName*/BDDimLayoutArrayAttr.cppClassName
->;
+def BDDimLayoutArrayArrayAttr
+    : ArrayOfAttr<
+          /*dialect*/ AIE_Dialect,
+          /*attrName*/ "BDDimLayoutArrayArray",
+          /*attrMnemonic*/ "bd_dim_layout_array_array",
+          /*eltName*/ BDDimLayoutArrayAttr.cppClassName>;
 
 def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
   let mnemonic = "bd_pad_layout";
@@ -169,20 +195,17 @@ def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
     n-dimensional buffer descriptor;
   }];
 
-  let parameters = (ins
-    "uint16_t" : $const_pad_before,
-    "uint16_t" : $const_pad_after
-  );
+  let parameters = (ins "uint16_t":$const_pad_before,
+      "uint16_t":$const_pad_after);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
 def BDPadLayoutArrayAttr : ArrayOfAttr<
-    /*dialect*/AIE_Dialect,
-    /*attrName*/"BDPadLayoutArray",
-    /*attrMnemonic*/"bd_pad_layout_array",
-    /*eltName*/BDPadLayoutAttr.cppClassName
->;
+                               /*dialect*/ AIE_Dialect,
+                               /*attrName*/ "BDPadLayoutArray",
+                               /*attrMnemonic*/ "bd_pad_layout_array",
+                               /*eltName*/ BDPadLayoutAttr.cppClassName>;
 
 // Per-segment, per-dimension padding for an objectFifo DMA endpoint.
 def BDPadLayoutArrayArrayAttr
@@ -242,11 +265,8 @@ def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
     true (element) values;
   }];
 
-  let parameters = (ins
-    "uint32_t" : $size,
-    "uint32_t" : $stride,
-    "uint32_t" : $current
-  );
+  let parameters = (ins "uint32_t":$size, "uint32_t":$stride,
+      "uint32_t":$current);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
@@ -304,7 +324,7 @@ def TraceSliceArrayAttr
     : TypedArrayAttrBase<TraceSliceAttr, "array of trace buffer slices">;
 
 def InitValuesArrayAttr
-  : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
+    : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
 
 //===----------------------------------------------------------------------===//
 // ObjectFifo pools and endpoints

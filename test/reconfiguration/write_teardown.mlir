@@ -28,6 +28,11 @@
 // RUN: aie-opt --convert-aiex-to-emitc %t.inline.mlir -o %t.inline.cpp.mlir
 // RUN: diff %t.lazy.cpp.mlir %t.inline.cpp.mlir
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" --split-input-file --verify-diagnostics %t/locks.mlir | FileCheck %s --check-prefix=ACQUIRES
+// RUN: aie-opt %t/summary.mlir -o %t/summary.once.mlir
+// RUN: aie-opt %t/summary.once.mlir -o %t/summary.twice.mlir
+// RUN: diff %t/summary.once.mlir %t/summary.twice.mlir
+// RUN: FileCheck %s --check-prefix=SUMMARY < %t/summary.twice.mlir
+// RUN: aie-opt --split-input-file --verify-diagnostics %t/summary-invalid.mlir -o %t/summary-invalid.out
 
 // CHECK-LABEL: aie.runtime_sequence @seq
 // CHECK:      aiex.npu.load_pdi {device_ref = @empty_0
@@ -408,5 +413,113 @@ module {
     aie.runtime_sequence @counter_range() {
       aiex.npu.load_pdi {device_ref = @cfg}
     }
+  }
+}
+
+//--- summary.mlir
+
+// SUMMARY-LABEL: module @summaries
+// SUMMARY: elf_file = "acquires.elf"
+// SUMMARY-SAME: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 3, lock_id = 5, action = AcquireGreaterEqual, value = 1>, <column = 0, row = 3, lock_id = 5, action = Acquire, value = 3>]>
+// SUMMARY: elf_file = "empty.elf"
+// SUMMARY-SAME: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = []>
+// SUMMARY: elf_file = "partial.elf"
+// SUMMARY-SAME: lock_acquires = #aie.core_lock_acquires<complete = false, acquires = [<column = 0, row = 4, lock_id = 1, action = Acquire, value = 0>]>
+// SUMMARY: elf_file = "unknown.elf"
+// SUMMARY-SAME: lock_acquires = #aie.core_lock_acquires<complete = false, acquires = []>
+
+module @summaries {
+  aie.device(npu2_1col) {
+    %first = aie.tile(0, 2)
+    %second = aie.tile(0, 3)
+    %third = aie.tile(0, 4)
+    %fourth = aie.tile(0, 5)
+    aie.core(%first) {
+      aie.end
+    } {elf_file = "acquires.elf", lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 3, lock_id = 5, action = AcquireGreaterEqual, value = 1>, <column = 0, row = 3, lock_id = 5, action = Acquire, value = 3>]>}
+    aie.core(%second) {
+      aie.end
+    } {elf_file = "empty.elf", lock_acquires = #aie.core_lock_acquires<complete = true, acquires = []>}
+    aie.core(%third) {
+      aie.end
+    } {elf_file = "partial.elf", lock_acquires = #aie.core_lock_acquires<complete = false, acquires = [<column = 0, row = 4, lock_id = 1, action = Acquire, value = 0>]>}
+    aie.core(%fourth) {
+      aie.end
+    } {elf_file = "unknown.elf", lock_acquires = #aie.core_lock_acquires<complete = false, acquires = []>}
+  }
+}
+
+//--- summary-invalid.mlir
+
+// expected-error@+1 {{expected Acquire or AcquireGreaterEqual, got Release}}
+module attributes {invalid = #aie.lock_acquire<column = 0, row = 2, lock_id = 5, action = Release, value = 1>} {}
+
+// -----
+
+// expected-error@+1 {{lock column, row, and ID must be non-negative}}
+module attributes {invalid = #aie.lock_acquire<column = -1, row = 2, lock_id = 5, action = Acquire, value = 1>} {}
+
+// -----
+
+// expected-error@+1 {{lock column, row, and ID must be non-negative}}
+module attributes {invalid = #aie.lock_acquire<column = 0, row = 2, lock_id = -1, action = Acquire, value = 1>} {}
+
+// -----
+
+module {
+  aie.device(npu2_1col) {
+    %tile = aie.tile(0, 2)
+    // expected-error@+3 {{attribute 'lock_acquires' failed to satisfy constraint}}
+    aie.core(%tile) {
+      aie.end
+    } {lock_acquires = [array<i32: 0, 2, 5, 1, 1>]}
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2_1col) {
+    %tile = aie.tile(0, 2)
+    // expected-error@+1 {{lock_acquires references a tile outside the device: (1, 2)}}
+    aie.core(%tile) {
+      aie.end
+    } {lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 1, row = 2, lock_id = 5, action = Acquire, value = 1>]>}
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2_1col) {
+    %tile = aie.tile(0, 2)
+    // expected-error@+1 {{lock_acquires references a tile outside the device: (0, 6)}}
+    aie.core(%tile) {
+      aie.end
+    } {lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 6, lock_id = 5, action = Acquire, value = 1>]>}
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2_1col) {
+    %tile = aie.tile(0, 2)
+    // expected-error@+1 {{lock_acquires references an invalid lock ID 16 on tile (0, 2)}}
+    aie.core(%tile) {
+      aie.end
+    } {lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 16, action = Acquire, value = 1>]>}
+  }
+}
+
+// -----
+
+module {
+  aie.device(xcvc1902) {
+    %tile = aie.tile(0, 2)
+    // expected-error@+1 {{lock_acquires uses AcquireGreaterEqual on a target without semaphore locks}}
+    aie.core(%tile) {
+      aie.end
+    } {lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>]>}
   }
 }

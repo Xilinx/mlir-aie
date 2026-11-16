@@ -730,13 +730,15 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     a core has an incomplete acquire summary. These cases require PDI resets
     to clear outstanding acquires. A warning does not insert a reset.
 
-    `aiecc` retains each core's acquire summary in `aie.teardown_lock_acquires`
-    before replacing its body with an ELF reference. Each entry is an i32 array
-    `[lock_column, lock_row, lock_id, greater_equal, value]`. The mode field is
-    zero for equality and one for greater-or-equal. An empty array attribute
-    declares no core acquires. A unit entry marks an incomplete summary.
-    External core ELFs need this attribute. Opaque function calls and unresolved
-    acquire operands make a source core's summary incomplete.
+    `aiecc` retains each core's acquire summary in `lock_acquires` before
+    replacing its body with an ELF reference. The attribute has type
+    `#aie.core_lock_acquires<complete = true, acquires = [...]>`. Each entry
+    names `column`, `row`, `lock_id`, `action`, and `value`. The action uses
+    `Acquire` or `AcquireGreaterEqual`, as in `aie.use_lock`.
+    A complete empty list declares no core acquires. `complete = false` marks
+    an incomplete summary. External core ELFs need this attribute. Opaque
+    function calls and unresolved acquire operands make a source core's
+    summary incomplete.
 
     A sequence whose first and last reset (or overlay load) name the same PDI
     gets one more of the other, so the next dispatch's first load is not skipped
