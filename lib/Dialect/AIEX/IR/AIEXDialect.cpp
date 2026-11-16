@@ -1663,7 +1663,16 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
           result = failure();
           return;
         }
-        if (isNonLocal(lock.getTileLike())) {
+        // Without a lock ID, aie.lock does not check that its tile operand is
+        // a tile; aie.buffer always does.
+        AIE::TileLike lockTile = lock.getTileLike();
+        if (!lockTile) {
+          useLock.emitOpError()
+              << "uses a lock whose tile operand is not a tile";
+          result = failure();
+          return;
+        }
+        if (isNonLocal(lockTile)) {
           nonLocal = lock;
           what = "lock";
         }
