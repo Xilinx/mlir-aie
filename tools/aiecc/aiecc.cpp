@@ -339,6 +339,8 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                        }
                        std::string wrapper =
                            getChessIntrinsicWrapperPath(arch, installDir);
+                       if (!dryRun && reportMissingChessWrapper(wrapper, arch))
+                         return mlir::failure();
                        auto cmd = ShellCommand{linkTool}
                                       .input()
                                       .arg(wrapper)

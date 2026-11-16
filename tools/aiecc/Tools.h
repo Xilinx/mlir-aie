@@ -229,6 +229,23 @@ inline std::string getChessIntrinsicWrapperPath(llvm::StringRef arch,
                        installDir, arch.upper());
 }
 
+// True, after printing an actionable message, if the Chess intrinsic wrapper is
+// not installed at `wrapper`. Without this check `chess-llvm-link` is handed a
+// path it cannot open and fails with an error that never mentions the missing
+// payload.
+inline bool reportMissingChessWrapper(llvm::StringRef wrapper,
+                                      llvm::StringRef arch) {
+  if (llvm::sys::fs::is_regular_file(wrapper))
+    return false;
+  std::string archName = arch.upper();
+  llvm::errs() << "aiecc: missing Chess intrinsic wrapper: " << wrapper << "\n"
+               << "aiecc: install a wheel built with AIETools and " << archName
+               << " enabled in AIE_VITIS_COMPONENTS, or rebuild with "
+                  "AIE_BUILD_CHESS_CLANG=ON, AIETools on PATH and "
+               << archName << " in AIE_VITIS_COMPONENTS\n";
+  return true;
+}
+
 // The `__AIEARCH__` define a host program is compiled with, keyed off the
 // device's AIE generation (AIE1=10, AIE2/AIEML=20, AIE2P=21).
 inline std::string aieArchDefine(llvm::StringRef target) {
