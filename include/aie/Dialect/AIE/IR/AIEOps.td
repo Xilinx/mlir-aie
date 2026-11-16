@@ -1805,9 +1805,9 @@ def AIE_LockOp
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
-      else {
-        std::optional<int> col = getTileLike().tryGetCol();
-        std::optional<int> row = getTileLike().tryGetRow();
+      else if (TileLike tile = getTileLike()) {
+        std::optional<int> col = tile.tryGetCol();
+        std::optional<int> row = tile.tryGetRow();
         if (col && row) {
           std::string nameWithoutDialect =
               getOperation()->getName().stripDialect().str();
@@ -1978,9 +1978,9 @@ def AIE_BufferOp
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
-      else {
-        std::optional<int> col = getTileLike().tryGetCol();
-        std::optional<int> row = getTileLike().tryGetRow();
+      else if (TileLike tile = getTileLike()) {
+        std::optional<int> col = tile.tryGetCol();
+        std::optional<int> row = tile.tryGetRow();
         if (col && row) {
           std::string nameWithoutDialect =
               getOperation()->getName().stripDialect().str();
