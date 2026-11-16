@@ -49,13 +49,16 @@
 // O3-IR: vector.store %{{.*}}, %{{.*}}[%c0] : memref<1024xi32, #ptr.generic_space>, vector<64xi32>
 // O3-IR: ptr.ptr_add %{{.*}}, %c256 :
 
-// -O3: aievec-split-load-ups-chains loads the two halves separately, and
-// each ups result is stored as it is, so no shuffle is left.
+// -O3: aievec-split-load-ups-chains loads the two halves separately, with no
+// shuffle before the ups, and each ups result is stored in its two 512-bit
+// halves, with no concatenation of the two.
 // O3-LOWERED-NOT: llvm.shufflevector
 // O3-LOWERED: %[[LO:.*]] = "xllvm.intr.aie2p.acc32.v32.I512.ups"
 // O3-LOWERED: %[[HI:.*]] = "xllvm.intr.aie2p.acc32.v32.I512.ups"
-// O3-LOWERED: llvm.store %[[LO]]
-// O3-LOWERED: llvm.store %[[HI]]
-// O3-LOWERED-NOT: llvm.shufflevector
+// O3-LOWERED-NOT: vector<64xi32>
+// O3-LOWERED-COUNT-2: llvm.shufflevector %[[LO]]
+// O3-LOWERED-COUNT-2: llvm.shufflevector %[[HI]]
+// O3-LOWERED-COUNT-4: llvm.store %{{.*}} : vector<16xi32>
+// O3-LOWERED-NOT: vector<64xi32>
 
 // HW: PASS!

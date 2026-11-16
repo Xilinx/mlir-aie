@@ -394,6 +394,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-stack-size-section")
       .value("-aie-stack-addrspace=", "", /*omitIfEmpty=*/true)
       .arg("--filetype=obj")
+      // AIE2P only. Not reliable on a loop-carried value kept as two halves.
+      .arg("--aie2pprelegalizercombiner-disable-rule="
+           "combine_concat_unmerge_phis")
       .output("-o");
   for (const std::string &a : xllcArgs) {
     llcCmd.arg(a);
