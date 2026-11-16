@@ -1,9 +1,0 @@
-<map id="xilinx::aievec::CmpOpConversionBase&lt; MaxLtBf16IntrOp, MinGeBf16IntrOp, MaxLt32IntrOp, MinGe32IntrOp, MaxLt16IntrOp, MinGe16IntrOp &gt;" name="xilinx::aievec::CmpOpConversionBase&lt; MaxLtBf16IntrOp, MinGeBf16IntrOp, MaxLt32IntrOp, MinGe32IntrOp, MaxLt16IntrOp, MinGe16IntrOp &gt;">
-<area shape="rect" id="Node000001" title=" " alt="" coords="273,181,553,260"/>
-<area shape="rect" id="Node000003" href="$classxilinx_1_1aievec_1_1CmpOpConversionBase.html" title=" " alt="" coords="995,69,1336,182"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="512,172,577,152,684,134,794,123,899,118,998,119,993,120,900,123,794,128,685,139,578,158,514,177"/>
-<area shape="rect" id="Node000004" href="$classxilinx_1_1aievec_1_1CmpOpConversionBase.html" title=" " alt="" coords="969,259,1362,371"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="477,266,525,295,578,317,676,337,777,346,877,346,966,343,972,343,877,352,777,351,675,342,577,322,523,300,476,272"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,198,224,243"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="238,218,275,220,270,221,240,223"/>
-</map>
