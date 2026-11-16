@@ -12,8 +12,8 @@ last place (ulp) of the output dtype, and how many results are not the
 correctly rounded value -- the float64 reference rounded to nearest, ties to
 even, which is the most accurate answer the output dtype can hold.
 
-Rounding is done here rather than by a cast: ml_dtypes converts float64 to
-bfloat16 through float32, so ``1 + 2**-8 + 2**-30`` becomes 1.0 where the
+Rounding is done here rather than by a cast: ml_dtypes before 0.7 converts
+float64 to bfloat16 through float32, so ``1 + 2**-8 + 2**-30`` becomes 1.0 where the
 correctly rounded bfloat16 is 1.0078125. ``round_to`` corrects that.
 
 ``all_bf16`` enumerates every bfloat16 bit pattern, so a unary bf16 kernel
@@ -91,7 +91,8 @@ def round_to(x, dtype) -> np.ndarray:
 
     A plain cast is used as a first guess and corrected by comparing it with
     its two neighbours in float64, so it is right even when the cast is off
-    by one ulp (ml_dtypes' bfloat16 cast rounds twice, through float32).
+    by one ulp (ml_dtypes' bfloat16 cast before 0.7 rounds twice, through
+    float32).
     Values past the largest finite one round to infinity where IEEE says so.
     """
     dt = np.dtype(dtype)

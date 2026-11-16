@@ -23,10 +23,11 @@ def _round_8_bits(x):
     return np.ldexp(np.rint(np.ldexp(m, 8)), e - 8)
 
 
-def test_round_to_is_correct_where_the_cast_rounds_twice():
+def test_round_to_is_correct_where_a_cast_via_float32_rounds_twice():
     # Via float32 the sticky bit is lost: 1 + 2**-8 is a tie, which goes even.
+    # ml_dtypes < 0.7 casts float64 to bfloat16 that way (giving 1.0); newer
+    # releases round directly. round_to must be right either way.
     x = np.array([1 + 2**-8 + 2**-30])
-    assert x.astype(bfloat16)[0] == 1.0
     assert round_to(x, bfloat16)[0] == 1.0078125
 
 
