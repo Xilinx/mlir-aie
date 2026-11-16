@@ -290,10 +290,12 @@ LogicalResult emitPage(CertPageOp pageOp, std::string &text,
 // The section content is emitted to a separate file
 LogicalResult emitUcDmaChain(CertUcDmaChainOp op, std::string &chains,
                              std::string &data,
-                             llvm::StringSet<> &emittedGlobals);
+                             llvm::StringSet<> &emittedGlobals,
+                             const SymbolTable &symbolTable);
 LogicalResult emitGlobalData(Operation *op, StringRef dataSymbol,
                              std::string &data,
-                             llvm::StringSet<> &emittedGlobals);
+                             llvm::StringSet<> &emittedGlobals,
+                             const SymbolTable &symbolTable);
 
 StringRef referencedChain(Operation *op) {
   if (auto write = dyn_cast<CertUcDmaWriteDesSyncOp>(op))
@@ -304,7 +306,8 @@ StringRef referencedChain(Operation *op) {
 }
 
 LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
-                          llvm::StringRef outputPath) {
+                          llvm::StringRef outputPath,
+                          const SymbolTable &symbolTable) {
   LogicalResult result = success();
   std::string sectionName = sectionOp.getSymName().str();
   std::string sectionFileName = sectionName + ".asm";
@@ -315,27 +318,25 @@ LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
   std::string sectionChains;
   llvm::StringSet<> emittedChains;
   llvm::StringSet<> emittedGlobals;
-  auto device = sectionOp->getParentOfType<DeviceOp>();
   // AIEBU resolves labels within the including file's scope. Each section
   // needs its own chain and payload copies, even when another section shares
   // them.
   sectionOp.walk([&](Operation *op) {
     if (auto patch = dyn_cast<CertApplyOffset57Op>(op)) {
       if (failed(emitGlobalData(op, patch.getSymbol(), sectionData,
-                                emittedGlobals)))
+                                emittedGlobals, symbolTable)))
         result = failure();
       return;
     }
     StringRef name = referencedChain(op);
     if (name.empty() || !emittedChains.insert(name).second)
       return;
-    auto chain =
-        dyn_cast_if_present<CertUcDmaChainOp>(device.lookupSymbol(name));
+    auto chain = symbolTable.lookup<CertUcDmaChainOp>(name);
     if (!chain) {
       op->emitError("uC DMA chain symbol not found: ") << name;
       result = failure();
     } else if (failed(emitUcDmaChain(chain, sectionChains, sectionData,
-                                     emittedGlobals))) {
+                                     emittedGlobals, symbolTable))) {
       result = failure();
     }
   });
@@ -431,12 +432,12 @@ LogicalResult emitAttachToGroupOp(CertAttachToGroupOp groupOp,
 
 LogicalResult emitGlobalData(Operation *op, StringRef dataSymbol,
                              std::string &data,
-                             llvm::StringSet<> &emittedGlobals) {
+                             llvm::StringSet<> &emittedGlobals,
+                             const SymbolTable &symbolTable) {
   if (emittedGlobals.contains(dataSymbol))
     return success();
 
-  auto global = dyn_cast_if_present<memref::GlobalOp>(
-      op->getParentOfType<AIE::DeviceOp>().lookupSymbol(dataSymbol));
+  auto global = symbolTable.lookup<memref::GlobalOp>(dataSymbol);
   if (!global) {
     return op->emitError("Global symbol not found");
   }
@@ -467,8 +468,8 @@ LogicalResult emitGlobalData(Operation *op, StringRef dataSymbol,
 
 // UC_DMA_BD       0, 0x001A05C0, @data, 8, 0, 1
 LogicalResult emitUcDmaBd(CertUcDmaBdOp op, std::string &chains,
-                          std::string &data,
-                          llvm::StringSet<> &emittedGlobals) {
+                          std::string &data, llvm::StringSet<> &emittedGlobals,
+                          const SymbolTable &symbolTable) {
   std::string s;
   llvm::raw_string_ostream ss(s);
   ss << "  UC_DMA_BD       0, ";
@@ -478,7 +479,8 @@ LogicalResult emitUcDmaBd(CertUcDmaBdOp op, std::string &chains,
   ss << "0, ";
   ss << (op.getNextBd() ? "1\n" : "0\n");
   chains += ss.str();
-  return emitGlobalData(op, op.getRemoteAddress(), data, emittedGlobals);
+  return emitGlobalData(op, op.getRemoteAddress(), data, emittedGlobals,
+                        symbolTable);
 }
 
 // .align           16
@@ -486,12 +488,13 @@ LogicalResult emitUcDmaBd(CertUcDmaBdOp op, std::string &chains,
 //   UC_DMA_BD       0, 0x001A05C0, @data0, 8, 0, 1
 LogicalResult emitUcDmaChain(CertUcDmaChainOp op, std::string &chains,
                              std::string &data,
-                             llvm::StringSet<> &emittedGlobals) {
+                             llvm::StringSet<> &emittedGlobals,
+                             const SymbolTable &symbolTable) {
   chains += "  .align 16\n";
   chains += op.getName().str() + ":\n";
   for (auto &o : op.getBody().front()) {
     if (auto bd = dyn_cast<CertUcDmaBdOp>(&o))
-      if (failed(emitUcDmaBd(bd, chains, data, emittedGlobals)))
+      if (failed(emitUcDmaBd(bd, chains, data, emittedGlobals, symbolTable)))
         return failure();
   }
   return success();
@@ -504,6 +507,9 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
                                                llvm::StringRef outputPath) {
 
   DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
+  // Every chain and payload resolves against this device; a cached table
+  // avoids a linear scan of its symbols per BD.
+  SymbolTable symbolTable(deviceOp);
 
   std::vector<std::string> text;
   std::vector<std::string> data;
@@ -559,11 +565,11 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
     if (patch) {
       size_t block = blockFor(groupId);
       if (failed(emitGlobalData(op, patch.getSymbol(), data[block],
-                                emittedGlobals[groupId])))
+                                emittedGlobals[groupId], symbolTable)))
         result = failure();
       return;
     }
-    if (!deviceOp.lookupSymbol<CertUcDmaChainOp>(name)) {
+    if (!symbolTable.lookup<CertUcDmaChainOp>(name)) {
       op->emitError("uC DMA chain symbol not found: ") << name;
       result = failure();
       return;
@@ -576,7 +582,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   // (e.g. `LOAD_PDI 1, @config_device`), so their labels must already be
   // defined. Sections only appear at device level.
   for (auto section : deviceOp.getBody()->getOps<CertSectionOp>()) {
-    if (failed(emitSection(section, text[0], outputPath)))
+    if (failed(emitSection(section, text[0], outputPath, symbolTable)))
       result = failure();
   }
 
@@ -603,7 +609,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
       for (uint32_t groupId : users) {
         size_t block = blockFor(groupId);
         if (failed(emitUcDmaChain(chain, chains[block], data[block],
-                                  emittedGlobals[groupId])))
+                                  emittedGlobals[groupId], symbolTable)))
           result = failure();
       }
     }

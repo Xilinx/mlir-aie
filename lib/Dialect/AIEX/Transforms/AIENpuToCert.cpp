@@ -272,8 +272,11 @@ struct NpuMaskPollToCertMaskPoll32 : OpConversionPattern<AIEX::NpuMaskPollOp> {
 struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
   // nextChainId is owned by the caller and shared by every rewrite in one
   // conversion, so each name search resumes after the last name allocated.
-  NpuBlockWriteToCertUcDma(MLIRContext *ctx, unsigned &nextChainId)
-      : OpConversionPattern(ctx), nextChainId(nextChainId) {}
+  // symbolTable is the device's; each new chain is added to it.
+  NpuBlockWriteToCertUcDma(MLIRContext *ctx, unsigned &nextChainId,
+                           SymbolTable &symbolTable)
+      : OpConversionPattern(ctx), nextChainId(nextChainId),
+        symbolTable(symbolTable) {}
 
   LogicalResult
   matchAndRewrite(AIEX::NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -293,7 +296,7 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     }
 
     std::string symbolName = "chain_" + std::to_string(nextChainId++);
-    while (op->getParentOfType<AIE::DeviceOp>().lookupSymbol(symbolName))
+    while (symbolTable.lookup(symbolName))
       symbolName = "chain_" + std::to_string(nextChainId++);
 
     // Create a new uc_dma_write_des_sync operation
@@ -309,15 +312,19 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
 
     // Insert after the last existing uc_dma_chain (before any pages/jobs),
     // preserving the order of blockwrite ops. Globals are allowed to precede
-    // the chains, so skip over them too.
+    // the chains, so skip over them too. The previous chain ends that leading
+    // run, so resume the scan there instead of at the start of the body.
     Block *deviceBody = parentDevice.getBody();
     Operation *insertAfter = nullptr;
-    for (Operation &bodyOp : *deviceBody) {
-      if (isa<AIEX::CertUcDmaChainOp>(bodyOp) || isa<memref::GlobalOp>(bodyOp))
-        insertAfter = &bodyOp;
-      else
-        break;
+    Block::iterator it = deviceBody->begin();
+    if (lastChain && lastChain->getBlock() == deviceBody) {
+      insertAfter = lastChain;
+      it = std::next(Block::iterator(lastChain));
     }
+    for (; it != deviceBody->end() &&
+           isa<AIEX::CertUcDmaChainOp, memref::GlobalOp>(*it);
+         ++it)
+      insertAfter = &*it;
     if (insertAfter)
       rewriter.setInsertionPointAfter(insertAfter);
     else
@@ -326,6 +333,8 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     auto symbolAttr = rewriter.getStringAttr(symbolName);
     auto chainOp =
         AIEX::CertUcDmaChainOp::create(rewriter, op.getLoc(), symbolAttr);
+    symbolTable.insert(chainOp);
+    lastChain = chainOp;
 
     Block *bb = new Block();
     chainOp.getRegion().push_back(bb);
@@ -339,6 +348,8 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
   }
 
   unsigned &nextChainId;
+  SymbolTable &symbolTable;
+  mutable Operation *lastChain = nullptr;
 };
 
 struct NpuSyncToCertWaitTCTS : OpConversionPattern<AIEX::NpuSyncOp> {
@@ -770,7 +781,14 @@ struct NpuAddressPatchToCertApplyOffset57
 
 struct MergeConsecutiveCertUcDmaWriteDesSyncOps
     : OpRewritePattern<AIEX::CertUcDmaWriteDesSyncOp> {
-  using OpRewritePattern::OpRewritePattern;
+  // symbolTable is the device's. useCounts holds the symbol uses in the device,
+  // counted once up front: a merge erases the earlier chain and its one
+  // enqueue and moves no other chain reference.
+  MergeConsecutiveCertUcDmaWriteDesSyncOps(
+      MLIRContext *context, SymbolTable &symbolTable,
+      llvm::DenseMap<StringAttr, unsigned> &useCounts)
+      : OpRewritePattern(context), symbolTable(symbolTable),
+        useCounts(useCounts) {}
 
   LogicalResult matchAndRewrite(AIEX::CertUcDmaWriteDesSyncOp op,
                                 PatternRewriter &rewriter) const override {
@@ -801,11 +819,8 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
     // find the uc_dma_chain
     StringRef sym_name = op.getSymbol();
     StringRef prev_sym_name = prevWriteDesSync.getSymbol();
-    auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        op->getParentOfType<AIE::DeviceOp>().lookupSymbol(sym_name));
-    auto prevChain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        prevWriteDesSync->getParentOfType<AIE::DeviceOp>().lookupSymbol(
-            prev_sym_name));
+    auto chain = symbolTable.lookup<AIEX::CertUcDmaChainOp>(sym_name);
+    auto prevChain = symbolTable.lookup<AIEX::CertUcDmaChainOp>(prev_sym_name);
     if (!chain || !prevChain)
       return failure();
 
@@ -816,10 +831,8 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
     // other enqueues, and erasing a shared @prevChain would leave a dangling
     // symbol reference that neither the verifier nor the page cost model
     // notices. Decline the merge instead.
-    auto deviceOp = op->getParentOfType<AIE::DeviceOp>();
     auto isSingleUse = [&](AIEX::CertUcDmaChainOp c) {
-      auto uses = SymbolTable::getSymbolUses(c, deviceOp);
-      return uses && llvm::hasSingleElement(*uses);
+      return useCounts.lookup(c.getSymNameAttr()) == 1;
     };
     if (!isSingleUse(chain) || !isSingleUse(prevChain))
       return failure();
@@ -850,14 +863,23 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
           rewriter, bdOp.getLoc(), bdOp.getRemoteAddress(),
           bdOp.getLocalAddress(), bdOp.getLength(), true);
     }
+    useCounts.erase(prevChain.getSymNameAttr());
+    symbolTable.remove(prevChain);
     rewriter.eraseOp(prevChain);
     rewriter.eraseOp(prevWriteDesSync);
     return success();
   }
+
+  SymbolTable &symbolTable;
+  llvm::DenseMap<StringAttr, unsigned> &useCounts;
 };
 
 struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
-  using OpRewritePattern::OpRewritePattern;
+  // The pattern runs over the module, so it keeps a table per device and adds
+  // the globals it creates to it.
+  SplitNpuBlockWriteOpPattern(MLIRContext *context,
+                              SymbolTableCollection &symbolTables)
+      : OpRewritePattern(context), symbolTables(symbolTables) {}
 
   LogicalResult matchAndRewrite(AIEX::NpuBlockWriteOp op,
                                 PatternRewriter &rewriter) const override {
@@ -883,8 +905,9 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     // Find the original memref.global operation
     auto deviceOp = op->getParentOfType<AIE::DeviceOp>();
-    auto originalGlobal = dyn_cast_if_present<memref::GlobalOp>(
-        deviceOp.lookupSymbol(dataOperand.getName()));
+    SymbolTable &symbolTable = symbolTables.getSymbolTable(deviceOp);
+    auto originalGlobal =
+        symbolTable.lookup<memref::GlobalOp>(dataOperand.getName());
     if (!originalGlobal)
       return failure();
 
@@ -924,25 +947,27 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     // Ensure unique names
     int counter = 0;
-    while (deviceOp.lookupSymbol(firstName)) {
+    while (symbolTable.lookup(firstName)) {
       firstName =
           dataOperand.getName().str() + "_split_0_" + std::to_string(counter++);
     }
     counter = 0;
-    while (deviceOp.lookupSymbol(secondName)) {
+    while (symbolTable.lookup(secondName)) {
       secondName =
           dataOperand.getName().str() + "_split_1_" + std::to_string(counter++);
     }
 
     // Create the new global operations
     rewriter.setInsertionPoint(originalGlobal);
-    memref::GlobalOp::create(rewriter, loc, firstName,
-                             rewriter.getStringAttr("private"), firstChunkType,
-                             firstChunkAttr, true, nullptr);
+    auto firstGlobal = memref::GlobalOp::create(
+        rewriter, loc, firstName, rewriter.getStringAttr("private"),
+        firstChunkType, firstChunkAttr, true, nullptr);
+    symbolTable.insert(firstGlobal);
 
-    memref::GlobalOp::create(rewriter, loc, secondName,
-                             rewriter.getStringAttr("private"), secondChunkType,
-                             secondChunkAttr, true, nullptr);
+    auto secondGlobal = memref::GlobalOp::create(
+        rewriter, loc, secondName, rewriter.getStringAttr("private"),
+        secondChunkType, secondChunkAttr, true, nullptr);
+    symbolTable.insert(secondGlobal);
 
     // Create get_global operations for the new data
     rewriter.setInsertionPoint(op);
@@ -972,6 +997,8 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     return success();
   }
+
+  SymbolTableCollection &symbolTables;
 };
 
 // Rewrite each tile- or buffer-relative blockwrite to the absolute address it
@@ -1074,6 +1101,10 @@ struct AIENpuToCertPass
       });
     };
 
+    // Names and payload uses are indexed once per device and kept current
+    // below; scanning the device per global is quadratic in the globals.
+    DeviceNames mainNames = collectNames(mainDevice);
+    std::optional<PayloadUses> mainUses;
     for (auto global : llvm::to_vector(mainDevice.getOps<memref::GlobalOp>())) {
       StringRef oldName = global.getSymName();
       if (!isDeviceName(oldName))
@@ -1082,14 +1113,20 @@ struct AIENpuToCertPass
       unsigned counter = 0;
       do
         newName = oldName.str() + "_" + std::to_string(counter++);
-      while (nameTaken(mainDevice, newName) || isDeviceName(newName));
-      renamePayloadUses(mainDevice, oldName, newName);
+      while (mainNames.contains(newName) || isDeviceName(newName));
+      if (!mainUses)
+        mainUses = collectPayloadUses(mainDevice);
+      renamePayloadUses(*mainUses, oldName, newName);
+      removeName(mainNames, oldName);
+      ++mainNames[newName];
       global.setSymName(newName);
     }
 
     for (auto dev : devices) {
       if (dev == mainDevice)
         continue;
+      DeviceNames devNames = collectNames(dev);
+      PayloadUses devUses = collectPayloadUses(dev);
       auto globals = llvm::to_vector(dev.getOps<memref::GlobalOp>());
       for (auto global : globals) {
         StringRef oldName = global.getSymName();
@@ -1098,52 +1135,79 @@ struct AIENpuToCertPass
         // Avoid a temporary collision with another source global: rewriting
         // its uses later would otherwise redirect both payloads to one symbol.
         auto taken = [&](StringRef candidate) {
-          return nameTaken(mainDevice, candidate) || isDeviceName(candidate) ||
-                 (candidate != oldName && nameTaken(dev, candidate));
+          return mainNames.contains(candidate) || isDeviceName(candidate) ||
+                 (candidate != oldName && devNames.contains(candidate));
         };
         while (taken(newName))
           newName = oldName.str() + "_" + std::to_string(counter++);
         if (newName != oldName) {
-          renamePayloadUses(dev, oldName, newName);
+          renamePayloadUses(devUses, oldName, newName);
           global.setSymName(newName);
         }
+        removeName(devNames, oldName);
+        ++mainNames[newName];
         global->moveBefore(mainDevice.getBody(), mainDevice.getBody()->begin());
       }
     }
   }
 
-  // The device verifier rejects duplicate sym_names among all body ops,
-  // including SSA ops such as aie.buffer that the symbol table does not index.
-  static bool nameTaken(AIE::DeviceOp dev, StringRef name) {
-    return llvm::any_of(dev.getBody()->getOperations(), [&](Operation &op) {
-      auto symName =
-          op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-      return symName && symName.getValue() == name;
-    });
+  // The sym_names of a device's body ops, with their counts. The device
+  // verifier rejects duplicates among all of them, including SSA ops such as
+  // aie.buffer that the symbol table does not index.
+  using DeviceNames = llvm::StringMap<unsigned>;
+  static DeviceNames collectNames(AIE::DeviceOp dev) {
+    DeviceNames names;
+    for (Operation &op : dev.getBody()->getOperations())
+      if (auto symName =
+              op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
+        ++names[symName.getValue()];
+    return names;
+  }
+  static void removeName(DeviceNames &names, StringRef name) {
+    auto it = names.find(name);
+    if (it != names.end() && --it->second == 0)
+      names.erase(it);
   }
 
-  // Rewrite only references that name a payload global. A generic symbol-use
-  // rewrite would also rename same-named device references, such as
-  // load_pdi's device_ref, which resolve against the module. Nested symbol
-  // tables resolve their own names, so their uses are left alone.
-  static void renamePayloadUses(AIE::DeviceOp dev, StringRef oldName,
-                                StringRef newName) {
-    auto newRef = FlatSymbolRefAttr::get(dev.getContext(), newName);
+  // The ops that reference a payload global, by the name they reference. A
+  // generic symbol-use rewrite would also rename same-named device references,
+  // such as load_pdi's device_ref, which resolve against the module. Nested
+  // symbol tables resolve their own names, so their uses are left alone.
+  using PayloadUses = llvm::StringMap<SmallVector<Operation *>>;
+  static PayloadUses collectPayloadUses(AIE::DeviceOp dev) {
+    PayloadUses uses;
     dev.walk<WalkOrder::PreOrder>([&](Operation *op) {
       if (op != dev && op->hasTrait<OpTrait::SymbolTable>())
         return WalkResult::skip();
-      if (auto get = dyn_cast<memref::GetGlobalOp>(op)) {
-        if (get.getName() == oldName)
-          get.setNameAttr(newRef);
-      } else if (auto bd = dyn_cast<AIEX::CertUcDmaBdOp>(op)) {
-        if (bd.getRemoteAddress() == oldName)
-          bd.setRemoteAddressAttr(newRef);
-      } else if (auto patch = dyn_cast<AIEX::CertApplyOffset57Op>(op)) {
-        if (patch.getSymbol() == oldName)
-          patch.setSymbolAttr(newRef);
-      }
+      if (auto get = dyn_cast<memref::GetGlobalOp>(op))
+        uses[get.getName()].push_back(op);
+      else if (auto bd = dyn_cast<AIEX::CertUcDmaBdOp>(op))
+        uses[bd.getRemoteAddress()].push_back(op);
+      else if (auto patch = dyn_cast<AIEX::CertApplyOffset57Op>(op))
+        uses[patch.getSymbol()].push_back(op);
       return WalkResult::advance();
     });
+    return uses;
+  }
+
+  // Point the indexed references to `oldName` at `newName`.
+  static void renamePayloadUses(PayloadUses &uses, StringRef oldName,
+                                StringRef newName) {
+    auto it = uses.find(oldName);
+    if (it == uses.end())
+      return;
+    SmallVector<Operation *> ops = std::move(it->second);
+    uses.erase(it);
+    for (Operation *op : ops) {
+      auto newRef = FlatSymbolRefAttr::get(op->getContext(), newName);
+      if (auto get = dyn_cast<memref::GetGlobalOp>(op))
+        get.setNameAttr(newRef);
+      else if (auto bd = dyn_cast<AIEX::CertUcDmaBdOp>(op))
+        bd.setRemoteAddressAttr(newRef);
+      else if (auto patch = dyn_cast<AIEX::CertApplyOffset57Op>(op))
+        patch.setSymbolAttr(newRef);
+    }
+    llvm::append_range(uses[newName], ops);
   }
 
   void processDevice(AIE::DeviceOp currentDevice) {
@@ -1281,8 +1345,9 @@ struct AIENpuToCertPass
 
     // Split oversized NpuBlockWriteOps before lowering them to cert ops
     {
+      SymbolTableCollection symbolTables;
       RewritePatternSet p(&getContext());
-      p.insert<SplitNpuBlockWriteOpPattern>(&getContext());
+      p.insert<SplitNpuBlockWriteOpPattern>(&getContext(), symbolTables);
       if (failed(applyPatternsGreedily(getOperation(), std::move(p))))
         signalPassFailure();
     }
@@ -1296,8 +1361,10 @@ struct AIENpuToCertPass
     target.addIllegalOp<AIEX::NpuLoadPdiOp>();
 
     unsigned nextChainId = 0;
+    SymbolTable symbolTable(currentDevice);
     RewritePatternSet p2(&getContext());
-    p2.insert<NpuBlockWriteToCertUcDma>(&getContext(), nextChainId);
+    p2.insert<NpuBlockWriteToCertUcDma>(&getContext(), nextChainId,
+                                        symbolTable);
     p2.insert<NpuMaskWrite32ToCertMaskWrite32>(&getContext());
     p2.insert<NpuMaskPollToCertMaskPoll32>(&getContext());
     p2.insert<NpuWrite32ToCertWrite32>(&getContext());
@@ -1471,16 +1538,14 @@ struct PageDataSeen {
 
 // A pushed chain's BDs and payloads, charged the first time the page names
 // them.
-static void addChainDataCost(StringRef sym_name, AIE::DeviceOp deviceOp,
+static void addChainDataCost(StringRef sym_name, const SymbolTable &symbolTable,
                              uint32_t &data_cost, PageDataSeen &seen) {
-  auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-      deviceOp.lookupSymbol(sym_name));
+  auto chain = symbolTable.lookup<AIEX::CertUcDmaChainOp>(sym_name);
   if (!chain || !seen.chains.insert(chain).second)
     return;
   for (auto bdOp : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>()) {
     data_cost += 16; // bd op
-    auto global = dyn_cast_if_present<memref::GlobalOp>(
-        deviceOp.lookupSymbol(bdOp.getRemoteAddress()));
+    auto global = symbolTable.lookup<memref::GlobalOp>(bdOp.getRemoteAddress());
     if (!global || !seen.payloads.insert(global).second)
       continue;
     auto initVal = global.getInitialValue();
@@ -1498,7 +1563,7 @@ static void addChainDataCost(StringRef sym_name, AIE::DeviceOp deviceOp,
 // and emitter in sync when adding a cert op:
 // an op the emitter can emit but this function ignores is counted as free,
 // which makes the page look smaller than it is.
-static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
+static void updateCostForOp(Operation &o, const SymbolTable &symbolTable,
                             uint32_t &text_cost, uint32_t &data_cost,
                             PageDataSeen &seen) {
   // Several distinct op kinds share an encoded instruction size below --
@@ -1527,10 +1592,10 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     // NOLINTEND(bugprone-branch-clone)
   } else if (auto syncOp = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o)) {
     text_cost += 4; // ISA_OPSIZE_UC_DMA_WRITE_DES_SYNC
-    addChainDataCost(syncOp.getSymbol(), deviceOp, data_cost, seen);
+    addChainDataCost(syncOp.getSymbol(), symbolTable, data_cost, seen);
   } else if (auto desOp = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o)) {
     text_cost += 8; // ISA_OPSIZE_UC_DMA_WRITE_DES
-    addChainDataCost(desOp.getSymbol(), deviceOp, data_cost, seen);
+    addChainDataCost(desOp.getSymbol(), symbolTable, data_cost, seen);
   } else if (isa<AIEX::CertWaitUcDmaOp>(o)) {
     text_cost += 4; // ISA_OPSIZE_WAIT_UC_DMA
   } else if (isa<AIEX::CertRead32Op>(o)) {
@@ -1546,15 +1611,15 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
   }
 }
 
-static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
-                             AIEX::CertJobOp &split_job,
+static uint32_t estimateCost(AIEX::CertPageOp op,
+                             const SymbolTable &symbolTable,
+                             uint32_t split_target, AIEX::CertJobOp &split_job,
                              Block::iterator &split_iter,
                              bool &found_split_point) {
   uint32_t text_cost = 32; // page header: `.align 16` padding plus `.eop`
   uint32_t data_cost = 0;
   PageDataSeen seen;
   found_split_point = false;
-  AIE::DeviceOp deviceOp = op->getParentOfType<AIE::DeviceOp>();
 
   for (auto job : op.getBody().front().getOps<AIEX::CertJobOp>()) {
     // Cuts inside a job that uses local registers would lose their values.
@@ -1572,7 +1637,7 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
         found_split_point = true;
       }
 
-      updateCostForOp(o, deviceOp, text_cost, data_cost, seen);
+      updateCostForOp(o, symbolTable, text_cost, data_cost, seen);
 
       if (splittable && !found_split_point &&
           (text_cost + data_cost) >= split_target) {
@@ -1611,17 +1676,16 @@ struct IndivisibleSpan {
 
 // Index non-terminator ops in textual order and record indivisible spans.
 static void computeIndivisibleSpans(AIEX::CertPageOp page,
+                                    const SymbolTable &symbolTable,
                                     std::map<Operation *, int> &flatIndex,
                                     SmallVectorImpl<IndivisibleSpan> &spans) {
-  AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
   std::map<int, std::pair<int, int>> barriers;
   // Patches accumulate and survive pushes, so later pushes depend on the
   // earliest patch of their payload.
   llvm::StringMap<int> firstPatch;
   auto payloadsOf = [&](StringRef chainSym) {
     SmallVector<StringRef> payloads;
-    auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        deviceOp ? deviceOp.lookupSymbol(chainSym) : nullptr);
+    auto chain = symbolTable.lookup<AIEX::CertUcDmaChainOp>(chainSym);
     if (!chain || chain.getBody().empty())
       return payloads;
     for (auto bd : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>())
@@ -1675,12 +1739,13 @@ static bool cutSeparatesSpan(ArrayRef<IndivisibleSpan> spans, int p,
 // Choose the span-safe cut closest to split_target, allowing both interior
 // and job-boundary cuts. Each half needs content so repeated splitting
 // progresses.
-static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
+static bool findLegalSplitPoint(AIEX::CertPageOp page,
+                                const SymbolTable &symbolTable,
+                                uint32_t split_target,
                                 const std::map<Operation *, int> &flatIndex,
                                 ArrayRef<IndivisibleSpan> spans,
                                 AIEX::CertJobOp &split_job,
                                 Block::iterator &split_iter) {
-  AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
   uint32_t text_cost = 32; // page header, mirrors estimateCost
   uint32_t data_cost = 0;
   PageDataSeen seen;
@@ -1717,7 +1782,7 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
           }
         }
       }
-      updateCostForOp(o, deviceOp, text_cost, data_cost, seen);
+      updateCostForOp(o, symbolTable, text_cost, data_cost, seen);
       sawOpInJob = true;
     }
     text_cost += cert_job_end_cost; // mirrors estimateCost
@@ -1889,8 +1954,12 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
   // the pass -- so without this the "cannot split" error below would print and
   // the oversized page would still reach codegen. The pass checks the flag
   // after applyPatternsGreedily and calls signalPassFailure().
-  SplitCertPageOpPattern(MLIRContext *context, bool *hadError)
-      : OpRewritePattern(context), hadError(hadError) {}
+  // symbolTable is the device's; splitting only clones jobs, so it stays
+  // current.
+  SplitCertPageOpPattern(MLIRContext *context, const SymbolTable &symbolTable,
+                         bool *hadError)
+      : OpRewritePattern(context), symbolTable(symbolTable),
+        hadError(hadError) {}
 
   LogicalResult matchAndRewrite(AIEX::CertPageOp op,
                                 PatternRewriter &rewriter) const override {
@@ -1900,8 +1969,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     AIEX::CertJobOp split_job;
     Block::iterator split_iter;
     bool found_split_point = false;
-    uint32_t cost = estimateCost(op, cert_page_size / 2, split_job, split_iter,
-                                 found_split_point);
+    uint32_t cost = estimateCost(op, symbolTable, cert_page_size / 2, split_job,
+                                 split_iter, found_split_point);
     LLVM_DEBUG(llvm::outs()
                << "Estimate cost for page: " << " is " << cost << "\n");
 
@@ -1912,15 +1981,16 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
 
     std::map<Operation *, int> flatIndex;
     SmallVector<IndivisibleSpan> spans;
-    computeIndivisibleSpans(op, flatIndex, spans);
+    computeIndivisibleSpans(op, symbolTable, flatIndex, spans);
 
     // The initial estimate can miss a job-boundary cut or an earlier candidate;
     // search all positions before declaring the page unsplittable. Spans are
     // not applied here: a page whose cuts are all blocked by a span has split
     // points, and the span check below reports which constraint blocks them.
     if (!found_split_point)
-      found_split_point = findLegalSplitPoint(op, cert_page_size / 2, flatIndex,
-                                              {}, split_job, split_iter);
+      found_split_point =
+          findLegalSplitPoint(op, symbolTable, cert_page_size / 2, flatIndex,
+                              {}, split_job, split_iter);
 
     // Over the split trigger but with nowhere to cut. Every cut has to leave at
     // least one op on each side, so a page whose bulk sits in a single one-op
@@ -1966,8 +2036,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
       int p = fi == flatIndex.end() ? 0 : fi->second;
       SpanKind kind = SpanKind::LocalBarrier;
       if (cutSeparatesSpan(spans, p, &kind)) {
-        if (!findLegalSplitPoint(op, cert_page_size / 2, flatIndex, spans,
-                                 split_job, split_iter)) {
+        if (!findLegalSplitPoint(op, symbolTable, cert_page_size / 2, flatIndex,
+                                 spans, split_job, split_iter)) {
           // Leave the page whole: a severed span hangs the firmware or pushes
           // stale addresses, so an oversized page is the better of the two.
           // That is only survivable while the page still fits; past
@@ -2116,6 +2186,7 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     return success();
   }
 
+  const SymbolTable &symbolTable;
   bool *hadError;
 };
 
@@ -2345,6 +2416,10 @@ struct AIECertPagesPass
     // split/isolated pages, emitting them on group 0.)
     lowerPagePlacementToGroups(getOperation());
 
+    // The steps below look chains and payloads up many times per op. None of
+    // them creates a symbol, and the merge removes the chains it erases.
+    SymbolTable symbolTable(getOperation());
+
     // First, isolate load_pdi and preempt operations into their own job/page
     bool isolateError = false;
     RewritePatternSet isolatePatterns(&getContext());
@@ -2362,7 +2437,7 @@ struct AIECertPagesPass
     // illegal-to-split page would otherwise print an error and still compile.
     bool splitError = false;
     RewritePatternSet p1(&getContext());
-    p1.insert<SplitCertPageOpPattern>(&getContext(), &splitError);
+    p1.insert<SplitCertPageOpPattern>(&getContext(), symbolTable, &splitError);
     if (failed(applyPatternsGreedily(getOperation(), std::move(p1))))
       signalPassFailure();
     if (splitError)
@@ -2371,9 +2446,15 @@ struct AIECertPagesPass
     if (failed(allocateJobIds(getOperation())))
       return signalPassFailure();
 
-    // Add the merge pattern for CertUcDmaWriteDesSyncOps
+    // Add the merge pattern for CertUcDmaWriteDesSyncOps. With an op whose
+    // symbol uses are unknown, no use is counted and nothing merges.
+    llvm::DenseMap<StringAttr, unsigned> useCounts;
+    if (auto uses = SymbolTable::getSymbolUses(&getOperation().getRegion()))
+      for (const SymbolTable::SymbolUse &use : *uses)
+        ++useCounts[use.getSymbolRef().getRootReference()];
     RewritePatternSet p3(&getContext());
-    p3.insert<MergeConsecutiveCertUcDmaWriteDesSyncOps>(&getContext());
+    p3.insert<MergeConsecutiveCertUcDmaWriteDesSyncOps>(&getContext(),
+                                                        symbolTable, useCounts);
     if (failed(applyPatternsGreedily(getOperation(), std::move(p3))))
       return signalPassFailure();
   }
