@@ -1815,7 +1815,7 @@
     "buildAndTestRyzenAIWindows.yml": {
      "main": 0.929,
      "pull_requests": 0.659,
-     "flaky": 0.056,
+     "flaky": 0.055,
      "minutes_median": 58.6,
      "queued_median": 0.5
     },
