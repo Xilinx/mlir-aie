@@ -44,6 +44,7 @@ extern "C" {
 #include <vector>
 
 namespace xilinx {
+#define GEN_PASS_DEF_AIEANNOTATECORELOCKACQUIRES
 #define GEN_PASS_DEF_CONVERTAIETOCONTROLPACKETS
 #define GEN_PASS_DEF_CONVERTAIETOTRANSACTION
 #include "aie/Conversion/Passes.h.inc"
@@ -995,6 +996,19 @@ insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
     return (static_cast<uint32_t>(column) << model.getColumnShift()) |
            (static_cast<uint32_t>(row) << model.getRowShift());
   };
+  auto pollCoreStatus = [&](CoreOp core, uint32_t maskValue) {
+    auto tile = core.getTileOp();
+    auto constant = [&](uint32_t value) {
+      return arith::ConstantOp::create(builder, core.getLoc(),
+                                       builder.getI32IntegerAttr(value));
+    };
+    Value status =
+        constant(tileAddress(tile.colIndex(), tile.rowIndex()) | 0x32004);
+    Value zero = constant(0);
+    Value mask = constant(maskValue);
+    AIEX::NpuMaskPollOp::create(builder, core.getLoc(), status, zero, mask,
+                                nullptr, nullptr, nullptr);
+  };
   std::vector<TransactionBinaryOperation> writes;
   for (auto address : candidates) {
     auto [column, row, lockId] = address;
@@ -1011,31 +1025,33 @@ insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
     write.sourceLoc = device.getLoc();
     writes.push_back(write);
   }
+  if (!writes.empty())
+    for (auto core : device.getOps<CoreOp>())
+      pollCoreStatus(core, 0x1);
   if (failed(convertTransactionOpsToMLIR(builder, outputType, writes,
                                          blockwriteData, {})))
     return failure();
-  for (auto core : cores) {
-    auto tile = core.getTileOp();
-    auto constant = [&](uint32_t value) {
-      return arith::ConstantOp::create(builder, core.getLoc(),
-                                       builder.getI32IntegerAttr(value));
-    };
-    Value status =
-        constant(tileAddress(tile.colIndex(), tile.rowIndex()) | 0x32004);
-    Value zero = constant(0);
-    Value mask = constant(0x3c0);
-    AIEX::NpuMaskPollOp::create(builder, core.getLoc(), status, zero, mask,
-                                nullptr, nullptr, nullptr);
-  }
+  for (auto core : cores)
+    pollCoreStatus(core, 0x3c0);
   return success();
 }
 
+struct AIEAnnotateCoreLockAcquiresPass
+    : xilinx::impl::AIEAnnotateCoreLockAcquiresBase<
+          AIEAnnotateCoreLockAcquiresPass> {
+  void runOnOperation() override {
+    getOperation().walk([](CoreOp core) {
+      if (auto summary = collectCoreLockAcquires(core))
+        core.setLockAcquiresAttr(summary);
+    });
+  }
+};
+
 } // namespace
 
-void xilinx::AIE::recordCoreLockAcquires(DeviceOp device) {
-  for (auto core : device.getOps<CoreOp>())
-    if (auto summary = collectCoreLockAcquires(core))
-      core.setLockAcquiresAttr(summary);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+xilinx::AIE::createAIEAnnotateCoreLockAcquiresPass() {
+  return std::make_unique<AIEAnnotateCoreLockAcquiresPass>();
 }
 
 LogicalResult xilinx::AIE::generateAndInsertTeardownOps(

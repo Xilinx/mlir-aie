@@ -740,9 +740,6 @@ inline mlir::OwningOpRef<mlir::ModuleOp>
 patchCoreElfFiles(mlir::ModuleOp src,
                   const llvm::StringMap<std::string> &elfByKey) {
   mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
-  cloned->walk([](xilinx::AIE::DeviceOp device) {
-    xilinx::AIE::recordCoreLockAcquires(device);
-  });
   cloned->walk([&](xilinx::AIE::CoreOp coreOp) {
     auto it = elfByKey.find(coreKey(coreOp));
     if (it == elfByKey.end()) {

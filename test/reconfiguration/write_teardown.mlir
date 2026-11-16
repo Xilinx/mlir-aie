@@ -6,6 +6,10 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: split-file %s %t
+// RUN: aie-opt --aie-annotate-core-lock-acquires %t/config.mlir -o %t/annotated.mlir
+// RUN: FileCheck %s --check-prefix=ANNOTATE < %t/annotated.mlir
+// RUN: aie-opt --aie-annotate-core-lock-acquires %t/annotated.mlir -o %t/annotated.twice.mlir
+// RUN: diff %t/annotated.mlir %t/annotated.twice.mlir
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" %t/config.mlir | FileCheck %s
 
 // The NPU translation, cert and C++ TXN lowerings write the ops inline-config
@@ -29,10 +33,14 @@
 // RUN: diff %t.lazy.cpp.mlir %t.inline.cpp.mlir
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" --split-input-file --verify-diagnostics %t/locks.mlir | FileCheck %s --check-prefix=ACQUIRES
 // RUN: aie-opt %t/summary.mlir -o %t/summary.once.mlir
-// RUN: aie-opt %t/summary.once.mlir -o %t/summary.twice.mlir
+// RUN: aie-opt --aie-annotate-core-lock-acquires %t/summary.once.mlir -o %t/summary.twice.mlir
 // RUN: diff %t/summary.once.mlir %t/summary.twice.mlir
 // RUN: FileCheck %s --check-prefix=SUMMARY < %t/summary.twice.mlir
 // RUN: aie-opt --split-input-file --verify-diagnostics %t/summary-invalid.mlir -o %t/summary-invalid.out
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP
+
+// ANNOTATE-LABEL: aie.device(npu2_1col) @lock_cfg
+// ANNOTATE: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>, <column = 0, row = 2, lock_id = 5, action = Acquire, value = 3>, <column = 0, row = 2, lock_id = 6, action = AcquireGreaterEqual, value = 2>, <column = 0, row = 2, lock_id = 6, action = AcquireGreaterEqual, value = 3>]>
 
 // CHECK-LABEL: aie.runtime_sequence @seq
 // CHECK:      aiex.npu.load_pdi {device_ref = @empty_0
@@ -50,9 +58,11 @@
 // LOCKS-DAG: %[[STALL_MASK:.*]] = arith.constant 960 : i32
 // LOCKS-DAG: %[[THREE:.*]] = arith.constant 3 : i32
 // LOCKS-DAG: %[[ZERO:.*]] = arith.constant 0 : i32
+// LOCKS-DAG: %[[ENABLE:.*]] = arith.constant 1 : i32
 // LOCKS-DAG: %[[MARKER:.*]] = arith.constant 123 : i32
 // LOCKS: aiex.npu.write32(%{{.*}}, %[[MARKER]])
 // LOCKS: aiex.npu.maskwrite32
+// LOCKS-NEXT: aiex.npu.maskpoll(%[[STATUS]], %[[ZERO]], %[[ENABLE]])
 // LOCKS-NEXT: aiex.npu.write32(%[[FIRST_LOCK]], %[[THREE]])
 // LOCKS-NEXT: aiex.npu.write32(%[[SECOND_LOCK]], %[[THREE]])
 // LOCKS-NEXT: aiex.npu.maskpoll(%[[STATUS]], %[[ZERO]], %[[STALL_MASK]])
@@ -149,9 +159,11 @@ module {
 // ACQUIRES-DAG: %[[MASK:.*]] = arith.constant 960 : i32
 // ACQUIRES-DAG: %[[ZERO:.*]] = arith.constant 0 : i32
 // ACQUIRES-DAG: %[[FOUR:.*]] = arith.constant 4 : i32
+// ACQUIRES-DAG: %[[ENABLE:.*]] = arith.constant 1 : i32
 // ACQUIRES: aiex.npu.load_pdi
 // ACQUIRES: aiex.npu.maskwrite32
-// ACQUIRES: aiex.npu.write32(%[[LOCK]], %[[FOUR]])
+// ACQUIRES: aiex.npu.maskpoll(%[[STATUS]], %[[ZERO]], %[[ENABLE]])
+// ACQUIRES-NEXT: aiex.npu.write32(%[[LOCK]], %[[FOUR]])
 // ACQUIRES-NEXT: aiex.npu.maskpoll(%[[STATUS]], %[[ZERO]], %[[MASK]])
 // ACQUIRES-NOT: aiex.npu.maskpoll
 // ACQUIRES: {{^    }}}
@@ -220,6 +232,7 @@ module {
 // ACQUIRES-DAG: %[[ENABLE:.*]] = arith.constant 1 : i32
 // ACQUIRES: aiex.npu.load_pdi
 // ACQUIRES: aiex.npu.maskwrite32(%[[CONTROL]], %[[ZERO]], %[[ENABLE]])
+// ACQUIRES-NEXT: aiex.npu.maskpoll(%[[STATUS]], %[[ZERO]], %[[ENABLE]])
 // ACQUIRES-NEXT: aiex.npu.write32(%[[LOCK]], %[[ZERO]])
 // ACQUIRES-NEXT: aiex.npu.maskpoll(%[[STATUS]], %[[ZERO]], %[[MASK]])
 // ACQUIRES-NOT: aiex.npu.maskpoll
@@ -258,6 +271,8 @@ module {
 // ACQUIRES: aiex.npu.load_pdi
 // ACQUIRES: aiex.npu.maskwrite32(%{{.*}}, %[[ZERO]], %[[ONE]])
 // ACQUIRES-NEXT: aiex.npu.maskwrite32(%{{.*}}, %[[ZERO]], %[[ONE]])
+// ACQUIRES-NEXT: aiex.npu.maskpoll(%[[FIRST_STATUS]], %[[ZERO]], %[[ONE]])
+// ACQUIRES-NEXT: aiex.npu.maskpoll(%[[SECOND_STATUS]], %[[ZERO]], %[[ONE]])
 // ACQUIRES-NEXT: aiex.npu.write32(%[[FIRST_LOCK]], %[[ONE]])
 // ACQUIRES-NEXT: aiex.npu.write32(%[[SECOND_LOCK]], %[[THREE]])
 // ACQUIRES-NEXT: aiex.npu.maskpoll(%[[FIRST_STATUS]], %[[ZERO]], %[[MASK]])
@@ -297,9 +312,11 @@ module {
 // ACQUIRES-DAG: %[[STATUS:.*]] = arith.constant 2301956 : i32
 // ACQUIRES-DAG: %[[ZERO:.*]] = arith.constant 0 : i32
 // ACQUIRES-DAG: %[[MASK:.*]] = arith.constant 960 : i32
+// ACQUIRES-DAG: %[[ENABLE:.*]] = arith.constant 1 : i32
 // ACQUIRES: aiex.npu.load_pdi
 // ACQUIRES: aiex.npu.maskwrite32
-// ACQUIRES: aiex.npu.write32(%[[LOCK]], %[[THREE]])
+// ACQUIRES: aiex.npu.maskpoll(%[[STATUS]], %[[ZERO]], %[[ENABLE]])
+// ACQUIRES-NEXT: aiex.npu.write32(%[[LOCK]], %[[THREE]])
 // ACQUIRES-NEXT: aiex.npu.maskpoll(%[[STATUS]], %[[ZERO]], %[[MASK]])
 // ACQUIRES-NOT: aiex.npu.maskpoll
 // ACQUIRES: {{^    }}}
@@ -521,5 +538,55 @@ module {
     aie.core(%tile) {
       aie.end
     } {lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>]>}
+  }
+}
+
+//--- stop-ctrlpkt.mlir
+
+// STOP-LABEL: aie.runtime_sequence()
+// STOP: aiex.npu.sync
+// STOP-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
+// STOP-NEXT: aiex.control_packet {address = 3350528 : ui32, data = array<i32: 0>
+// STOP: %[[FIRST_STATUS:.*]] = arith.constant 2301956 : i32
+// STOP: %[[ZERO:.*]] = arith.constant 0 : i32
+// STOP: %[[ENABLE:.*]] = arith.constant 1 : i32
+// STOP-NEXT: aiex.npu.maskpoll(%[[FIRST_STATUS]], %[[ZERO]], %[[ENABLE]])
+// STOP: %[[SECOND_STATUS:.*]] = arith.constant 3350532 : i32
+// STOP: aiex.npu.maskpoll(%[[SECOND_STATUS]], %{{.*}}, %{{.*}})
+// STOP-NEXT: aiex.control_packet {address = 2224208 : ui32, data = array<i32: 1>
+// STOP: %[[STALL:.*]] = arith.constant 960 : i32
+// STOP-NEXT: aiex.npu.maskpoll(%{{.*}}, %{{.*}}, %[[STALL]])
+
+module {
+  aie.device(npu2_1col) @overlay {
+    %low = aie.tile(0, 2)
+    %high = aie.tile(0, 3)
+    aie.switchbox(%low) {
+      aie.connect<South : 0, TileControl : 0>
+    }
+    aie.switchbox(%high) {
+      aie.connect<South : 0, TileControl : 0>
+    }
+  }
+  aie.device(npu2_1col) @cfg {
+    %low = aie.tile(0, 2)
+    %high = aie.tile(0, 3)
+    %lock = aie.lock(%low, 5) {init = 0 : i32}
+    aie.core(%low) {
+      aie.end
+    }
+    aie.core(%high) {
+      %one = arith.constant 1 : i32
+      aie.use_lock(%lock, AcquireGreaterEqual, %one)
+      aie.end
+    }
+  } {overlay = @overlay}
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence @sequence() {
+      %zero = arith.constant 0 : i32
+      %one = arith.constant 1 : i32
+      aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 2 : i32}
+      aiex.npu.sync(%zero, %zero, %zero, %zero, %one, %one) : i32, i32, i32, i32, i32, i32
+    }
   }
 }
