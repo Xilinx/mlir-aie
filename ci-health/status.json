@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-11-16T13:03:36+00:00",
+ "generated_at": "2026-11-16T18:51:22+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 321,
+   "runs": 320,
    "main": {
     "passed": 9,
     "failed": 1,
@@ -742,9 +742,9 @@
     }
    ],
    "pull_requests": {
-    "passed": 62,
-    "failed": 57,
-    "rate": 0.521
+    "passed": 67,
+    "failed": 48,
+    "rate": 0.583
    },
    "merge_queue": {
     "passed": 48,
@@ -752,9 +752,9 @@
     "rate": 0.842
    },
    "flaky": {
-    "commits": 307,
+    "commits": 300,
     "flaky": 19,
-    "rate": 0.062
+    "rate": 0.063
    },
    "minutes_median": 75.9,
    "minutes_p90": 181.1,
@@ -1148,19 +1148,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 112,
-    "failed": 58,
-    "rate": 0.659
+    "passed": 118,
+    "failed": 50,
+    "rate": 0.702
    },
    "merge_queue": {
     "passed": 62,
-    "failed": 0,
-    "rate": 1.0
+    "failed": 1,
+    "rate": 0.984
    },
    "flaky": {
-    "commits": 307,
+    "commits": 303,
     "flaky": 17,
-    "rate": 0.055
+    "rate": 0.056
    },
    "minutes_median": 58.6,
    "minutes_p90": 59.2,
@@ -1453,19 +1453,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 143,
-    "failed": 38,
-    "rate": 0.79
+    "passed": 141,
+    "failed": 37,
+    "rate": 0.792
    },
    "merge_queue": {
     "passed": 58,
-    "failed": 4,
-    "rate": 0.935
+    "failed": 6,
+    "rate": 0.906
    },
    "flaky": {
-    "commits": 307,
-    "flaky": 23,
-    "rate": 0.075
+    "commits": 305,
+    "flaky": 20,
+    "rate": 0.066
    },
    "minutes_median": 27.9,
    "minutes_p90": 28.8,
@@ -1758,19 +1758,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 150,
-    "failed": 38,
-    "rate": 0.798
+    "passed": 149,
+    "failed": 37,
+    "rate": 0.801
    },
    "merge_queue": {
     "passed": 60,
-    "failed": 2,
-    "rate": 0.968
+    "failed": 4,
+    "rate": 0.938
    },
    "flaky": {
-    "commits": 307,
-    "flaky": 22,
-    "rate": 0.072
+    "commits": 306,
+    "flaky": 19,
+    "rate": 0.062
    },
    "minutes_median": 23.8,
    "minutes_p90": 25.2,
@@ -2063,19 +2063,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 174,
-    "failed": 35,
-    "rate": 0.833
+    "passed": 176,
+    "failed": 32,
+    "rate": 0.846
    },
    "merge_queue": {
-    "passed": 61,
+    "passed": 63,
     "failed": 1,
     "rate": 0.984
    },
    "flaky": {
     "commits": 307,
-    "flaky": 27,
-    "rate": 0.088
+    "flaky": 23,
+    "rate": 0.075
    },
    "minutes_median": 2.7,
    "minutes_p90": 3.0,
@@ -2086,7 +2086,7 @@
   "merged": 44,
   "hours_median": 20.8,
   "hours_p90": 675.1,
-  "open": 47,
+  "open": 54,
   "open_drafts": 15,
   "open_over_30_days": 26
  },
@@ -3128,6 +3128,18 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 43904696442,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43904696442",
+     "status": "in_progress",
+     "conclusion": null,
+     "created_at": "2026-11-16T16:11:19Z",
+     "run_started_at": "2026-11-16T16:11:19Z",
+     "updated_at": "2026-11-16T16:11:47Z",
+     "head_sha": "e10be30d7b1354ccc6924ad0e5bf1c361246ec90",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 43865624724,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43865624724",
      "status": "completed",
@@ -3255,18 +3267,6 @@
      "created_at": "2026-11-14T20:08:33Z",
      "run_started_at": "2026-11-14T20:08:33Z",
      "updated_at": "2026-11-14T20:34:25Z",
-     "head_sha": "d68cfdd26f4a9f85aa016e0cf2efb9aa7548cacd",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 43614002984,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43614002984",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-11-14T16:08:57Z",
-     "run_started_at": "2026-11-14T16:08:57Z",
-     "updated_at": "2026-11-14T16:30:38Z",
      "head_sha": "d68cfdd26f4a9f85aa016e0cf2efb9aa7548cacd",
      "title": "MLIR Distro",
      "attempt": 1
