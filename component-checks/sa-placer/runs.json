@@ -1116,6 +1116,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "43820016881",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/43820016881",
+   "date": "2026-11-16T06:54:32+00:00",
+   "commit": {
+    "id": "e10be30d7b1354ccc6924ad0e5bf1c361246ec90",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e10be30d7b1354ccc6924ad0e5bf1c361246ec90",
+    "message": "[AIEVec] AIE2P: split every 1024- and 2048-bit vector load and store into 512-bit ones (#4063)",
+    "timestamp": "2026-11-16T01:03:02Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "e10be30d7b",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
