@@ -608,16 +608,15 @@ def read_scratchpad_parameter(
 _CERT_NUM_REGISTERS = 24  # r0..r7 local to a job, r8..r23 shared
 
 
-def _cert_index(x, what, count, shown=None):
-    shown = x if shown is None else shown
+def _cert_index(x, what, count):
     if isinstance(x, bool):
-        raise TypeError(f"expected {what}, got {shown!r}")
+        raise TypeError(f"expected {what}, got {x!r}")
     try:
         index = _index(x)
     except TypeError:
-        raise TypeError(f"expected {what}, got {shown!r}") from None
+        raise TypeError(f"expected {what}, got {x!r}") from None
     if not 0 <= index < count:
-        raise ValueError(f"expected {what}, got {shown!r}")
+        raise ValueError(f"expected {what}, got {x!r}")
     return index
 
 
@@ -631,14 +630,14 @@ def _cert_register_attr(x, context=None):
 def _cert_barrier_id_builder(prefix, count):
     """Build a barrier id attribute from its assembler name or its index."""
     what = f"a barrier {prefix}0..{prefix}{count - 1} or its index 0..{count - 1}"
+    # Only the canonical spellings, so "lb01" is not a second name for lb1.
+    names = {f"{prefix}{i}": i for i in range(count)}
 
     def build(x, context=None):
         if isinstance(x, str):
-            num = x[len(prefix) :] if x.startswith(prefix) else ""
-            # Only the canonical spelling, so "lb01" is not a second name for lb1.
-            if not (num.isdigit() and str(int(num)) == num):
+            if x not in names:
                 raise ValueError(f"expected {what}, got {x!r}")
-            index = _cert_index(int(num), what, count, shown=x)
+            index = names[x]
         else:
             index = _cert_index(x, what, count)
         return IntegerAttr.get(IntegerType.get_signless(32, context=context), index)

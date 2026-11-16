@@ -84,6 +84,16 @@ with Context(), Location.unknown():
                         RB + "'rb01'",
                         lambda: cert_remote_barrier("rb01", 1),
                     )
+                    err(
+                        ValueError,
+                        LB + "'lb\xb2'",
+                        lambda: cert_local_barrier("lb\xb2", 2),
+                    )
+                    err(
+                        ValueError,
+                        RB + "'rb\xb2'",
+                        lambda: cert_remote_barrier("rb\xb2", 1),
+                    )
                     err(TypeError, RB + "1.5", lambda: cert_remote_barrier(1.5, 1))
 
     assert module.operation.verify()
