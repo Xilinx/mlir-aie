@@ -130,18 +130,50 @@ aie.device(npu1_2col) {
 
 // -----
 
-// Without a lock ID, an aie.lock whose tile operand is not a tile is accepted
-// by its own verifier; the task diagnoses it.
+// aie.lock rejects a tile operand that is not a tile, but a lock defined after
+// the runtime sequence is verified after the task, so the task diagnoses it.
 aie.device(npu1_2col) {
   %tile = aie.tile(0, 1)
   %buf = aie.buffer(%tile) : memref<16xi32>
   %c0 = arith.constant 0 : index
-  %lock = aie.lock(%c0)
   aie.runtime_sequence() {
     %task = aiex.dma_configure_task(%tile, MM2S, 4) {
       %c1 = arith.constant 1 : i32
       // expected-error@+1 {{'aie.use_lock' op uses a lock whose tile operand is not a tile}}
       aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    }
+  }
+  %lock = aie.lock(%c0)
+}
+
+// -----
+
+// So is a buffer defined after the runtime sequence.
+aie.device(npu1_2col) {
+  %tile = aie.tile(0, 1)
+  %c0 = arith.constant 0 : index
+  aie.runtime_sequence() {
+    %task = aiex.dma_configure_task(%tile, MM2S, 4) {
+      // expected-error@+1 {{'aie.dma_bd' op uses a buffer whose tile operand is not a tile}}
+      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    }
+  }
+  %buf = aie.buffer(%c0) : memref<16xi32>
+}
+
+// -----
+
+// So is a buffer defined inside the task body.
+aie.device(npu1_2col) {
+  %tile = aie.tile(0, 1)
+  aie.runtime_sequence() {
+    %task = aiex.dma_configure_task(%tile, MM2S, 5) {
+      %c0 = arith.constant 0 : index
+      %buf = aie.buffer(%c0) : memref<16xi32>
+      // expected-error@+1 {{'aie.dma_bd' op uses a buffer whose tile operand is not a tile}}
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
       aie.end
     }

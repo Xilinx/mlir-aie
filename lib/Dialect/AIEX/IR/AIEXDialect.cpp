@@ -1645,14 +1645,16 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
              (*resourceCol != *col || *resourceRow != *row);
     };
     body.walk([&](Operation *op) {
-      Operation *nonLocal = nullptr;
+      Operation *resource = nullptr;
+      AIE::TileLike resourceTile;
       StringRef what;
       if (auto bd = dyn_cast<AIE::DMABDOp>(op)) {
         auto buffer = bd.getBuffer().getDefiningOp<AIE::BufferOp>();
-        if (buffer && isNonLocal(buffer.getTileLike())) {
-          nonLocal = buffer;
-          what = "buffer";
-        }
+        if (!buffer)
+          return;
+        resource = buffer;
+        resourceTile = buffer.getTileLike();
+        what = "buffer";
       } else if (auto useLock = dyn_cast<AIE::UseLockOp>(op)) {
         auto lock = useLock.getLock().getDefiningOp<AIE::LockOp>();
         if (!lock) {
@@ -1663,21 +1665,22 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
           result = failure();
           return;
         }
-        // Without a lock ID, aie.lock does not check that its tile operand is
-        // a tile; aie.buffer always does.
-        AIE::TileLike lockTile = lock.getTileLike();
-        if (!lockTile) {
-          useLock.emitOpError()
-              << "uses a lock whose tile operand is not a tile";
-          result = failure();
-          return;
-        }
-        if (isNonLocal(lockTile)) {
-          nonLocal = lock;
-          what = "lock";
-        }
+        resource = lock;
+        resourceTile = lock.getTileLike();
+        what = "lock";
+      } else {
+        return;
       }
-      if (!nonLocal)
+      // aie.buffer and aie.lock reject a tile operand that is not a tile, but
+      // they may be verified after this task: they can follow the runtime
+      // sequence, and a buffer can sit inside the task body.
+      if (!resourceTile) {
+        op->emitOpError() << "uses a " << what
+                          << " whose tile operand is not a tile";
+        result = failure();
+        return;
+      }
+      if (!isNonLocal(resourceTile))
         return;
       InFlightDiagnostic err = op->emitOpError()
                                << "is in a task on memtile DMA channel "
@@ -1685,7 +1688,7 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                                << " and attempts to access a non-local " << what
                                << "; only channels below " << adjacentChannels
                                << " reach neighboring tiles";
-      err.attachNote(nonLocal->getLoc()) << what;
+      err.attachNote(resource->getLoc()) << what;
       result = failure();
     });
   }
