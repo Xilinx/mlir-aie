@@ -1,7 +1,0 @@
-<map id="xilinx::AIEX::NdDmaPattern" name="xilinx::AIEX::NdDmaPattern">
-<area shape="rect" id="Node000001" title="Innermost&#45;first ND access pattern (d0..d3 / repeat), matching the convention used by verifyStridesWra..." alt="" coords="45,168,244,195"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,153,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="96,62,131,143,141,168,136,167,126,145,92,66"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="176,14,243,42"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="208,55,201,100,183,145,162,169,159,165,178,142,195,98,205,59"/>
-</map>
