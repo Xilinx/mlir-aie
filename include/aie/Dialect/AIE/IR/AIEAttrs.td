@@ -111,9 +111,9 @@ def CoreLockAcquiresAttr : AttrDef<AIE_Dialect, "CoreLockAcquires", []> {
     `complete = false` records that some acquires are unknown.
   }];
   let parameters = (ins "bool":$complete,
-      ArrayRefParameter<"LockAcquireAttr">:$acquires);
+      OptionalArrayRefParameter<"LockAcquireAttr">:$acquires);
   let assemblyFormat = "`<` `complete` `=` $complete `,` `acquires` `=` "
-                       "custom<LockAcquireList>($acquires) `>`";
+                       "`[` (`]`) : ($acquires^ `]`)? `>`";
 }
 
 def AIEArch

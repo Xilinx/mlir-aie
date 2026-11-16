@@ -612,27 +612,6 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   return success();
 }
 
-static ParseResult
-parseLockAcquireList(AsmParser &parser,
-                     SmallVectorImpl<LockAcquireAttr> &acquires) {
-  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&]() {
-    LockAcquireAttr acquire;
-    if (failed(parser.parseCustomAttributeWithFallback(acquire)))
-      return failure();
-    acquires.push_back(acquire);
-    return success();
-  });
-}
-
-static void printLockAcquireList(AsmPrinter &printer,
-                                 ArrayRef<LockAcquireAttr> acquires) {
-  printer << '[';
-  llvm::interleaveComma(acquires, printer, [&](LockAcquireAttr acquire) {
-    printer.printStrippedAttrOrType(acquire);
-  });
-  printer << ']';
-}
-
 LogicalResult
 LockAcquireAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                         int32_t column, int32_t row, int32_t lock_id,
