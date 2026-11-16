@@ -516,9 +516,6 @@ def AIE_CertSectionOp
     The section contains one or more jobs and can be loaded/executed by referencing
     its symbol.
 
-    A section is defined at device level, not in a `cert.attach_to_group`: its
-    name is a device symbol and also names the file it is emitted to.
-
     Example:
     ```
       cert.section @pdi0 {
