@@ -4309,7 +4309,7 @@ prog.enable_trace(
 </tr>
 </tbody>
 </table>
-<p>A more exhaustive list of events for the core tile, core memory, mem tile, and shim tile is in <a href="https://github.com/Xilinx/aie-rt/blob/main-aie/driver/src/events/xaie_events_aie.h">this header file</a>.</p>
+<p>A more exhaustive list of events for the core tile, core memory, mem tile, and shim tile is in <a href="https://github.com/Xilinx/aie-codegen/blob/main/src/events/xaie_events_aie.h">this header file</a>.</p>
 <h3 id="portevent-api"><u>PortEvent API</u><a class="headerlink" href="#portevent-api" title="Permanent link">&para;</a></h3>
 <p>Port events monitor activity on stream switch ports. A <strong>physical port</strong> on the stream switch is identified by three components: the <strong>bundle</strong> (which interface on the tile, e.g., DMA, North, South), the <strong>channel</strong> (which channel within that bundle), and the <strong>direction</strong> (master for input/S2MM, slave for output/MM2S).</p>
 <p>The hardware provides 8 port monitor slots (0-7), each configured to watch a specific physical port. The slot number is determined by the suffix of the event name (e.g., <code>PORT_RUNNING_0</code> uses slot 0).</p>
