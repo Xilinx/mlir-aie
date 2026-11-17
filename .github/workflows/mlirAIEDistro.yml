@@ -259,7 +259,7 @@ jobs:
         git clone --recursive https://github.com/${AIE_REPO}.git
         pushd mlir-aie
         git reset --hard ${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
-        git submodule update
+        git submodule update --init --recursive
         popd
 
     - name: Copy clone-llvm.sh for wheel build

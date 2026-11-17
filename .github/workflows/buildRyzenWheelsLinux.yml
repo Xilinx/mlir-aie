@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          submodules: "true"
+          submodules: "recursive"
           fetch-depth: 0
           fetch-tags: true
 
@@ -282,7 +282,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          submodules: "true"
+          submodules: "recursive"
           fetch-depth: 0
           fetch-tags: true
 
@@ -491,7 +491,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          submodules: "true"
+          submodules: "recursive"
 
       # Pull the 3.12 / RTTI-ON wheel built from this same run
       # (build-linux-npu-wheel) so the examples test exactly this commit's
