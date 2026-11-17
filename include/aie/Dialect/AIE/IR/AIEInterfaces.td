@@ -130,7 +130,7 @@ def TileElement
        InterfaceMethod<
            [{Return the TileLike interface for this element's tile.}],
            "TileLike", "getTileLike", (ins), [{}], [{
-        return llvm::dyn_cast<TileLike>($_op.getTile().getDefiningOp());
+        return llvm::dyn_cast_or_null<TileLike>($_op.getTile().getDefiningOp());
       }]>,
        InterfaceMethod<
            [{Return the column index of this element's tile. Asserts if unplaced.}],
@@ -151,6 +151,14 @@ def TileElement
         return TileID{$_op.colIndex(), $_op.rowIndex()};
       }]>];
 
+  // The tile operand is an index, so the type alone does not make it a tile.
+  let verify = [{
+    if (!::llvm::cast<TileElement>($_op).getTileLike())
+      return $_op->emitOpError(
+          "tile operand is not an aie.tile or aie.logical_tile");
+    return ::mlir::success();
+  }];
+
   let extraClassDeclaration = [{
     // Requires a placed tile: fatally errors if the tile is still logical.
     TileOp getTileOp();
@@ -161,8 +169,11 @@ def TileElement
 
   let extraTraitClassDeclaration = [{
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
-      std::optional<int> col = $_op.getTileLike().tryGetCol();
-      std::optional<int> row = $_op.getTileLike().tryGetRow();
+      TileLike tile = $_op.getTileLike();
+      if (!tile)
+        return;
+      std::optional<int> col = tile.tryGetCol();
+      std::optional<int> row = tile.tryGetRow();
       if (col && row) {
         llvm::StringRef opName = $_op.getOperation()->getName().stripDialect();
         std::string name = (opName + "_" + llvm::Twine(*col) + "_" + llvm::Twine(*row)).str();
