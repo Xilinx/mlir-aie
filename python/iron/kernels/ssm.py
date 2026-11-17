@@ -21,6 +21,7 @@ from ._common import (
     Trace,
     _kernel_source,
     _make_extern,
+    _tuned_arch,
     _vector_args,
 )
 from .sample import _positive
@@ -354,6 +355,11 @@ def gated_delta_rule(
             np.int32,
         ],
         compile_flags=_STRICT_FP_ROLLED
+        + (
+            ["-mllvm", "-aie-premisched-coalescer=false"]
+            if _tuned_arch() == "aie2p"
+            else []
+        )
         + [
             f"-DGDR_ROWS={rows}",
             f"-DGDR_KEY_DIM={key_dim}",

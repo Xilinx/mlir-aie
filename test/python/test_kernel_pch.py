@@ -110,7 +110,7 @@ def test_macros_the_headers_ignore_share_one_pch(tmp_path):
 @pytest.mark.parametrize(
     "args",
     [
-        ["-D_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER"],
+        ["-D__AIECC__DISABLE_READ_WRITE_TM"],
         ["-D__int_least64_t=long"],
         ["-ffast-math"],
         ["-I", "shadow"],
