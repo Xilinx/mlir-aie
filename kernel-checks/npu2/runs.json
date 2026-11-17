@@ -2863,6 +2863,53 @@
     "offered": 149,
     "checked": 127
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "44029477695",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44029477695",
+   "date": "2026-11-17T06:12:16+00:00",
+   "commit": {
+    "id": "8b41bf5d95acbdeb3c6946a8bb7b986648cb9fd4",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/8b41bf5d95acbdeb3c6946a8bb7b986648cb9fd4",
+    "message": "Handle cores stalled on locks in reconfiguration teardown sequence (#4059)",
+    "timestamp": "2026-11-17T02:04:08Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "8b41bf5d95",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2693,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 999,
+    "failed": 0,
+    "timed": 455,
+    "timing_failed": 0,
+    "untimed": 548,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 149,
+    "checked": 127
+   }
   }
  ]
 }
