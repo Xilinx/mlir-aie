@@ -15,6 +15,7 @@
 [submodule "third_party/aie_api"]
 	path = third_party/aie_api
 	url = https://github.com/Xilinx/aie_api
+	ignore = dirty
 [submodule "third_party/aie-codegen"]
 	path = third_party/aie-codegen
 	url = https://github.com/Xilinx/aie-codegen.git

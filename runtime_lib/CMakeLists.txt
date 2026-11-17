@@ -165,6 +165,10 @@ install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
 target_include_directories(xaienginecdo_static SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR}/cdo-driver)
 
 include("${AIE_SOURCE_DIR}/cmake/install_headers.cmake")
+include("${AIE_SOURCE_DIR}/cmake/apply_patches.cmake")
+apply_vendored_patches(
+    ${AIE_SOURCE_DIR}/third_party/aie_api
+    ${AIE_SOURCE_DIR}/third_party/patches/aie_api)
 set(AIEAPI_SOURCE_DIR "${AIE_SOURCE_DIR}/third_party/aie_api/include/aie_api")
 install_headers(${AIEAPI_SOURCE_DIR}
         ${AIE_BINARY_DIR}/include
