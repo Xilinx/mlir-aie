@@ -292,7 +292,9 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
       static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START + tm.getNumMemTileRows()),
       /*AieTileNumRows*/
       static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
-      /*PartProp*/ {}};
+      /*PartProp*/ {},
+      /*ShimTileNumRowsNorth*/ 0,
+      /*ShimTileNumRowsSouth*/ 0};
   XAie_InstDeclare(_devInst, &aiert->configPtr);
   aiert->devInst = _devInst;
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &aiert->devInst,
