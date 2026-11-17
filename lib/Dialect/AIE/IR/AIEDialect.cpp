@@ -7089,7 +7089,9 @@ void BDChainOp::print(OpAsmPrinter &printer) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimDMAAllocationOp::verify() {
-  TileLike tileLike = llvm::dyn_cast<TileLike>(getTile().getDefiningOp());
+  // A block argument has no defining op.
+  TileLike tileLike =
+      llvm::dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
   if (!tileLike) {
     return emitOpError("tile operand must implement TileLike interface");
   }

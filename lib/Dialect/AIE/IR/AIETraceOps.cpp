@@ -149,7 +149,7 @@ LogicalResult TraceOp::verify() {
   }
 
   // Verify tile operand is a TileOp or LogicalTileOp
-  if (!llvm::dyn_cast<TileLike>(getTile().getDefiningOp())) {
+  if (!llvm::dyn_cast_or_null<TileLike>(getTile().getDefiningOp())) {
     return emitOpError("tile operand must be a TileOp or LogicalTileOp");
   }
 
