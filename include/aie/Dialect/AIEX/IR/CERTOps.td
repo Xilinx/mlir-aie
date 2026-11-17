@@ -14,12 +14,15 @@ def AIEX_CertRegisterAttr
     : ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<23>]>;
 
 def AIE_CertUcDmaChainOp
-    : AIEX_Op<"cert.uc_dma_chain", [AIESymbol, SingleBlockImplicitTerminator<
-                                                   "AIE::EndOp">]> {
+    : AIEX_Op<
+          "cert.uc_dma_chain", [HasParent<"AIE::DeviceOp">, AIESymbol,
+                                SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "uC DMA Chain operation";
   let description = [{
     This operation defines a chain of uC DMA buffer descriptors. It contains a
-    single region where the buffer descriptors can be specified.
+    single region where the buffer descriptors can be specified. A chain is
+    defined at device level; uC DMA operations in any controller group refer
+    to it by name.
 
     Example:
     ```
