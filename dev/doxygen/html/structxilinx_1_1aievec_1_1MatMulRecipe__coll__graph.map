@@ -1,7 +1,0 @@
-<map id="xilinx::aievec::MatMulRecipe" name="xilinx::aievec::MatMulRecipe">
-<area shape="rect" id="Node000001" title=" " alt="" coords="32,128,242,156"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,149,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="92,45,133,127,128,128,88,49"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="172,5,222,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="188,45,161,106,147,130,143,126,156,103,183,48"/>
-</map>
