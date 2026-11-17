@@ -101,7 +101,7 @@ The symbolic `CoreEvent` names above map to raw hardware event IDs. Some commonl
 | Core Port Running 0 | `0x4B` | 75 |
 | Core Port Running 1 | `0x4F` | 79 |
 
-A more exhaustive list of events for the core tile, core memory, mem tile, and shim tile is in [this header file](https://github.com/Xilinx/aie-codegen/blob/main-aie/driver/src/events/xaie_events_aie.h).
+A more exhaustive list of events for the core tile, core memory, mem tile, and shim tile is in [this header file](https://github.com/Xilinx/aie-codegen/blob/main/src/events/xaie_events_aie.h).
 
 ### <u>PortEvent API</u>
 
