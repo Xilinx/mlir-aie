@@ -123,11 +123,7 @@ def write_json_database(output_path, all_events):
 def find_default_input_files():
     """Find all event header files in the default location."""
     default_path = (
-        Path(__file__).parent.parent
-        / "third_party"
-        / "aie-codegen"
-        / "src"
-        / "events"
+        Path(__file__).parent.parent / "third_party" / "aie-codegen" / "src" / "events"
     )
     if not default_path.exists():
         return []
