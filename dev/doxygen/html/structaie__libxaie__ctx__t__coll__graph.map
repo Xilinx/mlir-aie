@@ -1,9 +1,0 @@
-<map id="aie_libxaie_ctx_t" name="aie_libxaie_ctx_t">
-<area shape="rect" id="Node000001" title=" " alt="" coords="134,106,265,134"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,116,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="79,43,97,63,116,80,162,105,157,106,113,84,93,66,78,48"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="140,5,259,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="201,47,202,107,197,104,197,50"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="282,5,476,33"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="354,42,294,84,240,108,238,103,291,80,349,44"/>
-</map>
