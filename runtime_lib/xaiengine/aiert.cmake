@@ -12,7 +12,17 @@ set(AIE_CODEGEN_SHIM_DIR "${CMAKE_CURRENT_LIST_DIR}/shim")
 function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
   message("Installing aie-rt includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")
   file(GLOB libheaders ${SRCPATH}/*.h)
-  list(APPEND libheaders ${AIE_CODEGEN_SHIM_DIR}/xaiengine.h)
+  # aie-codegen has no xaiengine.h umbrella header (Vitis' aie-rt does).
+  set(_has_umbrella FALSE)
+  foreach(_h ${libheaders})
+    cmake_path(GET _h FILENAME _name)
+    if(_name STREQUAL "xaiengine.h")
+      set(_has_umbrella TRUE)
+    endif()
+  endforeach()
+  if(NOT _has_umbrella)
+    list(APPEND libheaders ${AIE_CODEGEN_SHIM_DIR}/xaiengine.h)
+  endif()
   file(GLOB libheadersSub ${SRCPATH}/*/*.h ${SRCPATH}/${AIE_CODEGEN_REGDB_SUBDIR}/*.h)
 
   # copy header files into build area
