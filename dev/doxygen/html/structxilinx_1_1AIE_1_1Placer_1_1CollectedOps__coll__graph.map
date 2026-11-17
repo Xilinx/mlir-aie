@@ -1,0 +1,19 @@
+<map id="xilinx::AIE::Placer::CollectedOps" name="xilinx::AIE::Placer::CollectedOps">
+<area shape="rect" id="Node000001" title=" " alt="" coords="452,214,586,259"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="30,27,247,54"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="262,26,305,28,348,35,390,48,429,68,463,100,488,139,505,179,515,215,510,213,500,181,483,142,459,103,426,72,388,53,347,40,305,33,264,31"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="10,83,267,110"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="282,91,357,104,394,115,429,130,454,148,476,169,508,214,502,214,472,173,451,152,426,135,392,120,356,109,283,97"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="18,139,259,166"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="274,158,351,169,429,187,483,213,478,214,427,192,350,174,275,163"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="5,195,272,222"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="287,217,454,230,449,233,287,222"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="22,251,255,278"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="270,267,348,265,427,258,454,255,449,257,428,263,349,270,271,272"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="49,307,228,334"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="242,323,334,317,381,309,427,296,461,279,490,261,495,258,464,284,429,301,382,315,335,323,244,328"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="28,363,249,390"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="264,386,305,384,347,378,388,368,426,351,453,332,475,307,505,261,510,258,479,311,456,336,429,356,390,373,348,384,305,389,264,391"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="46,419,231,446"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="222,447,272,450,325,449,378,438,426,415,445,400,461,381,486,338,502,295,512,261,516,257,507,296,491,341,466,385,449,404,429,420,380,443,326,454,272,456,222,452"/>
+</map>
