@@ -29,7 +29,9 @@
 #include "mlir/Support/LogicalResult.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -261,9 +263,15 @@ inline std::string aieArchDefine(llvm::StringRef target) {
 // compilation outputs), resolved under `<installDir>/runtime_lib/<archTag>`.
 // `archTag` is the host arch (the target triple's first component).
 struct HostRuntimeLibs {
+  std::string archTag;
+  std::string base;
   std::string xaiengineInclude;
   std::string xaiengineLib;
   std::string memoryAllocator;
+  // The simulator links the simulation allocator and the test library headers
+  // instead.
+  std::string simMemoryAllocator;
+  std::string testLibInclude;
 };
 
 inline HostRuntimeLibs getHostRuntimeLibs(llvm::StringRef installDir,
@@ -271,9 +279,49 @@ inline HostRuntimeLibs getHostRuntimeLibs(llvm::StringRef installDir,
   std::string archTag = target.split('-').first.str();
   std::string base = llvm::formatv("{0}/runtime_lib/{1}", installDir, archTag);
   return {
+      archTag,
+      base,
       llvm::formatv("{0}/xaiengine/include", base),
       llvm::formatv("{0}/xaiengine/lib", base),
-      llvm::formatv("{0}/test_lib/lib/{1}", base, "libmemory_allocator_ion.a")};
+      llvm::formatv("{0}/test_lib/lib/{1}", base, "libmemory_allocator_ion.a"),
+      llvm::formatv("{0}/test_lib/lib/{1}", base,
+                    "libmemory_allocator_sim_aie.a"),
+      llvm::formatv("{0}/test_lib/include", base)};
+}
+
+// True, after printing an actionable message, if the host runtime that a host
+// program or the simulator model is compiled against is not installed. The
+// libraries are built per entry of AIE_RUNTIME_TARGETS, so an install made
+// without the host's architecture there lacks `runtime_lib/<arch>`, and the
+// compiler would otherwise fail on a missing allocator library or header.
+// A cross-compiled host program may take its xaiengine headers from the
+// sysroot, so only the directory and the allocator it links are required. The
+// simulator model is always built for the build machine and needs the headers;
+// its simulation allocator is optional and is not checked.
+inline bool reportMissingHostRuntimeLibs(const HostRuntimeLibs &rt,
+                                         bool aiesim) {
+  llvm::SmallVector<std::string, 3> missing;
+  auto requireDir = [&](const std::string &path) {
+    if (!llvm::sys::fs::is_directory(path))
+      missing.push_back(path);
+  };
+  if (aiesim) {
+    requireDir(rt.xaiengineInclude);
+    requireDir(rt.xaiengineLib);
+    requireDir(rt.testLibInclude);
+  } else if (!llvm::sys::fs::is_directory(rt.base)) {
+    missing.push_back(rt.base);
+  } else if (!llvm::sys::fs::is_regular_file(rt.memoryAllocator)) {
+    missing.push_back(rt.memoryAllocator);
+  }
+  if (missing.empty())
+    return false;
+  for (const std::string &path : missing)
+    llvm::errs() << "aiecc: missing host runtime library: " << path << "\n";
+  llvm::errs() << "aiecc: the host runtime is built per target; rebuild and "
+                  "install with "
+               << rt.archTag << " in AIE_RUNTIME_TARGETS\n";
+  return true;
 }
 
 } // namespace xilinx::aiecc
