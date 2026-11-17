@@ -20,9 +20,8 @@
 #include <vector>
 
 extern "C" {
-#include "xaiengine/xaiegbl.h"
+#include "aie_codegen.h"
 // xaie_txn.h needs the types and declarations from xaiegbl.h first.
-#include "xaiengine/xaie_txn.h"
 }
 
 namespace xilinx::AIE {

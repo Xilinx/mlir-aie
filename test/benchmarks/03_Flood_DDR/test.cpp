@@ -19,7 +19,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
-#include <xaiengine.h>
+#include <aie_codegen.h>
 
 #include "aie_inc.cpp"
 

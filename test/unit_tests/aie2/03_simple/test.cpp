@@ -16,7 +16,7 @@
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
-#include <xaiengine.h>
+#include <aie_codegen.h>
 
 #define LOCK_TIMEOUT 100
 

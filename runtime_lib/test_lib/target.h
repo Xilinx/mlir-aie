@@ -9,7 +9,12 @@
 #define AIE_TARGET_H
 
 #include <list>
+// Prebuilt/Vitis libxaiengine installs only provide xaiengine.h.
+#if __has_include(<aie_codegen.h>)
+#include <aie_codegen.h>
+#else
 #include <xaiengine.h>
+#endif
 
 struct ext_mem_model_t {
   void *virtualAddr;

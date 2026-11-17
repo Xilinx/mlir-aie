@@ -18,7 +18,7 @@
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
-#include <xaiengine.h>
+#include <aie_codegen.h>
 
 #include "aie_inc.cpp"
 

@@ -122,7 +122,7 @@ jobs:
           #   MLIRAIEVecAttributesIncGen    -> AIEVecEnums.h.inc,
           #                                    AIEVecAttributes.h.inc
           #   MLIRAIENormalizeAddressSpacesIncGen -> AIENormalizeAddressSpaces.inc
-          #   xaienginecdo_static-headers   -> vendored xaiengine/*.h used by
+          #   xaienginecdo_static-headers   -> aie-codegen headers used by
           #                                    the CDO backend (AIETargets,
           #                                    AIEToConfiguration)
           #   aiecc_version                 -> aiecc/AIECCVersion.h
