@@ -1,9 +1,0 @@
-<map id="FoldMulAddChainToConvOpPattern" name="FoldMulAddChainToConvOpPattern">
-<area shape="rect" id="Node000001" title=" " alt="" coords="139,123,384,151"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,164,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="134,56,242,121,238,124,132,61"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="188,14,336,42"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="264,55,264,124,260,121,260,59"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="359,14,439,42"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="373,51,280,125,278,120,368,52"/>
-</map>

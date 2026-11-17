@@ -1,9 +1,0 @@
-<map id="NarrowingResult" name="NarrowingResult">
-<area shape="rect" id="Node000001" title=" " alt="" coords="105,106,235,134"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,63,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="41,46,50,65,62,80,82,95,108,107,102,107,80,99,58,84,45,68,40,51"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="145,5,195,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="172,47,172,106,168,104,168,50"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="255,5,352,33"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="298,46,289,67,276,84,256,98,233,108,232,103,253,93,272,80,285,65,293,50"/>
-</map>
