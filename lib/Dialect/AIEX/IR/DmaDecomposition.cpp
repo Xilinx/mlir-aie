@@ -229,7 +229,8 @@ decomposeRecursiveUncached(Operation *forOp, BaseMemRefType bufType,
           factorToLegal(forOp, bufType, tm, col, row, pattern, elemWidth, gran))
     return SmallVector<NdDmaPattern>{*legal};
   for (const NdDmaPattern &factored : factorings(pattern, elemWidth, gran)) {
-    auto sub = decomposeRecursive(forOp, bufType, tm, col, row, factored, &memo);
+    auto sub =
+        decomposeRecursive(forOp, bufType, tm, col, row, factored, &memo);
     if (succeeded(sub))
       return sub;
   }
@@ -325,9 +326,10 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   }
   FailureOr<SmallVector<NdDmaPattern>> result =
       decomposeRecursiveUncached(forOp, bufType, tm, col, row, pattern, M);
-  M[key] = succeeded(result)
-                   ? std::optional<SmallVector<NdDmaPattern>>(*result)
-                   : std::nullopt;
+  // FailureOr derives from std::optional: store the base-class value
+  // directly, no dereference.
+  M[key] = succeeded(result) ? std::optional<SmallVector<NdDmaPattern>>(result)
+                             : std::nullopt;
   return result;
 }
 
