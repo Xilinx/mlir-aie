@@ -14,19 +14,7 @@
 #include "llvm/ADT/SmallSet.h"
 
 extern "C" {
-#include "xaiengine/xaie_core.h"
-#include "xaiengine/xaie_dma.h"
-#include "xaiengine/xaie_elfloader.h"
-#include "xaiengine/xaie_interrupt.h"
-#include "xaiengine/xaie_locks.h"
-#include "xaiengine/xaie_mem.h"
-#include "xaiengine/xaie_noc.h"
-#include "xaiengine/xaie_perfcnt.h"
-#include "xaiengine/xaie_reset.h"
-#include "xaiengine/xaie_ss.h"
-#include "xaiengine/xaie_txn.h"
-#include "xaiengine/xaiegbl.h"
-#include "xaiengine/xaiegbl_defs.h"
+#include "aie_codegen.h"
 }
 
 #include <filesystem>

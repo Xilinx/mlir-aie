@@ -29,10 +29,7 @@
 #include "llvm/Support/Debug.h"
 
 extern "C" {
-#include "xaiengine/xaiegbl.h"
-// above needs to go first for u32/u64 typedefs, AieRC, and XAIE_AIG_EXPORT
-// used by xaie_txn.h
-#include "xaiengine/xaie_txn.h"
+#include "aie_codegen.h"
 }
 
 #include <algorithm>

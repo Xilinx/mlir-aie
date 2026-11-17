@@ -3,36 +3,46 @@
 
 # third_party/aie-codegen (the successor to aie-rt) is consumed unpatched.
 # Its sources live in src/ and its register-database headers in
-# aie-regdb/globalparams. Both are exposed to mlir-aie under xaiengine/.
+# aie-regdb/globalparams.
 set(AIE_CODEGEN_REGDB_SUBDIR "../aie-regdb/globalparams")
 
 # aie-codegen's xaie_cdo.c includes the Vitis-only cdo_rts.h; provide it.
 set(AIE_CODEGEN_SHIM_DIR "${CMAKE_CURRENT_LIST_DIR}/shim")
 
+# Stages the driver headers in aie-codegen's native layout: aie_codegen.h at
+# the root and everything else under aie_codegen_inc/. A Vitis aie-rt source
+# dir has no aie_codegen.h, so it keeps its own layout and gets a forwarding
+# aie_codegen.h, letting host code use a single include. Prebuilt LibXAIE
+# installs are not staged here, so test_lib/target.h falls back to xaiengine.h.
 function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
   message("Installing xaiengine includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")
-  file(GLOB libheaders ${SRCPATH}/*.h)
-  # aie-codegen's own umbrella includes <aie_codegen_inc/...>, a layout this
-  # install does not create. mlir-aie exposes the xaiengine/ layout instead.
-  list(FILTER libheaders EXCLUDE REGEX "/aie_codegen\\.h$")
-  # aie-codegen has no xaiengine.h umbrella header (Vitis' aie-rt does).
-  set(_has_umbrella FALSE)
-  foreach(_h ${libheaders})
-    cmake_path(GET _h FILENAME _name)
-    if(_name STREQUAL "xaiengine.h")
-      set(_has_umbrella TRUE)
-    endif()
-  endforeach()
-  if(NOT _has_umbrella)
-    list(APPEND libheaders ${AIE_CODEGEN_SHIM_DIR}/xaiengine.h)
+  cmake_path(ABSOLUTE_PATH SRCPATH BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+             NORMALIZE OUTPUT_VARIABLE _src)
+
+  if(EXISTS ${_src}/aie_codegen.h)
+    include(${_src}/cmake/AieCodegenHeaders.cmake)
+    set(libheaders ${_src}/aie_codegen.h)
+    set(libheadersSub)
+    foreach(_dir ${_AIE_CODEGEN_HEADER_DIRS})
+      file(GLOB _dirheaders ${_src}/${_dir}/*.h)
+      list(APPEND libheadersSub ${_dirheaders})
+    endforeach()
+    file(GLOB _regdbheaders ${_src}/${AIE_CODEGEN_REGDB_SUBDIR}/*.h)
+    list(APPEND libheadersSub ${_regdbheaders})
+    set(_subdir aie_codegen_inc)
+  else()
+    file(GLOB libheaders ${_src}/*.h)
+    file(GLOB libheadersSub ${_src}/*/*.h)
+    set(_fwd ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}-compat/aie_codegen.h)
+    file(WRITE ${_fwd} "#include <xaiengine.h>\n")
+    list(APPEND libheaders ${_fwd})
+    set(_subdir xaiengine)
   endif()
-  file(GLOB libheadersSub ${SRCPATH}/*/*.h ${SRCPATH}/${AIE_CODEGEN_REGDB_SUBDIR}/*.h)
 
   # copy header files into build area
   set(_header_targets)
   foreach(file ${libheaders})
     cmake_path(GET file FILENAME basefile)
-    # message("basefile: ${basefile}")
     set(dest ${BUILDPATH}/${basefile})
     add_custom_target(${TARGET}-${basefile} ALL DEPENDS ${dest})
     add_custom_command(
@@ -44,8 +54,7 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
 
   foreach(file ${libheadersSub})
     cmake_path(GET file FILENAME basefile)
-    # message("basefile: ${basefile}")
-    set(dest ${BUILDPATH}/xaiengine/${basefile})
+    set(dest ${BUILDPATH}/${_subdir}/${basefile})
     add_custom_target(${TARGET}-${basefile} ALL DEPENDS ${dest})
     add_custom_command(
       OUTPUT ${dest}
@@ -57,7 +66,7 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
 
   # Install too
   install(FILES ${libheaders} DESTINATION ${INSTALLPATH})
-  install(FILES ${libheadersSub} DESTINATION ${INSTALLPATH}/xaiengine)
+  install(FILES ${libheadersSub} DESTINATION ${INSTALLPATH}/${_subdir})
 
 endfunction()
 
