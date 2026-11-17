@@ -1737,7 +1737,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                 const Node<File> &preBaked,
                                 const Node<ModRef> &physicalN,
                                 Item<ModRef> &out) -> mlir::LogicalResult {
-                // ELF paths must be absolute for the aie-rt loader.
+                // ELF paths must be absolute for the aie-codegen loader.
                 llvm::StringMap<std::string> byKey;
                 for (const auto &item : compiled.items) {
                   byKey[item.key] = absolutePath(item.filePath);

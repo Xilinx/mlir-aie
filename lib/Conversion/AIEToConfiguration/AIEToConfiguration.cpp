@@ -187,7 +187,7 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
         i += opSize;
         break;
       }
-      // MASKPOLL has the same word layout as MASKWRITE (aie-rt's
+      // MASKPOLL has the same word layout as MASKWRITE (aie-codegen's
       // XAie_MaskPoll32Hdr matches XAie_MaskWrite32Hdr); the poll timeout is
       // not serialized.
       case XAie_TxnOpcode::XAIE_IO_MASKWRITE:
@@ -234,7 +234,7 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
         i += opSize;
         break;
       }
-      // Not in the vendored third_party/aie-rt enum (though the driver
+      // Not in the vendored third_party/aie-codegen enum (though the driver
       // protocol defines it); can't add it without forking upstream.
       case 0x8: { // NOLINT(clang-diagnostic-switch):
                   // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
@@ -361,8 +361,7 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
         i += opSize;
         break;
       }
-      // Not in the vendored third_party/aie-rt enum (though the driver
-      // protocol defines it); can't add it without forking upstream.
+      // LOAD_PDI is matched by value here too; see the first switch.
       case 0x8: { // NOLINT(clang-diagnostic-switch):
                   // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
         LLVM_DEBUG(llvm::dbgs() << "opcode: LOAD_PDI (0x08)\n");
@@ -767,14 +766,14 @@ insertRecordedTransaction(AIERTControl &ctl, OpBuilder &builder,
   // Ops with no bracketed location keep std::nullopt and inherit the device
   // fallback location at emit time.
   const std::vector<mlir::Location> &opLocs = ctl.getTxnOpLocs();
-  // Sharp edge: that projection models how aie-rt's serializer maps recorded
-  // commands to binary operations. A count disagreement means the model has
-  // drifted from the pinned aie-rt and every index past the divergence is
-  // mislabeled -- fail loudly instead of silently. An empty vector just means
-  // nothing was bracketed.
+  // Sharp edge: that projection models how aie-codegen's serializer maps
+  // recorded commands to binary operations. A count disagreement means the
+  // model has drifted from the pinned aie-codegen and every index past the
+  // divergence is mislabeled -- fail loudly instead of silently. An empty
+  // vector just means nothing was bracketed.
   assert((opLocs.empty() || opLocs.size() == operations.size()) &&
          "txn loc/op count mismatch: AIERTControl's command-to-operation "
-         "projection disagrees with the transaction parser; aie-rt's "
+         "projection disagrees with the transaction parser; aie-codegen's "
          "serializer has drifted from projectCmdLocsOntoSerializedOps");
   for (size_t i = 0, e = std::min(opLocs.size(), operations.size()); i < e; ++i)
     if (!isa<UnknownLoc>(opLocs[i]))

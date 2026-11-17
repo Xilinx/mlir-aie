@@ -931,7 +931,7 @@ def AIE_NpuMaskPollOp
     precondition.
 
     The poll timeout is not encoded in the transaction; the firmware applies its
-    own default (see `XAIE_IO_MASKPOLL` in aie-rt's xaie_txn.c). A condition
+    own default (see `XAIE_IO_MASKPOLL` in aie-codegen's xaie_txn.c). A condition
     that never becomes true therefore surfaces as a dispatch timeout rather
     than hanging forever.
 
@@ -1407,7 +1407,7 @@ def AIE_NpuWriteTeardownOp
     Disables the stream-switch circuits, packet ports and cores the
     configuration of `device_ref` enabled and resets its DMA channels, so the
     next `aiex.npu.write_config` needs no reset. A shim DMA channel has no
-    reset (aie-rt's `xaie_dma.c`), so `device_ref` must not start one itself.
+    reset (aie-codegen's `xaie_dma.c`), so `device_ref` must not start one itself.
 
     It must follow the `aiex.npu.write_config` of `device_ref`, with no
     `load_pdi` between, and is translated and inlined as that op is.
@@ -1895,10 +1895,10 @@ def AIEX_DmaChannelResetOp
     channel count in that direction
     (`AIETargetModel::getNumSourceSwitchboxConnections` /
     `getNumDestSwitchboxConnections` with `WireBundle::DMA`, the same query this
-    op's verifier uses to bound `channel`). That is exactly what aie-rt's
+    op's verifier uses to bound `channel`). That is exactly what aie-codegen's
     `XAie_DmaChannelResetAll` is -- a bare loop over `XAie_DmaChannelReset` with
     no tile-wide reset-all bit underneath it. Resetting a channel that was never
-    configured is safe: aie-rt gates the reset only on the channel index being
+    configured is safe: aie-codegen gates the reset only on the channel index being
     in range for the tile and direction, not on configuration state.
 
     Example:
@@ -1929,7 +1929,7 @@ def AIEX_CoreResetOp
     Pulses the reset bit of the CORE_CONTROL register on `tile`. The pulse is two
     `npu.maskwrite32` writes masked to the reset bit (assert, then deassert), so
     it preserves the ENABLE field packed in the same CORE_CONTROL word instead of
-    clobbering it. This mirrors aie-rt's XAie_CoreReset followed by
+    clobbering it. This mirrors aie-codegen's XAie_CoreReset followed by
     XAie_CoreUnreset. The operation is non blocking and offers no synchronization
     guarantees.
 
@@ -1941,7 +1941,7 @@ def AIEX_CoreResetOp
     ENABLE bit also needs a re-enable, which this op does not emit.
 
     Only core tiles have a CORE_CONTROL register; mem and shim tiles are rejected
-    by the verifier because they have no core to reset. This matches aie-rt's
+    by the verifier because they have no core to reset. This matches aie-codegen's
     XAie_CoreReset, which errors on non core tiles.
 
     `tile` is an SSA `aie.tile` value, so the target is named the same way as

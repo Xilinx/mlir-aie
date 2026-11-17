@@ -8,11 +8,6 @@
 [submodule "cmake/modulesXilinx"]
 	path = cmake/modulesXilinx
 	url = https://github.com/Xilinx/cmakeModules.git
-[submodule "runtime_lib/xaiengine/aie-rt"]
-	path = third_party/aie-rt
-	url = https://github.com/Xilinx/aie-rt.git
-	ignore = dirty
-	branch = release/main_aig
 [submodule "third_party/bootgen"]
 	path = third_party/bootgen
 	url = https://github.com/Xilinx/bootgen.git
@@ -20,3 +15,7 @@
 [submodule "third_party/aie_api"]
 	path = third_party/aie_api
 	url = https://github.com/Xilinx/aie_api
+[submodule "third_party/aie-codegen"]
+	path = third_party/aie-codegen
+	url = https://github.com/Xilinx/aie-codegen.git
+	branch = main

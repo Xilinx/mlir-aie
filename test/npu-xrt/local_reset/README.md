@@ -20,10 +20,10 @@ drive the same registers (see [Op-based variants](#op-based-variants)).
 | [`core`](core/README.md) | AI Engine core | `Core_Control` (`0x32000`) | masked reset -> unreset -> enable (one field per write) |
 | [`dma`](dma/README.md) | MM2S DMA channel | `DMA_MM2S_0_Ctrl` (`0x1DE10`) | masked reset pulse flushes a queued BD, then push good BD + arm lock |
 
-Both families reset with the driver's write *type*: masked `maskwrite32` (aie-rt's
+Both families reset with the driver's write *type*: masked `maskwrite32` (aie-codegen's
 `XAie_CoreReset`/`Unreset`/`Enable` and `XAie_DmaChannelReset` are `MaskWrite32` of
 one bit-field). The `dma` lock re-arm uses the `aiex.set_lock` op, which lowers to
-the full-word write of the lock value register that aie-rt's `XAie_LockSetValue`
+the full-word write of the lock value register that aie-codegen's `XAie_LockSetValue`
 performs.
 
 ## Op-based variants
@@ -94,7 +94,7 @@ and bit field they touch is the same on both:
 | `DMA_MM2S_0_Ctrl` / `_Start_Queue` | `0x1DE10` / `0x1DE14` | `0x1DE10` / `0x1DE14` |
 | `LOCK0_VALUE` | `0x1F000` | `0x1F000` |
 
-In aie-rt the raw offsets are the `XAIEMLGBL_*` defines (`xaiemlgbl_params.h`, 
+In aie-codegen the raw offsets are the `XAIEMLGBL_*` defines (`xaiemlgbl_params.h`,
 used for npu1 via `XAIE_DEV_GEN_AIE2IPU`) and the matching `XAIE2PGBL_*` defines
 (`xaie2pgbl_params.h`, npu2); see [References](#references). (The older AIE1 /
 Versal parts in `xaiegbl_params.h` use a different layout, but they are not NPU
@@ -113,8 +113,8 @@ auto-detected; every family runs on both npu1 (Phoenix) and npu2 (Strix).
 ## References
 
 Every offset, bit field, and reset procedure asserted here is defined in the
-vendored AI Engine driver **aie-rt** (public: <https://github.com/Xilinx/aie-rt>),
-under `third_party/aie-rt/` in this repo. The table lists the AIE2P (npu2) names
+vendored AI Engine driver **aie-codegen** (public: <https://github.com/Xilinx/aie-codegen>),
+under `third_party/aie-codegen/` in this repo. The table lists the AIE2P (npu2) names
 from `driver/src/global/xaie2pgbl_params.h`; the npu1 (AIE-ML) equivalents are the
 identically-suffixed `XAIEMLGBL_*` defines in `xaiemlgbl_params.h` at the same
 offsets. The tests issue each protocol directly, with the **same register-write

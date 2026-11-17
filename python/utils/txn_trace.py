@@ -30,7 +30,7 @@ event lists are equal. ``compare`` reports the first divergence; ``explain``
 prints the events for a human.
 
 The decoding covers the AIE2 / AIE2p shim, memtile and core DMA register
-layouts used by npu1 and npu2 (register fields from aie-rt's
+layouts used by npu1 and npu2 (register fields from aie-codegen's
 ``xaiemlgbl_params.h``).
 """
 

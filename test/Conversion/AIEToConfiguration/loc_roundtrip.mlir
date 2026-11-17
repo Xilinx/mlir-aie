@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // Verifies that --convert-aie-to-transaction preserves source op locations
-// across the aie-rt round-trip. AIERTControl::TxnLocBracket scopes capture
+// across the aie-codegen round-trip. AIERTControl::TxnLocBracket scopes capture
 // the lock op's loc around the XAie_LockSetValue call; AIEToConfiguration
 // then reads ctl.getTxnOpLocs() and applies those locations to the
 // re-emitted aiex.npu.write32 ops instead of the device fallback location.

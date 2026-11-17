@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// aie.dma_push_queue becomes the register writes aie-rt makes to push a task,
+// aie.dma_push_queue becomes the register writes aie-codegen makes to push a task,
 // and aie.dma_poll_for_queue_space the loop that reads the queue's size, as
 // accesses the core makes to its own tile over the processor bus. The tile's
 // registers sit at 0x80000 in the core's own address space, so the address of

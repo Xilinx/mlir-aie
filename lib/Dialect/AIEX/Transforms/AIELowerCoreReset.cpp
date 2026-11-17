@@ -72,7 +72,7 @@ struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
     //
     // Reset pulse: assert the reset bit, then clear it. Both writes mask to the
     // reset bit only, so the pulse preserves the Enable field packed in the
-    // same word instead of clobbering it. This mirrors aie-rt's
+    // same word instead of clobbering it. This mirrors aie-codegen's
     // XAie_CoreReset/XAie_CoreUnreset, which drive the reset bit with a
     // MaskWrite32. Constants are materialized in named locals so the emitted IR
     // order does not depend on unspecified C++ argument-evaluation order.

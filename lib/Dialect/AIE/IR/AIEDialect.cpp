@@ -4298,7 +4298,7 @@ xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext) {
   return success();
 }
 
-// BD iteration bounds. Values are true/element (aie-rt encodes value-1);
+// BD iteration bounds. Values are true/element (aie-codegen encodes value-1);
 // size <= 1 disables iteration (stride ignored). The stride is checked in
 // whole 32-bit words against the tile-specific step field. aiex.npu.writebd
 // checks the same tile-correct step limit (getDmaBdStepBits) inline in its own

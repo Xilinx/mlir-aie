@@ -319,8 +319,8 @@ void test() {
     throw std::runtime_error("Failed xcve3858 getNumBDs core");
   }
   // DMA task-queue depth: flat 4 across tile types and architectures, matching
-  // aie-rt's XAIE_DMA_MAX_QUEUE_SIZE. Unlike getNumBDs just above, this does
-  // NOT vary by tile type, which is why it is a flat accessor.
+  // aie-codegen's XAIE_DMA_MAX_QUEUE_SIZE. Unlike getNumBDs just above, this
+  // does NOT vary by tile type, which is why it is a flat accessor.
   if (ve3858.getDmaTaskQueueDepth() != 4) {
     throw std::runtime_error("Failed xcve3858 getDmaTaskQueueDepth");
   }
@@ -402,7 +402,7 @@ void test() {
   }
 }
 
-// Program memory is 16 KB on every generation, per aie-rt's XAie_CoreMod
+// Program memory is 16 KB on every generation, per aie-codegen's XAie_CoreMod
 // tables. The same number appears in python/utils/regdb.py's MEMORY_REGIONS --
 // keep them in step.
 void testProgramMemory() {

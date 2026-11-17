@@ -33,15 +33,12 @@ namespace aie_runtime {
 // Transaction opcodes for the firmware TXN format the compiler currently
 // targets.
 //
-// These DO NOT match the third_party/aie-rt xaie_txn.h enum, which is an older
-// layout (CONFIG_SHIMDMA_BD=5, no NOOP/PREEMPT/LOADPDI block). They match the
-// newer firmware opcodes the compiler emits (e.g. CREATE_SCRATCHPAD=0x0A,
-// UPDATE_REG=0x0C).
+// These values currently agree with the XAie_TxnOpcode enum in the pinned
+// third_party/aie-codegen xaie_txn.h. They are duplicated here, rather than
+// included from the driver, so this header stays independent of it.
 //
-// DRIFT WARNING: when the firmware TXN format changes, update these values
-// here. Do not "correct" them against the submodule's xaie_txn.h — it tracks a
-// different (older) numbering and reconciling to it would break the emitted
-// transactions.
+// DRIFT WARNING: when the firmware TXN format changes or the aie-codegen pin
+// is bumped, update these values here and compare them against xaie_txn.h.
 enum TxnOpcode : uint32_t {
   TXN_OPC_WRITE = 0,
   TXN_OPC_BLOCKWRITE = 1,
@@ -192,7 +189,7 @@ inline void txn_append_maskwrite32(std::vector<uint32_t> &txn, uint32_t addr,
 }
 
 // Append a 7-word maskpoll instruction: block until (reg & mask) == val.
-// Same word layout as maskwrite32 -- aie-rt's XAie_MaskPoll32Hdr and
+// Same word layout as maskwrite32 -- aie-codegen's XAie_MaskPoll32Hdr and
 // XAie_MaskWrite32Hdr agree field for field, and the poll timeout is not
 // serialized (the firmware forces its own default; see xaie_txn.c).
 inline void txn_append_maskpoll32(std::vector<uint32_t> &txn, uint32_t addr,
@@ -254,11 +251,11 @@ constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 
 // Append a 12-word address_patch (DDR_PATCH) instruction.
 //
-// The consumer casts this byte range to aie-rt's `XAie_CustomOpHdr` followed by
-// `patch_op_t` (xaie_txn.h), so the layout is that struct pair's under natural
-// alignment: an 8-byte header at words 0-1, op_base and action at 2-5, then
-// regaddr, argidx and argplus as u64 word pairs at 6-7, 8-9 and 10-11, low half
-// first.
+// The consumer casts this byte range to aie-codegen's `XAie_CustomOpHdr`
+// followed by `patch_op_t` (xaie_txn.h), so the layout is that struct pair's
+// under natural alignment: an 8-byte header at words 0-1, op_base and action at
+// 2-5, then regaddr, argidx and argplus as u64 word pairs at 6-7, 8-9 and
+// 10-11, low half first.
 inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
                                      int32_t arg_idx, uint64_t arg_plus) {
   size_t pos = txn.size();

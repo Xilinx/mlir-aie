@@ -67,7 +67,8 @@ static std::string tileLockStr(StringRef id, StringRef val) {
   return str;
 }
 
-// Translate mlir-aie WireBundle enum to string of aie-rt StrmSwPortType enum
+// Translate mlir-aie WireBundle enum to string of aie-codegen StrmSwPortType
+// enum
 static std::string wireBundleToPortType(WireBundle bundle) {
   switch (bundle) {
   case WireBundle::PLIO:

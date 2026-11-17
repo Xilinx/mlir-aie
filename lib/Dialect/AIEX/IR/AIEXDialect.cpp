@@ -2167,9 +2167,9 @@ LogicalResult AIEX::DmaChannelResetOp::verify() {
   int col = tile.getCol();
   int row = tile.getRow();
   // Only core and mem tiles have a per-channel DMA reset bit. The shim NOC DMA
-  // control register has no reset field (aie-rt's Aie2PShimDmaChProp sets
+  // control register has no reset field (aie-codegen's Aie2PShimDmaChProp sets
   // Reset.Mask = 0); bit 1 there is PAUSE_MEM, not RESET. Rejecting shim keeps
-  // the op honest about what it can lower, matching aie-rt's own
+  // the op honest about what it can lower, matching aie-codegen's own
   // XAie_DmaChannelReset, which errors on SHIMNOC/SHIMPL tiles.
   if (!targetModel.isCoreTile(col, row) && !targetModel.isMemTile(col, row))
     return emitOpError() << "tile (" << col << ", " << row
@@ -2242,8 +2242,8 @@ LogicalResult AIEX::CoreResetOp::verify() {
 
   // Only core tiles have a CORE_CONTROL register with a reset bit. Mem and shim
   // tiles have no compute core, so there is nothing valid to lower to. This
-  // matches aie-rt's XAie_CoreReset, which errors on any tile that is not an
-  // AIE (core) tile.
+  // matches aie-codegen's XAie_CoreReset, which errors on any tile that is not
+  // an AIE (core) tile.
   if (!targetModel.isCoreTile(col, row))
     return emitOpError() << "tile (" << col << ", " << row
                          << ") has no core to reset (only core tiles have a "

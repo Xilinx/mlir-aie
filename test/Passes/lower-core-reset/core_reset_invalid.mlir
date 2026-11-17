@@ -9,7 +9,7 @@
 
 // A mem tile is rejected: only core tiles have a CORE_CONTROL register with a
 // reset bit. On npu2 row 1 is a mem tile, which has no compute core to reset.
-// This matches aie-rt's XAie_CoreReset, which errors on non core tiles.
+// This matches aie-codegen's XAie_CoreReset, which errors on non core tiles.
 // (An out-of-range coordinate needs no test here: the tile is an SSA aie.tile
 // value, whose own verifier bounds the column/row against the device.)
 module {

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// aie-rt's transaction serializer collapses a run of address-contiguous
+// aie-codegen's transaction serializer collapses a run of address-contiguous
 // XAIE_IO_BLOCKWRITE commands into one block-write operation, so recorded
 // commands and serialized operations are not 1:1. AIERTControl models that in
 // projectCmdLocsOntoSerializedOps; this checks the model holds: the two

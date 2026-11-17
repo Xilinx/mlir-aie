@@ -23,10 +23,10 @@
 namespace xilinx::AIE {
 struct AIERTControl;
 
-// RAII helper. Constructs while AIERTControl is recording an aie-rt
+// RAII helper. Constructs while AIERTControl is recording an aie-codegen
 // transaction, captures the current XAie_TxnInst command count at entry, and
-// at scope end attributes every aie-rt command produced during the scope to
-// `loc`. exportSerializedTransaction() projects the captured ranges onto the
+// at scope end attributes every aie-codegen command produced during the scope
+// to `loc`. exportSerializedTransaction() projects the captured ranges onto the
 // serialized transaction's operations, and the AIEToConfiguration round-trip
 // reads them back out so re-emitted aiex.npu.* ops carry the source op's MLIR
 // Location instead of the device's fallback location.
