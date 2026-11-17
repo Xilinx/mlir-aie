@@ -1,0 +1,9 @@
+<map id="xilinx::AIE::TileDMAChannel" name="xilinx::AIE::TileDMAChannel">
+<area shape="rect" id="Node000001" title="One DMA channel of one tile." alt="" coords="326,108,528,136"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,219,84"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="234,72,370,107,365,109,234,77"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="50,108,174,136"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="190,119,327,121,323,123,190,125"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="93,164,131,192"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="146,172,301,150,369,137,375,136,302,155,147,177"/>
+</map>

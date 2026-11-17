@@ -1,0 +1,11 @@
+<map id="xilinx::AIEX::DmaCompletionState" name="xilinx::AIEX::DmaCompletionState">
+<area shape="rect" id="Node000001" title="Completion is distinct from queue occupancy: Task_Queue_Size excludes the running task." alt="" coords="433,101,642,146"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="15,5,203,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="218,29,312,44,409,67,491,100,486,101,408,72,311,50,219,34"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,58,213,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="228,95,434,113,430,116,228,101"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="44,144,174,172"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="189,153,294,149,408,140,435,140,430,141,409,145,294,154,190,159"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="84,216,134,244"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="149,230,202,232,267,230,338,221,408,204,436,192,463,177,507,147,512,145,466,181,438,197,410,209,339,226,268,235,202,237,149,235"/>
+</map>
