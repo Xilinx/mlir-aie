@@ -848,6 +848,12 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId >= numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
+  if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
+      bdId && !targetModel.isBdChannelAccessible(getColumn(), getRow(), *bdId,
+                                                 getChannel()))
+    return emitOpError("BD ID ") << *bdId << " is not accessible from channel ("
+                                 << AIE::stringifyDMAChannelDir(getDirection())
+                                 << ", " << getChannel() << ")";
   uint32_t maxRepeat = targetModel.getMaxRepeatCount();
   if (std::optional<uint64_t> repeatCount =
           getConstantInt64Operand(getRepeatCount());

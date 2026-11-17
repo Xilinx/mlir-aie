@@ -50,19 +50,19 @@ module @core_tile {
 
 // -----
 
-// Mem tile (0,1), S2MM channel 0. The mem tile START_BD_ID field is 6 bits (48
+// Mem tile (0,1), S2MM channel 1. The mem tile START_BD_ID field is 6 bits (48
 // BDs), so head BD id 24 rides through push_queue whole (the tile-class masking
 // happens later, in aie-dma-to-npu).
 // CHECK-LABEL: @mem_tile
 // CHECK: aiex.npu.maskwrite32(%{{.*}}, %{{.*}}, %{{.*}}) {column = 0 : i32, row = 1 : i32}
 // CHECK: %[[BD:.*]] = arith.constant 24 : i32
-// CHECK: aiex.npu.push_queue(0, 1, S2MM : 0) bd_id %[[BD]] repeat %{{.*}} {issue_token = false}
+// CHECK: aiex.npu.push_queue(0, 1, S2MM : 1) bd_id %[[BD]] repeat %{{.*}} {issue_token = false}
 module @mem_tile {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
     %pl = aie.lock(%mt, 0) {init = 2 : i32}
     %cl = aie.lock(%mt, 1) {init = 0 : i32}
-    aie.objectfifo_rearm_binding @r channels(%mt : index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2, 0>, head_bd_ids = array<i32: 24>, repeat_counts = array<i32: 0>}
+    aie.objectfifo_rearm_binding @r channels(%mt : index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 1>, lock_inits = array<i32: 2, 0>, head_bd_ids = array<i32: 24>, repeat_counts = array<i32: 0>}
     aie.runtime_sequence() {
       aiex.dma_channel_reset_for(@r)
     }
