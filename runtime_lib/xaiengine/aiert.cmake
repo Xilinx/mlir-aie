@@ -12,6 +12,9 @@ set(AIE_CODEGEN_SHIM_DIR "${CMAKE_CURRENT_LIST_DIR}/shim")
 function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
   message("Installing aie-rt includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")
   file(GLOB libheaders ${SRCPATH}/*.h)
+  # aie-codegen's own umbrella includes <aie_codegen_inc/...>, a layout this
+  # install does not create. mlir-aie exposes the xaiengine/ layout instead.
+  list(FILTER libheaders EXCLUDE REGEX "/aie_codegen\\.h$")
   # aie-codegen has no xaiengine.h umbrella header (Vitis' aie-rt does).
   set(_has_umbrella FALSE)
   foreach(_h ${libheaders})
