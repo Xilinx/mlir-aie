@@ -1,7 +1,0 @@
-<map id="args" name="args">
-<area shape="rect" id="Node000001" title=" " alt="" coords="88,195,137,223"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,44,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="16,51,14,76,12,108,16,141,28,170,40,182,55,192,90,204,85,206,53,197,37,187,24,173,11,142,7,108,9,76,17,46"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="171,5,230,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="203,47,198,109,189,142,173,173,158,189,139,200,137,195,154,185,169,170,184,140,193,108,200,51"/>
-</map>
