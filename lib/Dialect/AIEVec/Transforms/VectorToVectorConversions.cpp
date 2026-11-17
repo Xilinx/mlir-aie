@@ -886,6 +886,15 @@ static bool contracts(arith::FastMathFlagsAttr flags) {
          bitEnumContainsAll(flags.getValue(), arith::FastMathFlags::contract);
 }
 
+/// Whether `op` may take a multiply into a vector.fma: it allows contraction
+/// and has a type the FMA lowerings take, a 1-D f32 vector of 16 or 32 lanes.
+static bool fusesIntoFMA(arith::AddFOp op) {
+  auto type = dyn_cast<VectorType>(op.getType());
+  return isF32Vector(op.getType()) && type.getRank() == 1 &&
+         (type.getNumElements() == 16 || type.getNumElements() == 32) &&
+         contracts(op.getFastmathAttr());
+}
+
 /// Pattern to fold an f32 multiply into the add that is its only user, as a
 /// vector.fma with bf16 inputs. Only when both ops allow contraction: the
 /// fused result can differ where the product underflows or overflows.
@@ -894,7 +903,7 @@ struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
 
   LogicalResult matchAndRewrite(arith::AddFOp op,
                                 PatternRewriter &rewriter) const override {
-    if (!isF32Vector(op.getType()) || !contracts(op.getFastmathAttr()))
+    if (!fusesIntoFMA(op))
       return failure();
     for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
                                    std::pair(op.getRhs(), op.getLhs())}) {
@@ -920,11 +929,7 @@ struct FuseExactMulAddFPattern : public OpRewritePattern<arith::AddFOp> {
 
   LogicalResult matchAndRewrite(arith::AddFOp op,
                                 PatternRewriter &rewriter) const override {
-    // The AIE2P FMA lowering takes 1-D vectors of 16 or 32 lanes.
-    auto type = dyn_cast<VectorType>(op.getType());
-    if (!isF32Vector(op.getType()) || type.getRank() != 1 ||
-        (type.getNumElements() != 16 && type.getNumElements() != 32) ||
-        !contracts(op.getFastmathAttr()))
+    if (!fusesIntoFMA(op))
       return failure();
     for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
                                    std::pair(op.getRhs(), op.getLhs())}) {
