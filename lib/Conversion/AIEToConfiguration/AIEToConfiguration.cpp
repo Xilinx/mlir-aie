@@ -30,8 +30,6 @@
 
 extern "C" {
 #include "aie_codegen.h"
-// above needs to go first for u32/u64 typedefs, AieRC, and XAIE_AIG_EXPORT
-// used by xaie_txn.h
 }
 
 #include <algorithm>

@@ -12,7 +12,8 @@ set(AIE_CODEGEN_SHIM_DIR "${CMAKE_CURRENT_LIST_DIR}/shim")
 # Stages the driver headers in aie-codegen's native layout: aie_codegen.h at
 # the root and everything else under aie_codegen_inc/. A Vitis aie-rt source
 # dir has no aie_codegen.h, so it keeps its own layout and gets a forwarding
-# aie_codegen.h, letting host code use a single include.
+# aie_codegen.h, letting host code use a single include. Prebuilt LibXAIE
+# installs are not staged here, so test_lib/target.h falls back to xaiengine.h.
 function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
   message("Installing xaiengine includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")
   cmake_path(ABSOLUTE_PATH SRCPATH BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

@@ -9,7 +9,7 @@
 #define AIE_TARGET_H
 
 #include <list>
-// Prebuilt/Vitis libxaiengine installs only provide xaiengine.h.
+// See add_aiert_headers for why prebuilt installs need this fallback.
 #if __has_include(<aie_codegen.h>)
 #include <aie_codegen.h>
 #else

@@ -21,7 +21,6 @@
 
 extern "C" {
 #include "aie_codegen.h"
-// xaie_txn.h needs the types and declarations from xaiegbl.h first.
 }
 
 namespace xilinx::AIE {
