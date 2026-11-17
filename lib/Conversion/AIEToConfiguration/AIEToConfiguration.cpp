@@ -127,6 +127,7 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
     case static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_WRITE):
     case static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_BLOCKWRITE):
     case static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_MASKWRITE):
+    case static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_MASKPOLL):
     case 0x6: // XAie_TxnOpcode::XAIE_IO_PREEMPT
     case 0x8: // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
     case static_cast<uint8_t>(XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT):
@@ -186,8 +187,13 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
         i += opSize;
         break;
       }
-      case XAie_TxnOpcode::XAIE_IO_MASKWRITE: {
-        LLVM_DEBUG(llvm::dbgs() << "opcode: MASKWRITE (0x03)\n");
+      // MASKPOLL has the same word layout as MASKWRITE (aie-rt's
+      // XAie_MaskPoll32Hdr matches XAie_MaskWrite32Hdr); the poll timeout is
+      // not serialized.
+      case XAie_TxnOpcode::XAIE_IO_MASKWRITE:
+      case XAie_TxnOpcode::XAIE_IO_MASKPOLL: {
+        LLVM_DEBUG(llvm::dbgs() << "opcode: MASKWRITE (0x03) or MASKPOLL "
+                                   "(0x04)\n");
         if (!requireBytes(i, 28))
           return std::nullopt;
         uint32_t addrLo = read32(i + 8);
@@ -195,6 +201,11 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
         uint32_t value = read32(i + 16);
         uint32_t mask = read32(i + 20);
         uint32_t opSize = read32(i + 24);
+        if (opSize < 28) {
+          llvm::errs() << "Transaction op size " << opSize
+                       << " is smaller than its 28-byte header\n";
+          return std::nullopt;
+        }
         if (!requireBytes(i, opSize))
           return std::nullopt;
         uint64_t addr = (static_cast<uint64_t>(addrHi) << 32) | addrLo;
@@ -316,8 +327,10 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
         i += opSize;
         break;
       }
-      case XAie_TxnOpcode::XAIE_IO_MASKWRITE: {
-        LLVM_DEBUG(llvm::dbgs() << "opcode: MASKWRITE (0x03)\n");
+      case XAie_TxnOpcode::XAIE_IO_MASKWRITE:
+      case XAie_TxnOpcode::XAIE_IO_MASKPOLL: {
+        LLVM_DEBUG(llvm::dbgs() << "opcode: MASKWRITE (0x03) or MASKPOLL "
+                                   "(0x04)\n");
         if (!requireBytes(i, 16))
           return std::nullopt;
         uint32_t addr = read32(i + 4);
@@ -428,9 +441,10 @@ static LogicalResult generateTransactions(AIERTControl &ctl,
 }
 
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
-// ops (npu.write32, npu.maskwrite32, npu.blockwrite). Each emitted op gets the
-// per-op `sourceLoc` from AIERT's instruction-range bracketing if available;
-// otherwise it falls back to `fallbackLoc` (typically the device location).
+// ops (npu.write32, npu.maskwrite32, npu.maskpoll, npu.blockwrite). Each
+// emitted op gets the per-op `sourceLoc` from AIERT's instruction-range
+// bracketing if available; otherwise it falls back to `fallbackLoc` (typically
+// the device location).
 static LogicalResult
 emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
                    std::vector<TransactionBinaryOperation> &operations,
@@ -472,6 +486,13 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
       Value mask = constant(loc, op.cmd.Mask);
       AIEX::NpuMaskWrite32Op::create(builder, loc, address, value, mask,
                                      nullptr, nullptr, nullptr);
+    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKPOLL) {
+      Value address = constant(loc, op.cmd.RegOff);
+      Value value = constant(loc, op.cmd.Value);
+      Value mask = constant(loc, op.cmd.Mask);
+      AIEX::NpuMaskPollOp::create(builder, loc, address, value, mask,
+                                  /*buffer=*/nullptr, /*column=*/nullptr,
+                                  /*row=*/nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT) {
       if (!op.sync) {
         llvm::errs() << "Missing sync payload while emitting transaction\n";
@@ -622,6 +643,10 @@ static LogicalResult emitControlPacketOps(
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
           DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(value)));
+    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKPOLL) {
+      llvm::errs() << "control-packet configuration cannot express a mask "
+                      "poll\n";
+      return failure();
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
       return failure();
@@ -674,8 +699,8 @@ static LogicalResult convertTransactionOpsToMLIR(
 
 // Convert (disassemble) a transaction binary to MLIR. On success return a new
 // ModuleOp containing a DeviceOp containing a runtime sequence with the
-// transaction binary encoded as a sequence of npu.write32, npu.maskwrite32 and
-// npu.blockwrite operations. On failure return std::nullopt.
+// transaction binary encoded as a sequence of npu.write32, npu.maskwrite32,
+// npu.maskpoll and npu.blockwrite operations. On failure return std::nullopt.
 std::optional<mlir::ModuleOp>
 xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                             std::vector<uint8_t> &binary) {
