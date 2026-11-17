@@ -38,8 +38,8 @@ reset sequence in `aie.mlir`.
 
 ## Reference
 
-Defined in the vendored aie-rt driver (<https://github.com/Xilinx/aie-rt>,
-`third_party/aie-rt/`): `XAie_DmaChannelReset` and `XAie_DmaChannelPushBdToQueue`
+Defined in the vendored aie-rt driver (<https://github.com/Xilinx/aie-codegen>,
+`third_party/aie-codegen/`): `XAie_DmaChannelReset` and `XAie_DmaChannelPushBdToQueue`
 (`driver/src/dma/xaie_dma.c`), `XAie_LockSetValue` (`driver/src/locks/xaie_locks.c`),
 and the register defines in `driver/src/global/xaie2pgbl_params.h`. See
 [`../README.md`](../README.md#references) for the full table.

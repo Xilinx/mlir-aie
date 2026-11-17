@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Regression test for the aie-rt ELF loader out-of-bounds read fixed by
-// third_party/patches/aie-rt/0002-elfloader-zero-bss-gap.patch.
+// Regression test for the aie-codegen ELF loader out-of-bounds read when a
+// segment has 0 < p_filesz < p_memsz (fixed upstream in aie-codegen).
 //
 // A kernel with both .data and .bss links to one PT_LOAD with
 // 0 < p_filesz < p_memsz -- the ELF-spec representation of .bss.

@@ -40,7 +40,7 @@ preempt a running core.
 
 `Core_Control` and its `Reset`/`Enable` bits, and the reset/unreset/enable
 procedure, are defined in the public aie-rt driver
-(<https://github.com/Xilinx/aie-rt>, vendored at `third_party/aie-rt/`):
+(<https://github.com/Xilinx/aie-codegen>, vendored at `third_party/aie-codegen/`):
 `XAIE2PGBL_CORE_MODULE_CORE_CONTROL` in `driver/src/global/xaie2pgbl_params.h`,
 and `XAie_CoreReset` / `XAie_CoreUnreset` / `XAie_CoreEnable` in
 `driver/src/core/xaie_core.c` (each a `MaskWrite32` of a single `Core_Control`

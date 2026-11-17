@@ -82,13 +82,12 @@ updates:
       mkdocs:
         patterns: ["*"]
 
-  # third_party/aie-rt tracks upstream Xilinx/aie-rt release/main_aig (see
-  # .gitmodules and third_party/patches/aie-rt/README.md). Scoped to aie-rt
-  # only: third_party/bootgen isn't covered by this effort and a vendored
-  # patch has needed hand-adjustment on past bumps, so treat these as
-  # PRs to review and build, not to auto-merge. platforms/boards (XilinxBoardStore)
-  # is also excluded: it's pulled in for board support files only and isn't
-  # tracked for updates.
+  # third_party/aie-codegen tracks upstream Xilinx/aie-codegen main (see
+  # .gitmodules) and is consumed unpatched. Its nested aie-regdb submodule is
+  # bumped together with it. third_party/bootgen isn't covered by this effort,
+  # so treat these as PRs to review and build, not to auto-merge.
+  # platforms/boards (XilinxBoardStore) is also excluded: it's pulled in for
+  # board support files only and isn't tracked for updates.
   - package-ecosystem: "gitsubmodule"
     directory: "/"
     schedule:

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 """
-Takes the xaie_events_*.h header files from aie-rt and generates a JSON
+Takes the xaie_events_*.h header files from aie-codegen and generates a JSON
 database containing all events for all architectures.
 
 The generated JSON file is used by the C++ register database
@@ -125,8 +125,7 @@ def find_default_input_files():
     default_path = (
         Path(__file__).parent.parent
         / "third_party"
-        / "aie-rt"
-        / "driver"
+        / "aie-codegen"
         / "src"
         / "events"
     )
@@ -150,7 +149,7 @@ def main():
         "-i",
         "--input",
         nargs="+",
-        help="Input header files (default: all files in third_party/aie-rt/driver/src/events)",
+        help="Input header files (default: all files in third_party/aie-codegen/src/events)",
     )
     argparser.add_argument(
         "-o",
@@ -171,7 +170,7 @@ def main():
     if not input_files:
         sys.stderr.write(
             "Error: No input files specified and default location not found.\n"
-            "Please specify input files with -i or ensure third_party/aie-rt exists.\n"
+            "Please specify input files with -i or ensure third_party/aie-codegen exists.\n"
         )
         sys.exit(1)
 

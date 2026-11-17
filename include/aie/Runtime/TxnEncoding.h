@@ -33,7 +33,7 @@ namespace aie_runtime {
 // Transaction opcodes for the firmware TXN format the compiler currently
 // targets.
 //
-// These DO NOT match the third_party/aie-rt xaie_txn.h enum, which is an older
+// These DO NOT match the third_party/aie-codegen xaie_txn.h enum, which is an older
 // layout (CONFIG_SHIMDMA_BD=5, no NOOP/PREEMPT/LOADPDI block). They match the
 // newer firmware opcodes the compiler emits (e.g. CREATE_SCRATCHPAD=0x0A,
 // UPDATE_REG=0x0C).

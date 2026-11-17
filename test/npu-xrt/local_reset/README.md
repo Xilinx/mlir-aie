@@ -113,8 +113,8 @@ auto-detected; every family runs on both npu1 (Phoenix) and npu2 (Strix).
 ## References
 
 Every offset, bit field, and reset procedure asserted here is defined in the
-vendored AI Engine driver **aie-rt** (public: <https://github.com/Xilinx/aie-rt>),
-under `third_party/aie-rt/` in this repo. The table lists the AIE2P (npu2) names
+vendored AI Engine driver **aie-rt** (public: <https://github.com/Xilinx/aie-codegen>),
+under `third_party/aie-codegen/` in this repo. The table lists the AIE2P (npu2) names
 from `driver/src/global/xaie2pgbl_params.h`; the npu1 (AIE-ML) equivalents are the
 identically-suffixed `XAIEMLGBL_*` defines in `xaiemlgbl_params.h` at the same
 offsets. The tests issue each protocol directly, with the **same register-write

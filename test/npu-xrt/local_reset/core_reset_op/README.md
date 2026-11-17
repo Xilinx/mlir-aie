@@ -54,8 +54,8 @@ masked to a single field so no other `CORE_CONTROL` bit is clobbered.
 `aiex.core_reset` is defined in `include/aie/Dialect/AIEX/IR/AIEX.td` and lowered
 by `lib/Dialect/AIEX/Transforms/AIELowerCoreReset.cpp` (pass
 `--aie-lower-core-reset`, run in the default `aiecc` pipeline). It mirrors the
-public aie-rt driver (<https://github.com/Xilinx/aie-rt>, vendored at
-`third_party/aie-rt/`): `XAIE2PGBL_CORE_MODULE_CORE_CONTROL` in
+public aie-rt driver (<https://github.com/Xilinx/aie-codegen>, vendored at
+`third_party/aie-codegen/`): `XAIE2PGBL_CORE_MODULE_CORE_CONTROL` in
 `driver/src/global/xaie2pgbl_params.h`, and `XAie_CoreReset` / `XAie_CoreUnreset`
 in `driver/src/core/xaie_core.c`. The test's masked re-enable mirrors
 `XAie_CoreEnable` (same file; `MaskWrite32` of `CORE_CONTROL` `ENABLE`, bit 0). See

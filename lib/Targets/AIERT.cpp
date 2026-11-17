@@ -20,8 +20,8 @@ extern "C" {
 #include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaie_locks.h"
 #include "xaiengine/xaie_mem.h"
+#include "xaiengine/xaie_noc.h"
 #include "xaiengine/xaie_perfcnt.h"
-#include "xaiengine/xaie_plif.h"
 #include "xaiengine/xaie_reset.h"
 #include "xaiengine/xaie_ss.h"
 #include "xaiengine/xaie_txn.h"
@@ -292,8 +292,7 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
       static_cast<uint8_t>(XAIE_MEM_TILE_ROW_START + tm.getNumMemTileRows()),
       /*AieTileNumRows*/
       static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
-      /*PartProp*/ {},
-      /*Backend*/ XAIE_IO_BACKEND_CDO};
+      /*PartProp*/ {}};
   XAie_InstDeclare(_devInst, &aiert->configPtr);
   aiert->devInst = _devInst;
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &aiert->devInst,
