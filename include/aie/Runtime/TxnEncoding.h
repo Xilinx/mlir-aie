@@ -33,15 +33,12 @@ namespace aie_runtime {
 // Transaction opcodes for the firmware TXN format the compiler currently
 // targets.
 //
-// These DO NOT match the third_party/aie-codegen xaie_txn.h enum, which is an
-// older layout (CONFIG_SHIMDMA_BD=5, no NOOP/PREEMPT/LOADPDI block). They match
-// the newer firmware opcodes the compiler emits (e.g. CREATE_SCRATCHPAD=0x0A,
-// UPDATE_REG=0x0C).
+// These values currently agree with the XAie_TxnOpcode enum in the pinned
+// third_party/aie-codegen xaie_txn.h. They are duplicated here, rather than
+// included from the driver, so this header stays independent of it.
 //
-// DRIFT WARNING: when the firmware TXN format changes, update these values
-// here. Do not "correct" them against the submodule's xaie_txn.h — it tracks a
-// different (older) numbering and reconciling to it would break the emitted
-// transactions.
+// DRIFT WARNING: when the firmware TXN format changes or the aie-codegen pin
+// is bumped, update these values here and compare them against xaie_txn.h.
 enum TxnOpcode : uint32_t {
   TXN_OPC_WRITE = 0,
   TXN_OPC_BLOCKWRITE = 1,
