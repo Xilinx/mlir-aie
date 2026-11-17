@@ -874,6 +874,35 @@
     "npu2/hops-on/seed=207720299+1/mutator port-cap crash"
    ],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "44009595621",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44009595621",
+   "date": "2026-11-17T03:21:14+00:00",
+   "commit": {
+    "id": "301373f5116583403c4f291b89ba7b7f16785945",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/301373f5116583403c4f291b89ba7b7f16785945",
+    "message": "Fix test_accuracy for ml_dtypes 0.7 (#4071)",
+    "timestamp": "2026-11-16T21:30:14Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "301373f511",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 1,
+   "failed": [
+    "npu2/hops-on/seed=207740223+1/mutator port-cap crash"
+   ],
+   "truncated": []
   }
  ]
 }
