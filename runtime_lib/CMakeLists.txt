@@ -150,7 +150,7 @@ add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
 target_link_libraries(xaienginecdo_static PRIVATE cdo_driver_mlir_aie)
 if(WIN32)
-  # The Windows bundled aie-codegen path excludes xaie_sim.c 
+  # The Windows bundled aie-codegen path excludes xaie_sim.c
   # Avoid pulling in SimBackend via __AIEDEBUG__
   target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__)
 else()

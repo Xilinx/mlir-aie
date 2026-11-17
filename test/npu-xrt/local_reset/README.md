@@ -94,7 +94,7 @@ and bit field they touch is the same on both:
 | `DMA_MM2S_0_Ctrl` / `_Start_Queue` | `0x1DE10` / `0x1DE14` | `0x1DE10` / `0x1DE14` |
 | `LOCK0_VALUE` | `0x1F000` | `0x1F000` |
 
-In aie-codegen the raw offsets are the `XAIEMLGBL_*` defines (`xaiemlgbl_params.h`, 
+In aie-codegen the raw offsets are the `XAIEMLGBL_*` defines (`xaiemlgbl_params.h`,
 used for npu1 via `XAIE_DEV_GEN_AIE2IPU`) and the matching `XAIE2PGBL_*` defines
 (`xaie2pgbl_params.h`, npu2); see [References](#references). (The older AIE1 /
 Versal parts in `xaiegbl_params.h` use a different layout, but they are not NPU
