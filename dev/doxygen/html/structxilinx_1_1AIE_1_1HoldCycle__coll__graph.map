@@ -1,5 +1,0 @@
-<map id="xilinx::AIE::HoldCycle" name="xilinx::AIE::HoldCycle">
-<area shape="rect" id="Node000001" title="A cycle of waits packet streams can deadlock in, given their routes." alt="" coords="21,123,182,151"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,198,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="104,64,104,123,99,122,99,67"/>
-</map>
