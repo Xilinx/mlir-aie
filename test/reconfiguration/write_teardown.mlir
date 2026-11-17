@@ -38,6 +38,8 @@
 // RUN: FileCheck %s --check-prefix=SUMMARY < %t/summary.twice.mlir
 // RUN: aie-opt --split-input-file --verify-diagnostics %t/summary-invalid.mlir -o %t/summary-invalid.out
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP
+// RUN: aie-opt --aie-annotate-core-lock-acquires %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" --verify-diagnostics %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE-DRAIN
 
 // ANNOTATE-LABEL: aie.device(npu2_1col) @lock_cfg
 // ANNOTATE: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>, <column = 0, row = 2, lock_id = 5, action = Acquire, value = 3>, <column = 0, row = 2, lock_id = 6, action = AcquireGreaterEqual, value = 2>, <column = 0, row = 2, lock_id = 6, action = AcquireGreaterEqual, value = 3>]>
@@ -428,6 +430,66 @@ module {
   }
   aie.device(npu2_1col) @main {
     aie.runtime_sequence @counter_range() {
+      aiex.npu.load_pdi {device_ref = @cfg}
+    }
+  }
+}
+
+//--- opaque-llvm.mlir
+
+// OPAQUE-LABEL: aie.device(npu2_2col) @cfg
+// OPAQUE-COUNT-4: lock_acquires = #aie.core_lock_acquires<complete = false, acquires = []>
+// OPAQUE: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 1, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>]>
+// OPAQUE-DRAIN-LABEL: aie.runtime_sequence @opaque_llvm
+// OPAQUE-DRAIN: aiex.npu.load_pdi
+// OPAQUE-DRAIN-NOT: aiex.npu.maskpoll
+// OPAQUE-DRAIN: {{^    }}}
+
+module {
+  aie.device(npu2_2col) @cfg {
+    llvm.func @kernel()
+    func.func private @call_kernel() {
+      llvm.call @kernel() : () -> ()
+      return
+    }
+    func.func private @assembly() {
+      llvm.inline_asm has_side_effects "", "" : () -> ()
+      return
+    }
+    %direct_call = aie.tile(0, 2)
+    %direct_assembly = aie.tile(0, 3)
+    %callee_call = aie.tile(0, 4)
+    %callee_assembly = aie.tile(0, 5)
+    %known_acquire = aie.tile(1, 2)
+    %lock = aie.lock(%known_acquire, 5) {init = 0 : i32}
+    // expected-warning@+1 {{teardown cannot determine every lock acquire}}
+    aie.core(%direct_call) {
+      llvm.call @kernel() : () -> ()
+      aie.end
+    }
+    // expected-warning@+1 {{teardown cannot determine every lock acquire}}
+    aie.core(%direct_assembly) {
+      llvm.inline_asm has_side_effects "", "" : () -> ()
+      aie.end
+    }
+    // expected-warning@+1 {{teardown cannot determine every lock acquire}}
+    aie.core(%callee_call) {
+      func.call @call_kernel() : () -> ()
+      aie.end
+    }
+    // expected-warning@+1 {{teardown cannot determine every lock acquire}}
+    aie.core(%callee_assembly) {
+      func.call @assembly() : () -> ()
+      aie.end
+    }
+    aie.core(%known_acquire) {
+      %one = arith.constant 1 : i32
+      aie.use_lock(%lock, AcquireGreaterEqual, %one)
+      aie.end
+    }
+  }
+  aie.device(npu2_2col) @main {
+    aie.runtime_sequence @opaque_llvm() {
       aiex.npu.load_pdi {device_ref = @cfg}
     }
   }

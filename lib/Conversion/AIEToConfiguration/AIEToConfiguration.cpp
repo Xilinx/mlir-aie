@@ -16,9 +16,11 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/Interfaces/CallInterfaces.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
@@ -870,7 +872,11 @@ static CoreLockAcquiresAttr collectCoreLockAcquires(CoreOp core) {
       else
         unknown = true;
     });
-    operation->walk([&](func::CallIndirectOp) { unknown = true; });
+    operation->walk([&](Operation *nested) {
+      if ((isa<CallOpInterface>(nested) && !isa<func::CallOp>(nested)) ||
+          isa<LLVM::CallIntrinsicOp, LLVM::InlineAsmOp>(nested))
+        unknown = true;
+    });
   }
   return CoreLockAcquiresAttr::get(core.getContext(), !unknown,
                                    acquires.getArrayRef());
