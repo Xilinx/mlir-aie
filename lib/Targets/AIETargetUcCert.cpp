@@ -305,8 +305,7 @@ StringRef referencedChain(Operation *op) {
   return {};
 }
 
-LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
-                          llvm::StringRef outputPath,
+LogicalResult emitSection(CertSectionOp sectionOp, llvm::StringRef outputPath,
                           const SymbolTable &symbolTable) {
   LogicalResult result = success();
   std::string sectionName = sectionOp.getSymName().str();
@@ -401,20 +400,25 @@ LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
     return sectionOp.emitError("failed to write section file '")
            << sectionFilePath << "': " << writeEC.message();
   }
-
-  // In main file, emit label with .include directive
-  text += sectionName + ":\n";
-  text += ".include " + sectionFileName + "\n";
-  text += ".endl " + sectionName + "\n\n";
   return result;
 }
 
+// The label that a LOAD_PDI names, defined by including the section's file.
+void emitSectionStub(CertSectionOp sectionOp, std::string &text) {
+  std::string sectionName = sectionOp.getSymName().str();
+  text += sectionName + ":\n";
+  text += ".include " + sectionName + ".asm\n";
+  text += ".endl " + sectionName + "\n\n";
+}
+
 LogicalResult emitAttachToGroupOp(CertAttachToGroupOp groupOp,
-                                  std::string &text, std::string &data) {
+                                  std::string &text, std::string &data,
+                                  StringRef sectionStubs) {
   LogicalResult result = success();
 
   if (groupOp.getGroupId())
     text += ".attach_to_group " + std::to_string(groupOp.getGroupId()) + "\n\n";
+  text += sectionStubs;
 
   // Process pages (if any)
   for (auto page : groupOp.getBody().getOps<CertPageOp>()) {
@@ -577,13 +581,49 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
     chainUsers[name.str()].insert(groupId);
   });
 
+  // AIEBU resolves labels within each controller's block, so every group that
+  // loads a section needs the section's stub too. A load inside a section runs
+  // in every group that includes that section.
+  llvm::StringMap<std::set<uint32_t>> sectionUsers;
+  llvm::StringMap<llvm::SmallVector<StringRef>> nestedLoads;
+  deviceOp.walk([&](CertLoadPdiOp load) {
+    if (auto outer = load->getParentOfType<CertSectionOp>()) {
+      nestedLoads[outer.getSymName()].push_back(load.getSymbol());
+      return;
+    }
+    auto group = load->getParentOfType<CertAttachToGroupOp>();
+    sectionUsers[load.getSymbol()].insert(group ? group.getGroupId() : 0);
+  });
+  llvm::SmallVector<StringRef> worklist;
+  for (auto &entry : sectionUsers)
+    worklist.push_back(entry.getKey());
+  while (!worklist.empty()) {
+    StringRef outer = worklist.pop_back_val();
+    std::set<uint32_t> groups = sectionUsers.lookup(outer);
+    for (StringRef inner : nestedLoads.lookup(outer)) {
+      std::set<uint32_t> &innerGroups = sectionUsers[inner];
+      size_t before = innerGroups.size();
+      innerGroups.insert(groups.begin(), groups.end());
+      if (innerGroups.size() != before)
+        worklist.push_back(inner);
+    }
+  }
+
   // Sections are hoisted ahead of the executable stream: they are labeled
   // `.include` blocks, not pages, and the code below them may reference them
   // (e.g. `LOAD_PDI 1, @config_device`), so their labels must already be
-  // defined. Sections only appear at device level.
+  // defined. Sections only appear at device level. Block 0 has every stub;
+  // another group's stubs follow its `.attach_to_group` header.
+  std::map<uint32_t, std::string> groupSectionStubs;
   for (auto section : deviceOp.getBody()->getOps<CertSectionOp>()) {
-    if (failed(emitSection(section, text[0], outputPath, symbolTable)))
+    if (failed(emitSection(section, outputPath, symbolTable))) {
       result = failure();
+      continue;
+    }
+    emitSectionStub(section, text[0]);
+    for (uint32_t groupId : sectionUsers.lookup(section.getSymName()))
+      if (groupId != 0)
+        emitSectionStub(section, groupSectionStubs[groupId]);
   }
 
   // Preserve encounter order: emitting all bare pages first could put a release
@@ -597,7 +637,14 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
         result = failure();
     } else if (auto grp = dyn_cast<CertAttachToGroupOp>(&op)) {
       size_t block = blockFor(grp.getGroupId());
-      if (failed(emitAttachToGroupOp(grp, text[block], data[block])))
+      // A group's stubs go in its first attach_to_group only.
+      std::string stubs;
+      auto it = groupSectionStubs.find(grp.getGroupId());
+      if (it != groupSectionStubs.end()) {
+        stubs = std::move(it->second);
+        groupSectionStubs.erase(it);
+      }
+      if (failed(emitAttachToGroupOp(grp, text[block], data[block], stubs)))
         result = failure();
     } else if (auto chain = dyn_cast<CertUcDmaChainOp>(&op)) {
       std::set<uint32_t> users = {0};
