@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "test_library.h"
+#include <aie_codegen.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -16,7 +17,6 @@
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
-#include <aie_codegen.h>
 
 #define LOCK_TIMEOUT 100
 
