@@ -153,7 +153,7 @@ if [ "$DEV" = 0 ]; then
   elif [ -n "$VERSION" ]; then
     wheel_index="${base_url}/v${VERSION#v}/"        # accept "1.3.4" or "v1.3.4"
   elif [ "$LATEST" = 1 ]; then
-    wheel_index="${base_url}/latest-wheels-4/"      # newest rolling build
+    wheel_index="${base_url}/latest-wheels-5/"      # newest rolling build
   elif [[ "$repo_tag" == v[0-9]* ]]; then
     wheel_index="${base_url}/${repo_tag}/"          # checked-out release tag
   else
