@@ -1,8 +1,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# Each encoding of a mask poll that aie-rt writes (the v0.1 header with the
-# 32-byte operation aie-rt serializes or the 28-byte one TxnEncoding.h emits,
+# Each encoding of a mask poll that aie-codegen writes (the v0.1 header with the
+# 32-byte operation aie-codegen serializes or the 28-byte one TxnEncoding.h emits,
 # and the v1.0 header with its 16-byte operation) parses back to a maskpoll of
 # the same register, value and mask. A busy poll has no counterpart in the IR
 # and is rejected rather than read as a plain poll. A v0.1 operation whose size
@@ -43,7 +43,7 @@ def transaction(version, opcode, op_size=32):
     """Build a one-operation npu1_1col transaction that polls ADDRESS.
 
     The poll waits for (reg & MASK) == VALUE. The v0.1 header carries a
-    32-byte (aie-rt) or 28-byte (TxnEncoding.h) operation, the v1.0 header a
+    32-byte (aie-codegen) or 28-byte (TxnEncoding.h) operation, the v1.0 header a
     16-byte one. Any opcode may be given, to build a transaction the parser
     does not accept.
     """

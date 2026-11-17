@@ -9,7 +9,7 @@
 
 Restarting a finite core kernel from a clean program counter by driving its
 `Core_Control` register (tile-local offset `0x32000`) with masked `maskwrite32`s,
-one per field, exactly as the aie-rt driver does. Bit 0 is `Enable`, bit 1 is
+one per field, exactly as the aie-codegen driver does. Bit 0 is `Enable`, bit 1 is
 `Reset`; the offset and bit layout are identical on AIE-ML (npu1) and AIE2P (npu2),
 so this family runs on both. See [`../README.md`](../README.md) for the shared
 design and how to run.
@@ -39,7 +39,7 @@ preempt a running core.
 ## Reference
 
 `Core_Control` and its `Reset`/`Enable` bits, and the reset/unreset/enable
-procedure, are defined in the public aie-rt driver
+procedure, are defined in the public aie-codegen driver
 (<https://github.com/Xilinx/aie-codegen>, vendored at `third_party/aie-codegen/`):
 `XAIE2PGBL_CORE_MODULE_CORE_CONTROL` in `driver/src/global/xaie2pgbl_params.h`,
 and `XAie_CoreReset` / `XAie_CoreUnreset` / `XAie_CoreEnable` in

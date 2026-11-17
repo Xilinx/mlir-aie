@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Resolving a buffer adds its traced byte offset to arg_plus. aie-rt carries
+// Resolving a buffer adds its traced byte offset to arg_plus. aie-codegen carries
 // that field as u64, so the sum is computed at 64 bits and narrowed back only
 // when it fits, and a runtime arg_plus is widened to match its addend.
 

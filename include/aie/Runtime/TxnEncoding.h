@@ -189,7 +189,7 @@ inline void txn_append_maskwrite32(std::vector<uint32_t> &txn, uint32_t addr,
 }
 
 // Append a 7-word maskpoll instruction: block until (reg & mask) == val.
-// Same word layout as maskwrite32 -- aie-rt's XAie_MaskPoll32Hdr and
+// Same word layout as maskwrite32 -- aie-codegen's XAie_MaskPoll32Hdr and
 // XAie_MaskWrite32Hdr agree field for field, and the poll timeout is not
 // serialized (the firmware forces its own default; see xaie_txn.c).
 inline void txn_append_maskpoll32(std::vector<uint32_t> &txn, uint32_t addr,
@@ -251,11 +251,11 @@ constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 
 // Append a 12-word address_patch (DDR_PATCH) instruction.
 //
-// The consumer casts this byte range to aie-rt's `XAie_CustomOpHdr` followed by
-// `patch_op_t` (xaie_txn.h), so the layout is that struct pair's under natural
-// alignment: an 8-byte header at words 0-1, op_base and action at 2-5, then
-// regaddr, argidx and argplus as u64 word pairs at 6-7, 8-9 and 10-11, low half
-// first.
+// The consumer casts this byte range to aie-codegen's `XAie_CustomOpHdr`
+// followed by `patch_op_t` (xaie_txn.h), so the layout is that struct pair's
+// under natural alignment: an 8-byte header at words 0-1, op_base and action at
+// 2-5, then regaddr, argidx and argplus as u64 word pairs at 6-7, 8-9 and
+// 10-11, low half first.
 inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
                                      int32_t arg_idx, uint64_t arg_plus) {
   size_t pos = txn.size();

@@ -4,7 +4,7 @@
 """Trace events enumerations for AIE architectures.
 
 Event enums are sourced from the TableGen-generated Python bindings
-(aie.dialects._aie_enum_gen), which are produced from the same aie-rt
+(aie.dialects._aie_enum_gen), which are produced from the same aie-codegen
 headers that define the hardware event numbers.
 
 Architecture-specific enums (CoreEventAIE2, etc.) are re-exported here

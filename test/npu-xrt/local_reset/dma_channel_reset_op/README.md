@@ -31,5 +31,5 @@ the same mask-preserving reset pulse on `DMA_MM2S_0_Ctrl` (`0x1DE10`, bit 1) tha
 
 `aiex.dma_channel_reset` is defined in `include/aie/Dialect/AIEX/IR/AIEX.td` and
 lowered by `lib/Dialect/AIEX/Transforms/AIELowerDmaChannelReset.cpp`; it mirrors
-aie-rt's `XAie_DmaChannelReset` (`driver/src/dma/xaie_dma.c`). See
+aie-codegen's `XAie_DmaChannelReset` (`driver/src/dma/xaie_dma.c`). See
 [`../dma`](../dma/README.md) and [`../README.md`](../README.md#references).

@@ -254,10 +254,10 @@ struct DmaChannelResetToMaskWrite32Pattern
     // Reset pulse: assert the reset bit, then clear it. Both writes mask to the
     // reset bit only, so the pulse preserves the other CTRL fields
     // (DECOMPRESSION_ENABLE, ENABLE_OUT_OF_ORDER, CONTROLLER_ID, FOT_MODE)
-    // instead of clobbering them. This mirrors aie-rt's XAie_DmaChannelReset,
-    // which drives the reset bit with a MaskWrite32. Constants are materialized
-    // in named locals so the emitted IR order does not depend on unspecified
-    // C++ argument-evaluation order.
+    // instead of clobbering them. This mirrors aie-codegen's
+    // XAie_DmaChannelReset, which drives the reset bit with a MaskWrite32.
+    // Constants are materialized in named locals so the emitted IR order does
+    // not depend on unspecified C++ argument-evaluation order.
     Value assertAddr = createConstantI32(rewriter, loc, ctrlAddrLocal);
     Value assertVal = createConstantI32(rewriter, loc, *resetValue);
     Value assertMask = createConstantI32(rewriter, loc, *resetMask);

@@ -10,7 +10,7 @@ set(AIE_CODEGEN_REGDB_SUBDIR "../aie-regdb/globalparams")
 set(AIE_CODEGEN_SHIM_DIR "${CMAKE_CURRENT_LIST_DIR}/shim")
 
 function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
-  message("Installing aie-rt includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")
+  message("Installing xaiengine includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")
   file(GLOB libheaders ${SRCPATH}/*.h)
   # aie-codegen's own umbrella includes <aie_codegen_inc/...>, a layout this
   # install does not create. mlir-aie exposes the xaiengine/ layout instead.
@@ -62,7 +62,7 @@ function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
 endfunction()
 
 function(add_aiert_library TARGET XAIE_SOURCE)
-message("Building aie-rt library for ${TARGET} from ${SRCPATH}")
+message("Building xaiengine library for ${TARGET} from ${SRCPATH}")
 cmake_parse_arguments(ARG "STATIC" "" "" ${ARGN})
   if(ARG_STATIC)
     set(LIBTYPE STATIC)
