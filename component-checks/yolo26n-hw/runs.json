@@ -970,6 +970,42 @@
     "yolo26n/640"
    ],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "44032886586",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44032886586",
+   "date": "2026-11-17T06:39:57+00:00",
+   "commit": {
+    "id": "8b41bf5d95acbdeb3c6946a8bb7b986648cb9fd4",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/8b41bf5d95acbdeb3c6946a8bb7b986648cb9fd4",
+    "message": "Handle cores stalled on locks in reconfiguration teardown sequence (#4059)",
+    "timestamp": "2026-11-17T02:04:08Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "8b41bf5d95",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": false,
+   "published": false,
+   "n_rows": 31,
+   "exitstatus": 1,
+   "failed": [
+    "yolo26n/640"
+   ],
+   "truncated": []
   }
  ]
 }

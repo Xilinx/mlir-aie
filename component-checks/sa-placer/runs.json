@@ -1144,6 +1144,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "44032886586",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44032886586",
+   "date": "2026-11-17T06:39:57+00:00",
+   "commit": {
+    "id": "8b41bf5d95acbdeb3c6946a8bb7b986648cb9fd4",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/8b41bf5d95acbdeb3c6946a8bb7b986648cb9fd4",
+    "message": "Handle cores stalled on locks in reconfiguration teardown sequence (#4059)",
+    "timestamp": "2026-11-17T02:04:08Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "8b41bf5d95",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
