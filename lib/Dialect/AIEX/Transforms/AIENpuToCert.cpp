@@ -974,6 +974,29 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
   }
 };
 
+// Rewrite each tile- or buffer-relative blockwrite to the absolute address it
+// targets, so that splitting, address_patch matching and lowering all use the
+// raw address. This runs before configure sequences are cloned into another
+// device, where the buffer symbol would no longer resolve.
+static LogicalResult resolveBlockWriteAddresses(AIE::DeviceOp device) {
+  AIE::NamedOpTable names(device);
+  LogicalResult result = success();
+  device.walk([&](AIEX::NpuBlockWriteOp op) {
+    if (!op.getBuffer() && !(op.getColumn() && op.getRow()))
+      return;
+    std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
+    if (!address) {
+      result = failure();
+      return;
+    }
+    op.setAddress(*address);
+    op.removeBufferAttr();
+    op.removeColumnAttr();
+    op.removeRowAttr();
+  });
+  return result;
+}
+
 struct AIENpuToCertPass
     : xilinx::AIEX::impl::AIENpuToCertBase<AIENpuToCertPass> {
   void runOnOperation() override {
@@ -988,6 +1011,12 @@ struct AIENpuToCertPass
         devices.push_back(deviceOp);
       }
     }
+
+    bool resolved = true;
+    for (auto dev : devices)
+      resolved &= succeeded(resolveBlockWriteAddresses(dev));
+    if (!resolved)
+      return signalPassFailure();
 
     for (auto dev : devices)
       tagConfigureByName(dev);
