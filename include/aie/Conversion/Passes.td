@@ -60,6 +60,18 @@ def ConvertAIEVecToLLVM : Pass<"convert-aievec-to-llvm", "mlir::ModuleOp"> {
 // AIEToTransaction
 //===----------------------------------------------------------------------===//
 
+def AIEAnnotateCoreLockAcquires
+    : Pass<"aie-annotate-core-lock-acquires", "mlir::ModuleOp"> {
+  let summary = "Record core lock acquires before ELF substitution";
+  let description = [{
+    Records each source core's acquire conditions in its typed `lock_acquires`
+    summary after physical lock assignment. Precompiled cores retain their
+    supplied summaries.
+  }];
+  let constructor = "xilinx::AIE::createAIEAnnotateCoreLockAcquiresPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def ConvertAIEToTransaction
     : Pass<"convert-aie-to-transaction", "xilinx::AIE::DeviceOp"> {
   let summary = "Convert AIE dialect to npu transaction operations";

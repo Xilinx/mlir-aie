@@ -18,6 +18,7 @@
 #include "StackSizeAnalysis.h"
 #include "Utils.h"
 
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
