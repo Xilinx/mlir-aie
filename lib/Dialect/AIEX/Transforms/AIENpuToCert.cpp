@@ -1163,10 +1163,15 @@ struct AIENpuToCertPass
     collectLoads(currentDevice);
 
     OpBuilder builder(&getContext());
-    // Index loop: absorbing a device appends its loads.
-    for (size_t i = 0; i < loads.size(); ++i) {
-      AIEX::NpuLoadPdiOp load = loads[i];
-      StringRef refSymName = *load.getDeviceRef();
+    // Worklist in collection order: absorbing a device appends its loads, so
+    // `loads` can grow (and reallocate) while it is being walked.
+    size_t next = 0;
+    while (next < loads.size()) {
+      AIEX::NpuLoadPdiOp load = loads[next++];
+      std::optional<StringRef> deviceRef = load.getDeviceRef();
+      if (!deviceRef)
+        continue;
+      StringRef refSymName = *deviceRef;
       // Skip if section already exists
       Operation *existing = currentDevice.lookupSymbol(refSymName);
       if (isa_and_present<AIEX::CertSectionOp>(existing))
