@@ -505,9 +505,8 @@ def AIE_CertNopOp : AIEX_Op<"cert.nop", []> {
 }
 
 def AIE_CertSectionOp
-    : AIEX_Op<"cert.section",
-              [AIESymbol, ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp"]>,
-               SingleBlockImplicitTerminator<"AIE::EndOp">]> {
+    : AIEX_Op<"cert.section", [HasParent<"AIE::DeviceOp">, AIESymbol,
+                               SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Named control code section";
   let description = [{
     This operation defines a named section of control code that can be referenced
