@@ -108,9 +108,11 @@ module {
 
 // -----
 
-// A mixed chain: @seg_a is configured, its configuration loads @seg_b, and
-// @seg_b's configuration configures @seg_c. Every configure is lowered,
-// including the one cloned in by absorbing @seg_b.
+// A mixed chain: @seg_a is configured, its configuration loads @seg_b,
+// @seg_b's configuration configures @seg_c, and @seg_c's configuration
+// configures @seg_d and runs one of its sequences. Every configure is lowered,
+// including the ones cloned in by absorbing @seg_b and by lowering the
+// configure of @seg_c, and the run is inlined before its configure is lowered.
 //
 // CHECK-LABEL: aie.device(xcve3858)
 // CHECK: aiex.cert.load_pdi({{[0-9]+}}, @seg_a)
@@ -123,7 +125,12 @@ module {
 // CHECK-NEXT: aiex.cert.write32(24576, 7)
 // CHECK: aiex.cert.section @seg_c {
 // CHECK: aiex.cert.write32(20480, 3)
+// CHECK: aiex.cert.load_pdi({{[0-9]+}}, @seg_d)
+// CHECK-NEXT: aiex.cert.write32(28672, 5)
+// CHECK: aiex.cert.section @seg_d {
+// CHECK: aiex.cert.write32(20480, 4)
 // CHECK-NOT: aiex.configure
+// CHECK-NOT: aiex.run
 // CHECK-NOT: aie.device(xcve3858) @
 module {
   aie.device(xcve3858) @main {
@@ -156,6 +163,22 @@ module {
     aie.runtime_sequence @configure() {
       %a = arith.constant 0x5000 : i32
       %v = arith.constant 3 : i32
+      aiex.npu.write32(%a, %v) : i32, i32
+      aiex.configure @seg_d {
+        %w = arith.constant 0 : i32
+        aiex.run @work(%w) : (i32)
+      }
+    }
+  }
+  aie.device(xcve3858) @seg_d {
+    aie.runtime_sequence @configure() {
+      %a = arith.constant 0x5000 : i32
+      %v = arith.constant 4 : i32
+      aiex.npu.write32(%a, %v) : i32, i32
+    }
+    aie.runtime_sequence @work(%unused: i32) {
+      %a = arith.constant 0x7000 : i32
+      %v = arith.constant 5 : i32
       aiex.npu.write32(%a, %v) : i32, i32
     }
   }

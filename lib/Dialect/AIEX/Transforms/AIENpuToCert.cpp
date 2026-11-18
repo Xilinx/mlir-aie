@@ -488,6 +488,11 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
 
   LogicalResult matchAndRewrite(AIEX::ConfigureOp op,
                                 PatternRewriter &rewriter) const override {
+    // A run resolves its callee through the enclosing configure, so the
+    // configure is lowered only once RunOpInlining has expanded its runs.
+    if (!op.getRegion().getOps<AIEX::RunOp>().empty())
+      return failure();
+
     // Get the referenced device
     AIE::DeviceOp referencedDevice = op.getReferencedDeviceOp();
     if (!referencedDevice)
@@ -1250,12 +1255,11 @@ struct AIENpuToCertPass
   void processDevice(AIE::DeviceOp currentDevice) {
     auto moduleOp = currentDevice->getParentOfType<ModuleOp>();
 
-    RewritePatternSet p_run_inline(&getContext());
-    p_run_inline.insert<RunOpInlining>(&getContext());
-    FrozenRewritePatternSet runInlinePatterns(std::move(p_run_inline));
-    RewritePatternSet p_configure(&getContext());
-    p_configure.insert<ConfigureOpToCertSection>(&getContext());
-    FrozenRewritePatternSet configurePatterns(std::move(p_configure));
+    // Inline RunOps and convert ConfigureOps to cert.section + cert.load_pdi.
+    // ConfigureOpToCertSection waits for the runs of a configure to be inlined.
+    RewritePatternSet p_expand(&getContext());
+    p_expand.insert<RunOpInlining, ConfigureOpToCertSection>(&getContext());
+    FrozenRewritePatternSet expandPatterns(std::move(p_expand));
 
     // Absorbing a device can clone in run and configure ops, and expanding
     // those can clone in further loads. Repeat until the expansion that follows
@@ -1267,19 +1271,9 @@ struct AIENpuToCertPass
       if (moduleOp && failed(absorbLoadedDevices(currentDevice, moduleOp)))
         return signalPassFailure();
 
-      // Inline RunOps first
-      bool runsChanged = false;
-      if (failed(applyPatternsGreedily(currentDevice, runInlinePatterns,
-                                       GreedyRewriteConfig(), &runsChanged)))
+      if (failed(applyPatternsGreedily(currentDevice, expandPatterns,
+                                       GreedyRewriteConfig(), &changed)))
         return signalPassFailure();
-
-      // Then convert ConfigureOps to cert.section + cert.load_pdi
-      bool configuresChanged = false;
-      if (failed(applyPatternsGreedily(currentDevice, configurePatterns,
-                                       GreedyRewriteConfig(),
-                                       &configuresChanged)))
-        return signalPassFailure();
-      changed = runsChanged || configuresChanged;
     }
 
     ConversionTarget target(getContext());
