@@ -8,16 +8,13 @@
 // REQUIRES: peano
 // RUN: not %aiecc --no-progress --tmpdir %t --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s
 
-// placement_retry_core_data's design, with a 33 KiB buffer on %p. The first
-// placement has no room for %c's buffers beside its sections; aiecc places
-// again, and the second placement puts %c beside %p, whose tile now has no
-// room for x's buffers. %p keeps no sections, so placing again cannot charge
-// anything for it: that failure is the second placement's own, and it stands.
-// CHECK: note: this core keeps its own sections in 28672 bytes (device @main)
-// CHECK: aiecc: placing again with --sa-core-data-sizes=@main:0=0,@main:1=28672@16 (a core's buffers found no room beside its own sections); the messages above are from placement 1
+// placement_retry_core_data's design, with a 33 KiB buffer on %p. Charged its
+// measured sections, %c goes beside %p, whose tile now has no room for x's
+// buffers. %p keeps no sections, so placing again cannot charge anything for
+// it: that failure is the placement's own, and it stands.
+// CHECK-NOT: placing again
 // CHECK: error: 'aie.buffer' op could not be placed: buffer "x__buf1"
 // CHECK-NOT: no placement
-// CHECK: aiecc: placement 2 (--sa-core-data-sizes=@main:0=0,@main:1=28672@16) stands
 // CHECK: aiecc: edge 'input_with_addresses.mlir' failed
 
 module @core_data_unfixable {

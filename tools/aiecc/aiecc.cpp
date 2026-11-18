@@ -961,19 +961,40 @@ static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
   return reached;
 }
 
-// What the probe link measured of each core's own sections, as
-// `<device>:<core>` (the device's aie.core ops counted in order) to bytes; the
-// address edge fills it in from its worker threads.
 // A core's data region as the probe link measured it: its bytes and the
 // alignment its sections start at.
 struct MeasuredRegion {
   int64_t bytes = 0;
   int64_t align = 1;
 };
+// What the probe link measured of each core's own sections, as
+// `<device>:<core>` (the device's aie.core ops counted in order) to its
+// region; the probe's consumers fill it in from their worker threads.
 struct MeasuredCoreData {
   std::mutex mutex;
   llvm::StringMap<MeasuredRegion> regions;
 };
+
+// Records the measured data region of each of `mod`'s cores that declares no
+// data_size; recordBankDemand set the measurements on the cores.
+static void recordMeasuredCores(mlir::ModuleOp mod,
+                                MeasuredCoreData &measuredCores) {
+  std::lock_guard<std::mutex> lock(measuredCores.mutex);
+  for (auto device : mod.getOps<xilinx::AIE::DeviceOp>())
+    for (auto [ordinal, core] :
+         llvm::enumerate(device.getOps<xilinx::AIE::CoreOp>()))
+      if (auto bytes = core.getMeasuredDataSize(); bytes && !core.getDataSize())
+        measuredCores.regions[llvm::formatv("{0}:{1}",
+                                            mlir::FlatSymbolRefAttr::get(
+                                                device.getSymNameAttr()),
+                                            ordinal)
+                                  .str()] = {
+            *bytes, core.getMeasuredDataAlignment().value_or(1)};
+}
+
+// What a graph is built for: the build itself, or measuring the cores' own
+// sections on a provisional placement before the build places them.
+enum class GraphPurpose { Build, MeasureCoreSections };
 
 // The edge that routes the placed design's flows.
 static constexpr llvm::StringLiteral kRoutedEdge = "input_physical.mlir";
@@ -999,7 +1020,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                std::vector<EdgeBase *> &cutEdges,
                std::vector<EdgeBase *> &checkEdges, DeviceCache *cache,
                llvm::StringSet<> keptDevices, MeasuredCoreData &measuredCores,
-               const std::shared_ptr<SharedCoreObjects> &sharedObjects) {
+               const std::shared_ptr<SharedCoreObjects> &sharedObjects,
+               GraphPurpose purpose) {
+  bool measuring = purpose == GraphPurpose::MeasureCoreSections;
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -1125,10 +1148,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
               "placed.mlir",
               PassPipeline{getPlacementPipeline(
                   &context, coresPerCol.getValue(), placerType.getValue(),
-                  saSeed.getValue(), saEffort.getValue(),
+                  saSeed.getValue(),
+                  measuring ? saEffort.getValue() / 16 : saEffort.getValue(),
                   placementBudget.getValue(), llvm::to_vector(saWalkedFifos),
-                  llvm::to_vector(saCoreDataSizes), ctrlOverlay,
-                  ctrlpktAdaptiveOverlay.getValue(),
+                  measuring ? llvm::SmallVector<std::string>()
+                            : llvm::to_vector(saCoreDataSizes),
+                  ctrlOverlay, ctrlpktAdaptiveOverlay.getValue(),
                   packetSwObjFifos.getValue())})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
@@ -1180,11 +1205,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           : static_cast<ModEdge &>(withSymbols.map<ModRef>(
                 kRoutedEdge.str(), PassPipeline{getRoutingPipeline(&context)}));
 
+  // A provisional placement only needs its cores compiled, which routing does
+  // not change and may not even manage.
+  ModEdge &cores = measuring ? withSymbols : routed;
   // The device cache's key and every compile or link of a core read the files
   // the cores link; all of them are downstream of this view.
   auto &unplaced =
       awaitLinkFiles
-          ? static_cast<EdgeWithTypedOutput<ModRef> &>(routed.filter(
+          ? static_cast<EdgeWithTypedOutput<ModRef> &>(cores.filter(
                 "awaitLinkFiles",
                 [sharedObjects](const ModRef &) -> mlir::FailureOr<bool> {
                   if (sharedObjects->linkFilesReady)
@@ -1200,7 +1228,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   sharedObjects->linkFilesReady = true;
                   return true;
                 }))
-          : routed;
+          : cores;
 
   // Everything that compiles or places a core reads the routed module through
   // this view, so the device cache's lookup runs before any of it.
@@ -1435,6 +1463,21 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       .optional(realLinkFollows)})
           .threadSafe();
 
+  if (measuring)
+    return {
+        &bundle(probeElfs.out, compileInput.out)
+             .join<ModRef>(
+                 "core_measurements.mlir",
+                 [elfLookup, bankDemand, &measuredCores](
+                     const Node<Directory> &probes, const Node<ModRef> &modN,
+                     Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(modN.get().get().clone());
+                   recordBankDemand(out.value->get(), elfLookup(probes),
+                                    *bankDemand, !noMeasureDataSize.getValue());
+                   recordMeasuredCores(out.value->get(), measuredCores);
+                   return mlir::success();
+                 })};
+
   // Compile before placement so the probe can reserve each bank's static data.
   // Buffer references lower to declarations; the final linker script supplies
   // their addresses. Address-dependent consumers read this placement edge.
@@ -1457,22 +1500,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   if (useProbe) {
                     recordBankDemand(mod, elfLookup(probes), *bankDemand,
                                      !noMeasureDataSize.getValue());
-                    // A declared data_size is what the SA reserves already.
-                    std::lock_guard<std::mutex> lock(measuredCores.mutex);
-                    for (auto device : mod.getOps<DeviceOp>())
-                      for (auto [ordinal, core] :
-                           llvm::enumerate(device.getOps<CoreOp>()))
-                        if (auto bytes = core.getMeasuredDataSize();
-                            bytes && !core.getDataSize())
-                          measuredCores
-                              .regions[llvm::formatv(
-                                           "{0}:{1}",
-                                           mlir::FlatSymbolRefAttr::get(
-                                               device.getSymNameAttr()),
-                                           ordinal)
-                                           .str()] = {
-                              *bytes,
-                              core.getMeasuredDataAlignment().value_or(1)};
+                    recordMeasuredCores(mod, measuredCores);
                     if (!noMeasureStackSize.getValue() &&
                         mlir::failed(recordStackDemand(
                             mod, elfLookup(probes), elfLookup(coreObjects)))) {
@@ -3186,7 +3214,7 @@ int main(int argc, char **argv) {
   auto sharedObjects = std::make_shared<SharedCoreObjects>();
   std::vector<EdgeBase *> outputs = buildMainGraph(
       context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr,
-      keptDevices, measuredCores, sharedObjects);
+      keptDevices, measuredCores, sharedObjects, GraphPurpose::Build);
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
@@ -3467,11 +3495,76 @@ int main(int argc, char **argv) {
     // this one and the latest can still stand.
     size_t bestReached = 0;
   };
+  // Each core's largest measured data region so far, which the SA charges.
+  llvm::StringMap<MeasuredRegion> coreData;
+  auto chargeCoreData = [&]() {
+    saCoreDataSizes.clear();
+    for (auto &[core, region] : coreData)
+      saCoreDataSizes.push_back(
+          (core + "=" + llvm::Twine(region.bytes) +
+           (region.align > 1 ? "@" + llvm::Twine(region.align) : ""))
+              .str());
+    llvm::sort(saCoreDataSizes);
+    return "--sa-core-data-sizes=" + llvm::join(saCoreDataSizes, ",");
+  };
+  // The SA cannot know the cores' own sections before they are compiled, so
+  // a quick provisional placement compiles and measures them first, and the
+  // first real placement charges what it found instead of placing again.
+  std::optional<std::string> measuredFirst;
+  if (mayCoreAgain && !xchesscc && !xbridge && !dryRun && !noMeasureDataSize) {
+    {
+      Graph measure;
+      std::vector<EdgeBase *> noCuts, noChecks;
+      std::vector<EdgeBase *> measurements = buildMainGraph(
+          context, measure, noCuts, noChecks, /*cache=*/nullptr, keptDevices,
+          measuredCores, sharedObjects, GraphPurpose::MeasureCoreSections);
+      Engine::Options measureOptions = engineOptions;
+      measureOptions.outputDir = getWorkDir() + "/measure";
+      measureOptions.progress = false;
+      measureOptions.keepIntermediates = false;
+      measureOptions.profile = false;
+      measureOptions.keepInputs = false;
+      measureOptions.profileJson.clear();
+      measureOptions.deferFailedEdge = true;
+      Engine measureEngine(measureOptions);
+      // What fails here fails again, and is reported, in the real placement.
+      mlir::ScopedDiagnosticHandler quiet(
+          &context, [](mlir::Diagnostic &) { return mlir::success(); });
+      (void)measureEngine.run(measure, measurements, {},
+                              DeserializeContext{&context}, {});
+    }
+    {
+      std::lock_guard<std::mutex> lock(sharedObjects->mutex);
+      for (auto it = sharedObjects->objects.begin();
+           it != sharedObjects->objects.end();)
+        it = it->second.get().empty() ? sharedObjects->objects.erase(it)
+                                      : std::next(it);
+    }
+    {
+      std::lock_guard<std::mutex> lock(measuredCores.mutex);
+      for (auto &[core, region] : measuredCores.regions)
+        coreData[core] = region;
+    }
+    if (!coreData.empty()) {
+      measuredFirst = chargeCoreData();
+      if (verbose)
+        llvm::errs() << "aiecc: placing with the cores' measured sections: "
+                     << *measuredFirst << "\n";
+      graph = std::make_unique<Graph>();
+      checkEdges.clear();
+      outputs =
+          buildMainGraph(context, *graph, cutEdges, checkEdges,
+                         deviceCache ? &*deviceCache : nullptr, keptDevices,
+                         measuredCores, sharedObjects, GraphPurpose::Build);
+    }
+  }
   PlacementAttempts attempts(context, diagHandler, runOutputs, satisfied,
                              buildAlso, outputs, mayAgain);
   // Set when attempts ran out on a failure only another placement could fix.
   std::optional<std::string> noPlacement;
   mlir::LogicalResult ran = attempts.run(std::move(graph), std::move(engine));
+  if (measuredFirst)
+    attempts.back().placedWith.push_back(*measuredFirst);
   // Unless the command line chose the placement, a design with cores to
   // place is placed again with fewer cores a column until the router fits
   // the flows.
@@ -3482,7 +3575,8 @@ int main(int argc, char **argv) {
           checkEdges.clear();
           return buildMainGraph(context, next, cutEdges, checkEdges,
                                 deviceCache ? &*deviceCache : nullptr,
-                                keptDevices, measuredCores, sharedObjects);
+                                keptDevices, measuredCores, sharedObjects,
+                                GraphPurpose::Build);
         });
   };
   if (mayPlaceAgain && attempts.unroutable()) {
@@ -3524,7 +3618,6 @@ int main(int argc, char **argv) {
   // Only the failure placing again addresses (no room, with the note naming
   // what to charge) counts; anything else the attempt reports stands as
   // itself.
-  llvm::StringMap<MeasuredRegion> coreData;
   for (Charges charges =
            attempts.collectCharges(mayWalkAgain, mayCoreAgain, saWalkedFifos);
        (mayWalkAgain && attempts.failedAt(kWithSymbolsEdge) &&
@@ -3562,13 +3655,7 @@ int main(int argc, char **argv) {
       why.emplace_back("buffers channel turns walked whole found no room");
     }
     if (grew) {
-      saCoreDataSizes.clear();
-      for (auto &[core, region] : coreData)
-        saCoreDataSizes.push_back(
-            (core + "=" + llvm::Twine(region.bytes) +
-             (region.align > 1 ? "@" + llvm::Twine(region.align) : ""))
-                .str());
-      llvm::sort(saCoreDataSizes);
+      chargeCoreData();
       why.emplace_back(
           "a core's buffers found no room beside its own sections");
     }
@@ -3577,8 +3664,7 @@ int main(int argc, char **argv) {
       placedWith.push_back("--sa-walked-fifos=" +
                            llvm::join(saWalkedFifos, ","));
     if (mayCoreAgain && !saCoreDataSizes.empty())
-      placedWith.push_back("--sa-core-data-sizes=" +
-                           llvm::join(saCoreDataSizes, ","));
+      placedWith.push_back(chargeCoreData());
     ran = placeAgainWith(std::move(placedWith), llvm::join(why, "; "));
   }
   // When attempts ran out, the placement that got furthest stands: the one
