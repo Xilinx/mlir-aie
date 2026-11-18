@@ -1178,7 +1178,7 @@ struct AIENpuToCertPass
         continue;
       StringRef refSymName = *deviceRef;
       // Skip if section already exists
-      Operation *existing = currentDevice.lookupSymbol(refSymName);
+      Operation *existing = AIE::lookupNamedOpIn(currentDevice, refSymName);
       if (isa_and_present<AIEX::CertSectionOp>(existing))
         continue;
 
