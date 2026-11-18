@@ -282,6 +282,12 @@ LogicalResult AIEX::CertWrite32DOp::verify() {
   return success();
 }
 
+LogicalResult AIEX::CertApplyOffset57Op::verify() {
+  if (getNumEntries() == 0)
+    return emitOpError("num_entries must be at least 1");
+  return success();
+}
+
 LogicalResult AIEX::UseTokenOp::verify() {
   auto *parentOp = (*this)->getParentOp();
   if (isa<func::FuncOp>(parentOp) || isa<AIE::CoreOp>(parentOp) ||
