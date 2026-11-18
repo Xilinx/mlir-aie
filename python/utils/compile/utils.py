@@ -1723,12 +1723,23 @@ def _select_declared_kernels(funcs, link_with: dict[str, set[str | None]]) -> li
 
 
 def kernel_compile_jobs() -> int:
-    """Concurrent Peano kernel compiles: AIE_KERNEL_COMPILE_JOBS, else cores."""
+    """Concurrent Peano kernel compiles: AIE_KERNEL_COMPILE_JOBS, else cores.
+
+    Without the variable, one fewer than the cores this process may run on, so
+    aiecc, which starts placing while the kernels build, keeps one.
+    """
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
     except ValueError:
         jobs = 0
-    return jobs if jobs > 0 else (os.cpu_count() or 1)
+    if jobs > 0:
+        return jobs
+    cores = (
+        len(os.sched_getaffinity(0))
+        if sys.platform == "linux"
+        else (os.cpu_count() or 1)
+    )
+    return max(1, cores - 1)
 
 
 def compile_external_kernels(
