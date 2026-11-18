@@ -7,6 +7,7 @@ from typing import Any, Iterator
 from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from aie.helpers.dialects.scf import (
     _for,
+    _for_bounds,
 )
 from aie.helpers.dialects.scf import (
     else_ as _else_,
@@ -89,9 +90,10 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
         if packers
         else None
     )
+    bounds = _for_bounds(args, kwargs)
     for vals in _for(*args, iter_args=raw, insert_yield=not packers, **kwargs):
         if not packers:
-            with frame("for", args, vals.owner, specs):
+            with frame("for", bounds, vals.owner, specs):
                 yield vals
             continue
         if not raw:
@@ -101,7 +103,7 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
             if len(raw) == 1:
                 a, results = (a,), (results,)
         results = rewrap(tuple(results))
-        with frame("for", args, iv.owner, specs) as loop:
+        with frame("for", bounds, iv.owner, specs) as loop:
             yield iv, rewrap(tuple(a)), results
         ops = iv.owner.operations
         if not len(ops) or ops[len(ops) - 1].name != "scf.yield":

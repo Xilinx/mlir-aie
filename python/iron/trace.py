@@ -61,8 +61,10 @@ class Scope:
     Attributes:
         kind: ``"core"`` (a Worker's body), ``"for"`` (``range_``),
             ``"forever"``, ``"if"`` or ``"else"``.
-        owner: The ``Worker`` for a core; for a ``for``, ``range_``'s
-            arguments, each an ``int`` or None where it is a value only the
+        owner: The ``Worker`` for a core; for a ``for``, the normalized
+            ``(start, stop, step)`` triple ``range_`` calls it with (defaults
+            and keyword arguments applied, as ``_for`` itself would bind
+            them), each entry an ``int`` or None where it is a value only the
             call knows; otherwise None. No MLIR object outlives the build.
         site: The user statement that opened it; for a core, the one that
             declared its Worker.

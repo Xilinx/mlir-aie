@@ -107,8 +107,8 @@ class Frame:
 
     Attributes:
         kind: ``"core"``, ``"for"``, ``"forever"``, ``"if"`` or ``"else"``.
-        owner: The Worker for a core, ``range_``'s arguments for a loop, the
-            condition for an ``if``; otherwise None.
+        owner: The Worker for a core, the normalized ``(start, stop, step)``
+            bounds for a loop, the condition for an ``if``; otherwise None.
         body: A loop's body block, which ``yield_`` terminates.
         specs: A loop's waited flags per TaskGroup it carries.
         values: What a loop's terminating ``yield_`` passed, if any.

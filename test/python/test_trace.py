@@ -66,13 +66,72 @@ def test_a_core_body_is_recorded_in_program_order_nested_in_its_control_flow():
     read, write = ObjectFifoPort.Consume, ObjectFifoPort.Produce
     loop, drain = core.body
     assert drain == Access(of_mid, read, "release", 1)
-    assert loop.kind == "for" and loop.owner == (4,)
+    assert loop.kind == "for" and loop.owner == (0, 4, 1)
     window, slot, then, otherwise, advance = loop.body
     assert window == Access(of_mid, read, "acquire", 2)
     assert slot == Access(of_out, write, "acquire", 1)
     assert then == Scope("if", body=[Access(of_out, write, "release", 1)])
     assert otherwise == Scope("else", body=[Access(of_out, write, "release", 1)])
     assert advance == Access(of_mid, read, "release", 1)
+
+
+def _bounds_design(core_fn) -> tuple:
+    """Return a design whose core body is exactly ``core_fn``, for tests that only check a loop's recorded bounds."""
+    worker = Worker(core_fn, fn_args=[], while_true=False)
+    program = Program(NPU2(), Runtime(lambda: None), workers=[worker])
+    return program, worker
+
+
+def test_a_fors_keyword_bounds_are_recorded():
+    def core_fn():
+        for _ in range_(0, 8, step=2):
+            pass
+
+    program, _ = _bounds_design(core_fn)
+    with record() as recording:
+        program.resolve_program()
+    (loop,) = recording.cores[0].body
+    assert loop.owner == (0, 8, 2)
+
+
+def test_a_fors_all_keyword_bounds_are_recorded():
+    def core_fn():
+        for _ in range_(start=0, stop=8, step=2):
+            pass
+
+    program, _ = _bounds_design(core_fn)
+    with record() as recording:
+        program.resolve_program()
+    (loop,) = recording.cores[0].body
+    assert loop.owner == (0, 8, 2)
+
+
+def test_a_fors_numpy_integer_bound_is_recorded_as_a_python_int():
+    def core_fn():
+        for _ in range_(np.int32(4)):
+            pass
+
+    program, _ = _bounds_design(core_fn)
+    with record() as recording:
+        program.resolve_program()
+    (loop,) = recording.cores[0].body
+    assert loop.owner == (0, 4, 1)
+    assert all(isinstance(bound, int) for bound in loop.owner)
+
+
+def test_a_fors_runtime_bound_is_recorded_as_none():
+    def core_fn():
+        for i in range_(4):
+            for _ in range_(i):
+                pass
+
+    program, _ = _bounds_design(core_fn)
+    with record() as recording:
+        program.resolve_program()
+    (outer,) = recording.cores[0].body
+    (inner,) = outer.body
+    assert outer.owner == (0, 4, 1)
+    assert inner.owner == (0, None, 1)
 
 
 def test_the_workers_own_loop_around_its_body_is_not_the_bodys():
