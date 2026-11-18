@@ -3076,6 +3076,13 @@ int main(int argc, char **argv) {
     context.setThreadPool(mlirThreads);
   context.loadAllAvailableDialects();
 
+  // Every stage reopens the input by name, and stdin reads only once.
+  if (getInputFilename() == "-") {
+    llvm::errs() << "aiecc: reads its input from a file; '-' (stdin) is not "
+                    "supported\n";
+    return 1;
+  }
+
   llvm::SourceMgr sourceMgr;
   unsigned inputBufferId = 0;
   if (auto inputBuf = mlir::openInputFile(getInputFilename())) {
