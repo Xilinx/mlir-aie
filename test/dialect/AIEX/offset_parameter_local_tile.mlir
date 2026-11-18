@@ -21,6 +21,7 @@
 // CHECK: aiex.npu.update_from_scratchpad<mul> {address = 1703940 : ui32, func_arg = 1 : ui32
 // CHECK-NOT: aiex.npu.maskwrite32
 // CHECK: aiex.npu.push_queue
+// expected-remark@+1 {{takes offsets in multiples of 4 elements}}
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) @mem {
   %t = aie.tile(0, 1)
@@ -38,6 +39,7 @@ aie.device(npu2) @mem {
 // -----
 
 // Off a 16-byte boundary, the cleared bits would move the buffer.
+// expected-remark@+1 {{takes offsets in multiples of 4 elements}}
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) @mem_unaligned {
   %t = aie.tile(0, 1)
@@ -57,6 +59,7 @@ aie.device(npu2) @mem_unaligned {
 
 // An SSA offset leaves the address unknown at compile time, aligned buffer or
 // not.
+// expected-remark@+1 {{takes offsets in multiples of 4 elements}}
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) @mem_ssa_offset {
   %t = aie.tile(0, 1)
@@ -75,6 +78,7 @@ aie.device(npu2) @mem_ssa_offset {
 // -----
 
 // A quarter word cannot be added to a word address.
+// expected-remark@+1 {{takes offsets in multiples of 8 elements}}
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) @mem_i16 {
   %t = aie.tile(0, 1)
@@ -124,6 +128,7 @@ aie.device(npu2) @core_i32 {
 // CHECK-LABEL: aie.device(npu2) @core_i16
 // CHECK: aiex.npu.update_from_scratchpad<mul> {address = {{[0-9]+}} : ui32, func_arg = 8192 : ui32
 // CHECK: aiex.npu.maskwrite32
+// expected-remark@+1 {{takes offsets in multiples of 2 elements}}
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) @core_i16 {
   %t = aie.tile(0, 2)

@@ -1073,8 +1073,15 @@ struct AIELowerScratchpadParametersPass
       p.setMaxValueAttr(builder.getI32IntegerAttr(it->second.second));
     }
     for (ScratchpadParameterOp p : allParams)
-      if (int64_t multiple = offsetMultiples.lookup(p.getSymName()))
+      if (int64_t multiple = offsetMultiples.lookup(p.getSymName())) {
         p.setOffsetMultipleAttr(builder.getI32IntegerAttr(multiple));
+        // Another offset corrupts the buffer descriptor, not just rounds.
+        if (multiple > 1)
+          p.emitRemark() << "takes offsets in multiples of " << multiple
+                         << " elements; the host's scratchpad helpers reject "
+                            "others, and a host writing the scratchpad itself "
+                            "must too";
+      }
     llvm::MapVector<StringRef, SmallVector<Attribute>> jointBoundAttrs;
     for (auto [key, max] : jointBounds) {
       auto [length, offset, step] = key;
