@@ -8,7 +8,8 @@ Inside ``with record() as recording``, building a design notes, per
 [`Worker`][aie.iron.Worker], every acquire and release its body makes on an
 ``ObjectFifo``, in program order, nested in the control flow it sits in
 (``range_``, ``forever_``, ``if_``/``else_``), and every ``ObjectFifoLink``
-the design draws. Each access and scope carries the user statement that
+the design draws, and every fill and drain its runtime sequence issues.
+Each access and scope carries the user statement that
 made it (a ``SourceSite``), the same one its emitted op is located at. A
 Python ``for`` or ``if`` runs while the body is traced, so its accesses
 appear unrolled. Nothing is recorded outside a ``record()`` block, and
@@ -32,7 +33,8 @@ if TYPE_CHECKING:
     from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
         ObjectFifoPort,
     )
-    from .dataflow.objectfifo import ObjectFifo, ObjectFifoLink
+    from ..helpers.taplib import TensorAccessPattern
+    from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle, ObjectFifoLink
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,24 @@ class Access:
     port: ObjectFifoPort
     kind: Literal["acquire", "release"]
     count: int
+    site: SourceSite | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
+class Transfer:
+    """One fill or drain the runtime sequence issues on an ``ObjectFifo``.
+
+    Attributes:
+        fifo: The ``ObjectFifo`` it moves objects into or out of.
+        kind: Whether the host fills the fifo or drains it.
+        elements: The elements it moves, or None where a per-call length or
+            repeat, or a walk only the call knows, sizes it.
+        site: The user statement that issued it.
+    """
+
+    fifo: ObjectFifo
+    kind: Literal["fill", "drain"]
+    elements: int | None
     site: SourceSite | None = field(default=None, compare=False)
 
 
@@ -83,11 +103,13 @@ class Recording:
     Attributes:
         cores: One ``"core"`` scope per Worker body built, in build order.
         links: Every ``ObjectFifoLink`` made, in order.
+        transfers: Every fill and drain the runtime sequences issue, in order.
     """
 
     def __init__(self) -> None:
         self.cores: list[Scope] = []
         self.links: list[ObjectFifoLink] = []
+        self.transfers: list[Transfer] = []
 
     def opened(
         self,
@@ -117,6 +139,30 @@ class Recording:
     def released(self, fifo: ObjectFifo, port: ObjectFifoPort, count: int) -> None:
         """Note a release in the core body being emitted."""
         self._note(Access(fifo, port, "release", count, SourceSite.capture()))
+
+    def transferred(
+        self,
+        handle: ObjectFifoHandle,
+        tap: TensorAccessPattern | None,
+        sized_per_call: bool,
+    ) -> None:
+        """Note a fill or drain of ``handle``'s fifo, ``tap`` the walk it moves.
+
+        Args:
+            handle: The end the transfer is issued on: a producer end is
+                filled, a consumer end drained.
+            tap: The walk the transfer moves, if one is given.
+            sized_per_call: A per-call length or repeat sizes it.
+        """
+        elements = (
+            tap.numel
+            if tap is not None and isinstance(tap.numel, int) and not sized_per_call
+            else None
+        )
+        kind = "fill" if handle.handle_type == "prod" else "drain"
+        self.transfers.append(
+            Transfer(handle.object_fifo, kind, elements, SourceSite.capture())
+        )
 
     def linked(self, link: ObjectFifoLink) -> None:
         """Note an ``ObjectFifoLink`` the design draws."""

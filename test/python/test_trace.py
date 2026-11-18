@@ -188,3 +188,13 @@ def test_an_access_carries_the_user_statement_that_made_it():
     assert SOURCE[loop.site.line - 1].strip() == "for _ in range_(4):"
     core = recording.cores[0]
     assert SOURCE[core.site.line - 1].strip().startswith("worker = Worker(core_fn")
+
+
+def test_the_runtime_sequence_s_fills_and_drains_are_recorded():
+    with record() as recording:
+        program, _, of_out, _ = design()
+        program.resolve_program()
+    (fill,) = [t for t in recording.transfers if t.kind == "fill"]
+    (drain,) = [t for t in recording.transfers if t.kind == "drain"]
+    assert drain.fifo is of_out and drain.elements == 64
+    assert fill.fifo is not of_out and fill.elements == 64

@@ -809,6 +809,12 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         if self._endpoint is None:
             self.endpoint = RuntimeEndpoint(self._shim_tile)
         active_sequence().note_fifo(self)
+        if (recording := active_recording()) is not None:
+            recording.transferred(
+                self,
+                rt_data.default_tap() if tap is None else tap,
+                length_parameter is not None or repeat_parameter is not None,
+            )
 
         assert self.name is not None
         return emit_shim_transfer(
