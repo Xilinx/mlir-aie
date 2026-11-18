@@ -26,6 +26,7 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
 )
 from aie.iron.runtime.dmataskhandle import Task
 from aie.iron.runtime.taskgroup import TaskGroup
+from aie.iron.trace import block
 
 
 class _LoopFrame:
@@ -126,7 +127,7 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
     )
     for vals in _for(*args, iter_args=raw, insert_yield=not packers, **kwargs):
         if not packers:
-            with _loop_frame(vals.owner, specs):
+            with _loop_frame(vals.owner, specs), block("for", args):
                 yield vals
             continue
         if not raw:
@@ -136,7 +137,7 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
             if len(raw) == 1:
                 a, results = (a,), (results,)
         results = rewrap(tuple(results))
-        with _loop_frame(iv.owner, specs) as frame:
+        with _loop_frame(iv.owner, specs) as frame, block("for", args):
             yield iv, rewrap(tuple(a)), results
         ops = iv.owner.operations
         if not len(ops) or ops[len(ops) - 1].name != "scf.yield":
@@ -160,7 +161,9 @@ def forever_() -> Iterator[None]:
     ``while_true=False``; write it yourself when a body must do some work once
     before it loops forever.
     """
-    return _forever_()
+    for _ in _forever_():
+        with block("forever"):
+            yield
 
 
 def yield_(values):
@@ -224,7 +227,7 @@ def if_(cond):
     """
     if isinstance(cond, bool):
         cond = constant(cond)
-    with _if_(cond, hasElse=False) as op:
+    with _if_(cond, hasElse=False) as op, block("if", cond):
         yield op
 
 
@@ -235,5 +238,5 @@ def else_(branch):
     if not len(blocks):
         with InsertionPoint(blocks.append()):
             _yield_([])
-    with _else_(branch):
+    with _else_(branch), block("else"):
         yield

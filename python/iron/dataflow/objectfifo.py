@@ -34,6 +34,7 @@ from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
+from ..trace import Link, access, link
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
@@ -567,6 +568,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must consume at least one element")
+        access(self, port == ObjectFifoPort.Produce, True, num_elem)
         return self.op.acquire(port, num_elem)
 
     def _release(
@@ -578,6 +580,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must produce at least one element")
+        access(self, port == ObjectFifoPort.Produce, False, num_elem)
         self.op.release(port, num_elem, assume_queue_space=assume_queue_space)
 
 
@@ -1393,6 +1396,15 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         self._src_offsets = src_offsets if src_offsets is not None else []
         self._dst_offsets = dst_offsets if dst_offsets is not None else []
         self._resolving = False
+        link(
+            Link(
+                tuple(s._object_fifo for s in self._srcs),
+                tuple(d._object_fifo for d in self._dsts),
+                tuple(self._src_offsets),
+                tuple(self._dst_offsets),
+                "time" if mode == ObjectFifoLinkMode.Time else "space",
+            )
+        )
 
         if len(self._srcs) < 1:
             raise ValueError("An ObjectFifoLink must have at least one source")
