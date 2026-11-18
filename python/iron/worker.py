@@ -22,7 +22,6 @@ from ..dialects.aiex import (
     wait_scratchpad_parameters,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..helpers.dialects.scf import _for as range_
-from .trace import block
 from ..helpers.dialects.scf import forever_
 from ..helpers.sourceloc import Declared, SourceSite, iron_name, traced_body
 from ..helpers.taplib import Affine
@@ -36,6 +35,7 @@ from .device import AnyComputeTile, Tile
 from .kernel import Kernel
 from .resolvable import PerDeviceConfiguration, Resolvable
 from .scratchpad_parameter import ScratchpadParameter
+from .trace import Recorder
 
 
 class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
@@ -380,7 +380,7 @@ class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
                     for _ in forever_() if self._while_true else range_(1):
                         if self._wait_for_parameters:
                             wait_scratchpad_parameters()
-                        with traced_body(self.core_fn), block("core", self):
+                        with traced_body(self.core_fn), Recorder.scope("core", self):
                             self.core_fn(*self.fn_args)
 
 

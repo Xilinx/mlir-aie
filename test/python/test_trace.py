@@ -11,7 +11,8 @@ import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import else_, forever_, if_, range_
 from aie.iron.device import NPU2
-from aie.iron.trace import Access, Block, record
+from aie.dialects._aie_enum_gen import ObjectFifoLinkMode, ObjectFifoPort
+from aie.iron.trace import Access, Scope, record
 
 line = np.ndarray[(64,), np.dtype[np.int32]]
 
@@ -58,22 +59,23 @@ def test_a_core_body_is_recorded_in_program_order_nested_in_its_control_flow():
         program.resolve_program()
     (core,) = recorder.cores
     assert core.kind == "core" and core.owner is worker
+    read, write = ObjectFifoPort.Consume, ObjectFifoPort.Produce
     loop, drain = core.body
-    assert drain == Access(of_mid, False, False, 1)
+    assert drain == Access(of_mid, read, "release", 1)
     assert loop.kind == "for" and loop.owner == (4,)
     window, slot, then, otherwise, advance = loop.body
-    assert window == Access(of_mid, False, True, 2)
-    assert slot == Access(of_out, True, True, 1)
-    assert then == Block("if", then.owner, [Access(of_out, True, False, 1)])
-    assert otherwise == Block("else", None, [Access(of_out, True, False, 1)])
-    assert advance == Access(of_mid, False, False, 1)
+    assert window == Access(of_mid, read, "acquire", 2)
+    assert slot == Access(of_out, write, "acquire", 1)
+    assert then == Scope("if", then.owner, [Access(of_out, write, "release", 1)])
+    assert otherwise == Scope("else", None, [Access(of_out, write, "release", 1)])
+    assert advance == Access(of_mid, read, "release", 1)
 
 
 def test_the_workers_own_loop_around_its_body_is_not_the_bodys():
     program, _, _, _ = design(while_true=False)
     with record() as recorder:
         program.resolve_program()
-    assert [b.kind for b in recorder.cores[0].body if isinstance(b, Block)] == ["for"]
+    assert [s.kind for s in recorder.cores[0].body if isinstance(s, Scope)] == ["for"]
 
 
 def test_a_forever_the_body_writes_itself_is_recorded():
@@ -81,10 +83,11 @@ def test_a_forever_the_body_writes_itself_is_recorded():
     with record() as recorder:
         program.resolve_program()
     (forever,) = recorder.cores[0].body
-    assert forever == Block(
+    read = ObjectFifoPort.Consume
+    assert forever == Scope(
         "forever",
         None,
-        [Access(of_mid, False, True, 1), Access(of_mid, False, False, 1)],
+        [Access(of_mid, read, "acquire", 1), Access(of_mid, read, "release", 1)],
     )
 
 
@@ -93,7 +96,8 @@ def test_a_link_the_design_draws_while_recorded_is_recorded():
         program, of_mid, _, _ = design()
         program.resolve_program()
     (made,) = recorder.links
-    assert made.dsts == (of_mid,) and made.mode == "space"
+    assert [d.object_fifo for d in made.dsts] == [of_mid]
+    assert made.mode == ObjectFifoLinkMode.Space
 
 
 def test_nothing_is_recorded_outside_a_record_block_and_the_build_is_unchanged():

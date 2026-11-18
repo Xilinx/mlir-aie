@@ -12,8 +12,9 @@ the design draws. A Python ``for`` or ``if`` runs while the body is traced,
 so its accesses appear unrolled. Nothing is recorded outside a ``record()``
 block, and recording changes nothing that is built.
 
-Every control-flow construct a core body can use records its own block; a
-new one must too, or what it contains is credited to the block around it.
+Every control-flow construct a core body can use opens a
+``Recorder.scope``; a new one must too, or what it contains is credited to
+the scope around it.
 """
 
 from __future__ import annotations
@@ -21,10 +22,11 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Iterator, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal
 
 if TYPE_CHECKING:
-    from .dataflow.objectfifo import ObjectFifo
+    from ..dialects._aie_enum_gen import ObjectFifoPort
+    from .dataflow.objectfifo import ObjectFifo, ObjectFifoLink
 
 
 @dataclass(frozen=True)
@@ -33,39 +35,19 @@ class Access:
 
     Attributes:
         fifo: The ``ObjectFifo`` it names.
-        producer: It is made through the fifo's producer end.
-        acquire: It acquires (False: it releases).
+        port: The end it is made through.
+        kind: Whether it acquires or releases.
         count: The objects it names.
     """
 
     fifo: ObjectFifo
-    producer: bool
-    acquire: bool
+    port: ObjectFifoPort
+    kind: Literal["acquire", "release"]
     count: int
 
 
-@dataclass(frozen=True)
-class Link:
-    """An ``ObjectFifoLink``: objects moved through a memtile from some fifos into others.
-
-    Attributes:
-        srcs: The fifos it reads.
-        dsts: The fifos it fills.
-        src_offsets: Where each source lands in a destination object, joining.
-        dst_offsets: Where each destination's part starts in a source object, splitting.
-        mode: ``"space"`` splits or joins every object at the offsets;
-            ``"time"`` has the many side take turns with whole objects.
-    """
-
-    srcs: tuple[ObjectFifo, ...]
-    dsts: tuple[ObjectFifo, ...]
-    src_offsets: tuple[int, ...]
-    dst_offsets: tuple[int, ...]
-    mode: Literal["space", "time"]
-
-
 @dataclass
-class Block:
+class Scope:
     """A stretch of a core's body: the whole body, or one control-flow construct in it.
 
     Attributes:
@@ -78,24 +60,72 @@ class Block:
 
     kind: Literal["core", "for", "forever", "if", "else"]
     owner: Any = None
-    body: list[Access | Block] = field(default_factory=list)
+    body: list[Access | Scope] = field(default_factory=list)
 
 
 class Recorder:
-    """What one ``record()`` block saw.
+    """What one ``record()`` block sees as designs are built.
 
     Attributes:
-        cores: One ``"core"`` block per Worker body built, in build order.
+        cores: One ``"core"`` scope per Worker body built, in build order.
         links: Every ``ObjectFifoLink`` made, in order.
     """
 
+    _active: ClassVar[ContextVar[Recorder | None]] = ContextVar(
+        "iron_trace_recorder", default=None
+    )
+
     def __init__(self) -> None:
-        self.cores: list[Block] = []
-        self.links: list[Link] = []
-        self.open: list[Block] = []
+        self.cores: list[Scope] = []
+        self.links: list[ObjectFifoLink] = []
+        self._open: list[Scope] = []
 
+    @classmethod
+    def active(cls) -> Recorder | None:
+        """Return the recorder a ``record()`` block opened, or None outside one."""
+        return cls._active.get()
 
-_recorder: ContextVar[Recorder | None] = ContextVar("iron_trace_recorder", default=None)
+    @classmethod
+    @contextmanager
+    def scope(
+        cls,
+        kind: Literal["core", "for", "forever", "if", "else"],
+        owner: Any = None,
+    ) -> Iterator[None]:
+        """Note that what runs inside is a core body or one control-flow construct in one.
+
+        Records nothing outside a ``record()`` block, nor for control flow
+        outside any core body (a runtime sequence's loop, a Worker's own
+        loop around its body).
+        """
+        recorder = cls.active()
+        if recorder is None or (kind != "core" and not recorder._open):
+            yield
+            return
+        opened = Scope(kind, owner)
+        if kind == "core":
+            recorder.cores.append(opened)
+        else:
+            recorder._open[-1].body.append(opened)
+        recorder._open.append(opened)
+        try:
+            yield
+        finally:
+            recorder._open.pop()
+
+    def acquired(self, fifo: ObjectFifo, port: ObjectFifoPort, count: int) -> None:
+        """Note an acquire in the core body being built."""
+        if self._open:
+            self._open[-1].body.append(Access(fifo, port, "acquire", count))
+
+    def released(self, fifo: ObjectFifo, port: ObjectFifoPort, count: int) -> None:
+        """Note a release in the core body being built."""
+        if self._open:
+            self._open[-1].body.append(Access(fifo, port, "release", count))
+
+    def linked(self, link: ObjectFifoLink) -> None:
+        """Note an ``ObjectFifoLink`` the design draws."""
+        self.links.append(link)
 
 
 @contextmanager
@@ -106,47 +136,8 @@ def record() -> Iterator[Recorder]:
         The ``Recorder`` that fills as they are built.
     """
     recorder = Recorder()
-    token = _recorder.set(recorder)
+    token = Recorder._active.set(recorder)
     try:
         yield recorder
     finally:
-        _recorder.reset(token)
-
-
-@contextmanager
-def block(
-    kind: Literal["core", "for", "forever", "if", "else"], owner: Any = None
-) -> Iterator[None]:
-    """Note that what runs inside is a core body or one control-flow construct in one.
-
-    A control-flow block outside any core body (a runtime sequence's loop, a
-    Worker's own loop around its body) is not recorded.
-    """
-    recorder = _recorder.get()
-    if recorder is None or (kind != "core" and not recorder.open):
-        yield
-        return
-    noted = Block(kind, owner)
-    if kind == "core":
-        recorder.cores.append(noted)
-    else:
-        recorder.open[-1].body.append(noted)
-    recorder.open.append(noted)
-    try:
-        yield
-    finally:
-        recorder.open.pop()
-
-
-def access(fifo: ObjectFifo, producer: bool, acquire: bool, count: int) -> None:
-    """Note an acquire or a release in the core body being built, if one is recorded."""
-    recorder = _recorder.get()
-    if recorder is not None and recorder.open:
-        recorder.open[-1].body.append(Access(fifo, producer, acquire, count))
-
-
-def link(made: Link) -> None:
-    """Note an ``ObjectFifoLink`` the design draws, if one is recorded."""
-    recorder = _recorder.get()
-    if recorder is not None:
-        recorder.links.append(made)
+        Recorder._active.reset(token)

@@ -26,7 +26,7 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
 )
 from aie.iron.runtime.dmataskhandle import Task
 from aie.iron.runtime.taskgroup import TaskGroup
-from aie.iron.trace import block
+from aie.iron.trace import Recorder
 
 
 class _LoopFrame:
@@ -127,7 +127,7 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
     )
     for vals in _for(*args, iter_args=raw, insert_yield=not packers, **kwargs):
         if not packers:
-            with _loop_frame(vals.owner, specs), block("for", args):
+            with _loop_frame(vals.owner, specs), Recorder.scope("for", args):
                 yield vals
             continue
         if not raw:
@@ -137,7 +137,7 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
             if len(raw) == 1:
                 a, results = (a,), (results,)
         results = rewrap(tuple(results))
-        with _loop_frame(iv.owner, specs) as frame, block("for", args):
+        with _loop_frame(iv.owner, specs) as frame, Recorder.scope("for", args):
             yield iv, rewrap(tuple(a)), results
         ops = iv.owner.operations
         if not len(ops) or ops[len(ops) - 1].name != "scf.yield":
@@ -162,7 +162,7 @@ def forever_() -> Iterator[None]:
     before it loops forever.
     """
     for _ in _forever_():
-        with block("forever"):
+        with Recorder.scope("forever"):
             yield
 
 
@@ -227,7 +227,7 @@ def if_(cond):
     """
     if isinstance(cond, bool):
         cond = constant(cond)
-    with _if_(cond, hasElse=False) as op, block("if", cond):
+    with _if_(cond, hasElse=False) as op, Recorder.scope("if", cond):
         yield op
 
 
@@ -238,5 +238,5 @@ def else_(branch):
     if not len(blocks):
         with InsertionPoint(blocks.append()):
             _yield_([])
-    with _else_(branch), block("else"):
+    with _else_(branch), Recorder.scope("else"):
         yield

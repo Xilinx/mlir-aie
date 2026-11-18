@@ -34,9 +34,9 @@ from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
-from ..trace import Link, access, link
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 from ..scratchpad_parameter import ScratchpadParameter
+from ..trace import Recorder
 from .endpoint import ObjectFifoEndpoint
 
 if TYPE_CHECKING:
@@ -568,7 +568,8 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must consume at least one element")
-        access(self, port == ObjectFifoPort.Produce, True, num_elem)
+        if (recorder := Recorder.active()) is not None:
+            recorder.acquired(self, port, num_elem)
         return self.op.acquire(port, num_elem)
 
     def _release(
@@ -580,7 +581,8 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must produce at least one element")
-        access(self, port == ObjectFifoPort.Produce, False, num_elem)
+        if (recorder := Recorder.active()) is not None:
+            recorder.released(self, port, num_elem)
         self.op.release(port, num_elem, assume_queue_space=assume_queue_space)
 
 
@@ -1401,15 +1403,8 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         self._src_offsets = src_offsets if src_offsets is not None else []
         self._dst_offsets = dst_offsets if dst_offsets is not None else []
         self._resolving = False
-        link(
-            Link(
-                tuple(s._object_fifo for s in self._srcs),
-                tuple(d._object_fifo for d in self._dsts),
-                tuple(self._src_offsets),
-                tuple(self._dst_offsets),
-                "time" if mode == ObjectFifoLinkMode.Time else "space",
-            )
-        )
+        if (recorder := Recorder.active()) is not None:
+            recorder.linked(self)
 
         if len(self._srcs) < 1:
             raise ValueError("An ObjectFifoLink must have at least one source")
@@ -1447,6 +1442,31 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         if tile.tile_type is None and not placed:
             tile.tile_type = AIETileType.MemTile
         ObjectFifoEndpoint.__init__(self, tile)
+
+    @property
+    def srcs(self) -> tuple[ObjectFifoHandle, ...]:
+        """The fifo ends it reads."""
+        return tuple(self._srcs)
+
+    @property
+    def dsts(self) -> tuple[ObjectFifoHandle, ...]:
+        """The fifo ends it fills."""
+        return tuple(self._dsts)
+
+    @property
+    def src_offsets(self) -> tuple[int, ...]:
+        """Where each source lands in a destination object, joining."""
+        return tuple(self._src_offsets)
+
+    @property
+    def dst_offsets(self) -> tuple[int, ...]:
+        """Where each destination's part starts in a source object, splitting."""
+        return tuple(self._dst_offsets)
+
+    @property
+    def mode(self) -> ObjectFifoLinkMode:
+        """``Space`` splits or joins every object; ``Time`` has the many side take turns."""
+        return self._mode
 
     def _walked_objects(self) -> int | None:
         """Return how many input objects a 1:1 link's output walks, or None for a walk within one object.
