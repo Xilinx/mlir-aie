@@ -1511,6 +1511,24 @@ std::optional<int> RouteEndpointOp::getRouteChannel() {
 
 void RouteEndpointOp::setRouteChannel(int channel) { setChannelIndex(channel); }
 
+// consumed_by sits on a shim input (MM2S) and each of its proofs names a shim
+// output (S2MM), the `outputs` kind of op that `namesShimOutput` recognises. A
+// route end's direction is its flows', which allocation removes, so there only
+// the shim is checked.
+static LogicalResult
+verifyConsumedBy(Operation *op, ArrayAttr proofs, bool shimInput,
+                 StringRef outputs,
+                 function_ref<bool(FlatSymbolRefAttr)> namesShimOutput) {
+  if (!shimInput)
+    return op->emitOpError("consumed_by belongs on a shim input (MM2S)");
+  for (auto proof : proofs.getAsRange<ConsumedByAttr>())
+    if (!namesShimOutput(proof.getOutput()))
+      return op->emitOpError("consumed_by output ")
+             << proof.getOutput() << " names no shim output (S2MM " << outputs
+             << ")";
+  return success();
+}
+
 LogicalResult RouteEndpointOp::verify() {
   TileLike tile = getTileLike();
   if (!tile) {
@@ -1557,6 +1575,20 @@ LogicalResult RouteEndpointOp::verify() {
         }))
       return emitOpError("receives several packet flows, so they must agree "
                          "on keep_pkt_header");
+  }
+  if (ArrayAttr proofs = getConsumedByAttr()) {
+    auto device = (*this)->getParentOfType<DeviceOp>();
+    if (failed(verifyConsumedBy(
+            *this, proofs, tile.isShimTile(),
+            "aie.route_endpoint or aie.shim_dma_allocation",
+            [&](FlatSymbolRefAttr symbol) {
+              Operation *output = device.lookupSymbol(symbol.getAttr());
+              if (auto alloc = dyn_cast_or_null<ShimDMAAllocationOp>(output))
+                return alloc.getChannelDir() == DMAChannelDir::S2MM;
+              auto end = dyn_cast_or_null<RouteEndpointOp>(output);
+              return end && end.getTileLike().isShimTile();
+            })))
+      return failure();
   }
   switch (getBundle()) {
   case WireBundle::DMA:
@@ -7066,16 +7098,14 @@ LogicalResult ShimDMAAllocationOp::verify() {
   }
 
   if (ArrayAttr proofs = getConsumedByAttr()) {
-    if (getChannelDir() != DMAChannelDir::MM2S)
-      return emitOpError("consumed_by belongs on a shim input (MM2S)");
     auto device = (*this)->getParentOfType<DeviceOp>();
-    for (auto proof : proofs.getAsRange<ConsumedByAttr>()) {
-      auto output = getForSymbol(device, proof.getOutput().getValue());
-      if (!output || output.getChannelDir() != DMAChannelDir::S2MM)
-        return emitOpError("consumed_by output ")
-               << proof.getOutput()
-               << " names no shim output (S2MM aie.shim_dma_allocation)";
-    }
+    if (failed(verifyConsumedBy(
+            *this, proofs, getChannelDir() == DMAChannelDir::MM2S,
+            "aie.shim_dma_allocation", [&](FlatSymbolRefAttr symbol) {
+              auto output = getForSymbol(device, symbol.getValue());
+              return output && output.getChannelDir() == DMAChannelDir::S2MM;
+            })))
+      return failure();
   }
 
   return verifyAssignedPacket(*this, getPacketAttr());
