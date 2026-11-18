@@ -1832,10 +1832,19 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
           col, row, WireBundle::DMA)),
       static_cast<int>(targetModel->getNumSourceSwitchboxConnections(
           col, row, WireBundle::DMA))};
+  // The plan asks about each channel many times, so each answer is kept.
+  SmallVector<std::optional<bool>> freeChannels[2];
+  for (SmallVector<std::optional<bool>> &known : freeChannels)
+    known.resize(std::max(channels[0], channels[1]));
   auto free = [&](DMAChannelDir dir, int channel) {
-    return llvm::all_of(holders, [&](Operation *tile) {
-      return channelAnalysis->isChannelFree(cast<TileLike>(tile), dir, channel);
-    });
+    std::optional<bool> &known =
+        freeChannels[dir == DMAChannelDir::MM2S][channel];
+    if (!known)
+      known = llvm::all_of(holders, [&](Operation *tile) {
+        return channelAnalysis->isChannelFree(cast<TileLike>(tile), dir,
+                                              channel);
+      });
+    return *known;
   };
   DenseMap<int, int64_t> taken = takenBDs.at(*targetModel, col, row, holders);
   auto spent = [&](int channel) { return taken.lookup(channel); };

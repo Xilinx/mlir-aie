@@ -138,6 +138,12 @@ public:
                  llvm::ArrayRef<BDPlanEnd> ends,
                  llvm::function_ref<bool(DMAChannelDir, int)> free,
                  llvm::function_ref<int64_t(int)> spent);
+  /// The same, given the tile's bdGroups.
+  static std::optional<llvm::SmallVector<int>>
+  planBDChannels(llvm::ArrayRef<BDGroup> tileGroups,
+                 llvm::ArrayRef<BDPlanEnd> ends,
+                 llvm::function_ref<bool(DMAChannelDir, int)> free,
+                 llvm::function_ref<int64_t(int)> spent);
 
   /// A pool whose ends a BD plan weighs: how many objects it holds, the bytes
   /// of one, and whether it can be walked whole, its ends then taking one BD

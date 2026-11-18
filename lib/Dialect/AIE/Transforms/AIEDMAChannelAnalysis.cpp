@@ -367,15 +367,27 @@ DMAChannelAnalysis::bdGroups(const AIETargetModel &target, int col, int row,
   return groups;
 }
 
+static SmallVector<DMAChannelAnalysis::BDGroup>
+tileBDGroups(const AIETargetModel &target, int col, int row) {
+  int numChannels = std::max(
+      target.getNumSourceSwitchboxConnections(col, row, WireBundle::DMA),
+      target.getNumDestSwitchboxConnections(col, row, WireBundle::DMA));
+  return DMAChannelAnalysis::bdGroups(target, col, row, numChannels);
+}
+
 std::optional<SmallVector<int>>
 DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
                                    int row, ArrayRef<BDPlanEnd> allEnds,
                                    function_ref<bool(DMAChannelDir, int)> free,
                                    function_ref<int64_t(int)> spent) {
-  int numChannels = std::max(
-      target.getNumSourceSwitchboxConnections(col, row, WireBundle::DMA),
-      target.getNumDestSwitchboxConnections(col, row, WireBundle::DMA));
+  return planBDChannels(tileBDGroups(target, col, row), allEnds, free, spent);
+}
 
+std::optional<SmallVector<int>>
+DMAChannelAnalysis::planBDChannels(ArrayRef<BDGroup> tileGroups,
+                                   ArrayRef<BDPlanEnd> allEnds,
+                                   function_ref<bool(DMAChannelDir, int)> free,
+                                   function_ref<int64_t(int)> spent) {
   // Channels whose BD ids overlap at all share one pool of ids, as bdRoom in
   // aie-objectfifo-allocate counts them.
   struct Group {
@@ -384,8 +396,8 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
     int64_t room = 0;
   };
   SmallVector<Group> groups;
-  for (BDGroup &group : bdGroups(target, col, row, numChannels))
-    groups.push_back({std::move(group.ids), std::move(group.channels), 0});
+  for (const BDGroup &group : tileGroups)
+    groups.push_back({group.ids, group.channels, 0});
   for (Group &group : groups) {
     group.room = group.ids.count();
     for (int channel : group.channels)
@@ -563,6 +575,7 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
     function_ref<bool(DMAChannelDir, int)> free,
     function_ref<int64_t(int)> spent, unsigned maxSets) {
   BDWalkSets result;
+  SmallVector<BDGroup> tileGroups = tileBDGroups(target, col, row);
   auto none = [](int) -> int64_t { return 0; };
   auto fitsWalking = [&](ArrayRef<bool> whole, bool weighted) {
     SmallVector<BDPlanEnd> planned;
@@ -572,7 +585,7 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
                          : whole[pool] ? 1
                                        : end.bds,
                          end.limit, end.pinned});
-    return planBDChannels(target, col, row, planned, free,
+    return planBDChannels(tileGroups, planned, free,
                           weighted ? spent : function_ref<int64_t(int)>(none))
         .has_value();
   };
@@ -598,13 +611,13 @@ DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
   // fits fits too, without asking planBDChannels.
   unsigned n = ranked.size();
   assert(n < 32 && "each walkable pool draws a channel the plan above fit");
-  auto bytes = [&](uint32_t mask) {
-    int64_t total = 0;
-    for (unsigned bit = 0; bit < n; ++bit)
-      if (mask >> bit & 1)
-        total += pools[ranked[bit]].depth * pools[ranked[bit]].objectBytes;
-    return total;
-  };
+  SmallVector<int64_t> maskBytes(uint32_t(1) << n, 0);
+  for (uint32_t mask = 1; mask < (uint32_t(1) << n); ++mask) {
+    const BDWalkPool &pool = pools[ranked[llvm::countr_zero(mask)]];
+    maskBytes[mask] =
+        maskBytes[mask & (mask - 1)] + pool.depth * pool.objectBytes;
+  }
+  auto bytes = [&](uint32_t mask) { return maskBytes[mask]; };
   // The final order needs no plan, so masks are sorted into it before any
   // are tested: a subset always has fewer or equal bytes and a lower
   // popcount than its supersets, so it still sorts before them, and the
