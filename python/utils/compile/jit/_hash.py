@@ -357,8 +357,10 @@ def _python_identity(
     every container and file-backed instance it digested, pinned ones
     included -- the two walks a mutation mask is diffed from.
     """
-    # aie.iron imports this module.
+    # aie.iron and both design modules import this module.
     from aie.iron.kernel import ExternalFunction
+    from aie.utils.callabledesign import CallableDesign
+    from aie.utils.compile.jit.compilabledesign import CompilableDesign
 
     frozen = dict(frozen) if frozen is not None else {}
 
@@ -399,6 +401,23 @@ def _python_identity(
             return f"<property:{legs}>"
         if _plain(value) or isinstance(value, ExternalFunction):
             return repr(value)
+        if isinstance(value, CallableDesign):
+            value = value.compilable
+        if isinstance(value, CompilableDesign):
+            # Only the recipe: the kernels its calls cache would move the key.
+            generator = value.mlir_generator
+            parts = [
+                (
+                    f"path:{_content_digest(generator)}"
+                    if isinstance(generator, Path)
+                    else describe(generator, f"{where}.mlir_generator", depth + 1)
+                )
+            ]
+            parts += [
+                f"{k}={describe(v, f'{where}.{k}', depth + 1)}"
+                for k, v in sorted(value.compile_kwargs.items())
+            ]
+            return f"<design:{'|'.join(parts)}>"
         if isinstance(value, _CONTAINER):
             if id(value) in frozen:
                 # Pinned by a run of the generator (see
