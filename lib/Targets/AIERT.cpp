@@ -13,6 +13,8 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 
+#include <algorithm>
+
 extern "C" {
 #include "aie_codegen.h"
 }
@@ -518,7 +520,11 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       bdOp.getPadDimensions();
 
   if (padDims) {
-    llvm::SmallVector<XAie_PadDesc, 4> padDescs(padDims->size());
+    // XAie_DmaDesc holds padding for d0 to d2 only, so a four-dimensional
+    // walk passes its three inner dimensions (the verifier keeps d3
+    // unpadded).
+    llvm::SmallVector<XAie_PadDesc, 3> padDescs(
+        std::min<size_t>(padDims->size(), 3));
     XAie_DmaPadTensor dmaPadTensor = {};
     dmaPadTensor.NumDim = padDescs.size();
     dmaPadTensor.PadDesc = padDescs.data();
@@ -528,6 +534,8 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     for (size_t i = 0; i < padDims->size(); i++) {
       // Pass down dimensions in reverse order.
       int j = padDims->size() - i - 1;
+      if (j >= static_cast<int>(padDescs.size()))
+        continue;
       uint8_t before;
       uint8_t after;
       if (j > 0) {
