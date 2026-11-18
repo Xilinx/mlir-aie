@@ -38,6 +38,8 @@
 // RUN: FileCheck %s --check-prefix=SUMMARY < %t/summary.twice.mlir
 // RUN: aie-opt --split-input-file --verify-diagnostics %t/summary-invalid.mlir -o %t/summary-invalid.out
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true" --aie-reorder-ctrl-packets-by-tile %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true" --aie-reorder-ctrl-packets-by-tile --aie-ctrl-packet-to-dma="chain-bds=true parallel-shims=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP-DMA
 // RUN: aie-opt --aie-annotate-core-lock-acquires %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" --verify-diagnostics %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE-DRAIN
 
@@ -607,17 +609,34 @@ module {
 
 // STOP-LABEL: aie.runtime_sequence()
 // STOP: aiex.npu.sync
+// STOP-NEXT: aiex.control_packet_group @cfg(Teardown) {
 // STOP-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
 // STOP-NEXT: aiex.control_packet {address = 3350528 : ui32, data = array<i32: 0>
+// STOP-NEXT: {{^ *}}}
 // STOP: %[[FIRST_STATUS:.*]] = arith.constant 2301956 : i32
 // STOP: %[[ZERO:.*]] = arith.constant 0 : i32
 // STOP: %[[ENABLE:.*]] = arith.constant 1 : i32
 // STOP-NEXT: aiex.npu.maskpoll(%[[FIRST_STATUS]], %[[ZERO]], %[[ENABLE]])
 // STOP: %[[SECOND_STATUS:.*]] = arith.constant 3350532 : i32
 // STOP: aiex.npu.maskpoll(%[[SECOND_STATUS]], %{{.*}}, %{{.*}})
+// STOP-NEXT: aiex.control_packet_group @cfg(Teardown) {
 // STOP-NEXT: aiex.control_packet {address = 2224208 : ui32, data = array<i32: 1>
+// STOP-NEXT: {{^ *}}}
 // STOP: %[[STALL:.*]] = arith.constant 960 : i32
 // STOP-NEXT: aiex.npu.maskpoll(%{{.*}}, %{{.*}}, %[[STALL]])
+
+// STOP-DMA-LABEL: aie.runtime_sequence(
+// STOP-DMA: aiex.npu.sync
+// STOP-DMA: %[[STOP_TASK:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
+// STOP-DMA: aiex.dma_start_task(%[[STOP_TASK]])
+// STOP-DMA-NEXT: aiex.dma_await_task(%[[STOP_TASK]])
+// STOP-DMA: aiex.npu.maskpoll
+// STOP-DMA: aiex.npu.maskpoll
+// STOP-DMA: %[[DRAIN_TASK:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
+// STOP-DMA: aiex.dma_start_task(%[[DRAIN_TASK]])
+// STOP-DMA-NEXT: aiex.dma_await_task(%[[DRAIN_TASK]])
+// STOP-DMA: %[[STALL:.*]] = arith.constant 960 : i32
+// STOP-DMA-NEXT: aiex.npu.maskpoll(%{{.*}}, %{{.*}}, %[[STALL]])
 
 module {
   aie.device(npu2_1col) @overlay {
@@ -644,6 +663,8 @@ module {
     }
   } {overlay = @overlay}
   aie.device(npu2_1col) @main {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.runtime_sequence @sequence() {
       %zero = arith.constant 0 : i32
       %one = arith.constant 1 : i32

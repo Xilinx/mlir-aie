@@ -64,6 +64,7 @@ struct AIESubstituteShimDMAAllocationsPass
           rewriter.getI32IntegerAttr(op.getRepeatCount()),
           /*repeat_count_val=*/op.getRepeatCountVal(),
           alloc_op.getPacket().value_or(nullptr));
+      new_op->setDiscardableAttrs(op->getDiscardableAttrDictionary());
       rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
       rewriter.inlineRegionBefore(op.getBody(), new_op.getBody(),
                                   new_op.getBody().begin());

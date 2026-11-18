@@ -214,6 +214,14 @@ inline cl::opt<bool> ctrlpktAdaptiveOverlay(
     "ctrlpkt-adaptive-overlay",
     cl::desc("Choose the control overlay around application resources; false "
              "uses channel 0 and default routes (default: on)"));
+inline cl::opt<bool> ctrlpktParallelShims(
+    "ctrlpkt-parallel-shims",
+    cl::desc("Send every column's control packets at once (default: on)"));
+inline cl::opt<unsigned> ctrlpktMulticastSpan(
+    "ctrlpkt-multicast-span", cl::value_desc("w"),
+    cl::desc("Send the control packets the core tiles of each <w> columns "
+             "share once, on a control multicast; 0 turns it off (default: "
+             "1)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -671,7 +679,8 @@ inline bool wantFullElf = false;
 
 // Resolve `option` to itself AND `met`. Asking for it explicitly when `met`
 // does not hold is an error; an option that is on by default turns off.
-inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
+template <typename T>
+inline bool resolveDependentOption(cl::opt<T> &option, bool met,
                                    llvm::StringRef requirement) {
   if (!option || met)
     return true;
@@ -680,7 +689,7 @@ inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
                  << "\n";
     return false;
   }
-  option = false;
+  option = T{};
   return true;
 }
 
@@ -743,6 +752,10 @@ inline bool resolveOptions(bool resuming = false) {
     reconfigTeardown = loadPdiToCtrlPkt && wantFullElf;
   if (!ctrlpktAdaptiveOverlay.getNumOccurrences())
     ctrlpktAdaptiveOverlay = ctrlPktOverlay || loadPdiToCtrlPkt;
+  if (!ctrlpktParallelShims.getNumOccurrences())
+    ctrlpktParallelShims = loadPdiToCtrlPkt;
+  if (!ctrlpktMulticastSpan.getNumOccurrences())
+    ctrlpktMulticastSpan = loadPdiToCtrlPkt ? 1 : 0;
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -757,7 +770,11 @@ inline bool resolveOptions(bool resuming = false) {
                                 "--reconfig-teardown") &&
          resolveDependentOption(
              ctrlpktAdaptiveOverlay, ctrlPktOverlay || loadPdiToCtrlPkt,
-             "--generate-ctrl-pkt-overlay or --load-pdi-to-ctrl-pkt");
+             "--generate-ctrl-pkt-overlay or --load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktParallelShims, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktMulticastSpan, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt");
 }
 
 //===----------------------------------------------------------------------===//

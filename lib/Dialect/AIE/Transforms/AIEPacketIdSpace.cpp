@@ -10,9 +10,10 @@
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-PacketIdSpace::PacketIdSpace(DeviceOp device)
+PacketIdSpace::PacketIdSpace(DeviceOp device, bool reserveControllerIds)
     : max(static_cast<int>(device.getTargetModel().getMaxPacketId())) {
-  if (AIEDialect::ReserveControllerPacketIdsAttrHelper(device.getContext())
+  if (reserveControllerIds ||
+      AIEDialect::ReserveControllerPacketIdsAttrHelper(device.getContext())
           .isAttrPresent(device)) {
     for (auto [tile, id] :
          device.getTargetModel().getTileToControllerIdMap(true))
@@ -23,6 +24,14 @@ PacketIdSpace::PacketIdSpace(DeviceOp device)
         taken.insert(id.assignedId());
   }
   device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
+  // An id a rule already matches would reach that rule's master too, at any
+  // slave port the rule's rules sit on; an imported overlay's rules match
+  // whole cubes of ids.
+  device.walk([&](PacketRuleOp rule) {
+    for (int id = 0; id <= max; ++id)
+      if ((id & rule.maskInt()) == rule.valueInt())
+        taken.insert(id);
+  });
   device.walk([&](TracePacketOp packet) {
     if (std::optional<int32_t> id = packet.getId()) {
       taken.insert(*id);

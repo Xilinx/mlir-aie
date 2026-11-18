@@ -241,6 +241,12 @@ overlay without application-derived penalties. Shim channel sharing may move
 application endpoints onto the selected control channel when their transfers
 do not overlap configuration transfers; it never moves the overlay channel.
 
+With `aiecc --ctrlpkt-multicast-span=<w>` (1 by default in control-packet
+reconfiguration mode), the overlay also carries a control multicast for the
+core tiles of each group of w columns, routed with its other flows and listed in
+the overlay device's `aie.ctrl_pkt_multicast`. All of them share one packet id,
+the highest that no application device and no controller uses.
+
 ## Options
 
 | Pass option | Default | Effect |

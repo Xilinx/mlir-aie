@@ -144,6 +144,39 @@ unknown transfer lifetimes remain exclusive.
 The overlay's packet IDs and routing settings remain protected during reload
 and teardown.
 
+### Control packet delivery
+
+Under `--load-pdi-to-ctrl-pkt`, each configuration's and teardown's control
+packets are an `aiex.control_packet_group`, which these passes rewrite; control
+packets written outside groups are sent as written.
+
+- `aie-reorder-ctrl-packets-by-tile` puts each tile's packets together, so they
+  go in one transfer, and moves MM2S queue pushes and core enables behind the
+  rest of the configuration.
+- `aie-ctrl-packet-to-dma{chain-bds}` sends each run of transfers on one shim
+  channel as one BD chain with one await, and awaits at each change of group
+  kind or device, so a configuration's teardown lands before the next
+  configuration starts.
+- `--ctrlpkt-parallel-shims` (default: on) starts every column's transfers
+  before awaiting any. `aie-annotate-ctrl-packet-start-gating` proves which MM2S
+  channels cannot move data before their configuration lands;
+  `aie-check-ctrl-packet-delivery` fails the build when a stream started early
+  could hold a later control packet of the configuration.
+- The same proof finds cores that do nothing visible before their configuration
+  lands; `aie-reorder-ctrl-packets-by-tile{gated-enable}` sends their enables
+  with their column's packets.
+- `--ctrlpkt-multicast-span=<w>` (default: 1; 0 off): the overlay gets a control
+  multicast for the core tiles of each group of w columns, and
+  `aie-dedup-ctrl-packet-multicast` sends the packets those tiles share once.
+  `aie-check-ctrl-packet-delivery` also checks that each tile's writes land in
+  order.
+
+With `--warn-unreleased-transfers` (default: on), a configuration's control
+packets that start on a shim tile where a transfer since the last `load_pdi` is
+neither awaited nor freed get a warning: with teardown no reset separates
+them, so the control packets may queue behind that transfer or reuse its
+buffer descriptors.
+
 ### Parameterized C++ transaction builders
 
 ```bash

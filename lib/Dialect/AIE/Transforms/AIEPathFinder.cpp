@@ -647,7 +647,13 @@ LogicalResult Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
     if (dstIdx < 0 || !claimedDsts.insert(dstIdx).second) {
       return failure();
     }
-    reservedMasterDsts.push_back(dstIdx);
+    // Packets ending at the overlay's TileControl join its arbiter.
+    if (masterSetOp.getDestBundle() == WireBundle::TileControl &&
+        AIEDialect::IsCtrlPktOverlayAttrHelper(masterSetOp.getContext())
+            .isAttrPresent(masterSetOp))
+      sb.packetJoinDst.set(dstIdx);
+    else
+      reservedMasterDsts.push_back(dstIdx);
   }
   // A circuit-switched ConnectOp monopolizes both its source port (the stream
   // switch input) and its destination port (the output): no other stream may
@@ -895,7 +901,8 @@ void Pathfinder::dijkstraShortestPaths(
     const bool isIntra = !sIsOut;
     for (const Edge &e :
          sIsOut ? out.drop_front(wires) : out.take_front(wires)) {
-      if ((isIntra && !packetId && e.sb->packetOnlySrc[e.i]) ||
+      if ((isIntra && !packetId &&
+           (e.sb->packetOnlySrc[e.i] || e.sb->packetJoinDst[e.j])) ||
           (isIntra && packetId && e.sb->circuitOnlyDst[e.j]))
         continue;
       int dst = stateId(e.dst, isIntra ? Out : In);

@@ -115,8 +115,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return std::nullopt;
   }
 
-  // The BD ids each device's static DMAs take, by tile. Generators restart
-  // at every PDI load, so this is read once per tile per load.
+  // The device whose configuration the latest control packet transfer
+  // carries, since the latest aiex.npu.load_pdi: its static DMAs run from then
+  // on. A configuration's transfers follow the awaited teardown of the one
+  // before, or a reset, so they replace it.
+  AIE::DeviceOp configuredDevice;
+
+  // Reserves on `tile` the BD ids the static DMAs there hold: those of the
+  // device holding the sequence, the loaded device and the configured one.
   //
   // Known limitation: after a load_pdi of another device, this and
   // loopingStartsOf read that sibling device's DMA programs, which races with
@@ -125,22 +131,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // them one at a time today. Splitting the nest does not help, since the pass
   // manager merges adjacent device nests; a parallel build needs these
   // summaries computed at module scope before the nest.
-  llvm::DenseMap<Operation *,
-                 llvm::DenseMap<AIE::TileID, SmallVector<uint32_t>>>
-      staticBdIds;
-
-  // Mark every BD id a static DMA already took on `tile`, so this allocator
-  // doesn't hand the same id to a runtime-sequence task.
-  void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
-                         BdIdGenerator &gen) {
-    auto [it, inserted] = staticBdIds.try_emplace(device);
-    if (inserted)
-      for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
-        llvm::append_range(it->second[program.getTileID()],
-                           AIE::getAssignedBdIds(program));
-    for (uint32_t id : it->second.lookup(tile.getTileID()))
-      if (!gen.bdIdAlreadyAssigned(id))
-        gen.assignBdId(id);
+  void reserveStaticBds(AIE::TileOp tile, BdIdGenerator &gen) {
+    SmallVector<AIE::DeviceOp, 3> devices{
+        tile->getParentOfType<AIE::DeviceOp>()};
+    for (AIE::DeviceOp device : {loadedDevice, configuredDevice})
+      if (device)
+        devices.push_back(device);
+    gen.reserved = AIEX::staticBdIds(devices, tile.getTileID());
   }
 
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
@@ -150,11 +147,42 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       it = gens.insert({tile, BdIdGenerator(tile.getCol(), tile.getRow(),
                                             device.getTargetModel())})
                .first;
-      seedFromStaticBds(device, tile, it->second);
-      if (loadedDevice && loadedDevice != device)
-        seedFromStaticBds(loadedDevice, tile, it->second);
+      reserveStaticBds(tile, it->second);
     }
     return it->second;
+  }
+
+  // The control packets `transfer` carries configure the device `ref`, whose
+  // static DMAs take their BD ids from here on. A task not known finished that
+  // holds one of them is reprogrammed underneath.
+  void noteConfigured(FlatSymbolRefAttr ref, DMAConfigureTaskOp transfer) {
+    auto device = SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(
+        getOperation()->getParentOp(), ref);
+    if (!device || device == configuredDevice)
+      return;
+    configuredDevice = device;
+    for (auto &[tile, gen] : gens) {
+      reserveStaticBds(tile, gen);
+      const std::set<uint32_t> &reserved = gen.reserved;
+      for (DMAConfigureTaskOp task : liveByTile.lookup(tile)) {
+        if (releasedTasks.contains(task) || knownComplete.contains(task) ||
+            pollProven.contains(task))
+          continue;
+        std::optional<uint32_t> held;
+        task.walk([&](AIE::DMABDOp bd) {
+          if (!held && bd.getBdId() && reserved.count(*bd.getBdId()))
+            held = *bd.getBdId();
+        });
+        if (!held)
+          continue;
+        auto diag = mlir::emitWarning(transfer.getLoc())
+                    << "configures " << ref
+                    << ", whose static DMAs take buffer descriptor ID " << *held
+                    << " on tile (" << tile.getCol() << "," << tile.getRow()
+                    << "), which a transfer not known to be finished holds";
+        diag.attachNote(task.getLoc()) << "the transfer is configured here";
+      }
+    }
   }
 
   // Each device's static aie.dma_starts whose BD chain never ends, by channel.
@@ -225,12 +253,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // A PDI load reconfigures the array, so the tasks configured so far no
   // longer hold ids and allocation restarts around the new static BDs.
   void noteLoadPdi(NpuLoadPdiOp load) {
+    loadOrder = pushCount;
     loadedDevice = {};
     if (FlatSymbolRefAttr ref = load.getDeviceRefAttr())
       if (Operation *parent = getOperation()->getParentOp())
         loadedDevice =
             SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(parent, ref);
     opaqueLoad = loadedDevice ? NpuLoadPdiOp() : load;
+    configuredDevice = {};
     resetChannels.clear();
     for (auto &[tile, tasks] : liveByTile)
       for (DMAConfigureTaskOp task : tasks)
@@ -348,6 +378,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   LogicalResult allocateConfigure(DMAConfigureTaskOp op) {
+    if (FlatSymbolRefAttr configured =
+            AIEXDialect::CtrlPktTransferAttrHelper(op.getContext()).getAttr(op))
+      noteConfigured(configured, op);
     AIE::TileOp tile = op.getTileOp();
     BdIdGenerator &gen = getGeneratorForTile(tile);
 
@@ -369,7 +402,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                  "ids and an odd channel only the high half.";
           return WalkResult::interrupt();
         }
-        if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
+        if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value()) ||
+            gen.reserved.count(bd_op.getBdId().value())) {
           op.emitOpError("Specified buffer descriptor ID ")
               << bd_op.getBdId().value()
               << " is already in use. Release the earlier task first: "
@@ -869,6 +903,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pendingAwaitReleases.clear();
     startedOnChannel.clear();
     pushCount = 0;
+    loadOrder = 0;
     startCount.clear();
     runningCount.clear();
     knownComplete.clear();
@@ -877,10 +912,52 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     releasedTasks.clear();
     liveByTile.clear();
     freedInFlight.clear();
+    warnedLive.clear();
     loadedDevice = {};
+    configuredDevice = {};
     opaqueLoad = {};
     unloaded.clear();
     resetChannels.clear();
+  }
+
+  // Pushes before it came before the latest aiex.npu.load_pdi.
+  uint64_t loadOrder = 0;
+  // The transfers warnLiveAtControl has warned of.
+  llvm::SmallPtrSet<Operation *, 4> warnedLive;
+
+  // Control packets that start on a shim tile where a
+  // transfer since the last load_pdi is neither awaited nor freed can queue
+  // behind that transfer, or reuse its buffer descriptors, since no reset
+  // separates them; an await may also take that transfer's token.
+  void warnLiveAtControl(DMAStartTaskOp start, DMAConfigureTaskOp cfg) {
+    AIEXDialect::CtrlPktTransferAttrHelper transfer(cfg.getContext());
+    if (!warnUnreleasedTransfers || !transfer.isAttrPresent(cfg))
+      return;
+    AIE::TileOp tile = cfg.getTileOp();
+    for (const auto &[key, channel] : startedOnChannel) {
+      if (key[0] != tile.getCol() || key[1] != tile.getRow())
+        continue;
+      for (const StartedTask &push :
+           llvm::drop_begin(channel.tasks, channel.finished)) {
+        if (push.order < loadOrder || warnedLive.contains(push.origin) ||
+            (push.task && (transfer.isAttrPresent(push.task) ||
+                           releasedTasks.contains(push.task) ||
+                           unloaded.contains(push.task))))
+          continue;
+        auto diag =
+            mlir::emitWarning(start.getLoc())
+            << "starts control packets on tile (" << tile.getCol() << ","
+            << tile.getRow()
+            << ") while a DMA transfer there is neither awaited nor freed; "
+               "no reset separates them, so the control packets may queue "
+               "behind it or reuse its buffer descriptors. Await it before "
+               "the reconfiguration, or free it when its completion is "
+               "guaranteed indirectly";
+        diag.attachNote(push.origin->getLoc()) << "the transfer starts here";
+        warnedLive.insert(push.origin);
+        return;
+      }
+    }
   }
 
   void warnLeaks(AIE::RuntimeSequenceOp sequence) {
@@ -912,7 +989,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
-    staticBdIds.clear();
     loopingStarts.clear();
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
@@ -973,6 +1049,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               return WalkResult::interrupt();
             knownComplete.erase(cfg);
             pollProven.erase(cfg);
+            warnLiveAtControl(start, cfg);
             notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg), start);
           }
         } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
