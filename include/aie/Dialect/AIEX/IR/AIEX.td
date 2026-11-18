@@ -1068,6 +1068,7 @@ def AIE_NpuSyncOp : AIEX_Op<"npu.sync", []> {
     If this operation appears to deadlock, ensure that at least one buffer descriptor is configured to issue a TCT on the channel you expect.
     By default, `dma_memcpy_nd` operations only issue tokens for `S2MM` channels, and `issue_token` must be set to `true` to issue tokens for `MM2S` channels.
   }];
+  let hasVerifier = 1;
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)

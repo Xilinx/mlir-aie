@@ -914,6 +914,16 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
 // NpuWriteBdOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult AIEX::NpuSyncOp::verify() {
+  for (auto [name, count] : {std::pair{"column_num", getColumnNum()},
+                             std::pair{"row_num", getRowNum()}})
+    if (std::optional<int64_t> value = getConstantIntValue(count);
+        value && *value < 1)
+      return emitOpError() << name << " must cover at least one, got "
+                           << *value;
+  return success();
+}
+
 LogicalResult AIEX::NpuWriteBdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
