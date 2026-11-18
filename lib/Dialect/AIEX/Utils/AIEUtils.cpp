@@ -242,12 +242,20 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   // offset moves by it (offset_multiple); one higher up loses another field's,
   // restored below.
   uint64_t step = addressField.shift < 2 ? unit << (2 - addressField.shift) : 0;
-  if (step && unit > 1 && (!staticByteAddress || *staticByteAddress % step))
-    return bdOp->emitOpError("a runtime offset needs the buffer at a multiple "
-                             "of ")
-           << step
-           << " bytes, as the firmware clears the address's low two bits "
-              "when it adds the offset";
+  if (step && unit > 1) {
+    if (!staticByteAddress)
+      return bdOp->emitOpError("an offset_parameter on this tile needs the "
+                               "rest of the buffer descriptor's address known "
+                               "at compile time, to check it starts on a "
+                               "multiple of ")
+             << step << " bytes; this one has a runtime offset";
+    if (*staticByteAddress % step)
+      return bdOp->emitOpError("a runtime offset needs the buffer at a "
+                               "multiple of ")
+             << step
+             << " bytes, as the firmware clears the address's low two bits "
+                "when it adds the offset";
+  }
   Location loc = bdOp->getLoc();
   AIEX::NpuUpdateFromScratchpadOp::create(
       builder, loc, stateIdx, AIEX::StateTableFunc::Mul,

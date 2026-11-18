@@ -55,6 +55,25 @@ aie.device(npu2) @mem_unaligned {
 
 // -----
 
+// An SSA offset leaves the address unknown at compile time, aligned buffer or
+// not.
+aiex.scratchpad_parameter @off : i32
+aie.device(npu2) @mem_ssa_offset {
+  %t = aie.tile(0, 1)
+  %buf = aie.buffer(%t) {address = 1024 : i32, sym_name = "b"} : memref<128xi32>
+  aie.runtime_sequence(%a : memref<16xi32>, %o : i32) {
+    %ta = aiex.dma_configure_task(%t, MM2S, 0) {
+      // expected-error@+1 {{an offset_parameter on this tile needs the rest of the buffer descriptor's address known at compile time, to check it starts on a multiple of 16 bytes; this one has a runtime offset}}
+      aie.dma_bd(%buf : memref<128xi32> offset = %o len = 12) {offset_parameter = @off, bd_id = 0 : i32}
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%ta)
+    aiex.dma_await_task(%ta)
+  }
+}
+
+// -----
+
 // A quarter word cannot be added to a word address.
 aiex.scratchpad_parameter @off : i32
 aie.device(npu2) @mem_i16 {
