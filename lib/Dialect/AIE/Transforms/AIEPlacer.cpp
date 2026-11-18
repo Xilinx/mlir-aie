@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <numeric>
 
@@ -3379,16 +3380,24 @@ int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
         ++missing;
     }
 
+  SmallVector<unsigned> mine, merged;
+  DenseMap<unsigned, SmallVector<uint32_t>> held;
+  DenseSet<uint32_t> copied;
   for (auto [sequence, events] : llvm::enumerate(sequences)) {
     BdIdGenerator ids(tile.col, tile.row, *targetModel);
     for (uint32_t id : staticIds)
       ids.assignBdId(id);
-    SmallVector<unsigned> mine;
-    for (unsigned shim : key.set_bits())
-      llvm::append_range(mine, shims[shim].events[sequence]);
-    llvm::sort(mine);
-    DenseMap<unsigned, SmallVector<uint32_t>> held;
-    DenseSet<uint32_t> copied;
+    // Each shim's events are in sequence order already.
+    mine.clear();
+    for (unsigned shim : key.set_bits()) {
+      ArrayRef<unsigned> theirs = shims[shim].events[sequence];
+      merged.clear();
+      std::merge(mine.begin(), mine.end(), theirs.begin(), theirs.end(),
+                 std::back_inserter(merged));
+      std::swap(mine, merged);
+    }
+    held.clear();
+    copied.clear();
     for (unsigned at : mine) {
       auto [index, configured] = events[at];
       const Task &task = tasks[index];
