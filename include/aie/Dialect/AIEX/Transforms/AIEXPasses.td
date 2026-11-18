@@ -368,13 +368,9 @@ def AIEAssignRuntimeSequenceBDIDs
     `aiex.npu.dma_memcpy_nd` that reprograms an id an earlier copy on the tile
     may still have in flight.
 
-    An await on an output also finishes inputs, through the
-    `#aie.consumed_by` proofs `aie-objectfifo-verify` records on the inputs'
-    `aie.shim_dma_allocation`s: once the output has taken some bytes, every
-    input push within the bytes its proof says were consumed before them has
-    finished. A task carries its allocation's proofs through `alloc`. A proof
-    with `granule_bytes` counts the output only in whole granules, and a
-    proof that names a `device` counts only while that device is loaded.
+    An await on an output also finishes the input pushes its
+    `#aie.consumed_by` proofs cover; a task carries its allocation's proofs
+    through `alloc`.
 
     A sequence that ends with another device's PDI loaded leaves that array to
     the next dispatch, whose proofs count on a clean start, so the stretch

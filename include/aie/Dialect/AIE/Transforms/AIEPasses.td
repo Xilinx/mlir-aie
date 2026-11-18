@@ -677,9 +677,8 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
 
     On a design that passes, it also records on each shim input the outputs
     whose progress proves it consumed (`#aie.consumed_by`), replacing any
-    earlier proof. `--aie-assign-runtime-sequence-bd-ids` trusts these to
-    reuse an input's buffer descriptor IDs once an output is awaited, so a
-    design that declines this pass gets no proof and keeps those IDs apart.
+    earlier proof; a design that declines this pass keeps its inputs' buffer
+    descriptor IDs apart.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoVerifyPass()";
