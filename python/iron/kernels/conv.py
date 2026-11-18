@@ -2239,12 +2239,7 @@ def bn_conv2dk1_partial_put_i8(
         f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_put_new",
         _kernel_source("conv/bn_conv2dk1_i8.cc"),
         [in_ty, wt_ty, *_i32s(7)],
-        compile_flags=(
-            ["-mllvm", "-aie-premisched-coalescer=false"]
-            if _tuned_arch() == "aie2p"
-            else []
-        )
-        + [f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"]
+        compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"]
         + _cas_oc_blocks_flags(oc_blocks),
     )
 
@@ -2292,12 +2287,7 @@ def bn_conv2dk1_partial_get_relu_i8(
         f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_get_new",
         _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(9)],
-        compile_flags=(
-            ["-mllvm", "-aie-premisched-coalescer=false"]
-            if _tuned_arch() == "aie2p"
-            else []
-        )
-        + [f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"]
+        compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"]
         + _cas_oc_blocks_flags(oc_blocks),
     )
 
