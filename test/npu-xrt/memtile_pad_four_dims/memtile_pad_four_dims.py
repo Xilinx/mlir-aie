@@ -5,14 +5,12 @@
 #
 # REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings
 #
-# d2 padded before, after, both, and by more than one row:
 # RUN: %run_on_npu2% %python %s -d npu2 --dim 2 --before 1 --after 0
 # RUN: %run_on_npu2% %python %s -d npu2 --dim 2 --before 0 --after 1
 # RUN: %run_on_npu2% %python %s -d npu2 --dim 2 --before 1 --after 1
 # RUN: %run_on_npu2% %python %s -d npu2 --dim 2 --before 0 --after 8
 # RUN: %run_on_npu2% %python %s -d npu2 --dim 1 --before 1 --after 1
 # RUN: %run_on_npu2% %python %s -d npu2 --dim 0 --before 0 --after 8
-# Blocked GEMM operand walks, the last K step padded through d2:
 # RUN: %run_on_npu2% %python %s -d npu2 --walk gemm-a --dim 2 --before 0 --after 8
 # RUN: %run_on_npu2% %python %s -d npu2 --walk gemm-b --dim 2 --before 0 --after 8
 """Padding in a four-dimensional MemTile walk.
