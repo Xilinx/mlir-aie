@@ -909,7 +909,9 @@ struct AIEDMATasksToNPUPass
       // using the wide buffer_length register, exempt from the 10-bit ND
       // wrap-size limit.  Canonicalization zeroes size-1 strides before this
       // pass runs, so isContiguousTransfer is sufficient.
+      // A linear transfer leaves the wraps unset, and the pads apply to them.
       bool treatAsLinear =
+          !padDims.has_value() &&
           isLinearModeTransfer(target_model, tile.getCol(), tile.getRow(),
                                input_sizes, input_strides);
       if (!treatAsLinear && bd_op.getLengthStateTableIdxAttr())
@@ -942,6 +944,14 @@ struct AIEDMATasksToNPUPass
             padBefore[i] = 0;
             padAfter[i] = 0;
           }
+          int64_t elementBytes = bd_op.getBufferElementTypeWidthInBytes();
+          if ((padBefore[0] * elementBytes) % 4 ||
+              (padAfter[0] * elementBytes) % 4)
+            return bd_op->emitOpError()
+                   << "Inner-most padding count must result in padding in "
+                      "32-bit words.";
+          padBefore[0] = padBefore[0] * elementBytes / 4;
+          padAfter[0] = padAfter[0] * elementBytes / 4;
         } else
           return bd_op->emitOpError()
                  << "supports padding only for MM2S direction on MemTiles.";
@@ -987,13 +997,13 @@ struct AIEDMATasksToNPUPass
         iteration_stride = 0;
       }
 
-      // Ensure the total transfer length and the length expressed in the lowest
-      // three dimensions of strides/wraps agree. (Fourth dimension is
+      // Ensure the total transfer length and the padded length expressed in the
+      // lowest three dimensions of strides/wraps agree. (Fourth dimension is
       // iteration/repeat count and repeats the whole BD, so should not be
       // incorporated in length of a single BD invocation.)
       uint64_t len_dims_addr_granularity = 1;
       for (size_t i = 0; i < 3; i++) {
-        len_dims_addr_granularity *= sizes[i];
+        len_dims_addr_granularity *= sizes[i] + padBefore[i] + padAfter[i];
       }
       // A runtime length from zero keeps the pattern for the units it adds.
       bool runtimeLengthFromZero =
