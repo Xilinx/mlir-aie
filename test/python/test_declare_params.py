@@ -61,6 +61,12 @@ def test_a_domain_is_a_tuple_an_enum_or_a_function():
     assert tunable(domain=functools.partial(widths)).domain is not None
 
 
+def test_a_tunable_is_exact_unless_declared_otherwise():
+    assert Op.tile.exact
+    assert Op.M.exact
+    assert not tunable(domain=(16, 32), exact=False).exact
+
+
 def test_a_mutable_default_is_refused():
     with pytest.raises(TypeError, match="would be shared by every instance"):
         param(default=[])

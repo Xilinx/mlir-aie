@@ -35,6 +35,7 @@ from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
+from ..runtime._context import active_recording
 from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
 
@@ -567,6 +568,8 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must consume at least one element")
+        if (recording := active_recording()) is not None:
+            recording.acquired(self, port, num_elem)
         return self.op.acquire(port, num_elem)
 
     def _release(
@@ -578,6 +581,8 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must produce at least one element")
+        if (recording := active_recording()) is not None:
+            recording.released(self, port, num_elem)
         self.op.release(port, num_elem, assume_queue_space=assume_queue_space)
 
 
@@ -692,6 +697,11 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         )
 
     @property
+    def object_fifo(self) -> ObjectFifo:
+        """The ``ObjectFifo`` this is an end of."""
+        return self._object_fifo
+
+    @property
     def name(self) -> str | None:
         """The name, or None until its DeviceConfiguration assigns one."""
         return self._object_fifo.name
@@ -799,6 +809,12 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         if self._endpoint is None:
             self.endpoint = RuntimeEndpoint(self._shim_tile)
         active_sequence().note_fifo(self)
+        if (recording := active_recording()) is not None:
+            recording.transferred(
+                self,
+                rt_data.default_tap() if tap is None else tap,
+                length_parameter is not None or repeat_parameter is not None,
+            )
 
         assert self.name is not None
         return emit_shim_transfer(
@@ -1393,6 +1409,8 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         self._src_offsets = src_offsets if src_offsets is not None else []
         self._dst_offsets = dst_offsets if dst_offsets is not None else []
         self._resolving = False
+        if (recording := active_recording()) is not None:
+            recording.linked(self)
 
         if len(self._srcs) < 1:
             raise ValueError("An ObjectFifoLink must have at least one source")
@@ -1430,6 +1448,31 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         if tile.tile_type is None and not placed:
             tile.tile_type = AIETileType.MemTile
         ObjectFifoEndpoint.__init__(self, tile)
+
+    @property
+    def srcs(self) -> tuple[ObjectFifoHandle, ...]:
+        """The fifo ends it reads."""
+        return tuple(self._srcs)
+
+    @property
+    def dsts(self) -> tuple[ObjectFifoHandle, ...]:
+        """The fifo ends it fills."""
+        return tuple(self._dsts)
+
+    @property
+    def src_offsets(self) -> tuple[int, ...]:
+        """Where each source lands in a destination object, joining."""
+        return tuple(self._src_offsets)
+
+    @property
+    def dst_offsets(self) -> tuple[int, ...]:
+        """Where each destination's part starts in a source object, splitting."""
+        return tuple(self._dst_offsets)
+
+    @property
+    def mode(self) -> ObjectFifoLinkMode:
+        """``Space`` splits or joins every object; ``Time`` has the many side take turns."""
+        return self._mode
 
     def _walked_objects(self) -> int | None:
         """Return how many input objects a 1:1 link's output walks, or None for a walk within one object.

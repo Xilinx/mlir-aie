@@ -332,17 +332,15 @@ report("finished in if", finished_in_if)
 def isolated_specs(n, issue):
     import threading
 
-    from aie.iron import controlflow
+    from aie.iron.runtime._context import frames
 
     seen = {}
     for _iv, (carried,), (last,) in range_(1, n, iter_args=[issue(0)]):
         # Another thread generating a design must not see this loop.
-        t = threading.Thread(
-            target=lambda: seen.update(other=controlflow._loop_frames.get())
-        )
+        t = threading.Thread(target=lambda: seen.update(other=frames()))
         t.start()
         t.join()
-        seen["here"] = len(controlflow._loop_frames.get())
+        seen["here"] = len([f for f in frames() if f.kind == "for"])
         nxt = issue(1)
         carried.finish()
         yield_([nxt])

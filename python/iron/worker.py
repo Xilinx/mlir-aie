@@ -34,6 +34,7 @@ from .dataflow.objectfifopool import ObjectFifoPoolHandle
 from .device import AnyComputeTile, Tile
 from .kernel import Kernel
 from .resolvable import PerDeviceConfiguration, Resolvable
+from .runtime._context import frame
 from .scratchpad_parameter import ScratchpadParameter
 
 
@@ -379,7 +380,7 @@ class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
                     for _ in forever_() if self._while_true else range_(1):
                         if self._wait_for_parameters:
                             wait_scratchpad_parameters()
-                        with traced_body(self.core_fn):
+                        with traced_body(self.core_fn), frame("core", self):
                             self.core_fn(*self.fn_args)
 
 
