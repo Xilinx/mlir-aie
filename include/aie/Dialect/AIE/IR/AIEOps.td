@@ -2904,12 +2904,6 @@ def AIE_ObjectFifoCreateOp
     /// fifo's buffers never reaches the other's, so aie-objectfifo-split
     /// gives both `push_queue`, a task pushed per object.
     bool sharesSendChannel();
-    /// Whether the producer's DMA end will push a task per object: it asks
-    /// for `push_queue`, or sharesSendChannel().
-    bool usesPushQueue() {
-      return getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
-             sharesSendChannel();
-    }
 
     /// Objects in the pool an end keeps on its own tile when the fifo moves by
     /// DMA: the producer's when `consumer` is empty, else that consumer's. An

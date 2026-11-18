@@ -1025,9 +1025,19 @@ int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
   return getMemRefSizeInBytes(getElemType(), DataLayout::closest(*this));
 }
 
-bool xilinx::AIE::walksWholeDepth(bool isMemTile, int64_t depth,
-                                  int64_t maxLockValue) {
+// Whether one iterating descriptor could walk a pool of `depth` objects on a
+// tile: a mem tile's pool, deeper than one object and no deeper than a lock
+// counts (ObjectFifoPoolOp::canWalkWhole, ObjectFifoCreateOp::plannedDmaEnd).
+static bool walksWholeDepth(bool isMemTile, int64_t depth,
+                            int64_t maxLockValue) {
   return isMemTile && depth > 1 && depth <= maxLockValue;
+}
+
+// Whether `fifo`'s producer DMA end pushes a task per object: it asks for
+// `push_queue`, or sharesSendChannel().
+static bool usesPushQueue(ObjectFifoCreateOp fifo) {
+  return fifo.getReleaseStrategy() == ObjectFifoRelease::PushQueue ||
+         fifo.sharesSendChannel();
 }
 
 std::vector<ObjectFifoSegmentOp> ObjectFifoPoolOp::getSegmentOps() {
@@ -2339,7 +2349,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
     return getMemRefSizeInBytes(type, layout);
   };
   auto ordered = [](ObjectFifoCreateOp fifo, bool drains) {
-    return !fifo.getOutOfOrder() && (!drains || !fifo.usesPushQueue());
+    return !fifo.getOutOfOrder() && (!drains || !usesPushQueue(fifo));
   };
   if (!link) {
     int depth = dmaDepth(consumer);
@@ -2354,7 +2364,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
                            channel};
     int64_t repeat = getRepeatCount().value_or(1);
     bool inHardware =
-        repeat > 1 && (usesPushQueue() || (depth == 1 && !getIterCount()));
+        repeat > 1 && (usesPushQueue(*this) || (depth == 1 && !getIterCount()));
     return PlannedDmaEnd{depth * (inHardware ? 1 : repeat),
                          *this,
                          -1,
@@ -2393,7 +2403,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
       contiguousObjects = depth + window.top + window.bottom;
   }
   int64_t repeat = drains ? link.getRepeatCount().value_or(1) : 1;
-  bool inHardware = repeat > 1 && ((drains && usesPushQueue()) ||
+  bool inHardware = repeat > 1 && ((drains && usesPushQueue(*this)) ||
                                    (descriptors == 1 && !getIterCount()));
   int64_t passes = 1;
   if (drains && link.isDispatch()) {
@@ -2445,8 +2455,9 @@ bool ObjectFifoCreateOp::canTakeTurns() {
       return false;
   }
   return ObjectFifoDmaEndpointOp::canTakeTurns(
-      usesPushQueue(), pinned(getProdPortAttr()) || pinned(getConsumerPort(0)),
-      dispatch, packetHeader() != nullptr, getIterCount().has_value(), repeat,
+      usesPushQueue(*this),
+      pinned(getProdPortAttr()) || pinned(getConsumerPort(0)), dispatch,
+      packetHeader() != nullptr, getIterCount().has_value(), repeat,
       walksStream);
 }
 
