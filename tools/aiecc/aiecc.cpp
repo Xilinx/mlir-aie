@@ -3522,6 +3522,7 @@ int main(int argc, char **argv) {
           measuredCores, sharedObjects, GraphPurpose::MeasureCoreSections);
       Engine::Options measureOptions = engineOptions;
       measureOptions.outputDir = getWorkDir() + "/measure";
+      measureOptions.verbose = false;
       measureOptions.progress = false;
       measureOptions.keepIntermediates = false;
       measureOptions.profile = false;
