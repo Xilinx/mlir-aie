@@ -1,0 +1,110 @@
+diff --git a/include/aie_api/detail/aie2/array_helpers.hpp b/include/aie_api/detail/aie2/array_helpers.hpp
+index b59006a..0cd43fc 100644
+--- a/include/aie_api/detail/aie2/array_helpers.hpp
++++ b/include/aie_api/detail/aie2/array_helpers.hpp
+@@ -432,7 +432,7 @@ public:
+     __aie_inline
+     value_type pop()
+     {
+-        unsigned frac = (((long)ptr_) & 31) + 33;
++        unsigned frac = (((long)utils::opaque_addr(ptr_)) & 31) + 33;
+ 
+         constexpr unsigned tmp_elems = std::max(Elems, native_elems);
+         vector<elem_type, tmp_elems> tmp;
+diff --git a/include/aie_api/detail/aie2/vector.hpp b/include/aie_api/detail/aie2/vector.hpp
+index 3a28576..7a9ac82 100644
+--- a/include/aie_api/detail/aie2/vector.hpp
++++ b/include/aie_api/detail/aie2/vector.hpp
+@@ -1146,7 +1146,7 @@ public:
+             using native_type = native_vector_type_t<value_type, Elems * 2>;
+             using aliased_type = add_memory_bank_t<Resource, aie_dm_resource_set_t<native_type, aie_dm_resource_get_v<T2>>>;
+ 
+-            const unsigned frac = uintptr_t(ptr) & 31;
++            const unsigned frac = utils::opaque_addr(ptr) & 31;
+ 
+             aliased_type *tmp_ptr = (aliased_type *)utils::floor_ptr<Elems * 2>(ptr);
+ 
+@@ -1164,7 +1164,7 @@ public:
+             using native_type = native_vector_type_t<value_type, Elems>;
+             using aliased_type = add_memory_bank_t<Resource, aie_dm_resource_set_t<native_type, aie_dm_resource_get_v<T2>>>;
+ 
+-            const unsigned frac = uintptr_t(ptr) & 31;
++            const unsigned frac = utils::opaque_addr(ptr) & 31;
+ 
+             aliased_type *tmp_ptr = (aliased_type *)utils::floor_ptr<Elems>(ptr);
+ 
+@@ -1182,7 +1182,7 @@ public:
+             using native_type = native_vector_type_t<value_type, Elems / 2>;
+             using aliased_type = add_memory_bank_t<Resource, aie_dm_resource_set_t<native_type, aie_dm_resource_get_v<T2>>>;
+ 
+-            const unsigned frac = uintptr_t(ptr) & 31;
++            const unsigned frac = utils::opaque_addr(ptr) & 31;
+ 
+             ptr = utils::floor_ptr<Elems / 2>(ptr);
+ 
+@@ -1199,7 +1199,7 @@ public:
+             using native_type = native_vector_type_t<value_type, Elems / 4>;
+             using aliased_type = add_memory_bank_t<Resource, aie_dm_resource_set_t<native_type, aie_dm_resource_get_v<T2>>>;
+ 
+-            const unsigned frac = uintptr_t(ptr) & 31;
++            const unsigned frac = utils::opaque_addr(ptr) & 31;
+ 
+             ptr = utils::floor_ptr<Elems / 4>(ptr);
+ 
+@@ -1225,7 +1225,7 @@ public:
+             using native_type = native_vector_type_t<value_type, Elems>;
+             using aliased_type = add_memory_bank_t<Resource, aie_dm_resource_set_t<native_type, aie_dm_resource_get_v<T2>>>;
+ 
+-            const unsigned frac = uintptr_t(ptr) & 63;
++            const unsigned frac = utils::opaque_addr(ptr) & 63;
+ 
+             aliased_type *tmp_ptr = (aliased_type *)utils::floor_ptr<Elems>(ptr);
+ 
+@@ -1240,7 +1240,7 @@ public:
+             using native_type = native_vector_type_t<value_type, Elems / 2>;
+             using aliased_type = add_memory_bank_t<Resource, aie_dm_resource_set_t<native_type, aie_dm_resource_get_v<T2>>>;
+ 
+-            const unsigned frac = uintptr_t(ptr) & 63;
++            const unsigned frac = utils::opaque_addr(ptr) & 63;
+ 
+             aliased_type *tmp_ptr = (aliased_type *)utils::floor_ptr<Elems / 2>(ptr);
+ 
+@@ -1281,7 +1281,7 @@ public:
+ 
+             vector_base<int8, vector_native_bytes> vec = this->cast_to<int8>();
+ 
+-            const unsigned frac = uintptr_t(ptr) & (mem_native_bytes - 1);
++            const unsigned frac = utils::opaque_addr(ptr) & (mem_native_bytes - 1);
+             ptr = utils::floor_ptr<mem_native_bytes / sizeof(T2)>(ptr);
+ 
+             aliased_type *native_ptr = (aliased_type *)ptr;
+diff --git a/include/aie_api/detail/ld_st.hpp b/include/aie_api/detail/ld_st.hpp
+index a325c7c..ae203ac 100644
+--- a/include/aie_api/detail/ld_st.hpp
++++ b/include/aie_api/detail/ld_st.hpp
+@@ -84,6 +84,25 @@ constexpr T *floor_ptr(T *ptr)
+     return floor_ptr<native_vector_length_v<T>, T>(ptr);
+ }
+ 
++// The address of ptr, hidden from the optimizer. The unaligned accessors derive
++// a realigning shift from `address & mask` but load through the unfloored
++// pointer (the hardware truncates it), so a compiler that reads the alignment
++// off those loads folds the shift to 0. Peano on LLVM from 2025-12-12 (which
++// has the gcc_struct attribute on Itanium targets) does; the annotation is
++// dropped by the backend and leaves older compilers' code unchanged.
++template <typename T>
++__aie_inline
++uintptr_t opaque_addr(T *ptr)
++{
++    uintptr_t addr = (uintptr_t)ptr;
++#if AIE_API_NATIVE == 0 && defined(__has_attribute)
++#if __has_attribute(gcc_struct)
++    addr = __builtin_annotation(addr, "aie_api.opaque_addr");
++#endif
++#endif
++    return addr;
++}
++
+ }
+ 
+ template <typename T, unsigned Elems, aie_dm_resource Resource>
