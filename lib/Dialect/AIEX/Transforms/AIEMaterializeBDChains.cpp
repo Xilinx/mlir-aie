@@ -27,6 +27,37 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
+// Concretizes `chain` with `args` as a dma_configure_task on `tile`'s
+// channel, starts it, and replaces `start` with the task.
+static void inlineBDChain(PatternRewriter &rewriter, Operation *start,
+                          AIE::BDChainOp chain, ValueRange args, Value tile,
+                          AIE::DMAChannelDir direction, int32_t channel,
+                          bool issueToken, int32_t repeatCount,
+                          FlatSymbolRefAttr alloc) {
+  rewriter.setInsertionPointAfter(start);
+  DMAConfigureTaskOp configure_op = DMAConfigureTaskOp::create(
+      rewriter, start->getLoc(), rewriter.getIndexType(), tile, direction,
+      channel, issueToken, repeatCount);
+  configure_op.setAllocAttr(alloc);
+  Region &source_region = chain.getBody();
+  Region &target_region = configure_op.getBody();
+
+  // Clone BD definition into usage site, replacing abstract SSA values with
+  // concrete ones
+  IRMapping arg_map;
+  for (unsigned i = 0, n = source_region.getNumArguments(); i < n; i++) {
+    BlockArgument arg = source_region.getArgument(i);
+    Value val = args[i];
+    assert(arg.getType() == val.getType());
+    arg_map.map(arg, val);
+  }
+  source_region.cloneInto(&target_region, arg_map);
+
+  rewriter.replaceAllUsesWith(start->getResult(0), configure_op.getResult());
+  DMAStartTaskOp::create(rewriter, start->getLoc(), configure_op.getResult());
+  rewriter.eraseOp(start);
+}
+
 struct DMAStartBdChainForOpPattern : RewritePattern {
 
   // Symbol-lookup cache used for speedier `ShimDMAAllocationOp` lookups
@@ -57,13 +88,14 @@ struct DMAStartBdChainForOpPattern : RewritePattern {
           "shim DMA allocation must reference a valid TileOp");
     }
 
-    DMAStartBdChainOp new_op = DMAStartBdChainOp::create(
-        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(),
-        op.getArgs(), tile.getResult(), alloc_op.getChannelDir(),
-        (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),
-        op.getRepeatCount(), op.getAllocAttr());
-    rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
-    rewriter.eraseOp(op);
+    auto chain = symbolTable.lookup<AIE::BDChainOp>(op.getSymbol());
+    if (!chain) {
+      return op.emitOpError("symbol does not reference valid BD chain");
+    }
+
+    inlineBDChain(rewriter, op, chain, op.getArgs(), tile.getResult(),
+                  alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
+                  op.getIssueToken(), op.getRepeatCount(), op.getAllocAttr());
     return success();
   }
 };
@@ -80,43 +112,12 @@ struct DMAInlineBDChainPattern : RewritePattern {
     if (!start_op) { // Not a match.
       return failure();
     }
-    rewriter.setInsertionPointAfter(start_op);
-
-    // Get referenced abstract BD chain
     AIE::BDChainOp chain_def = start_op.getBDChainOp();
     assert(chain_def);
-    Region &source_region = chain_def.getBody();
-
-    // Create BD op into which the result will be inlined
-    DMAConfigureTaskOp configure_op = DMAConfigureTaskOp::create(
-        rewriter, start_op.getLoc(), rewriter.getIndexType(),
-        start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
-        start_op.getIssueToken(), start_op.getRepeatCount());
-    configure_op.setAllocAttr(start_op.getAllocAttr());
-    Region &target_region = configure_op.getBody();
-
-    // Clone BD definition into usage site, replacing abstract SSA values with
-    // concrete ones
-    IRMapping arg_map;
-    ValueRange values = start_op.getArgs();
-    for (unsigned i = 0, n = source_region.getNumArguments(); i < n; i++) {
-      BlockArgument arg = source_region.getArgument(i);
-      Value val = values[i];
-      assert(arg.getType() == val.getType());
-      arg_map.map(arg, val);
-    }
-    source_region.cloneInto(&target_region, arg_map);
-
-    // Replace result of dma start task with result of bd chain configuration
-    rewriter.replaceAllUsesWith(start_op.getResult(), configure_op.getResult());
-
-    // Add a start BDs instruction
-    DMAStartTaskOp::create(rewriter, start_op.getLoc(),
-                           configure_op.getResult());
-
-    // After fully inlining, remove the original instruction
-    rewriter.eraseOp(start_op);
-
+    inlineBDChain(rewriter, start_op, chain_def, start_op.getArgs(),
+                  start_op.getTile(), start_op.getDirection(),
+                  start_op.getChannel(), start_op.getIssueToken(),
+                  start_op.getRepeatCount(), FlatSymbolRefAttr());
     return success();
   }
 };
