@@ -1771,7 +1771,13 @@ void Placer::buildShimModel(
       controlOverlay);
 
   ddrGroups.clear();
-  ddrTiles.clear();
+  ddrGroupsOf.clear();
+  ddrShimColumns = 0;
+  for (int col = 0; col < targetModel->columns(); ++col)
+    ddrShimColumns +=
+        llvm::any_of(llvm::seq(0, targetModel->rows()), [&](int row) {
+          return targetModel->isShimNOCTile(col, row);
+        });
   for (unsigned seq = 0, e = shimSpans->sequences(); seq < e; ++seq)
     for (int dir : {0, 1}) {
       DdrGroup group;
@@ -1802,7 +1808,11 @@ void Placer::buildShimModel(
           if (a != b && !shimSpans->apart(a, b))
             together.set(j);
       }
-      ddrTiles.insert(group.tiles.begin(), group.tiles.end());
+      for (Operation *tile : group.tiles) {
+        SmallVector<unsigned> &groups = ddrGroupsOf[tile];
+        if (groups.empty() || groups.back() != ddrGroups.size())
+          groups.push_back(ddrGroups.size());
+      }
       ddrGroups.push_back(std::move(group));
     }
 }
@@ -1810,34 +1820,34 @@ void Placer::buildShimModel(
 int64_t
 Placer::ddrSpread(function_ref<std::optional<int>(Operation *)> columnOf,
                   int weight) const {
-  int shimColumns = 0;
-  for (int col = 0; col < targetModel->columns(); ++col)
-    shimColumns +=
-        llvm::any_of(llvm::seq(0, targetModel->rows()), [&](int row) {
-          return targetModel->isShimNOCTile(col, row);
-        });
   int64_t spread = 0;
-  for (const DdrGroup &group : ddrGroups) {
-    SmallVector<std::optional<int>> cols =
-        llvm::map_to_vector(group.tiles, columnOf);
-    int64_t load = 0, sameColumn = 0;
-    int placed = 0;
-    for (auto [i, col] : llvm::enumerate(cols)) {
-      if (!col)
-        continue;
-      ++placed;
-      load += group.weights[i];
-      sameColumn += group.weights[i] * group.weights[i];
-      for (size_t j = i + 1; j < cols.size(); ++j)
-        if (cols[j] == col && group.together[i].test(j))
-          sameColumn += 2 * group.weights[i] * group.weights[j];
-    }
-    if (placed < 2)
-      continue;
-    int64_t spreadOver = std::min(shimColumns, placed);
-    spread += weight * (spreadOver * sameColumn - load * load) / (load * load);
-  }
+  for (const DdrGroup &group : ddrGroups)
+    spread += ddrGroupSpread(group, columnOf, weight);
   return spread;
+}
+
+int64_t
+Placer::ddrGroupSpread(const DdrGroup &group,
+                       function_ref<std::optional<int>(Operation *)> columnOf,
+                       int weight) const {
+  SmallVector<std::optional<int>> cols =
+      llvm::map_to_vector(group.tiles, columnOf);
+  int64_t load = 0, sameColumn = 0;
+  int placed = 0;
+  for (auto [i, col] : llvm::enumerate(cols)) {
+    if (!col)
+      continue;
+    ++placed;
+    load += group.weights[i];
+    sameColumn += group.weights[i] * group.weights[i];
+    for (size_t j = i + 1; j < cols.size(); ++j)
+      if (cols[j] == col && group.together[i].test(j))
+        sameColumn += 2 * group.weights[i] * group.weights[j];
+  }
+  if (placed < 2)
+    return 0;
+  int64_t spreadOver = std::min(ddrShimColumns, placed);
+  return weight * (spreadOver * sameColumn - load * load) / (load * load);
 }
 
 std::optional<Placer::PinnedChannels::End>
@@ -2871,7 +2881,7 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     }
     // Among equally near shim tiles, the one spreading DDR traffic most.
     int64_t ddr = 0;
-    if (ddrTiles.contains(logicalTile))
+    if (ddrGroupsOf.contains(logicalTile))
       ddr = ddrSpread(
           [&](Operation *op) -> std::optional<int> {
             if (op == logicalTile)

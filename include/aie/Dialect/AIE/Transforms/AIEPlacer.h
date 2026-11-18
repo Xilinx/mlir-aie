@@ -446,13 +446,20 @@ protected:
     llvm::SmallVector<llvm::BitVector> together;
   };
   llvm::SmallVector<DdrGroup> ddrGroups;
-  llvm::DenseSet<mlir::Operation *> ddrTiles;
+  // The ddrGroups indices holding each tile op.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned>> ddrGroupsOf;
+  int ddrShimColumns = 0;
   // How unevenly the groups load the shim columns where `columnOf` puts tile
   // ops, `weight` per group spread worst: 0 when every group's load is even
   // across as many columns as it has ends, up to the device's.
   int64_t
   ddrSpread(llvm::function_ref<std::optional<int>(mlir::Operation *)> columnOf,
             int weight) const;
+  // ddrSpread's term for one group.
+  int64_t ddrGroupSpread(
+      const DdrGroup &group,
+      llvm::function_ref<std::optional<int>(mlir::Operation *)> columnOf,
+      int weight) const;
   // Builds the members above and overlayUses for `device`, whose channel
   // claims are `claims`; `rank` and `routeKeys` as collectShareableShimEnds
   // takes them.
@@ -1482,6 +1489,9 @@ private:
   int portsOver = 0;
   // Placer::ddrSpread where the shim tile ops sit now.
   int ddrPenalty = 0;
+  // Placer::ddrGroupSpread per group, and their sum.
+  JournaledMap<unsigned, int64_t> ddrScoreOf;
+  int64_t ddrTotal = 0;
   // The program key of the core at each position, and the program writes
   // switching to or from the neighbour configurations take.
   JournaledMap<TileID, unsigned> keyAt;

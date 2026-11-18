@@ -748,7 +748,14 @@ void SAPlacer::initResourceTracking() {
     std::optional<TileID> at = positionOf(op);
     return at ? std::optional(at->col) : std::nullopt;
   };
-  ddrPenalty = static_cast<int>(ddrSpread(columnOf, config.ddrWeight));
+  ddrScoreOf.clear();
+  ddrTotal = 0;
+  for (auto [index, group] : llvm::enumerate(ddrGroups)) {
+    int64_t score = ddrGroupSpread(group, columnOf, config.ddrWeight);
+    ddrScoreOf[index] = score;
+    ddrTotal += score;
+  }
+  ddrPenalty = static_cast<int>(ddrTotal);
   keyAt.clear();
   coresChanged = 0;
   if (!neighbourCores.empty()) {
@@ -2111,15 +2118,26 @@ int SAPlacer::updateResourcePenalty(
     for (TileID at : changed)
       coresChanged += coresChangedAt(at);
   }
-  if (llvm::any_of(oldPlacements, [&](const auto &moved) {
-        return ddrTiles.contains(moved.first);
-      }))
-    ddrPenalty = static_cast<int>(ddrSpread(
-        [this](Operation *op) -> std::optional<int> {
-          std::optional<TileID> at = positionOf(op);
-          return at ? std::optional(at->col) : std::nullopt;
-        },
-        config.ddrWeight));
+  SmallVector<unsigned> ddrMoved;
+  for (auto &[op, _] : oldPlacements)
+    if (auto it = ddrGroupsOf.find(op); it != ddrGroupsOf.end())
+      llvm::append_range(ddrMoved, it->second);
+  if (!ddrMoved.empty()) {
+    llvm::sort(ddrMoved);
+    ddrMoved.erase(llvm::unique(ddrMoved), ddrMoved.end());
+    auto columnOf = [this](Operation *op) -> std::optional<int> {
+      std::optional<TileID> at = positionOf(op);
+      return at ? std::optional(at->col) : std::nullopt;
+    };
+    for (unsigned index : ddrMoved) {
+      int64_t score =
+          ddrGroupSpread(ddrGroups[index], columnOf, config.ddrWeight);
+      int64_t &at = ddrScoreOf[index];
+      ddrTotal += score - at;
+      at = score;
+    }
+    ddrPenalty = static_cast<int>(ddrTotal);
+  }
   for (auto &[op, _] : oldPlacements) {
     for (size_t ei : tileToRouteEnds.lookup(op))
       addRouteEndContribution(ei, +1);
@@ -3153,6 +3171,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   int oldStreamCut = streamCutPenalty;
   int oldPortsOver = portsOver;
   int oldDdr = ddrPenalty;
+  int64_t oldDdrTotal = ddrTotal;
   int oldCoresChanged = coresChanged;
 
   // Apply moves: update placement maps and compute HPWL delta.
@@ -3233,6 +3252,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     streamCutPenalty = oldStreamCut;
     portsOver = oldPortsOver;
     ddrPenalty = oldDdr;
+    ddrTotal = oldDdrTotal;
     coresChanged = oldCoresChanged;
     cachedResourcePenalty = oldResPenalty;
     memSpilloverPenalty = oldMemSpillover;
@@ -3255,6 +3275,7 @@ void SAPlacer::commitMove() {
   coreUnplacedAt.commit();
   bdShortfallAt.commit();
   dmaPenaltyAt.commit();
+  ddrScoreOf.commit();
   runtimeBdAt.commit();
   netStreams.commit();
   keyAt.commit();
@@ -3275,6 +3296,7 @@ void SAPlacer::rollbackMove() {
   coreUnplacedAt.rollback();
   bdShortfallAt.rollback();
   dmaPenaltyAt.rollback();
+  ddrScoreOf.rollback();
   runtimeBdAt.rollback();
   netStreams.rollback();
   keyAt.rollback();
