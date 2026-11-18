@@ -7,7 +7,9 @@
 
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t 2> %t.err
 // RUN: FileCheck %s --check-prefix=SA --input-file=%t.err
-// RUN: not aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %t 2>&1 | FileCheck %s --check-prefix=ALLOC
+// RUN: not aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-verify --aie-objectfifo-allocate %t > %t.alloc 2> %t.alloc.err
+// RUN: FileCheck %s --check-prefix=ALLOC --input-file=%t.alloc
+// RUN: FileCheck %s --check-prefix=ALLOC-ERR --input-file=%t.alloc.err
 
 // A mem tile's own DMA program holds all 48 of its BD ids; the objectFIFO link
 // runs through another, unplaced mem tile. Wherever the SA puts the link's
@@ -17,8 +19,8 @@
 // Hand program on a logical tile pinned to (1, 1): the link's mem tile goes
 // elsewhere and allocates.
 // ALLOC-LABEL: @pinned_holder
-// ALLOC-NOT:   error
 // ALLOC:       aie.objectfifo.dma_endpoint
+// ALLOC-ERR-NOT: error:
 
 module @pinned_holder {
   aie.device(npu2) {
@@ -98,7 +100,7 @@ module @pinned_holder {
 // Hand program on an unplaced logical tile without fifo ends, on a one-column
 // device: both mem tiles share (0, 1), so the ids run out and the SA says so.
 // SA:  warning: SA placer's resource estimate is over capacity
-// ALLOC: error: 'aie.objectfifo.dma_endpoint' op needs 1 buffer descriptors, but the tile's
+// ALLOC-ERR: error: 'aie.objectfifo.dma_endpoint' op needs 1 buffer descriptors, but the tile's
 
 module @shared_position {
   aie.device(npu2_1col) {
