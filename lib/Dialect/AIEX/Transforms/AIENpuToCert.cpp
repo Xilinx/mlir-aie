@@ -652,6 +652,11 @@ findPatchedBlockWrite(AIEX::NpuAddressPatchOp patch) {
   return {};
 }
 
+// apply_offset_57 names an argument by its first 32-bit register, 2 * arg_idx,
+// in a 16-bit field, and reserves the index 0xFFFF for the control code's own
+// address. So the largest usable arg_idx is the one whose double still fits.
+static constexpr uint32_t kMaxApplyOffsetArgIdx = 0x7FFF;
+
 // An address_patch writes buffer address + arg_plus into a BD register, but
 // cert.apply_offset_57 adds the buffer address to the BD template in memory.
 // So before conversion the patched template word must hold arg_plus, and the
@@ -673,6 +678,14 @@ static LogicalResult prepareAddressPatchTemplates(AIE::DeviceOp device) {
   SmallVector<AIEX::NpuAddressPatchOp> patches;
   device.walk([&](AIEX::NpuAddressPatchOp patch) { patches.push_back(patch); });
   for (AIEX::NpuAddressPatchOp patch : patches) {
+    std::optional<uint32_t> argIdx = patch.getArgIdx();
+    if (argIdx && *argIdx > kMaxApplyOffsetArgIdx) {
+      patch.emitError("arg_idx ")
+          << *argIdx << " does not fit apply_offset_57's 16-bit argument "
+          << "offset; the largest is " << kMaxApplyOffsetArgIdx;
+      result = failure();
+      continue;
+    }
     AIEX::NpuBlockWriteOp blockWrite = findPatchedBlockWrite(patch);
     if (!blockWrite)
       continue;
