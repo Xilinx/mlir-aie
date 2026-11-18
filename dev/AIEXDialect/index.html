@@ -11940,11 +11940,17 @@ by MasterSets and PacketRules inside switchboxes.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>operation ::= `aiex.cert.apply_offset_57` `(` $symbol `,` $num_entries `,` $offset `)` attr-dict
 </code></pre></div>
 <p>This operation adds a 57-bit offset to Shim DMA BD base address fields.
-The offset is loaded from the 32-bit registers arg[offset] and arg[offset+1]
-from the current argument list.
-'symbol' - A symbol pointing to the data to be patched
-'num_entries' - the number of Shim DMA BD entries to patch
-'offset' - index into the argument list to the start of offset data</p>
+The offset is the 64-bit argument at index <code>offset</code> in the current argument
+list.</p>
+<ul>
+<li><code>symbol</code>: a symbol pointing to the data to be patched.</li>
+<li><code>num_entries</code>: the number of Shim DMA BD entries to patch, at least 1.
+  When there is more than one entry the sets of BDs must be contiguous.</li>
+<li><code>offset</code>: index into the argument list of the offset. 65535 instead
+  patches relative to the base of the control code.</li>
+</ul>
+<p>Both are unsigned 16-bit fields of the encoded instruction, so they print
+as written (65535, not -1) and negative spellings are rejected.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>  memref.global "private" constant @bd_table : memref&lt;9xi32&gt; = dense&lt;[0, -2147483648, 256, 117440512, 4351, 1, 1, 1, 1024]&gt;
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  ...
@@ -11955,8 +11961,8 @@ from the current argument list.
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>symbol</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>num_entries</code></td><td>::mlir::IntegerAttr</td><td>16-bit signless integer attribute</td></tr>
-<tr><td><code>offset</code></td><td>::mlir::IntegerAttr</td><td>16-bit signless integer attribute</td></tr>
+<tr><td><code>num_entries</code></td><td>::mlir::IntegerAttr</td><td>16-bit unsigned integer attribute</td></tr>
+<tr><td><code>offset</code></td><td>::mlir::IntegerAttr</td><td>16-bit unsigned integer attribute</td></tr>
 </table>
 
 <h3 id="aiexcertattach_to_group-xilinxaiexcertattachtogroupop"><code>aiex.cert.attach_to_group</code> (::xilinx::AIEX::CertAttachToGroupOp)<a class="headerlink" href="#aiexcertattach_to_group-xilinxaiexcertattachtogroupop" title="Permanent link">&para;</a></h3>

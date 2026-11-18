@@ -1,7 +1,0 @@
-<map id="runtime_lib/test_lib/memory_allocator.h" name="runtime_lib/test_lib/memory_allocator.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="117,5,272,50"/>
-<area shape="rect" id="Node000002" href="$memory__allocator_8cpp.html" title=" " alt="" coords="5,98,176,143"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="161,59,117,100,114,95,156,61"/>
-<area shape="rect" id="Node000003" href="$memory__allocator__ion_8cpp.html" title=" " alt="" coords="199,98,398,143"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="231,58,276,98,271,97,230,63"/>
-</map>
