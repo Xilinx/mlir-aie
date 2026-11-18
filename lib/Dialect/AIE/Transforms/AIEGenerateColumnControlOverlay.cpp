@@ -231,19 +231,16 @@ struct AIEGenerateColumnControlOverlayPass
   void collectShimMM2SUses(ArrayRef<DeviceOp> devices) {
     packetDemand.clear();
     fixedCircuits.clear();
-    auto column = [](Operation *tile) {
-      return cast<TileLike>(tile).tryGetCol();
-    };
     for (DeviceOp device : devices) {
       ShimMM2SUses uses = shimMM2SUses(device, packetSwitched);
       for (auto &[tile, channels] : uses.circuits)
-        if (std::optional<int> col = column(tile))
+        if (std::optional<int> col = cast<TileLike>(tile).tryGetCol())
           fixedCircuits[*col].insert(channels.begin(), channels.end());
       for (auto &[at, ends] : uses.packetEnds)
-        if (std::optional<int> col = column(at.first))
+        if (std::optional<int> col = cast<TileLike>(at.first).tryGetCol())
           packetDemand[{*col, at.second}] += ends.size();
       for (auto &[at, flows] : uses.packetFlows)
-        if (std::optional<int> col = column(at.first))
+        if (std::optional<int> col = cast<TileLike>(at.first).tryGetCol())
           packetDemand[{*col, at.second}] += flows;
     }
   }
