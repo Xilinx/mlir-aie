@@ -1,9 +1,0 @@
-<map id="include/aie/Dialect/AIEX/IR/AIEXEnums.h" name="include/aie/Dialect/AIEX/IR/AIEXEnums.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="170,5,333,50"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,106,165,134"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="214,50,124,101,121,96,209,51"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="188,106,315,134"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="254,48,254,92,249,90,250,52"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="339,98,482,143"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="290,48,362,90,357,90,289,53"/>
-</map>

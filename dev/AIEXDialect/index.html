@@ -12345,14 +12345,16 @@ how the uC-DMA should transfer data from a remote address to a local address.</p
 <div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>operation ::= `aiex.cert.uc_dma_chain` ($sym_name^)? $body attr-dict
 </code></pre></div>
 <p>This operation defines a chain of uC DMA buffer descriptors. It contains a
-single region where the buffer descriptors can be specified.</p>
+single region where the buffer descriptors can be specified. A chain is
+defined at device level; uC DMA operations in any controller group refer
+to it by name.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>  cert.uc_dma_chain @dma_chain {
 <a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>    aiex.uc_dma_bd 0x600400, 0x20400, 128, true, false, false
 <a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>    ...
 <a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>  }
 </code></pre></div></p>
-<p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>SingleBlockImplicitTerminator&lt;AIE::EndOp&gt;</code>, <code>SingleBlock</code>, <code>SymbolName</code></p>
+<p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;AIE::DeviceOp&gt;</code>, <code>SingleBlockImplicitTerminator&lt;AIE::EndOp&gt;</code>, <code>SingleBlock</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
 <h4 id="attributes_20">Attributes:<a class="headerlink" href="#attributes_20" title="Permanent link">&para;</a></h4>
 <table>
