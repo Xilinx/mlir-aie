@@ -1455,6 +1455,11 @@ private:
   // The spill penalty, by where every mem tile's holders sit, keyed as
   // bdShortfallOf is.
   BoundedMemo<std::vector<int64_t>, int> spillPenaltyOf{1u << 14};
+  // The device's mem tiles in column-major order, each one's index there, and
+  // its memTileSpillNeighbours; built once.
+  llvm::SmallVector<MemTileSpillSearch::Tile> memTiles;
+  llvm::DenseMap<TileID, unsigned> memTileIndex;
+  llvm::DenseMap<TileID, llvm::SmallVector<TileID, 2>> spillNeighbours;
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
   llvm::DenseMap<TileID, TileID> bdLayoutOf;

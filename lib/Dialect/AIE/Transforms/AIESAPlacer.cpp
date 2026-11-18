@@ -926,14 +926,23 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
   if (const int *known = charged ? nullptr : spillPenaltyOf.find(key))
     return *known;
 
-  SmallVector<MemTileSpillSearch::Tile> tiles;
-  DenseMap<TileID, unsigned> index;
-  for (int col = 0; col < targetModel->columns(); ++col)
-    for (int row = 0; row < targetModel->rows(); ++row)
-      if (targetModel->getTileType(col, row) == AIETileType::MemTile) {
-        index[{col, row}] = tiles.size();
-        tiles.push_back({targetModel->getMemTileSize(), {}});
-      }
+  if (memTileIndex.empty())
+    for (int col = 0; col < targetModel->columns(); ++col)
+      for (int row = 0; row < targetModel->rows(); ++row)
+        if (targetModel->getTileType(col, row) == AIETileType::MemTile) {
+          memTileIndex[{col, row}] = memTiles.size();
+          memTiles.push_back({targetModel->getMemTileSize(), {}});
+          spillNeighbours[{col, row}] =
+              memTileSpillNeighbours(*targetModel, {col, row});
+        }
+  SmallVector<MemTileSpillSearch::Tile> tiles = memTiles;
+  const DenseMap<TileID, unsigned> &index = memTileIndex;
+  auto neighboursOf = [&](TileID at) {
+    auto it = spillNeighbours.find(at);
+    return it != spillNeighbours.end()
+               ? it->second
+               : memTileSpillNeighbours(*targetModel, at);
+  };
   for (auto &[op, fixed] : memTileFixed)
     if (std::optional<TileID> at = positionOf(op))
       llvm::append_range(tiles[index.lookup(*at)].fixed, fixed);
@@ -947,16 +956,16 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
     WalkSets sets;
     SmallVector<int64_t> bytes;
   };
+  // memTilesAt for every position, in one pass.
+  llvm::MapVector<TileID, SmallVector<Operation *>> tilesAt;
+  for (auto &[tile, _] : memTileEnds)
+    if (std::optional<TileID> at = positionOf(tile))
+      tilesAt[*at].push_back(tile);
   SmallVector<Position> positions;
-  DenseSet<TileID> seen;
-  for (auto &[tile, _] : memTileEnds) {
-    std::optional<TileID> at = positionOf(tile);
-    if (!at || !seen.insert(*at).second)
-      continue;
+  for (auto &[at, here] : tilesAt) {
     Position &position = positions.emplace_back();
-    position.at = *at;
-    SmallVector<Operation *> here = memTilesAt(*at);
-    (void)bdShortfall(*at, here, &position.sets, &position.bytes);
+    position.at = at;
+    (void)bdShortfall(at, here, &position.sets, &position.bytes);
     for (Operation *op : here)
       for (const MemTileEnd &end : memTileEnds.find(op)->second) {
         const PlannedDmaEnd &plan = end.end;
@@ -980,7 +989,7 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
   // Per pool of the positions `members`, in the allocator's size-first order,
   // with each position walking the set `walk` gives it (none when null).
   using Walk = const SmallVector<std::pair<Operation *, int>> *;
-  auto shapes = [&](ArrayRef<unsigned> members, ArrayRef<Walk> walk) {
+  auto unsortedShapes = [&](ArrayRef<unsigned> members, ArrayRef<Walk> walk) {
     SmallVector<std::pair<SpillPool, TileID>> shaped;
     for (unsigned member : members) {
       const Position &position = positions[member];
@@ -998,6 +1007,11 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
                           position.at});
       }
     }
+    return shaped;
+  };
+  auto shapes = [&](ArrayRef<unsigned> members, ArrayRef<Walk> walk) {
+    SmallVector<std::pair<SpillPool, TileID>> shaped =
+        unsortedShapes(members, walk);
     llvm::stable_sort(shaped, [](const auto &a, const auto &b) {
       return std::make_pair(a.second.col, a.second.row) <
              std::make_pair(b.second.col, b.second.row);
@@ -1013,7 +1027,7 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
     for (unsigned i : order) {
       auto [pool, at] = pools[i];
       SmallVector<unsigned, 2> neighbours;
-      for (TileID neighbour : memTileSpillNeighbours(*targetModel, at))
+      for (TileID neighbour : neighboursOf(at))
         if (auto it = index.find(neighbour); it != index.end())
           neighbours.push_back(it->second);
       buffers.append(pool.count, {pool.bytes, pool.home, true, neighbours});
@@ -1048,7 +1062,7 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
   SmallVector<TileID> homes =
       llvm::map_to_vector(positions, [](const Position &p) { return p.at; });
   SmallVector<unsigned> componentOf =
-      memTileSpillComponents(*targetModel, homes);
+      memTileSpillComponents(homes, neighboursOf);
   unsigned components =
       componentOf.empty() ? 0 : *llvm::max_element(componentOf) + 1;
   SmallVector<Walk> walk(positions.size(), nullptr);
@@ -1060,13 +1074,14 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
       if (c == component)
         members.push_back(i);
     std::vector<uintptr_t> tilesKey;
-    std::set<std::pair<int, int>> reach;
+    SmallVector<std::pair<int, int>> reach;
     for (unsigned member : members) {
-      reach.insert({positions[member].at.col, positions[member].at.row});
-      for (TileID n :
-           memTileSpillNeighbours(*targetModel, positions[member].at))
-        reach.insert({n.col, n.row});
+      reach.push_back({positions[member].at.col, positions[member].at.row});
+      for (TileID n : neighboursOf(positions[member].at))
+        reach.push_back({n.col, n.row});
     }
+    llvm::sort(reach);
+    reach.erase(llvm::unique(reach), reach.end());
     for (auto [col, row] : reach) {
       tilesKey.push_back(col);
       tilesKey.push_back(row);
@@ -1100,7 +1115,8 @@ int SAPlacer::computeMemSpilloverPenalty(SmallVectorImpl<TileID> *charged) {
     // Walking changes no buffer's bytes in total, so when the component's
     // buffers outweigh its tiles' room, no choice of walk sets places them.
     int64_t needed = 0, room = 0;
-    for (auto &[pool, _] : shapes(members, SmallVector<Walk>(walk.size())))
+    for (auto &[pool, _] :
+         unsortedShapes(members, SmallVector<Walk>(walk.size())))
       needed += pool.bytes * pool.count;
     for (auto [col, row] : reach) {
       room += targetModel->getMemTileSize();

@@ -189,9 +189,9 @@ memTileSpillNeighbours(const AIETargetModel &target, TileID home) {
 /// For each of `homes`, the index of its component: homes whose buffers may
 /// spill to a tile in common, directly or through other homes, share one.
 /// What one component's buffers do never touches another's tiles.
-inline llvm::SmallVector<unsigned>
-memTileSpillComponents(const AIETargetModel &target,
-                       llvm::ArrayRef<TileID> homes) {
+inline llvm::SmallVector<unsigned> memTileSpillComponents(
+    llvm::ArrayRef<TileID> homes,
+    llvm::function_ref<llvm::SmallVector<TileID, 2>(TileID)> neighboursOf) {
   llvm::DenseMap<TileID, unsigned> index;
   llvm::IntEqClasses eq;
   auto indexOf = [&](TileID tile) {
@@ -202,7 +202,7 @@ memTileSpillComponents(const AIETargetModel &target,
   };
   for (TileID home : homes) {
     unsigned at = indexOf(home);
-    for (TileID neighbour : memTileSpillNeighbours(target, home))
+    for (TileID neighbour : neighboursOf(home))
       eq.join(indexOf(neighbour), at);
   }
   eq.compress();
@@ -210,6 +210,12 @@ memTileSpillComponents(const AIETargetModel &target,
   for (TileID home : homes)
     component.push_back(eq[indexOf(home)]);
   return component;
+}
+inline llvm::SmallVector<unsigned>
+memTileSpillComponents(const AIETargetModel &target,
+                       llvm::ArrayRef<TileID> homes) {
+  return memTileSpillComponents(
+      homes, [&](TileID home) { return memTileSpillNeighbours(target, home); });
 }
 
 /// The mem tiles a mem tile pool's buffers go to: aie-objectfifo-allocate
@@ -338,8 +344,15 @@ private:
   llvm::SmallVector<unsigned> spillTargets(const Buffer &buffer) {
     weighed[buffer.home] = true;
     llvm::SmallVector<unsigned, 2> neighbours(buffer.neighbours);
-    llvm::stable_sort(
-        neighbours, [&](unsigned a, unsigned b) { return used(a) < used(b); });
+    // A stable sort allocates a buffer even for the usual two neighbours.
+    if (neighbours.size() == 2) {
+      if (used(neighbours[1]) < used(neighbours[0]))
+        std::swap(neighbours[0], neighbours[1]);
+    } else {
+      llvm::stable_sort(neighbours, [&](unsigned a, unsigned b) {
+        return used(a) < used(b);
+      });
+    }
     llvm::SmallVector<unsigned> fitting;
     for (unsigned neighbour : neighbours)
       if (fits(neighbour, buffer.bytes))
