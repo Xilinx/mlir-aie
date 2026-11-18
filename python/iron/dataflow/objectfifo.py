@@ -695,6 +695,11 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         )
 
     @property
+    def object_fifo(self) -> ObjectFifo:
+        """The ``ObjectFifo`` this is an end of."""
+        return self._object_fifo
+
+    @property
     def name(self) -> str | None:
         """The name, or None until its DeviceConfiguration assigns one."""
         return self._object_fifo.name

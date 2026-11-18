@@ -104,3 +104,8 @@ def test_nothing_is_recorded_outside_a_record_block_and_the_build_is_unchanged()
     program, _, _, _ = design()
     assert str(program.resolve_program()) == recorded
     assert recorder.cores
+
+
+def test_a_handle_names_the_fifo_it_is_an_end_of():
+    of = ObjectFifo(line, depth=2, name="ends")
+    assert of.prod().object_fifo is of and of.cons().object_fifo is of
