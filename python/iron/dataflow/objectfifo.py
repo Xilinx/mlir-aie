@@ -35,8 +35,8 @@ from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
+from ..runtime._context import active_recording
 from ..scratchpad_parameter import ScratchpadParameter
-from ..trace import Recorder
 from .endpoint import ObjectFifoEndpoint
 
 if TYPE_CHECKING:
@@ -568,8 +568,8 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must consume at least one element")
-        if (recorder := Recorder.active()) is not None:
-            recorder.acquired(self, port, num_elem)
+        if (recording := active_recording()) is not None:
+            recording.acquired(self, port, num_elem)
         return self.op.acquire(port, num_elem)
 
     def _release(
@@ -581,8 +581,8 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must produce at least one element")
-        if (recorder := Recorder.active()) is not None:
-            recorder.released(self, port, num_elem)
+        if (recording := active_recording()) is not None:
+            recording.released(self, port, num_elem)
         self.op.release(port, num_elem, assume_queue_space=assume_queue_space)
 
 
@@ -1403,8 +1403,8 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         self._src_offsets = src_offsets if src_offsets is not None else []
         self._dst_offsets = dst_offsets if dst_offsets is not None else []
         self._resolving = False
-        if (recorder := Recorder.active()) is not None:
-            recorder.linked(self)
+        if (recording := active_recording()) is not None:
+            recording.linked(self)
 
         if len(self._srcs) < 1:
             raise ValueError("An ObjectFifoLink must have at least one source")
