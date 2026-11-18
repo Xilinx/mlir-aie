@@ -10,10 +10,10 @@
 import os
 
 import numpy as np
+from aie.dialects._aie_enum_gen import ObjectFifoLinkMode, ObjectFifoPort
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import else_, forever_, if_, range_
 from aie.iron.device import NPU2
-from aie.dialects._aie_enum_gen import ObjectFifoLinkMode, ObjectFifoPort
 from aie.iron.trace import Access, Scope, record
 
 THIS_FILE = os.path.abspath(__file__)
