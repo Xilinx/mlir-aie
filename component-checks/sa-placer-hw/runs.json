@@ -1591,6 +1591,46 @@
     "full": 1.0
    },
    "iters": 20
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "44252970027",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44252970027",
+   "date": "2026-11-18T06:39:41+00:00",
+   "commit": {
+    "id": "3d4bbc90148c3bbf56de806a908d493d13c30f05",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/3d4bbc90148c3bbf56de806a908d493d13c30f05",
+    "message": "[cert] Define cert.uc_dma_chain at device level only (#4082)",
+    "timestamp": "2026-11-18T02:23:10Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "3d4bbc9014",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "dispatch": "dynamic"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 395,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "efforts": {
+    "default": 0.05,
+    "full": 1.0
+   },
+   "iters": 20
   }
  ]
 }
