@@ -702,6 +702,9 @@ static APFloat roundedToBF16(APFloat v) {
 
 // True if `val` is an f32 vector whose elements are all bf16 values.
 static bool holdsBF16(Value val) {
+  // a splat of a scalar widened from bf16
+  if (auto bcastOp = val.getDefiningOp<vector::BroadcastOp>())
+    val = bcastOp.getSource();
   if (auto extfOp = val.getDefiningOp<arith::ExtFOp>())
     return getElementTypeOrSelf(extfOp.getIn().getType()).isBF16();
   DenseFPElementsAttr dense;
@@ -878,6 +881,20 @@ struct EmulateMulFInBF16Pattern : public OpRewritePattern<arith::MulFOp> {
   }
 };
 
+static bool contracts(arith::FastMathFlagsAttr flags) {
+  return flags &&
+         bitEnumContainsAll(flags.getValue(), arith::FastMathFlags::contract);
+}
+
+/// Whether `op` may take a multiply into a vector.fma: it allows contraction
+/// and has a type the FMA lowerings take, a 1-D f32 vector of 16 or 32 lanes.
+static bool fusesIntoFMA(arith::AddFOp op) {
+  auto type = dyn_cast<VectorType>(op.getType());
+  return isF32Vector(op.getType()) && type.getRank() == 1 &&
+         (type.getNumElements() == 16 || type.getNumElements() == 32) &&
+         contracts(op.getFastmathAttr());
+}
+
 /// Pattern to fold an f32 multiply into the add that is its only user, as a
 /// vector.fma with bf16 inputs. Only when both ops allow contraction: the
 /// fused result can differ where the product underflows or overflows.
@@ -886,11 +903,7 @@ struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
 
   LogicalResult matchAndRewrite(arith::AddFOp op,
                                 PatternRewriter &rewriter) const override {
-    auto contracts = [](arith::FastMathFlagsAttr flags) {
-      return flags && bitEnumContainsAll(flags.getValue(),
-                                         arith::FastMathFlags::contract);
-    };
-    if (!isF32Vector(op.getType()) || !contracts(op.getFastmathAttr()))
+    if (!fusesIntoFMA(op))
       return failure();
     for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
                                    std::pair(op.getRhs(), op.getLhs())}) {
@@ -901,6 +914,32 @@ struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
       Value lhs = roundToBF16(rewriter, loc, mulOp.getLhs());
       Value rhs = roundToBF16(rewriter, loc, mulOp.getRhs());
       rewriter.replaceOpWithNewOp<vector::FMAOp>(op, lhs, rhs, acc);
+      rewriter.eraseOp(mulOp);
+      return success();
+    }
+    return failure();
+  }
+};
+
+/// FuseMulAddFInBF16Pattern for a multiply whose inputs already hold bf16
+/// values, outside bf16 emulation; likewise only when both ops allow
+/// contraction.
+struct FuseExactMulAddFPattern : public OpRewritePattern<arith::AddFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::AddFOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!fusesIntoFMA(op))
+      return failure();
+    for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
+                                   std::pair(op.getRhs(), op.getLhs())}) {
+      auto mulOp = mulOperand.getDefiningOp<arith::MulFOp>();
+      if (!mulOp || !mulOp->hasOneUse() ||
+          !contracts(mulOp.getFastmathAttr()) || !holdsBF16(mulOp.getLhs()) ||
+          !holdsBF16(mulOp.getRhs()))
+        continue;
+      rewriter.replaceOpWithNewOp<vector::FMAOp>(op, mulOp.getLhs(),
+                                                 mulOp.getRhs(), acc);
       rewriter.eraseOp(mulOp);
       return success();
     }
@@ -1119,7 +1158,8 @@ struct CanonicalizeVectorForAIEVecPass
       patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
       if (targetInfo->isAIE2P())
-        patterns.add<FlattenVectorIterArgsPattern>(context);
+        patterns.add<FlattenVectorIterArgsPattern, FuseExactMulAddFPattern>(
+            context);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
 

@@ -38,9 +38,7 @@ extern "C" {
 #endif
 
 extern "C" {
-#include "xaiengine/xaie_elfloader.h"
-#include "xaiengine/xaie_interrupt.h"
-#include "xaiengine/xaiegbl.h"
+#include "aie_codegen.h"
 }
 
 #define DEBUG_TYPE "aie-generate-cdo"

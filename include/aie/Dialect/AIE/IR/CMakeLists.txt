@@ -45,12 +45,12 @@ add_public_tablegen_target(MLIRAIEEnumsIncGen)
 add_dependencies(aie-headers MLIRAIEEnumsIncGen)
 add_dependencies(MLIRAIEEnumsIncGen GenerateAIEEventsTD)
 
-# Generate AIE event enums from aie-rt headers
-set(AIE_RT_EVENTS_DIR "${AIE_SOURCE_DIR}/third_party/aie-rt/driver/src/events")
+# Generate AIE event enums from aie-codegen headers
+set(AIE_CODEGEN_EVENTS_DIR "${AIE_SOURCE_DIR}/third_party/aie-codegen/src/events")
 set(EVENTS_HEADER_FILES
-  "${AIE_RT_EVENTS_DIR}/xaie_events_aie.h"
-  "${AIE_RT_EVENTS_DIR}/xaie_events_aieml.h"
-  "${AIE_RT_EVENTS_DIR}/xaie_events_aie2p.h"
+  "${AIE_CODEGEN_EVENTS_DIR}/xaie_events_aie.h"
+  "${AIE_CODEGEN_EVENTS_DIR}/xaie_events_aieml.h"
+  "${AIE_CODEGEN_EVENTS_DIR}/xaie_events_aie2p.h"
 )
 
 set(GENERATED_EVENTS_TD_FILES
@@ -76,7 +76,7 @@ add_custom_command(
     ${AIE_SOURCE_DIR}/utils/generate_events_tablegen.py
     ${AIE_SOURCE_DIR}/utils/generate_events_json.py
     ${EVENTS_HEADER_FILES}
-  COMMENT "Generating AIE event tablegen and JSON database from aie-rt headers"
+  COMMENT "Generating AIE event tablegen and JSON database from aie-codegen headers"
   VERBATIM
 )
 

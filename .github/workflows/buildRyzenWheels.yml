@@ -156,8 +156,8 @@ jobs:
         with:
           artifacts: wheels_on_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: latest-wheels-4
-          name: latest-wheels-4
+          tag: latest-wheels-5
+          name: latest-wheels-5
           allowUpdates: true
           replacesArtifacts: false
           omitBodyDuringUpdate: true
@@ -169,10 +169,9 @@ jobs:
         with:
           artifacts: wheels_off_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: latest-wheels-no-rtti-2
-          name: latest-wheels-no-rtti-2
+          tag: latest-wheels-no-rtti-3
+          name: latest-wheels-no-rtti-3
           allowUpdates: true
           replacesArtifacts: false
           omitBodyDuringUpdate: true
           makeLatest: false
-

@@ -119,7 +119,8 @@ public:
     // Device is an NPU-based device.
     IsNPU = 1U << 1,
     // Device model is virtualized.
-    // This is used during CDO code generation to configure aie-rt properly.
+    // This is used during CDO code generation to configure aie-codegen
+    // properly.
     IsVirtualized = 1U << 2,
     // Device uses multi-dimensional buffer descriptors.
     UsesMultiDimensionalBDs = 1U << 3,
@@ -652,7 +653,7 @@ public:
   /// Return how many DMA tasks a single channel's task queue holds
   /// (unsupported = 0). Pushing to a full queue drops the push and sets the
   /// channel's sticky Task_Queue_Overflow bit, stranding whoever waits on that
-  /// transfer. Flat rather than per-tile-type because aie-rt's
+  /// transfer. Flat rather than per-tile-type because aie-codegen's
   /// XAie_DmaGetMaxQueueSize (XAIE_DMA_MAX_QUEUE_SIZE) returns the same depth
   /// for every tile type and architecture.
   virtual uint32_t getDmaTaskQueueDepth() const = 0;
@@ -1005,9 +1006,9 @@ public:
   // Task_Queue_Size, bits 22:20 of the DMA_{MM2S,S2MM}_Status_N register.
   uint32_t getDmaTaskQueueSizeMask() const override { return 0x7u << 20; }
   // Task_Queue_Size, Channel_Running (bit 19) and the four Stalled_* bits
-  // (5:2): what aie-rt's _XAieMl_DmaWaitForDone polls clear. aie-rt's pending
-  // count adds one to Task_Queue_Size for Channel_Running or a stall, which is
-  // why the field alone does not cover the running task.
+  // (5:2): what aie-codegen's _XAieMl_DmaWaitForDone polls clear. aie-codegen's
+  // pending count adds one to Task_Queue_Size for Channel_Running or a stall,
+  // which is why the field alone does not cover the running task.
   uint32_t getDmaChannelIdleMask() const override {
     return getDmaTaskQueueSizeMask() | (1u << 19) | 0x3Cu;
   }

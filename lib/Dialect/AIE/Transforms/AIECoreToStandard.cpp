@@ -199,6 +199,39 @@ static void outlineOps(DeviceOp device) {
     op->moveBefore(device);
 }
 
+// The outlined core function must not use values of the device, which is
+// erased. Give the core its own copy of each outside constant it uses and
+// diagnose any other outside value.
+static LogicalResult sinkOutsideValuesIntoCore(CoreOp core) {
+  Region &body = core.getBody();
+  OpBuilder builder = OpBuilder::atBlockBegin(&body.front());
+  DenseMap<Value, Value> copies;
+  WalkResult result = body.walk([&](Operation *op) {
+    for (OpOperand &operand : op->getOpOperands()) {
+      Value value = operand.get();
+      if (body.isAncestor(value.getParentRegion()))
+        continue;
+      Operation *def = value.getDefiningOp();
+      if (!def || !def->hasTrait<OpTrait::ConstantLike>()) {
+        InFlightDiagnostic diag =
+            op->emitOpError("uses a value defined outside its aie.core, "
+                            "which cannot be outlined");
+        diag.attachNote(value.getLoc()) << "value defined here";
+        return WalkResult::interrupt();
+      }
+      Value &copy = copies[value];
+      if (!copy) {
+        Operation *clone = builder.clone(*def);
+        builder.setInsertionPointAfter(clone);
+        copy = clone->getResult(cast<OpResult>(value).getResultNumber());
+      }
+      operand.set(copy);
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
 namespace {
 template <typename MyAIEOp>
 struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
@@ -847,6 +880,17 @@ struct AIECoreToStandardPass
     patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1);
     if (failed(applyPartialConversion(deviceOp, target, std::move(patterns))))
       return signalPassFailure();
+
+    // Unselected cores are erased, not outlined.
+    int col = static_cast<int>(tileCol);
+    int row = static_cast<int>(tileRow);
+    for (CoreOp core : deviceOp.getOps<CoreOp>()) {
+      if ((row != core.rowIndex() && row != -1) ||
+          (col != core.colIndex() && col != -1))
+        continue;
+      if (failed(sinkOutsideValuesIntoCore(core)))
+        return signalPassFailure();
+    }
 
     RewritePatternSet outlinePatterns(&getContext());
     outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,

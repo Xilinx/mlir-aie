@@ -100,15 +100,61 @@ func.func @mulf_32_inexact_constant(%a: vector<32xbf16>) -> vector<32xf32> {
 
 // -----
 
-// A multiply with bf16 inputs feeding an add is lowered on its own.
+// A multiply with bf16 inputs feeding an add, both allowing contraction: on
+// AIE2P one MAC, on AIE2 the multiply on its own.
 // CHECK-LABEL: func @mulf_32_into_add
-// AIE2P: aievec.mul_elem {{.*}} : vector<32xbf16>, vector<32xbf16>, vector<32xf32>
+// AIE2P: aievec.mac_elem {{.*}} : vector<32xbf16>, vector<32xbf16>, vector<32xf32>
 // AIE2-COUNT-2: aievec.mul_elem {{.*}} : vector<16xbf16>, vector<16xbf16>, vector<16xf32>
 // CHECK-NOT: arith.mulf
 func.func @mulf_32_into_add(%a: vector<32xbf16>, %b: vector<32xbf16>, %c: vector<32xf32>) -> vector<32xf32> {
   %0 = arith.extf %a : vector<32xbf16> to vector<32xf32>
   %1 = arith.extf %b : vector<32xbf16> to vector<32xf32>
+  %2 = arith.mulf %0, %1 fastmath<contract> : vector<32xf32>
+  %3 = arith.addf %2, %c fastmath<contract> : vector<32xf32>
+  return %3 : vector<32xf32>
+}
+
+// -----
+
+// Without contraction allowed the two stay apart: the fused result can differ
+// where the product overflows or underflows.
+// CHECK-LABEL: func @mulf_32_into_add_strict
+// AIE2P: aievec.mul_elem {{.*}} : vector<32xbf16>, vector<32xbf16>, vector<32xf32>
+// AIE2P-NOT: aievec.mac_elem
+func.func @mulf_32_into_add_strict(%a: vector<32xbf16>, %b: vector<32xbf16>, %c: vector<32xf32>) -> vector<32xf32> {
+  %0 = arith.extf %a : vector<32xbf16> to vector<32xf32>
+  %1 = arith.extf %b : vector<32xbf16> to vector<32xf32>
   %2 = arith.mulf %0, %1 : vector<32xf32>
   %3 = arith.addf %2, %c : vector<32xf32>
   return %3 : vector<32xf32>
+}
+
+// -----
+
+// A multiply whose product has another use stays a multiply.
+// CHECK-LABEL: func @mulf_32_into_add_and_out
+// AIE2P: aievec.mul_elem {{.*}} : vector<32xbf16>, vector<32xbf16>, vector<32xf32>
+// AIE2P-NOT: aievec.mac_elem
+// CHECK-NOT: arith.mulf
+func.func @mulf_32_into_add_and_out(%a: vector<32xbf16>, %b: vector<32xbf16>, %c: vector<32xf32>) -> (vector<32xf32>, vector<32xf32>) {
+  %0 = arith.extf %a : vector<32xbf16> to vector<32xf32>
+  %1 = arith.extf %b : vector<32xbf16> to vector<32xf32>
+  %2 = arith.mulf %0, %1 fastmath<contract> : vector<32xf32>
+  %3 = arith.addf %2, %c fastmath<contract> : vector<32xf32>
+  return %2, %3 : vector<32xf32>, vector<32xf32>
+}
+
+// -----
+
+// A 64-lane multiply with bf16 inputs feeding an add stays a multiply and an
+// add: the FMA lowering takes 16 or 32 lanes.
+// CHECK-LABEL: func @mulf_64_into_add
+// AIE2P-NOT: vector.fma
+// AIE2P: aievec.mul_elem {{.*}} : vector<64xbf16>, vector<64xbf16>, vector<64xf32>
+func.func @mulf_64_into_add(%a: vector<64xbf16>, %b: vector<64xbf16>, %c: vector<64xf32>) -> vector<64xf32> {
+  %0 = arith.extf %a : vector<64xbf16> to vector<64xf32>
+  %1 = arith.extf %b : vector<64xbf16> to vector<64xf32>
+  %2 = arith.mulf %0, %1 fastmath<contract> : vector<64xf32>
+  %3 = arith.addf %2, %c fastmath<contract> : vector<64xf32>
+  return %3 : vector<64xf32>
 }

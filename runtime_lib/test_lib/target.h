@@ -9,7 +9,12 @@
 #define AIE_TARGET_H
 
 #include <list>
+// See add_aiert_headers for why prebuilt installs need this fallback.
+#if __has_include(<aie_codegen.h>)
+#include <aie_codegen.h>
+#else
 #include <xaiengine.h>
+#endif
 
 struct ext_mem_model_t {
   void *virtualAddr;

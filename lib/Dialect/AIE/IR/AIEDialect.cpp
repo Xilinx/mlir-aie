@@ -612,6 +612,19 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   return success();
 }
 
+LogicalResult
+LockAcquireAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                        int32_t column, int32_t row, int32_t lock_id,
+                        LockAction action, int32_t value) {
+  if (column < 0 || row < 0 || lock_id < 0)
+    return emitError() << "lock column, row, and ID must be non-negative";
+  if (action != LockAction::Acquire &&
+      action != LockAction::AcquireGreaterEqual)
+    return emitError() << "expected Acquire or AcquireGreaterEqual, got "
+                       << stringifyLockAction(action);
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ObjectFifoTransportAttr
 //===----------------------------------------------------------------------===//
@@ -4650,6 +4663,26 @@ LogicalResult CoreOp::verify() {
   // Where the stack sits. A pin the allocator could never honor is a user
   // constraint, so it is rejected here rather than at placement.
   const auto &targetModel = getTargetModel(*this);
+  if (auto summary = getLockAcquiresAttr()) {
+    for (LockAcquireAttr acquire : summary.getAcquires()) {
+      int32_t column = acquire.getColumn();
+      int32_t row = acquire.getRow();
+      if (column >= targetModel.columns() || row >= targetModel.rows())
+        return emitOpError(
+                   "lock_acquires references a tile outside the device: ")
+               << "(" << column << ", " << row << ")";
+      if (static_cast<uint32_t>(acquire.getLockId()) >=
+          targetModel.getNumLocks(column, row))
+        return emitOpError("lock_acquires references an invalid lock ID ")
+               << acquire.getLockId() << " on tile (" << column << ", " << row
+               << ")";
+      if (acquire.getAction() == LockAction::AcquireGreaterEqual &&
+          !targetModel.hasProperty(AIETargetModel::UsesSemaphoreLocks))
+        return emitOpError(
+            "lock_acquires uses AcquireGreaterEqual on a target without "
+            "semaphore locks");
+    }
+  }
   int64_t localMem = targetModel.getLocalMemorySize();
   auto validAlignment = [localMem](int64_t alignment) {
     return alignment > 0 && alignment <= localMem &&
@@ -5191,7 +5224,7 @@ xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext) {
   return success();
 }
 
-// BD iteration bounds. Values are true/element (aie-rt encodes value-1);
+// BD iteration bounds. Values are true/element (aie-codegen encodes value-1);
 // size <= 1 disables iteration (stride ignored). The stride is checked in
 // whole 32-bit words against the tile-specific step field. aiex.npu.writebd
 // checks the same tile-correct step limit (getDmaBdStepBits) inline in its own
@@ -7098,6 +7131,21 @@ LogicalResult ObjectFifoRearmBindingOp::verify() {
   for (Value lock : getLocks())
     if (!lock.getDefiningOp<LockOp>())
       return emitOpError("locks operands must be aie.lock values");
+  // The re-push starts each channel on its head BD, which must be in the
+  // channel's BD pool.
+  if (std::optional<ArrayRef<int32_t>> headBdIds = getHeadBdIds()) {
+    const auto &targetModel = getTargetModel(getOperation());
+    for (auto [tile, channel, bdId] :
+         llvm::zip(getChannelTiles(), getChannelIndices(), *headBdIds)) {
+      auto tileOp = tile.getDefiningOp<TileOp>();
+      if (bdId < 0 || !targetModel.isBdChannelAccessible(
+                          tileOp.getCol(), tileOp.getRow(), bdId, channel))
+        return emitOpError("head BD ")
+               << bdId << " is not accessible from channel " << channel
+               << " of tile (" << tileOp.getCol() << ", " << tileOp.getRow()
+               << ")";
+    }
+  }
   return success();
 }
 

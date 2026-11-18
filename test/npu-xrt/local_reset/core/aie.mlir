@@ -57,7 +57,7 @@ module {
       aiex.npu.dma_wait {symbol = @out0}
 
       // Core reset protocol on tile (0,2) CORE_CONTROL (0x32000 = 204800), driving
-      // each field with a masked write exactly as the aie-rt driver does:
+      // each field with a masked write exactly as the aie-codegen driver does:
       //   XAie_CoreReset   : reset bit 1 -> 1   (mask 0x2)
       //   XAie_CoreUnreset : reset bit 1 -> 0   (mask 0x2)
       //   XAie_CoreEnable  : ENABLE bit 0 -> 1  (mask 0x1)

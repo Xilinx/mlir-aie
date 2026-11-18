@@ -66,7 +66,7 @@ module {
       // not re-enable, by design assuming the core is still enabled. This core has
       // run to aie.end and is no longer enabled, so the op alone does not restart
       // it. Re-enable it with a masked write of the ENABLE bit (CORE_CONTROL bit 0,
-      // mask 0x1), mirroring aie-rt's XAie_CoreEnable (a MaskWrite32 of the enable
+      // mask 0x1), mirroring aie-codegen's XAie_CoreEnable (a MaskWrite32 of the enable
       // field). op + this write is the full XAie_CoreReset -> XAie_CoreUnreset ->
       // XAie_CoreEnable driver sequence, all masked so no other CORE_CONTROL field
       // is clobbered.

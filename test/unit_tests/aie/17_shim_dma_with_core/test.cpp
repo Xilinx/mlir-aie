@@ -16,9 +16,9 @@
 
 #include "memory_allocator.h"
 #include "test_library.h"
+#include <aie_codegen.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <xaiengine.h>
 
 #include "aie_inc.cpp"
 

@@ -24,7 +24,7 @@
 // NO-OP-PRINT-NOT: see current operation
 
 // A DMA channel's task queue holds only getDmaTaskQueueDepth() entries (4 on
-// AIE2, matching aie-rt's XAIE_DMA_MAX_QUEUE_SIZE). Pushing onto a full queue
+// AIE2, matching aie-codegen's XAIE_DMA_MAX_QUEUE_SIZE). Pushing onto a full queue
 // drops the push, so the transfer never runs and anything waiting on it hangs.
 // Unlike the TCT FIFO, over-production is not safe here.
 

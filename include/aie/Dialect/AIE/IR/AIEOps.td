@@ -439,7 +439,8 @@ def AIE_CoreOp
           // Start alignment for each bank reservation, indexed like its size.
           OptionalAttr<DenseI32ArrayAttr>:$measured_bank_alignments,
           // Enable the processor bus before starting this core.
-          UnitAttr:$processor_bus);
+          UnitAttr:$processor_bus,
+          OptionalAttr<CoreLockAcquiresAttr>:$lock_acquires);
   let summary = "Declare a core module";
   let description = [{
     This operation represents an AIEngine processor core belonging to a tile.
@@ -452,6 +453,13 @@ def AIE_CoreOp
     present in the core; in that case, the binary file linked dictates what
     will run in the core. The path specified should is relative to the MLIR
     file.
+
+    The optional `lock_acquires` attribute retains a core's acquire conditions
+    for teardown after compilation removes its body. It has type
+    `#aie.core_lock_acquires`. A complete empty summary declares no acquires;
+    an absent or incomplete summary leaves the acquire conditions unknown.
+    `aiecc` derives this summary from source cores. Precompiled core ELFs can
+    supply it explicitly.
 
     The `processor_bus` unit attribute requires the device configuration to
     enable this core's processor bus before starting the core. The bus provides
@@ -1822,9 +1830,9 @@ def AIE_LockOp
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
-      else {
-        std::optional<int> col = getTileLike().tryGetCol();
-        std::optional<int> row = getTileLike().tryGetRow();
+      else if (TileLike tile = getTileLike()) {
+        std::optional<int> col = tile.tryGetCol();
+        std::optional<int> row = tile.tryGetRow();
         if (col && row) {
           std::string nameWithoutDialect =
               getOperation()->getName().stripDialect().str();
@@ -2035,9 +2043,9 @@ def AIE_BufferOp
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
-      else {
-        std::optional<int> col = getTileLike().tryGetCol();
-        std::optional<int> row = getTileLike().tryGetRow();
+      else if (TileLike tile = getTileLike()) {
+        std::optional<int> col = tile.tryGetCol();
+        std::optional<int> row = tile.tryGetRow();
         if (col && row) {
           std::string nameWithoutDialect =
               getOperation()->getName().stripDialect().str();

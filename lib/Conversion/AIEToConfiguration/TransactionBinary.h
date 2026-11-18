@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 //
 // Private transaction parser shared by configuration conversion and
-// core-issued DMA lowering. The latter records aie-rt calls as transactions
-// and reuses this parser to extract the register writes executed by the core.
+// core-issued DMA lowering. The latter records aie-codegen calls as
+// transactions and reuses this parser to extract the register writes executed
+// by the core.
 
 #ifndef AIE_CONVERSION_AIETOCONFIGURATION_TRANSACTIONBINARY_H
 #define AIE_CONVERSION_AIETOCONFIGURATION_TRANSACTIONBINARY_H
@@ -19,16 +20,14 @@
 #include <vector>
 
 extern "C" {
-#include "xaiengine/xaiegbl.h"
-// xaie_txn.h needs the types and declarations from xaiegbl.h first.
-#include "xaiengine/xaie_txn.h"
+#include "aie_codegen.h"
 }
 
 namespace xilinx::AIE {
 
-// A TransactionBinaryOperation encapsulates an aie-rt XAie_TxnCmd struct and
-// any additional metadata needed for custom operations that do not map cleanly
-// onto the core command fields.
+// A TransactionBinaryOperation encapsulates an aie-codegen XAie_TxnCmd struct
+// and any additional metadata needed for custom operations that do not map
+// cleanly onto the core command fields.
 struct TransactionBinaryOperation {
   struct XAie_TxnCmd cmd = {};
 

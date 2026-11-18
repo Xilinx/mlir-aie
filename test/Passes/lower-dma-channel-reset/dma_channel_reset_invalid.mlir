@@ -25,8 +25,8 @@ module {
 
 // A shim NOC tile is rejected: only core and mem tiles have a per-channel DMA
 // reset bit. On the shim NOC DMA control register bit 1 is PAUSE_MEM, not RESET
-// (aie-rt's Aie2PShimDmaChProp sets Reset.Mask = 0), so there is nothing valid
-// to lower to. This matches aie-rt's XAie_DmaChannelReset, which errors on
+// (aie-codegen's Aie2PShimDmaChProp sets Reset.Mask = 0), so there is nothing valid
+// to lower to. This matches aie-codegen's XAie_DmaChannelReset, which errors on
 // SHIMNOC/SHIMPL tiles.
 module {
   aie.device(npu2) {

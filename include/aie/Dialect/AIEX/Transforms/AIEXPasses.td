@@ -759,6 +759,11 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     sequence holding that kind's preload, which the host runs before the
     others.
 
+    The pass completes supported in-flight core lock acquires before
+    reconfiguration. It warns and omits lock draining for unknown acquires,
+    incompatible values, or multiple possible core waiters on one lock.
+    These cases require explicit PDI resets.
+
     A sequence whose first and last reset (or overlay load) name the same PDI
     gets one more of the other, so the next dispatch's first load is not skipped
     as cached. Under teardown no sequence needs this.

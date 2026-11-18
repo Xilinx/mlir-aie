@@ -282,6 +282,12 @@ LogicalResult AIEX::CertWrite32DOp::verify() {
   return success();
 }
 
+LogicalResult AIEX::CertApplyOffset57Op::verify() {
+  if (getNumEntries() == 0)
+    return emitOpError("num_entries must be at least 1");
+  return success();
+}
+
 LogicalResult AIEX::UseTokenOp::verify() {
   auto *parentOp = (*this)->getParentOp();
   if (isa<func::FuncOp>(parentOp) || isa<AIE::CoreOp>(parentOp) ||
@@ -866,6 +872,12 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId >= numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
+  if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
+      bdId && !targetModel.isBdChannelAccessible(getColumn(), getRow(), *bdId,
+                                                 getChannel()))
+    return emitOpError("BD ID ") << *bdId << " is not accessible from channel ("
+                                 << AIE::stringifyDMAChannelDir(getDirection())
+                                 << ", " << getChannel() << ")";
   uint32_t maxRepeat = targetModel.getMaxRepeatCount();
   if (std::optional<uint64_t> repeatCount =
           getConstantInt64Operand(getRepeatCount());
@@ -2219,9 +2231,9 @@ LogicalResult AIEX::DmaChannelResetOp::verify() {
   int col = tile.getCol();
   int row = tile.getRow();
   // Only core and mem tiles have a per-channel DMA reset bit. The shim NOC DMA
-  // control register has no reset field (aie-rt's Aie2PShimDmaChProp sets
+  // control register has no reset field (aie-codegen's Aie2PShimDmaChProp sets
   // Reset.Mask = 0); bit 1 there is PAUSE_MEM, not RESET. Rejecting shim keeps
-  // the op honest about what it can lower, matching aie-rt's own
+  // the op honest about what it can lower, matching aie-codegen's own
   // XAie_DmaChannelReset, which errors on SHIMNOC/SHIMPL tiles.
   if (!targetModel.isCoreTile(col, row) && !targetModel.isMemTile(col, row))
     return emitOpError() << "tile (" << col << ", " << row
@@ -2294,8 +2306,8 @@ LogicalResult AIEX::CoreResetOp::verify() {
 
   // Only core tiles have a CORE_CONTROL register with a reset bit. Mem and shim
   // tiles have no compute core, so there is nothing valid to lower to. This
-  // matches aie-rt's XAie_CoreReset, which errors on any tile that is not an
-  // AIE (core) tile.
+  // matches aie-codegen's XAie_CoreReset, which errors on any tile that is not
+  // an AIE (core) tile.
   if (!targetModel.isCoreTile(col, row))
     return emitOpError() << "tile (" << col << ", " << row
                          << ") has no core to reset (only core tiles have a "

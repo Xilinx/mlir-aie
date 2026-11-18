@@ -86,6 +86,36 @@ def LockBlocking : I32EnumAttr<"LockBlocking", "lock operation is blocking",
   let cppNamespace = "xilinx::AIE";
 }
 
+def LockAcquireAttr : AttrDef<AIE_Dialect, "LockAcquire", []> {
+  let mnemonic = "lock_acquire";
+  let summary = "An acquire condition on a physical lock";
+  let description = [{
+    Identifies a lock by its owner tile and lock ID. The action uses the same
+    `Acquire` and `AcquireGreaterEqual` cases as `aie.use_lock`. The value
+    records the requested count; teardown checks whether a writable counter
+    value can satisfy it.
+  }];
+  let parameters = (ins "int32_t":$column, "int32_t":$row, "int32_t":$lock_id,
+      EnumParameter<LockAction>:$action, "int32_t":$value);
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
+def CoreLockAcquiresAttr : AttrDef<AIE_Dialect, "CoreLockAcquires", []> {
+  let mnemonic = "core_lock_acquires";
+  let summary = "The known acquire conditions of a core";
+  let description = [{
+    Retains acquire conditions after core compilation removes `aie.use_lock`
+    operations. `complete = true` declares that the list covers every acquire
+    the core can issue. An empty complete list declares no acquires.
+    `complete = false` records that some acquires are unknown.
+  }];
+  let parameters = (ins "bool":$complete,
+      OptionalArrayRefParameter<"LockAcquireAttr">:$acquires);
+  let assemblyFormat = "`<` `complete` `=` $complete `,` `acquires` `=` "
+                       "`[` (`]`) : ($acquires^ `]`)? `>`";
+}
+
 def AIEArch
     : I32EnumAttr<"AIEArch", "AIE Architecture",
                   [I32EnumAttrCase<"AIE1", 1>, I32EnumAttrCase<"AIE2", 2>,

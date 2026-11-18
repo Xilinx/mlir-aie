@@ -53,7 +53,7 @@ module {
 
       // Flush the queue: pulse the Reset bit (bit 1, mask 0x2) of DMA_MM2S_0_Ctrl
       // (tile-local 0x1DE10 = 122384) with masked writes -- assert then deassert --
-      // as aie-rt's XAie_DmaChannelReset. Masking preserves the other CTRL fields.
+      // as aie-codegen's XAie_DmaChannelReset. Masking preserves the other CTRL fields.
       %cc = arith.constant 122384 : i32
       %reset = arith.constant 2 : i32
       %unreset = arith.constant 0 : i32
@@ -61,12 +61,12 @@ module {
       aiex.npu.maskwrite32(%cc, %reset, %rst_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
       aiex.npu.maskwrite32(%cc, %unreset, %rst_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
 
-      // Enqueue the good BD (1) on the flushed queue (aie-rt
+      // Enqueue the good BD (1) on the flushed queue (aie-codegen
       // XAie_DmaChannelPushBdToQueue -- DMA_MM2S_0_Start_Queue, 0x1DE14).
       %bd_good = arith.constant 1 : i32
       aiex.npu.push_queue (0, 2, MM2S:0) bd_id %bd_good repeat %rc {issue_token = true} : i32, i32
 
-      // Arm cons so the good BD runs (aie-rt XAie_LockSetValue via aiex.set_lock).
+      // Arm cons so the good BD runs (aie-codegen XAie_LockSetValue via aiex.set_lock).
       %cons_v1 = arith.constant 1 : i32
       aiex.set_lock(%cons, %cons_v1)
 

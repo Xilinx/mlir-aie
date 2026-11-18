@@ -14,12 +14,15 @@ def AIEX_CertRegisterAttr
     : ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<23>]>;
 
 def AIE_CertUcDmaChainOp
-    : AIEX_Op<"cert.uc_dma_chain", [AIESymbol, SingleBlockImplicitTerminator<
-                                                   "AIE::EndOp">]> {
+    : AIEX_Op<
+          "cert.uc_dma_chain", [HasParent<"AIE::DeviceOp">, AIESymbol,
+                                SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "uC DMA Chain operation";
   let description = [{
     This operation defines a chain of uC DMA buffer descriptors. It contains a
-    single region where the buffer descriptors can be specified.
+    single region where the buffer descriptors can be specified. A chain is
+    defined at device level; uC DMA operations in any controller group refer
+    to it by name.
 
     Example:
     ```
@@ -262,11 +265,17 @@ def AIE_CertApplyOffset57Op
   let summary = "Apply offset 57 operation";
   let description = [{
     This operation adds a 57-bit offset to Shim DMA BD base address fields.
-    The offset is loaded from the 32-bit registers arg[offset] and arg[offset+1]
-    from the current argument list.
-    'symbol' - A symbol pointing to the data to be patched
-    'num_entries' - the number of Shim DMA BD entries to patch
-    'offset' - index into the argument list to the start of offset data
+    The offset is the 64-bit argument at index `offset` in the current argument
+    list.
+
+    - `symbol`: a symbol pointing to the data to be patched.
+    - `num_entries`: the number of Shim DMA BD entries to patch, at least 1.
+      When there is more than one entry the sets of BDs must be contiguous.
+    - `offset`: index into the argument list of the offset. 65535 instead
+      patches relative to the base of the control code.
+
+    Both are unsigned 16-bit fields of the encoded instruction, so they print
+    as written (65535, not -1) and negative spellings are rejected.
 
     Example:
     ```
@@ -275,11 +284,12 @@ def AIE_CertApplyOffset57Op
       cert.apply_offset_57(@bd_table, 1, 2)
     ```
   }];
-  let arguments = (ins FlatSymbolRefAttr:$symbol, I16Attr:$num_entries,
-      I16Attr:$offset);
+  let arguments = (ins FlatSymbolRefAttr:$symbol, UI16Attr:$num_entries,
+      UI16Attr:$offset);
   let assemblyFormat = [{
     `(` $symbol `,` $num_entries `,` $offset `)` attr-dict
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_CertWaitTCTSOp : AIEX_Op<"cert.wait_tcts", [HasParent<"CertJobOp">]> {
@@ -505,9 +515,8 @@ def AIE_CertNopOp : AIEX_Op<"cert.nop", []> {
 }
 
 def AIE_CertSectionOp
-    : AIEX_Op<"cert.section",
-              [AIESymbol, ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp"]>,
-               SingleBlockImplicitTerminator<"AIE::EndOp">]> {
+    : AIEX_Op<"cert.section", [HasParent<"AIE::DeviceOp">, AIESymbol,
+                               SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Named control code section";
   let description = [{
     This operation defines a named section of control code that can be referenced

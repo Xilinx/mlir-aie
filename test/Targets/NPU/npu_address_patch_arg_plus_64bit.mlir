@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// arg_plus is a 64-bit field on the wire: aie-rt's patch_op_t declares
+// arg_plus is a 64-bit field on the wire: aie-codegen's patch_op_t declares
 // `u64 argplus`, and the 12-word DDR_PATCH op carries it in words 10 AND 11,
 // low half first, exactly as regaddr and argidx occupy 6-7 and 8-9. These
 // checks pin both halves.

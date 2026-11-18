@@ -14,19 +14,7 @@
 #include "llvm/ADT/SmallSet.h"
 
 extern "C" {
-#include "xaiengine/xaie_core.h"
-#include "xaiengine/xaie_dma.h"
-#include "xaiengine/xaie_elfloader.h"
-#include "xaiengine/xaie_interrupt.h"
-#include "xaiengine/xaie_locks.h"
-#include "xaiengine/xaie_mem.h"
-#include "xaiengine/xaie_perfcnt.h"
-#include "xaiengine/xaie_plif.h"
-#include "xaiengine/xaie_reset.h"
-#include "xaiengine/xaie_ss.h"
-#include "xaiengine/xaie_txn.h"
-#include "xaiengine/xaiegbl.h"
-#include "xaiengine/xaiegbl_defs.h"
+#include "aie_codegen.h"
 }
 
 #include <filesystem>
@@ -215,8 +203,8 @@ struct xilinx::AIE::AIERTControl::AIERtImpl {
 
 // Walk DevInst->TxnList to find the active XAie_TxnInst (single-threaded
 // compilation: at most one). Returns null if no transaction is being
-// recorded. The XAie_TxnInst struct and TxnList layout are part of aie-rt's
-// public xaiegbl.h, so this only depends on the public header.
+// recorded. The XAie_TxnInst struct and TxnList layout are part of
+// aie-codegen's public xaiegbl.h, so this only depends on the public header.
 static XAie_TxnInst *getActiveTxnInst(XAie_DevInst &devInst) {
   XAie_List *node = devInst.TxnList.Next;
   if (!node)
@@ -264,7 +252,7 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     devGen = XAIE_DEV_GEN_AIE;
     break;
   case AIEArch::AIE2:
-    // FIXME: What if we don't have an IPU?  aie-rt
+    // FIXME: What if we don't have an IPU?  aie-codegen
     // models non-IPU devices differently.
     devGen = XAIE_DEV_GEN_AIE2IPU;
     break;
@@ -273,10 +261,11 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     break;
   case AIEArch::AIE2ps:
     // AIE2PS configures the array through a CERT ELF instead of CDO or an
-    // xclbin (see AIE2PSTargetModel), so it has no aie-rt device generation.
-    // Listed here so that a new AIEArch still raises -Wswitch.
-    llvm::report_fatal_error("aie-rt configuration is not supported for the "
-                             "AIE2PS architecture");
+    // xclbin (see AIE2PSTargetModel), so it has no aie-codegen device
+    // generation. Listed here so that a new AIEArch still raises -Wswitch.
+    llvm::report_fatal_error(
+        "aie-codegen configuration is not supported for the "
+        "AIE2PS architecture");
   }
   aiert->configPtr = XAie_Config{
       /*AieGen*/ devGen,
@@ -293,7 +282,8 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
       /*AieTileNumRows*/
       static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
       /*PartProp*/ {},
-      /*Backend*/ XAIE_IO_BACKEND_CDO};
+      /*ShimTileNumRowsNorth*/ 0,
+      /*ShimTileNumRowsSouth*/ 0};
   XAie_InstDeclare(_devInst, &aiert->configPtr);
   aiert->devInst = _devInst;
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &aiert->devInst,
@@ -1277,12 +1267,12 @@ void xilinx::AIE::AIERTControl::startTransaction() {
 }
 
 // Project the per-XAie_TxnCmd locations in `cmdLocs` onto the operations
-// aie-rt's serializer actually emits, mirroring _XAie_TxnExportSerialized's
-// command-to-operation mapping. That mapping is not 1:1: the serializer
-// buffers block writes and collapses a run of address-contiguous
-// XAIE_IO_BLOCKWRITE commands into a single block-write operation, holds that
-// pending run across intervening DDR-patch commands (so a patch is emitted
-// *before* the block write it follows in CmdBuf), and drops
+// aie-codegen's serializer actually emits, mirroring
+// _XAie_TxnExportSerialized's command-to-operation mapping. That mapping is not
+// 1:1: the serializer buffers block writes and collapses a run of
+// address-contiguous XAIE_IO_BLOCKWRITE commands into a single block-write
+// operation, holds that pending run across intervening DDR-patch commands (so a
+// patch is emitted *before* the block write it follows in CmdBuf), and drops
 // XAIE_IO_LOAD_PM_END_INTERNAL entirely. Everything else emits one operation
 // in command order.
 static std::vector<mlir::Location>

@@ -38,7 +38,7 @@ IS_WINDOWS = (os.name == "nt") or sys.platform.startswith("win")
 IS_WSL = bool(os.environ.get("WSL_DISTRO_NAME"))
 WHEEL_ASSET_INDEX = "https://github.com/Xilinx/mlir-aie/releases/expanded_assets"
 # Tagged checkouts use matching release assets; development checkouts use this channel.
-ROLLING_WHEEL_CHANNEL = "latest-wheels-4"
+ROLLING_WHEEL_CHANNEL = "latest-wheels-5"
 
 
 # --------------------------------------------------------------------------------------

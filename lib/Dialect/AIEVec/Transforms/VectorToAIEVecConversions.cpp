@@ -257,9 +257,35 @@ static std::optional<Value> getSourceOfWideningOp(Value src) {
   return std::optional<Value>();
 }
 
-// Whether the f32 vector `src` holds bf16 values: it is widened from bf16, or
-// a constant that is exact in bf16.
+// The bf16 scalar that the f32 vector `src` splats, where `src` is a splat
+// of a scalar widened from bf16, possibly already lowered to aievec
+// broadcasts; else null.
+static Value getSplatOfWidenedBF16(Value src) {
+  src = skipShapeCastRoundTrip(src);
+  if (auto concatOp = src.getDefiningOp<aievec::ConcatOp>()) {
+    auto parts = concatOp.getSources();
+    if (parts.empty() || !llvm::all_equal(parts))
+      return {};
+    src = parts.front();
+  }
+  Value scalar;
+  if (auto bcastOp = src.getDefiningOp<vector::BroadcastOp>())
+    scalar = bcastOp.getSource();
+  else if (auto bcastOp = src.getDefiningOp<aievec::BroadcastScalarOp>())
+    scalar = bcastOp.getSource();
+  if (!scalar || isa<VectorType>(scalar.getType()))
+    return {};
+  if (auto extFOp = scalar.getDefiningOp<arith::ExtFOp>())
+    if (extFOp.getIn().getType().isBF16())
+      return extFOp.getIn();
+  return {};
+}
+
+// Whether the f32 vector `src` holds bf16 values: it is widened from bf16, a
+// splat of a scalar widened from bf16, or a constant that is exact in bf16.
 static bool holdsBF16(Value src) {
+  if (getSplatOfWidenedBF16(src))
+    return true;
   if (auto wideSrc = getSourceOfWideningOp(src))
     return getElementTypeOrSelf(wideSrc->getType()).isBF16();
   DenseFPElementsAttr dense;
@@ -276,10 +302,12 @@ static bool holdsBF16(Value src) {
 // narrowed where it is used rather than folded to a bf16 constant, so it does
 // not occupy a vector register outside the code that uses it.
 static Value getBF16Source(OpBuilder &builder, Location loc, Value src) {
-  if (auto wideSrc = getSourceOfWideningOp(src))
-    return *wideSrc;
   auto bf16Type = VectorType::get(cast<VectorType>(src.getType()).getShape(),
                                   builder.getBF16Type());
+  if (Value scalar = getSplatOfWidenedBF16(src))
+    return vector::BroadcastOp::create(builder, loc, bf16Type, scalar);
+  if (auto wideSrc = getSourceOfWideningOp(src))
+    return *wideSrc;
   auto shift =
       arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0));
   return aievec::SRSOp::create(builder, loc, bf16Type, src, shift);
@@ -3864,12 +3892,27 @@ using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
 //
 // Lane width 16 or 32 maps directly to the native AIE2P 256/1024-bit
 // accumulator. 64 splits into two 32-wide halves and concats the results.
-struct LowerVectorSIToFPI16BF16AIE2pPattern
-    : OpConversionPattern<arith::SIToFPOp> {
-  using OpConversionPattern<arith::SIToFPOp>::OpConversionPattern;
+//
+// arith.uitofp takes u ^ 0x8000, which as a signed value is u - 32768,
+// through the same sequence, and subtracts a magic constant 32768 smaller,
+// 2^23 + 32768, as an f32 vector (bf16 has no such value).
+template <typename SrcOpTy>
+struct LowerVectorIntToFPI16BF16AIE2pPattern : OpConversionPattern<SrcOpTy> {
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+  static constexpr bool isSigned = std::is_same_v<SrcOpTy, arith::SIToFPOp>;
 
-  static Value emitMagicSiToFp(ConversionPatternRewriter &rewriter,
-                               Location loc, Value srcI16, unsigned lanes) {
+  // `accumulatorAdd`: add the magic constant on the accumulator
+  // (aievec.add_elem, AIE2P only) rather than as an arith.addi.
+  LowerVectorIntToFPI16BF16AIE2pPattern(MLIRContext *context,
+                                        bool accumulatorAdd,
+                                        PatternBenefit benefit)
+      : OpConversionPattern<SrcOpTy>(context, benefit),
+        accumulatorAdd(accumulatorAdd) {}
+
+  bool accumulatorAdd;
+
+  Value emitMagicSiToFp(ConversionPatternRewriter &rewriter, Location loc,
+                        Value srcI16, unsigned lanes) const {
     Type i16Ty = rewriter.getI16Type();
     Type i32Ty = rewriter.getI32Type();
     Type bf16Ty = rewriter.getBF16Type();
@@ -3889,12 +3932,29 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
         aievec::UPSOp::create(rewriter, loc, vecF32, magicBF16Vec);
     Value magicAccI = aievec::CastOp::create(rewriter, loc, vecI32, magicAccF,
                                              /*isResAcc=*/true);
+    if (!isSigned) {
+      Value flip = arith::ConstantOp::create(
+          rewriter, loc, vecI16,
+          DenseElementsAttr::get(vecI16, rewriter.getI16IntegerAttr(
+                                             static_cast<int16_t>(0x8000))));
+      srcI16 = arith::XOrIOp::create(rewriter, loc, srcI16, flip);
+    }
     Value vAccI = aievec::UPSOp::create(rewriter, loc, vecI32, srcI16);
-    Value vSumI = arith::AddIOp::create(rewriter, loc, vAccI, magicAccI);
+    Value vSumI =
+        accumulatorAdd
+            ? aievec::AddElemOp::create(rewriter, loc, vecI32, vAccI, magicAccI)
+                  .getResult()
+            : arith::AddIOp::create(rewriter, loc, vAccI, magicAccI)
+                  .getResult();
     Value vSumAccF = aievec::CastOp::create(rewriter, loc, vecF32, vSumI,
                                             /*isResAcc=*/true);
+    Value subtrahend = magicAccF;
+    if (!isSigned)
+      subtrahend = arith::ConstantOp::create(
+          rewriter, loc, vecF32,
+          DenseElementsAttr::get(vecF32, rewriter.getF32FloatAttr(8421376.0f)));
     Value vDiffAccF =
-        aievec::SubElemOp::create(rewriter, loc, vecF32, vSumAccF, magicAccF);
+        aievec::SubElemOp::create(rewriter, loc, vecF32, vSumAccF, subtrahend);
     Value shiftCst =
         arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
     return aievec::SRSOp::create(rewriter, loc, vecBF16, vDiffAccF, shiftCst)
@@ -3902,7 +3962,7 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
   }
 
   LogicalResult
-  matchAndRewrite(arith::SIToFPOp op, OpAdaptor adaptor,
+  matchAndRewrite(SrcOpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcTy = dyn_cast<VectorType>(adaptor.getIn().getType());
     auto dstTy = dyn_cast<VectorType>(op.getType());
@@ -3947,6 +4007,10 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
     return success();
   }
 };
+using LowerVectorSIToFPI16BF16AIE2pPattern =
+    LowerVectorIntToFPI16BF16AIE2pPattern<arith::SIToFPOp>;
+using LowerVectorUIToFPI16BF16AIE2pPattern =
+    LowerVectorIntToFPI16BF16AIE2pPattern<arith::UIToFPOp>;
 
 // Match `arith.extui (vector.bitcast %x : vector<Mxi8> to vector<2Mxi4>)
 // to vector<2Mxi8>` and replace with `aievec.unpack %x` directly on the
@@ -5289,8 +5353,8 @@ populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns) {
   // bf16. Higher benefit than the generic per-lane scalarise pattern; runs
   // on AIE2 too but only fires when the legality predicate marks the op
   // illegal (currently AIE2P only).
-  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern>(patterns.getContext(),
-                                                     /*benefit=*/3);
+  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern>(
+      patterns.getContext(), /*accumulatorAdd=*/false, /*benefit=*/3);
   // clang-format on
 }
 
@@ -5800,6 +5864,9 @@ static void populateAIEVecV2PConversionPatterns(
   patterns.add<ConvertVectorFMAOpToAIEVecFMAElemOpAIE2PPattern,
                ConvertMulFToAIEVecMulElemOpAIE2PPattern>(patterns.getContext(),
                                                          /*benefit=*/2);
+  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern,
+               LowerVectorUIToFPI16BF16AIE2pPattern>(
+      patterns.getContext(), /*accumulatorAdd=*/true, /*benefit=*/4);
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
   populateAIE2PShufflePlannerPatterns(patterns, std::move(planner));

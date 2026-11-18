@@ -138,8 +138,8 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(
       }
 
       // Was hardcoded to 0x20000 -- eight times the real 0x4000 -- which let
-      // an overflowing core link cleanly and fail much later in aie-rt's ELF
-      // loader instead of here, at the linker, naming the section.
+      // an overflowing core link cleanly and fail much later in aie-codegen's
+      // ELF loader instead of here, at the linker, naming the section.
       int origin =
           targetModel.getMemInternalBaseAddress(srcCoord) + dataRun.start;
       int length = dataRun.size;

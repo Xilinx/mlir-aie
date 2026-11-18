@@ -7,10 +7,10 @@
 //
 // Lower the configuration a core makes onto the accesses it makes itself.
 //
-// The writes that push a task are not spelled out here. aie-rt is asked to
+// The writes that push a task are not spelled out here. aie-codegen is asked to
 // push inside a transaction, and the transaction it records is read back and
 // replayed as stores the core makes over its processor bus. A restatement of
-// the register map would be one more copy to keep in step with aie-rt.
+// the register map would be one more copy to keep in step with aie-codegen.
 
 #include "TransactionBinary.h"
 
@@ -56,7 +56,7 @@ static std::optional<TileAccessIntrinsics> tileAccessIntrinsics(AIEArch arch) {
   }
 }
 
-/// The writes aie-rt makes to push `op`'s task, as (tile offset, value).
+/// The writes aie-codegen makes to push `op`'s task, as (tile offset, value).
 static LogicalResult
 pushWrites(DmaPushQueueOp op, int col, int row,
            const AIETargetModel &targetModel,
@@ -66,7 +66,7 @@ pushWrites(DmaPushQueueOp op, int col, int row,
                           "--aie-assign-bd-ids first");
   AIERTControl ctl(targetModel);
   if (failed(ctl.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
-    return op.emitOpError("could not start aie-rt to collect its writes");
+    return op.emitOpError("could not start aie-codegen to collect its writes");
   ctl.startTransaction();
   // Only the task queue. Rewriting the channel's control register while the
   // channel runs loses the state it keeps between packets, and the channel
@@ -80,12 +80,12 @@ pushWrites(DmaPushQueueOp op, int col, int row,
   std::vector<uint8_t> txn = ctl.exportSerializedTransaction();
   std::vector<TransactionBinaryOperation> ops;
   if (!parseTransactionBinary(txn, ops))
-    return op.emitOpError("could not read back what aie-rt recorded");
+    return op.emitOpError("could not read back what aie-codegen recorded");
 
   // Only this tile's registers are the core's to write, and only a plain
-  // store is. Anything else means aie-rt pushes a task in a way this lowering
-  // does not carry, and silently dropping it would leave the channel without
-  // the task.
+  // store is. Anything else means aie-codegen pushes a task in a way this
+  // lowering does not carry, and silently dropping it would leave the channel
+  // without the task.
   uint64_t tileBase =
       (static_cast<uint64_t>(col) << targetModel.getColumnShift()) |
       (static_cast<uint64_t>(row) << targetModel.getRowShift());
@@ -104,7 +104,7 @@ pushWrites(DmaPushQueueOp op, int col, int row,
     writes.emplace_back(addr - tileBase, txnOp.cmd.Value);
   }
   if (writes.empty())
-    return op.emitOpError("aie-rt recorded no writes for this push");
+    return op.emitOpError("aie-codegen recorded no writes for this push");
   return success();
 }
 
