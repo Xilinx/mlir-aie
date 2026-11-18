@@ -17,6 +17,7 @@ extern "C" {
 #include "aie_codegen.h"
 }
 
+#include <algorithm>
 #include <filesystem>
 
 #define AIERC_STR(x) x, #x
@@ -520,7 +521,10 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
   if (padDims) {
     llvm::SmallVector<XAie_PadDesc, 4> padDescs(padDims->size());
     XAie_DmaPadTensor dmaPadTensor = {};
-    dmaPadTensor.NumDim = padDescs.size();
+    // The verifier leaves the dims past the tile's pad fields unpadded.
+    dmaPadTensor.NumDim =
+        std::min(padDescs.size(),
+                 targetModel.getDmaBdLayout(col, row)->padFields().size());
     dmaPadTensor.PadDesc = padDescs.data();
     // libxaie requires stride in multiples of 32b
     double elementWidthIn32bWords =

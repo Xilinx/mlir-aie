@@ -14,6 +14,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 
 #include <iostream>
@@ -83,6 +84,20 @@ struct DmaBdLayout {
   DmaBdField burstLength, axcache;
   DmaBdField nextBd, useNextBd, validBd;
   DmaBdField lockRelValue, lockRelId, lockAcqEnable, lockAcqValue, lockAcqId;
+
+  /// The (before, after) zero-padding fields, innermost dimension first.
+  llvm::SmallVector<std::pair<DmaBdField, DmaBdField>, 3> padFields() const {
+    llvm::SmallVector<std::pair<DmaBdField, DmaBdField>, 3> fields;
+    for (std::pair<DmaBdField, DmaBdField> field :
+         {std::pair(d0ZeroBefore, d0ZeroAfter),
+          std::pair(d1ZeroBefore, d1ZeroAfter),
+          std::pair(d2ZeroBefore, d2ZeroAfter)}) {
+      if (!field.first.exists())
+        break;
+      fields.push_back(field);
+    }
+    return fields;
+  }
 };
 
 class AIETargetModel {

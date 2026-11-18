@@ -971,34 +971,30 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
                          << "] range.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
-  if (targetModel.isShimNOCTile(getColumn(), getRow()) &&
-      (getD0ZeroBefore() != 0 || getD0ZeroAfter() != 0 ||
-       getD1ZeroBefore() != 0 || getD1ZeroAfter() != 0 ||
-       getD2ZeroBefore() != 0 || getD2ZeroAfter() != 0))
-    return emitOpError("ShimTile doesn't support zero padding.");
-
-  // Pad field widths (AIE2P ArchSpec Table 3-34, in 32-bit words): D0 is a
-  // 6-bit field (max 63), D1 a 5-bit field (max 31), D2 a 4-bit field (max
-  // 15).
-  //
-  // Placement is a deliberate compromise. DMABDOp::verify() would be the
-  // better home for this check, since its diagnostic would point at the
-  // user's own `aie.dma_bd`. But DMABDOp::verify() early-returns for BDs
-  // nested inside `aiex.dma_configure_task`, and the only case with
-  // hardware evidence for this defect is on that task path -- a check
-  // placed only in DMABDOp::verify() would miss it. NpuWriteBdOp is where
-  // both the static and task runtime paths converge, so putting it here
-  // covers both, at the cost of the diagnostic pointing at this
-  // compiler-generated op rather than the user-written BD.
-  //
-  // TODO: migrate this check to DMABDOp::verify() once BD iteration becomes
-  // an explicit `aie.dma_bd` field and that early-return can be removed.
-  if (getD0ZeroBefore() > 0x3F || getD0ZeroAfter() > 0x3F)
-    return emitOpError("D0 pad_before/pad_after exceeds the [0:63] range.");
-  if (getD1ZeroBefore() > 0x1F || getD1ZeroAfter() > 0x1F)
-    return emitOpError("D1 pad_before/pad_after exceeds the [0:31] range.");
-  if (getD2ZeroBefore() > 0xF || getD2ZeroAfter() > 0xF)
-    return emitOpError("D2 pad_before/pad_after exceeds the [0:15] range.");
+  // DMABDOp::verify() skips BDs inside aiex.dma_configure_task, so their pads
+  // are first checked here.
+  const AIE::DmaBdLayout *layout = targetModel.getDmaBdLayout(tileType);
+  llvm::SmallVector<std::pair<AIE::DmaBdField, AIE::DmaBdField>, 3> padFields;
+  if (layout)
+    padFields = layout->padFields();
+  uint64_t pads[3][2] = {{getD0ZeroBefore(), getD0ZeroAfter()},
+                         {getD1ZeroBefore(), getD1ZeroAfter()},
+                         {getD2ZeroBefore(), getD2ZeroAfter()}};
+  for (auto [d, pad] : llvm::enumerate(pads)) {
+    if (d >= padFields.size()) {
+      if (pad[0] || pad[1])
+        return emitOpError()
+               << "D" << d << " zero padding is not supported on this tile.";
+      continue;
+    }
+    uint32_t maxBefore = padFields[d].first.mask();
+    uint32_t maxAfter = padFields[d].second.mask();
+    if (pad[0] > maxBefore || pad[1] > maxAfter)
+      return emitOpError() << "D" << d
+                           << " pad_before/pad_after exceeds the [0:"
+                           << (pad[0] > maxBefore ? maxBefore : maxAfter)
+                           << "] range.";
+  }
 
   if (!targetModel.isShimNOCTile(getColumn(), getRow()) &&
       getBurstLength() != 0)

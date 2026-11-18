@@ -916,13 +916,22 @@ struct AIEDMATasksToNPUPass
         AIE::placeRuntimeLengthDimension(input_sizes, input_strides);
 
       if (padDims.has_value()) {
-        if (!target_model.isMemTile(tile.getCol(), tile.getRow()))
+        const AIE::DmaBdLayout *layout =
+            target_model.getDmaBdLayout(tile.getCol(), tile.getRow());
+        size_t numPadFields = layout ? layout->padFields().size() : 0;
+        if (numPadFields == 0)
           return bd_op->emitOpError()
                  << "Padding is only supported by memtile dma bds.";
         if (padDims->size() > dims->size())
           return bd_op->emitOpError()
                  << "Mismatch number of dimensions between padding(s)"
                  << " and wrap(s) and stride(s).";
+        for (auto [d, pad] : llvm::enumerate(llvm::reverse(*padDims)))
+          if (d >= numPadFields &&
+              (pad.getConstPadBefore() || pad.getConstPadAfter()))
+            return bd_op->emitOpError()
+                   << "D" << d
+                   << " zero padding is not supported on this tile.";
         if (channelDir == AIE::DMAChannelDir::MM2S) {
           for (size_t i = 0; i < padDims->size(); i++) {
             int j = padDims->size() - i - 1;

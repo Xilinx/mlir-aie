@@ -6111,19 +6111,25 @@ LogicalResult DMABDOp::verify() {
     if (!dims.has_value())
       return emitOpError() << "Padding requires n-d data layouts expressed as"
                            << " wrap(s) and stride(s).";
-    if (!parentTile.isMemTile())
+    const DmaBdLayout *layout =
+        targetModel.getDmaBdLayout(parentTile.getTileType());
+    llvm::SmallVector<std::pair<DmaBdField, DmaBdField>, 3> padFields;
+    if (layout)
+      padFields = layout->padFields();
+    if (padFields.empty())
       return emitOpError() << "Padding is only supported by memtile dma bds.";
     if (dims->size() != paddims->size())
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
                            << " and wrap(s) and stride(s).";
-    // Measured on npu2: with d3 in use, d2 padding is not applied (and d3 has
-    // no padding fields).
-    if (paddims->size() == 4)
-      for (BDPadLayoutAttr pad : paddims->take_front(2))
-        if (pad.getConstPadBefore() || pad.getConstPadAfter())
-          return emitOpError()
-                 << "a four-dimensional walk pads only its two innermost "
-                    "dimensions; the DMA does not apply d2 or d3 padding";
+    size_t numPadded = padFields.size();
+    // Measured on npu2: with d3 in use, d2 padding is not applied.
+    if (paddims->size() > numPadded)
+      --numPadded;
+    for (auto [d, pad] : llvm::enumerate(llvm::reverse(*paddims)))
+      if (d >= numPadded && (pad.getConstPadBefore() || pad.getConstPadAfter()))
+        return emitOpError()
+               << "a " << paddims->size() << "-dimensional walk pads only its "
+               << numPadded << " innermost dimensions";
     int actuallen = 1;
     for (unsigned i = 0; i < paddims->size(); i++) {
       auto dim = (*dims)[i];
@@ -6149,6 +6155,23 @@ LogicalResult DMABDOp::verify() {
         4)
       return emitOpError() << "Inner-most padding-after count must result in"
                            << " padding in 32-bit words.";
+    for (auto [d, pad] : llvm::enumerate(llvm::reverse(*paddims))) {
+      if (d >= numPadded)
+        break;
+      int64_t before = pad.getConstPadBefore();
+      int64_t after = pad.getConstPadAfter();
+      if (d == 0) {
+        before = before * getBufferElementTypeWidthInBytes() / 4;
+        after = after * getBufferElementTypeWidthInBytes() / 4;
+      }
+      uint32_t maxBefore = padFields[d].first.mask();
+      uint32_t maxAfter = padFields[d].second.mask();
+      if (before > maxBefore || after > maxAfter)
+        return emitOpError()
+               << "D" << d << " pad_before/pad_after exceeds the [0:"
+               << (before > maxBefore ? maxBefore : maxAfter) << "] range"
+               << (d == 0 ? " of 32-bit words." : ".");
+    }
   }
   if (!isUnrankedMemRef &&
       (parentTile.isMemTile() || parentTile.isCoreTile())) {
