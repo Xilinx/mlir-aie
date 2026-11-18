@@ -734,8 +734,7 @@ struct HoistBFP16ConversionPattern : public OpRewritePattern<ToBFP16Op> {
       copy = AIE::BufferOp::create(
           rewriter, buf.getLoc(),
           MemRefType::get({tiles * (kTile + kExpBytes)}, i8, nullptr, space),
-          buf.getTile(), rewriter.getStringAttr(name), nullptr, nullptr,
-          nullptr, nullptr, nullptr, nullptr);
+          buf.getTile(), rewriter.getStringAttr(name));
     }
     SmallVector<vector::TransferReadOp> reads;
     for (auto &[c, rd] : group)

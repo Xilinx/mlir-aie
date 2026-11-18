@@ -1987,8 +1987,9 @@ def AIE_BufferOp
   }];
   let hasVerifier = 1;
 
-  // The pre-resident builders; the first takes plain bools so it can default
-  // them, as a default argument cannot use $_builder to make an attribute.
+  // One builder defaulting every attribute; the flags are plain bools, as a
+  // default argument cannot use $_builder to make an attribute.
+  let skipDefaultBuilders = 1;
   // clang-format off
   let builders = [
     OpBuilder<(ins "::mlir::Type":$buffer, "::mlir::Value":$tile,
@@ -1998,23 +1999,22 @@ def AIE_BufferOp
               CArg<"::mlir::IntegerAttr", "{}">:$mem_bank,
               CArg<"bool", "false">:$core_data,
               CArg<"bool", "false">:$bank_reserved,
-              CArg<"bool", "true">:$aligned),
+              CArg<"bool", "true">:$aligned,
+              CArg<"::mlir::FlatSymbolRefAttr", "{}">:$resident),
              [{
-      build($_builder, $_state, buffer, tile, sym_name, address, initial_value,
-            mem_bank, core_data ? $_builder.getUnitAttr() : nullptr,
-            bank_reserved ? $_builder.getUnitAttr() : nullptr,
-            $_builder.getBoolAttr(aligned),
-            /*resident=*/::mlir::FlatSymbolRefAttr());
-    }]>,
-    OpBuilder<(ins "::mlir::Type":$buffer, "::mlir::Value":$tile,
-              "::mlir::StringAttr":$sym_name, "::mlir::IntegerAttr":$address,
-              "::mlir::ElementsAttr":$initial_value,
-              "::mlir::IntegerAttr":$mem_bank, "::mlir::UnitAttr":$core_data,
-              "::mlir::UnitAttr":$bank_reserved, "::mlir::BoolAttr":$aligned),
-             [{
-      build($_builder, $_state, buffer, tile, sym_name, address, initial_value,
-            mem_bank, core_data, bank_reserved, aligned,
-            /*resident=*/::mlir::FlatSymbolRefAttr());
+      $_state.addOperands(tile);
+      $_state.addTypes(buffer);
+      Properties &props = $_state.getOrAddProperties<Properties>();
+      props.sym_name = sym_name;
+      props.address = address;
+      props.initial_value = initial_value;
+      props.mem_bank = mem_bank;
+      if (core_data)
+        props.core_data = $_builder.getUnitAttr();
+      if (bank_reserved)
+        props.bank_reserved = $_builder.getUnitAttr();
+      props.aligned = $_builder.getBoolAttr(aligned);
+      props.resident = resident;
     }]>
   ];
   // clang-format on
