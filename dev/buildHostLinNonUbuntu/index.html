@@ -3931,7 +3931,7 @@ TGZ; for others, add your <code>/etc/os-release</code> <code>ID</code> to the <c
 flow, but pick a Python that matches your <code>pyxrt</code> (above).
 <code>uv</code> makes provisioning one easy:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>uv<span class="w"> </span>venv<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12<span class="w"> </span>ironenv<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">source</span><span class="w"> </span>ironenv/bin/activate
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>pip<span class="w"> </span>install<span class="w"> </span>mlir_aie<span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>pip<span class="w"> </span>install<span class="w"> </span>mlir_aie<span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-5
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>utils/peano-requirements.txt<span class="w">  </span><span class="c1"># Peano, pinned to the tested nightly CI uses</span>
 </code></pre></div>
 <p>Keep this <code>mlir-aie</code> checkout at the commit the wheel was built from (the wheel
