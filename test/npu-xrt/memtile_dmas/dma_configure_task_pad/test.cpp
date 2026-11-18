@@ -36,9 +36,9 @@ int main(int argc, const char *argv[]) {
 
   constexpr int ROWS = 4, COLS = 16, ROWS_BEFORE = 1, ROWS_AFTER = 1,
                 COLS_BEFORE = 4, COLS_AFTER = 8;
-  constexpr int IN = ROWS * COLS;
+  constexpr int IN_SIZE = ROWS * COLS;
   constexpr int OUT_COLS = COLS_BEFORE + COLS + COLS_AFTER;
-  constexpr int OUT = (ROWS_BEFORE + ROWS + ROWS_AFTER) * OUT_COLS;
+  constexpr int OUT_SIZE = (ROWS_BEFORE + ROWS + ROWS_AFTER) * OUT_COLS;
 
   // Start the XRT test code
   // Get a device handle
@@ -84,18 +84,19 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_in = xrt::bo(device, IN, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_in =
+      xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out =
-      xrt::bo(device, OUT, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
 
   uint8_t *bufIn = bo_in.map<uint8_t *>();
-  for (int i = 0; i < IN; i++)
+  for (int i = 0; i < IN_SIZE; i++)
     bufIn[i] = i + 1;
   uint8_t *bufOut = bo_out.map<uint8_t *>();
-  memset(bufOut, 0xFF, OUT);
+  memset(bufOut, 0xFF, OUT_SIZE);
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
