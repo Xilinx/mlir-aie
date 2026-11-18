@@ -582,17 +582,26 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   });
 
   // AIEBU resolves labels within each controller's block, so every group that
-  // loads a section needs the section's stub too. A load inside a section runs
-  // in every group that includes that section.
+  // references a section (LOAD_PDI, or PREEMPT's save/restore) needs the
+  // section's stub too. A reference inside a section runs in every group that
+  // includes that section.
   llvm::StringMap<std::set<uint32_t>> sectionUsers;
   llvm::StringMap<llvm::SmallVector<StringRef>> nestedLoads;
-  deviceOp.walk([&](CertLoadPdiOp load) {
-    if (auto outer = load->getParentOfType<CertSectionOp>()) {
-      nestedLoads[outer.getSymName()].push_back(load.getSymbol());
+  auto addSectionReference = [&](Operation *op, StringRef symbol) {
+    if (auto outer = op->getParentOfType<CertSectionOp>()) {
+      nestedLoads[outer.getSymName()].push_back(symbol);
       return;
     }
-    auto group = load->getParentOfType<CertAttachToGroupOp>();
-    sectionUsers[load.getSymbol()].insert(group ? group.getGroupId() : 0);
+    auto group = op->getParentOfType<CertAttachToGroupOp>();
+    sectionUsers[symbol].insert(group ? group.getGroupId() : 0);
+  };
+  deviceOp.walk([&](Operation *op) {
+    if (auto load = dyn_cast<CertLoadPdiOp>(op)) {
+      addSectionReference(op, load.getSymbol());
+    } else if (auto preempt = dyn_cast<CertPreemptOp>(op)) {
+      addSectionReference(op, preempt.getSaveSection());
+      addSectionReference(op, preempt.getRestoreSection());
+    }
   });
   llvm::SmallVector<StringRef> worklist;
   for (auto &entry : sectionUsers)
