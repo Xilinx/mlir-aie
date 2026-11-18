@@ -77,3 +77,24 @@ module @resident_permuted {
     }
   }
 }
+
+// -----
+
+// @first ranks ahead of @second (its pad buffer), but only @second's twin has
+// an address: it is pinned on @first's twin too.
+// CHECK-LABEL: module @resident_later_address
+// CHECK: aie.buffer(%{{.*}}) {address = 4096 : i32, resident = @u, sym_name = "early"}
+// CHECK: aie.buffer(%{{.*}}) {address = 4096 : i32, resident = @u, sym_name = "late"}
+
+module @resident_later_address {
+  memref.global "private" @u : memref<16xi32>
+  aie.device(npu2) @first {
+    %tile = aie.tile(0, 2)
+    %pad = aie.buffer(%tile) {address = 0 : i32, sym_name = "pad"} : memref<64xi32>
+    %buf = aie.buffer(%tile) {sym_name = "early", resident = @u} : memref<16xi32>
+  }
+  aie.device(npu2) @second {
+    %tile = aie.tile(0, 2)
+    %buf = aie.buffer(%tile) {address = 4096 : i32, sym_name = "late", resident = @u} : memref<16xi32>
+  }
+}

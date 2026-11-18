@@ -155,7 +155,7 @@ struct AIEPlaceTilesPass
   }
 
   // Pins each resident buffer to the tile and address an earlier device gave
-  // its global.
+  // its global; an address only this buffer has is pinned on the earlier one.
   LogicalResult pinResidents(DeviceOp device) {
     for (BufferOp buffer : device.getOps<BufferOp>()) {
       FlatSymbolRefAttr global = buffer.getResidentAttr();
@@ -200,7 +200,9 @@ struct AIEPlaceTilesPass
       }
       if (address)
         buffer.setAddress(address);
-      else if (!own)
+      else if (own)
+        twin.setAddress(own);
+      else
         buffer.emitWarning("buffer resident for ")
             << global
             << " has no address, so its data may move between "
