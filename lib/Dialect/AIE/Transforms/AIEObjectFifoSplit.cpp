@@ -530,7 +530,7 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
     if (window) {
       pool.setContiguous(true);
       // The padding objects sit in the buffer as zeros, since a MemTile
-      // descriptor walking four dimensions ignores its padding.
+      // descriptor walking four dimensions cannot pad its outermost one.
       if (walk.top || walk.bottom)
         pool.setZeroObjects(SmallVector<int32_t>{
             static_cast<int32_t>(walk.top), static_cast<int32_t>(walk.bottom)});

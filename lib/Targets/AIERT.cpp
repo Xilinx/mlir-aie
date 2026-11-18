@@ -519,12 +519,12 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       bdOp.getPadDimensions();
 
   if (padDims) {
-    llvm::SmallVector<XAie_PadDesc, 4> padDescs(padDims->size());
-    XAie_DmaPadTensor dmaPadTensor = {};
     // The verifier leaves the dims past the tile's pad fields unpadded.
-    dmaPadTensor.NumDim =
-        std::min(padDescs.size(),
-                 targetModel.getDmaBdLayout(col, row)->padFields().size());
+    llvm::SmallVector<XAie_PadDesc, 3> padDescs(
+        std::min(padDims->size(),
+                 targetModel.getDmaBdLayout(col, row)->padFields().size()));
+    XAie_DmaPadTensor dmaPadTensor = {};
+    dmaPadTensor.NumDim = padDescs.size();
     dmaPadTensor.PadDesc = padDescs.data();
     // libxaie requires stride in multiples of 32b
     double elementWidthIn32bWords =
@@ -532,6 +532,8 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     for (size_t i = 0; i < padDims->size(); i++) {
       // Pass down dimensions in reverse order.
       int j = padDims->size() - i - 1;
+      if (j >= static_cast<int>(padDescs.size()))
+        continue;
       uint8_t before;
       uint8_t after;
       if (j > 0) {

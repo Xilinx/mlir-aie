@@ -335,7 +335,7 @@ and drains it with one descriptor per output at offset `advance * j`, each
 acquiring the input objects that output is the first to read and releasing
 those no later output reads (`link_stream_walk.mlir` shows the chain). The
 zero rows are stored rather than produced by BD padding because a four-dim
-MemTile walk cannot pad its d2 or d3 dimension.
+MemTile walk cannot pad its outermost (d3) dimension.
 
 Limits of this lowering: a stream holds at most as many objects as a lock
 counts (63), it yields at most one MemTile channel's descriptors (24) per pass,
@@ -681,7 +681,7 @@ Endpoints:
 - a core endpoint's segments are contiguous
 - `dimensions` and `padDimensions` have one entry per selected segment, with matching ranks, within segment bounds
 - `padDimensions` appears on a draining endpoint, and a nonzero `padValue` requires one
-- a MemTile walk of four dimensions pads neither d2 nor d3, which the hardware ignores
+- a MemTile walk of four dimensions does not pad d3, which has no padding fields
 - a route endpoint with a DMA or PLIO bundle is on a shim tile, and its bundle is DMA, PLIO or Core
 
 Flows and core accesses:

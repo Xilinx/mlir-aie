@@ -6165,9 +6165,6 @@ LogicalResult DMABDOp::verify() {
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
                            << " and wrap(s) and stride(s).";
     size_t numPadded = padFields.size();
-    // Measured on npu2: with d3 in use, d2 padding is not applied.
-    if (paddims->size() > numPadded)
-      --numPadded;
     for (auto [d, pad] : llvm::enumerate(llvm::reverse(*paddims)))
       if (d >= numPadded && (pad.getConstPadBefore() || pad.getConstPadAfter()))
         return emitOpError()
