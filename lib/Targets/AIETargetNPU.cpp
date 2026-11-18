@@ -630,21 +630,22 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return failure();
   }
 
-  // An unexpanded load_pdi always resets the array; see
-  // AIEX::checkNoSharedResident.
-  AIE::DeviceOp previousDevice;
+  SmallVector<AIEX::ConfigStep> steps;
   for (Block &block : seq.getBody())
-    for (Operation &o : block)
+    for (Operation &o : block) {
       if (auto loadPdiOp = dyn_cast<NpuLoadPdiOp>(o)) {
         FlatSymbolRefAttr ref = loadPdiOp.getDeviceRefAttr();
-        auto dev = ref ? moduleOp.lookupSymbol<AIE::DeviceOp>(ref) : nullptr;
-        if (!dev)
-          continue;
-        if (previousDevice &&
-            failed(AIEX::checkNoSharedResident(loadPdiOp, previousDevice, dev)))
-          return failure();
-        previousDevice = dev;
+        steps.push_back(
+            {&o, loadPdiOp, false,
+             ref ? moduleOp.lookupSymbol<AIE::DeviceOp>(ref) : nullptr});
+      } else if (auto writeConfigOp = dyn_cast<NpuWriteConfigOp>(o)) {
+        steps.push_back({&o, nullptr, false,
+                         moduleOp.lookupSymbol<AIE::DeviceOp>(
+                             writeConfigOp.getDeviceRefAttr())});
       }
+    }
+  if (failed(AIEX::checkResidentsSurvive(seq, steps)))
+    return failure();
 
   NpuConfigCache ownConfigs;
   TxnEncoder encoder(deviceOp, instructions, locmap, foldDDRAddrOffset,

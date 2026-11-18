@@ -2533,10 +2533,10 @@ static Operation *precedingReset(Operation *op) {
   });
 }
 
-static bool loadsSamePdi(AIEX::NpuLoadPdiOp a, AIEX::NpuLoadPdiOp b) {
-  return a.getDeviceRefAttr() == b.getDeviceRefAttr() &&
-         a.getId() == b.getId() && a.getSize() == b.getSize() &&
-         a.getAddress() == b.getAddress();
+bool AIEX::NpuLoadPdiOp::loadsSamePdi(NpuLoadPdiOp other) {
+  return getDeviceRefAttr() == other.getDeviceRefAttr() &&
+         getId() == other.getId() && getSize() == other.getSize() &&
+         getAddress() == other.getAddress();
 }
 
 LogicalResult AIEX::NpuWriteConfigOp::verify() {
@@ -2558,7 +2558,7 @@ LogicalResult AIEX::NpuWriteConfigOp::verify() {
         later = op;
         return isa<AIEX::NpuLoadPdiOp>(op);
       }));
-  if (!loadsSamePdi(before, reset) || tornDown)
+  if (!before.loadsSamePdi(reset) || tornDown)
     return success();
   InFlightDiagnostic diag = emitOpError(
       "follows a load_pdi the firmware skips, as it loads the PDI loaded "

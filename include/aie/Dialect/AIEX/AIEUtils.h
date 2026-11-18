@@ -177,13 +177,23 @@ Unbalanced balanceUnder(AIE::ConsumedByAttr proof, const Volume &in,
 // `fifo` by symbol.
 bool namesFifo(Operation *op, StringRef fifo, SymbolTableCollection &symbols);
 
-// A reload between two configurations of the device array in one runtime
-// sequence clears it (outside --reconfig-teardown), so a later
-// configuration's buffer resident on the same global as an earlier one's
-// finds it gone. Verifies `before` and `after` hold no buffer resident on
-// the same symbol, attaching the diagnostic to `reload`.
-LogicalResult checkNoSharedResident(Operation *reload, AIE::DeviceOp before,
-                                    AIE::DeviceOp after);
+// One step of a runtime sequence that changes the array's configuration.
+struct ConfigStep {
+  Operation *op;
+  // A PDI load, which resets the array unless the firmware skips it as the
+  // PDI it loaded last.
+  NpuLoadPdiOp load;
+  // A reset the firmware never skips.
+  bool resets = false;
+  AIE::DeviceOp configures;
+};
+
+// Verifies that a buffer resident on a global finds the data the last
+// configuration holding that global left: no reset between them. `steps` are
+// `seq`'s, in program order; the array starts configured as `seq`'s own device,
+// and the host runs `seq` again from its first step on each dispatch.
+LogicalResult checkResidentsSurvive(AIE::RuntimeSequenceOp seq,
+                                    ArrayRef<ConfigStep> steps);
 
 // `device:sequence`, the name a host runs `seq` by.
 std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);

@@ -1362,6 +1362,9 @@ def AIE_NpuLoadPdiOp
     The easiest workaround is to create an empty `aie.device(npu2) @empty {}` and load that before the main device load.
   }];
   let hasCanonicalizeMethod = 1;
+  let extraClassDeclaration = [{
+    bool loadsSamePdi(NpuLoadPdiOp other);
+  }];
 }
 
 def AIE_NpuWriteConfigOp

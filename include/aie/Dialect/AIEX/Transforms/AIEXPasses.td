@@ -768,10 +768,12 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     gets one more of the other, so the next dispatch's first load is not skipped
     as cached. Under teardown no sequence needs this.
 
-    Without `teardown`, a reload between two configurations that each hold a
-    buffer `resident` on the same `memref.global` is an error: the reload
-    clears the array underneath that buffer. This is checked only within one
-    runtime sequence; a reload across separate dispatches is not.
+    A reset between two configurations that each hold a buffer `resident` on
+    the same `memref.global` is an error, as it clears the array underneath
+    that buffer. That includes the reset between a sequence's last
+    configuration and its first when the host runs it again. Every load_pdi
+    resets the array unless the firmware skips it as the PDI it loaded last;
+    under `teardown`, an expanded load resets it only through its preload.
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";

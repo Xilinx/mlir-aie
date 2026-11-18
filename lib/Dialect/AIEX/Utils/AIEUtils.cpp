@@ -11,6 +11,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/MathExtras.h"
@@ -384,26 +385,58 @@ bool AIEX::namesFifo(Operation *op, StringRef fifo,
          });
 }
 
-LogicalResult AIEX::checkNoSharedResident(Operation *reload,
-                                          AIE::DeviceOp before,
-                                          AIE::DeviceOp after) {
-  for (auto earlier : before.getOps<AIE::BufferOp>()) {
-    FlatSymbolRefAttr resident = earlier.getResidentAttr();
-    if (!resident)
-      continue;
-    for (auto later : after.getOps<AIE::BufferOp>()) {
-      if (later.getResidentAttr() != resident)
-        continue;
-      InFlightDiagnostic diag =
-          reload->emitOpError("resets the array between @")
-          << before.getSymName() << " and @" << after.getSymName()
-          << ", which both hold a buffer resident on " << resident
-          << "; needs --reconfig-teardown";
-      diag.attachNote(earlier.getLoc()) << "resident here";
-      diag.attachNote(later.getLoc()) << "resident here";
-      return diag;
+LogicalResult AIEX::checkResidentsSurvive(AIE::RuntimeSequenceOp seq,
+                                          ArrayRef<ConfigStep> steps) {
+  struct Cleared {
+    AIE::BufferOp holder;
+    Operation *reset;
+  };
+  llvm::MapVector<FlatSymbolRefAttr, AIE::BufferOp> held;
+  llvm::DenseMap<FlatSymbolRefAttr, Cleared> cleared;
+  for (auto buffer :
+       seq->getParentOfType<AIE::DeviceOp>().getOps<AIE::BufferOp>())
+    if (FlatSymbolRefAttr resident = buffer.getResidentAttr())
+      held[resident] = buffer;
+  NpuLoadPdiOp lastLoad;
+  auto apply = [&](ConfigStep step, bool again) -> LogicalResult {
+    bool resets =
+        step.resets ||
+        (step.load && !(lastLoad && lastLoad.loadsSamePdi(step.load)));
+    if (step.load || step.resets)
+      lastLoad = step.load;
+    if (resets) {
+      for (auto [resident, holder] : held)
+        cleared.try_emplace(resident, Cleared{holder, step.op});
+      held.clear();
     }
-  }
+    if (!step.configures)
+      return success();
+    for (auto buffer : step.configures.getOps<AIE::BufferOp>()) {
+      FlatSymbolRefAttr resident = buffer.getResidentAttr();
+      if (!resident)
+        continue;
+      if (auto it = cleared.find(resident); it != cleared.end()) {
+        auto [holder, reset] = it->second;
+        InFlightDiagnostic diag =
+            reset->emitOpError("resets the array between @")
+            << holder->getParentOfType<AIE::DeviceOp>().getSymName() << " and @"
+            << step.configures.getSymName()
+            << ", which both hold a buffer resident on " << resident
+            << (again ? " when the sequence runs again" : "")
+            << "; needs --reconfig-teardown";
+        diag.attachNote(holder.getLoc()) << "resident here";
+        if (buffer != holder)
+          diag.attachNote(buffer.getLoc()) << "resident here";
+        return diag;
+      }
+      held[resident] = buffer;
+    }
+    return success();
+  };
+  for (bool again : {false, true})
+    for (ConfigStep step : steps)
+      if (failed(apply(step, again)))
+        return failure();
   return success();
 }
 

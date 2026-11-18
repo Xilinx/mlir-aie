@@ -7,12 +7,15 @@
 
 // Two devices hold a buffer resident on the same global, but each
 // configuration is torn down before the next, so the reload does not clear
-// the array underneath them.
+// the array underneath them. Without an init entry, though, each dispatch's
+// first load resets the array through its preload.
 
-// RUN: aie-opt --aie-expand-load-pdi="teardown=true" %s | FileCheck %s
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true init-entry=true" %s | FileCheck %s
+// RUN: not aie-opt --aie-expand-load-pdi="teardown=true" %s 2>&1 | FileCheck %s --check-prefix=PRELOAD
 
 // CHECK: aiex.npu.write_teardown @dev1
 // CHECK: aiex.npu.write_teardown @dev2
+// PRELOAD: error: 'aiex.npu.load_pdi' op resets the array between @dev2 and @dev1, which both hold a buffer resident on @w when the sequence runs again; needs --reconfig-teardown
 module {
   memref.global "private" @w : memref<16xi32>
 
