@@ -1250,26 +1250,37 @@ struct AIENpuToCertPass
   void processDevice(AIE::DeviceOp currentDevice) {
     auto moduleOp = currentDevice->getParentOfType<ModuleOp>();
 
-    // Identify and convert referenced "configure" sequences early, before the
-    // RuntimeSequenceOp conversion runs on other devices.
-    if (moduleOp && failed(absorbLoadedDevices(currentDevice, moduleOp)))
-      return signalPassFailure();
-
-    // Inline RunOps first
     RewritePatternSet p_run_inline(&getContext());
     p_run_inline.insert<RunOpInlining>(&getContext());
-    if (failed(applyPatternsGreedily(currentDevice, std::move(p_run_inline))))
-      return signalPassFailure();
-
-    // Then convert ConfigureOps to cert.section + cert.load_pdi
+    FrozenRewritePatternSet runInlinePatterns(std::move(p_run_inline));
     RewritePatternSet p_configure(&getContext());
     p_configure.insert<ConfigureOpToCertSection>(&getContext());
-    if (failed(applyPatternsGreedily(currentDevice, std::move(p_configure))))
-      return signalPassFailure();
+    FrozenRewritePatternSet configurePatterns(std::move(p_configure));
 
-    // The configurations and sequences cloned above can load further devices.
-    if (moduleOp && failed(absorbLoadedDevices(currentDevice, moduleOp)))
-      return signalPassFailure();
+    // Absorbing a device can clone in run and configure ops, and expanding
+    // those can clone in further loads. Repeat until the expansion that follows
+    // an absorption changes nothing.
+    bool changed = true;
+    while (changed) {
+      // Identify and convert referenced "configure" sequences, before the
+      // RuntimeSequenceOp conversion runs on other devices.
+      if (moduleOp && failed(absorbLoadedDevices(currentDevice, moduleOp)))
+        return signalPassFailure();
+
+      // Inline RunOps first
+      bool runsChanged = false;
+      if (failed(applyPatternsGreedily(currentDevice, runInlinePatterns,
+                                       GreedyRewriteConfig(), &runsChanged)))
+        return signalPassFailure();
+
+      // Then convert ConfigureOps to cert.section + cert.load_pdi
+      bool configuresChanged = false;
+      if (failed(applyPatternsGreedily(currentDevice, configurePatterns,
+                                       GreedyRewriteConfig(),
+                                       &configuresChanged)))
+        return signalPassFailure();
+      changed = runsChanged || configuresChanged;
+    }
 
     ConversionTarget target(getContext());
     target.addIllegalOp<AIE::RuntimeSequenceOp>();
