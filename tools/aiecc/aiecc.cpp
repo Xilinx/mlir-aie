@@ -996,6 +996,8 @@ static void recordMeasuredCores(mlir::ModuleOp mod,
 // sections on a provisional placement before the build places them.
 enum class GraphPurpose { Build, MeasureCoreSections };
 
+// The edge that places the design's logical tiles.
+static constexpr llvm::StringLiteral kPlacedEdge = "placed.mlir";
 // The edge that routes the placed design's flows.
 static constexpr llvm::StringLiteral kRoutedEdge = "input_physical.mlir";
 // The edge that places the compiled design's buffers.
@@ -1145,7 +1147,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &traced =
       withDefaultStackSize
           .map<ModRef>(
-              "placed.mlir",
+              kPlacedEdge.str(),
               PassPipeline{getPlacementPipeline(
                   &context, coresPerCol.getValue(), placerType.getValue(),
                   saSeed.getValue(),
@@ -3580,33 +3582,76 @@ int main(int argc, char **argv) {
         });
   };
   if (mayPlaceAgain && attempts.unroutable()) {
+    // The sequential placer takes milliseconds, so each cap is first tried on
+    // the module the first placement read: a cap placing exactly as the last
+    // attempt did would route no better, and costs no attempt.
+    EdgeBase *placeEdge = nullptr;
+    for (const std::unique_ptr<EdgeBase> &edge : attempts.back().graph->edges)
+      if (edge->name == kPlacedEdge)
+        placeEdge = edge.get();
+    mlir::ModuleOp unplaced =
+        static_cast<Node<ModRef> *>(placeEdge->inputNodes()[0])
+            ->items.front()
+            .get()
+            .get();
+    auto print = [](mlir::ModuleOp module) {
+      std::string text;
+      llvm::raw_string_ostream os(text);
+      module.print(os);
+      return text;
+    };
+    std::string last =
+        print(static_cast<Node<ModRef> *>(placeEdge->outputNode())
+                  ->items.front()
+                  .get()
+                  .get());
     int coreRows = 0;
-    if (mlir::OwningOpRef<mlir::ModuleOp> input =
-            parseModuleFromFile(getInputFilename(), &context))
-      input->walk([&](DeviceOp device) {
-        bool placesCores = llvm::any_of(
-            device.getOps<xilinx::AIE::LogicalTileOp>(),
-            [](xilinx::AIE::LogicalTileOp tile) {
-              return tile.getTileType() == xilinx::AIE::AIETileType::CoreTile;
-            });
-        if (!placesCores)
-          return;
-        const xilinx::AIE::AIETargetModel &target = device.getTargetModel();
-        for (int col = 0; col < target.columns(); ++col) {
-          int rows = 0;
-          for (int row = 0; row < target.rows(); ++row)
-            rows += target.getTileType(col, row) ==
-                    xilinx::AIE::AIETileType::CoreTile;
-          coreRows = std::max(coreRows, rows);
-        }
-      });
+    unplaced.walk([&](DeviceOp device) {
+      bool placesCores = llvm::any_of(
+          device.getOps<xilinx::AIE::LogicalTileOp>(),
+          [](xilinx::AIE::LogicalTileOp tile) {
+            return tile.getTileType() == xilinx::AIE::AIETileType::CoreTile;
+          });
+      if (!placesCores)
+        return;
+      const xilinx::AIE::AIETargetModel &target = device.getTargetModel();
+      for (int col = 0; col < target.columns(); ++col) {
+        int rows = 0;
+        for (int row = 0; row < target.rows(); ++row)
+          rows += target.getTileType(col, row) ==
+                  xilinx::AIE::AIETileType::CoreTile;
+        coreRows = std::max(coreRows, rows);
+      }
+    });
+    bool capped = false;
     for (int cores = coreRows - 1; cores > 0 && attempts.unroutable();
          --cores) {
+      capped = true;
+      ModRef trial(unplaced.clone());
+      std::unique_ptr<mlir::PassManager> pm = getPlacementPipeline(
+          &context, cores, placerType.getValue(), saSeed.getValue(),
+          saEffort.getValue(), placementBudget.getValue(),
+          llvm::to_vector(saWalkedFifos), llvm::to_vector(saCoreDataSizes),
+          ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
+          ctrlpktAdaptiveOverlay.getValue(), packetSwObjFifos.getValue());
+      bool same = false;
+      {
+        // A failed trial is placed for real, where it is reported.
+        mlir::ScopedDiagnosticHandler quiet(
+            &context, [](mlir::Diagnostic &) { return mlir::success(); });
+        if (mlir::succeeded(pm->run(*trial))) {
+          std::string text = print(*trial);
+          same = text == last;
+          last = std::move(text);
+        }
+      }
+      if (same)
+        continue;
       coresPerCol = cores;
       ran = placeAgainWith({"--cores-per-col=" + std::to_string(cores)},
                            "the placement does not route");
     }
-    if (attempts.size() > 1 && attempts.unroutable())
+    if (capped && attempts.unroutable())
       noPlacement = "aiecc: no placement with fewer cores a column routes "
                     "either";
   }
@@ -3680,7 +3725,7 @@ int main(int argc, char **argv) {
         stands = i;
   Attempt &standing = attempts.at(stands);
   EdgeBase *standingFailed = standing.engine->failedEdge;
-  if (attempts.size() > 1) {
+  if (attempts.size() > 1 || noPlacement) {
     auto log = endProgressLine();
     if (noPlacement)
       llvm::errs() << *noPlacement << "; placement " << stands + 1
