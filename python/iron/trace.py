@@ -29,7 +29,9 @@ from ..helpers.sourceloc import SourceSite
 from .runtime._context import active_recording_scope, frames
 
 if TYPE_CHECKING:
-    from ..dialects._aie_enum_gen import ObjectFifoPort
+    from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+        ObjectFifoPort,
+    )
     from .dataflow.objectfifo import ObjectFifo, ObjectFifoLink
 
 
