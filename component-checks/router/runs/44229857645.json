@@ -1,0 +1,216 @@
+{
+ "schema": 1,
+ "target": "router",
+ "id": "44229857645",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44229857645",
+ "date": "2026-11-18T03:21:35+00:00",
+ "commit": {
+  "id": "84c80213eccaf2162229149cabac99779d95d888",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/84c80213eccaf2162229149cabac99779d95d888",
+  "message": "[ci] Publish rolling wheels to latest-wheels-5 and latest-wheels-no-rtti-3 (#4080)",
+  "timestamp": "2026-11-17T22:32:50Z"
+ },
+ "event": "schedule",
+ "pmode": null,
+ "device": "AMD EPYC 7763 64-Core Processor",
+ "device_raw": null,
+ "provenance": {
+  "commit": "84c80213ec",
+  "cpu": "AMD EPYC 7763 64-Core Processor"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 24,
+ "exitstatus": 1,
+ "failed": [
+  "xcvc1902/hops-off/seed=207750067+1/mutator multi-source crash"
+ ],
+ "truncated": [],
+ "rows": {
+  "npu1": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0147,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 14.213,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 14.98,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  },
+  "npu2": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0143,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 14.534,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 20.88,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  },
+  "xcvc1902": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0132,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 18.074,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 162.2,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 1,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  }
+ },
+ "builds": {},
+ "detail": [
+  {
+   "run": "lit",
+   "tests": 2,
+   "failed": []
+  },
+  {
+   "device": "npu1",
+   "run": "properties",
+   "first_seed": 207750000,
+   "seeds": 2000,
+   "failed": []
+  },
+  {
+   "device": "npu1",
+   "run": "hops-on",
+   "first_seed": 207750000,
+   "seeds": 400,
+   "killed": 1902,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu1",
+   "run": "hops-off",
+   "first_seed": 207750000,
+   "seeds": 400,
+   "killed": 1900,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu2",
+   "run": "properties",
+   "first_seed": 207750000,
+   "seeds": 2000,
+   "failed": []
+  },
+  {
+   "device": "npu2",
+   "run": "hops-on",
+   "first_seed": 207750000,
+   "seeds": 400,
+   "killed": 1905,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu2",
+   "run": "hops-off",
+   "first_seed": 207750000,
+   "seeds": 400,
+   "killed": 1901,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "xcvc1902",
+   "run": "properties",
+   "first_seed": 207750000,
+   "seeds": 500,
+   "failed": []
+  },
+  {
+   "device": "xcvc1902",
+   "run": "hops-on",
+   "first_seed": 207750000,
+   "seeds": 100,
+   "killed": 397,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "xcvc1902",
+   "run": "hops-off",
+   "first_seed": 207750000,
+   "seeds": 100,
+   "killed": 397,
+   "survived": 0,
+   "failures": 1
+  }
+ ]
+}

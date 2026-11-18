@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "44009595621",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44009595621",
- "date": "2026-11-17T03:21:14+00:00",
+ "id": "44229857645",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44229857645",
+ "date": "2026-11-18T03:21:35+00:00",
  "commit": {
-  "id": "301373f5116583403c4f291b89ba7b7f16785945",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/301373f5116583403c4f291b89ba7b7f16785945",
-  "message": "Fix test_accuracy for ml_dtypes 0.7 (#4071)",
-  "timestamp": "2026-11-16T21:30:14Z"
+  "id": "84c80213eccaf2162229149cabac99779d95d888",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/84c80213eccaf2162229149cabac99779d95d888",
+  "message": "[ci] Publish rolling wheels to latest-wheels-5 and latest-wheels-no-rtti-3 (#4080)",
+  "timestamp": "2026-11-17T22:32:50Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V74 80-Core Processor",
+ "device": "AMD EPYC 7763 64-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "301373f511",
-  "cpu": "AMD EPYC 9V74 80-Core Processor"
+  "commit": "84c80213ec",
+  "cpu": "AMD EPYC 7763 64-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 245.4,
+    "value": 183.0,
     "unit": "s"
    }
   }

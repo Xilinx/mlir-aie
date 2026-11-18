@@ -867,6 +867,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "44229857645",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44229857645",
+   "date": "2026-11-18T03:21:35+00:00",
+   "commit": {
+    "id": "84c80213eccaf2162229149cabac99779d95d888",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/84c80213eccaf2162229149cabac99779d95d888",
+    "message": "[ci] Publish rolling wheels to latest-wheels-5 and latest-wheels-no-rtti-3 (#4080)",
+    "timestamp": "2026-11-17T22:32:50Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "84c80213ec",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
