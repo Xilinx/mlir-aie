@@ -499,6 +499,11 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
 
   LogicalResult matchAndRewrite(AIEX::ConfigureOp op,
                                 PatternRewriter &rewriter) const override {
+    // A run resolves its callee through the enclosing configure, so the
+    // configure is lowered only once RunOpInlining has expanded its runs.
+    if (!op.getRegion().getOps<AIEX::RunOp>().empty())
+      return failure();
+
     // Get the referenced device
     AIE::DeviceOp referencedDevice = op.getReferencedDeviceOp();
     if (!referencedDevice)
@@ -1223,102 +1228,130 @@ struct AIENpuToCertPass
     llvm::append_range(uses[newName], ops);
   }
 
+  // Absorb each device that an npu.load_pdi in `currentDevice` names as a
+  // same-named cert.section built from the device's configuration.
+  LogicalResult absorbLoadedDevices(AIE::DeviceOp currentDevice,
+                                    ModuleOp moduleOp) {
+    // Collect npu.load_pdi operations, before they become cert.load_pdi. An
+    // absorbed configuration can load further devices, so its loads are
+    // collected too.
+    llvm::SmallVector<AIEX::NpuLoadPdiOp, 4> loads;
+    auto collectLoads = [&](Operation *root) {
+      root->walk([&](AIEX::NpuLoadPdiOp loadPdiOp) {
+        if (loadPdiOp.getDeviceRef())
+          loads.push_back(loadPdiOp);
+      });
+    };
+    collectLoads(currentDevice);
+
+    OpBuilder builder(&getContext());
+    // Worklist in collection order: absorbing a device appends its loads, so
+    // `loads` can grow (and reallocate) while it is being walked.
+    size_t next = 0;
+    while (next < loads.size()) {
+      AIEX::NpuLoadPdiOp load = loads[next++];
+      std::optional<StringRef> deviceRef = load.getDeviceRef();
+      if (!deviceRef)
+        continue;
+      StringRef refSymName = *deviceRef;
+      // Skip if section already exists
+      Operation *existing = AIE::lookupNamedOpIn(currentDevice, refSymName);
+      if (isa_and_present<AIEX::CertSectionOp>(existing))
+        continue;
+
+      // Find referenced device
+      AIE::DeviceOp refDevice = nullptr;
+      for (auto &op : moduleOp.getBody()->getOperations()) {
+        if (auto dev = dyn_cast<AIE::DeviceOp>(op)) {
+          if (dev.getSymName() == refSymName) {
+            refDevice = dev;
+            break;
+          }
+        }
+      }
+
+      if (!refDevice)
+        continue;
+
+      // Find the generated configuration sequence
+      AIE::RuntimeSequenceOp configureSeq = findGeneratedConfigure(refDevice);
+
+      if (!configureSeq)
+        continue;
+
+      // Any other symbol of that name would leave the load without its
+      // section.
+      if (existing) {
+        load.emitError("cannot absorb device @")
+            << refSymName << " as a cert.section: @" << refSymName
+            << " is already defined by '" << existing->getName() << "'";
+        return failure();
+      }
+
+      // Create cert.section in current device
+      builder.setInsertionPoint(currentDevice.getBody()->getTerminator());
+      auto sectionOp = AIEX::CertSectionOp::create(
+          builder, configureSeq.getLoc(), builder.getStringAttr(refSymName));
+
+      Block *sectionBlock = new Block();
+      sectionOp.getBody().push_back(sectionBlock);
+      builder.setInsertionPointToStart(sectionBlock);
+
+      // Create page
+      auto pageOp = AIEX::CertPageOp::create(builder, configureSeq.getLoc());
+      Block *pageBlock = new Block();
+      pageOp.getBody().push_back(pageBlock);
+      builder.setInsertionPointToStart(pageBlock);
+
+      // Get unique job ID
+      uint32_t maxJobId = 0;
+      currentDevice.walk([&](AIEX::CertJobOp certJobOp) {
+        maxJobId = std::max(maxJobId, certJobOp.getJobId());
+      });
+
+      // Create job
+      auto jobOp =
+          AIEX::CertJobOp::create(builder, configureSeq.getLoc(), maxJobId + 1);
+
+      // Clone configure sequence body into job
+      IRMapping mapper;
+      configureSeq.getRegion().cloneInto(&jobOp.getBody(), mapper);
+
+      // Ensure terminators
+      AIEX::CertJobOp::ensureTerminator(jobOp.getBody(), builder,
+                                        configureSeq.getLoc());
+      AIEX::CertPageOp::ensureTerminator(pageOp.getBody(), builder,
+                                         configureSeq.getLoc());
+      AIEX::CertSectionOp::ensureTerminator(sectionOp.getBody(), builder,
+                                            configureSeq.getLoc());
+      collectLoads(jobOp);
+    }
+    return success();
+  }
+
   void processDevice(AIE::DeviceOp currentDevice) {
     auto moduleOp = currentDevice->getParentOfType<ModuleOp>();
 
-    // Identify and convert referenced "configure" sequences early, before the
-    // RuntimeSequenceOp conversion runs on other devices.
-    if (moduleOp) {
+    // Inline RunOps and convert ConfigureOps to cert.section + cert.load_pdi.
+    // ConfigureOpToCertSection waits for the runs of a configure to be inlined.
+    RewritePatternSet p_expand(&getContext());
+    p_expand.insert<RunOpInlining, ConfigureOpToCertSection>(&getContext());
+    FrozenRewritePatternSet expandPatterns(std::move(p_expand));
 
-      // Collect npu.load_pdi operations (before they are converted below)
-      llvm::SmallVector<StringRef, 4> referencedDeviceSyms;
-      currentDevice.walk([&](AIEX::NpuLoadPdiOp loadPdiOp) {
-        if (loadPdiOp.getDeviceRef())
-          referencedDeviceSyms.push_back(*loadPdiOp.getDeviceRef());
-      });
+    // Absorbing a device can clone in run and configure ops, and expanding
+    // those can clone in further loads. Repeat until the expansion that follows
+    // an absorption changes nothing.
+    bool changed = true;
+    while (changed) {
+      // Identify and convert referenced "configure" sequences, before the
+      // RuntimeSequenceOp conversion runs on other devices.
+      if (moduleOp && failed(absorbLoadedDevices(currentDevice, moduleOp)))
+        return signalPassFailure();
 
-      if (!referencedDeviceSyms.empty()) {
-        OpBuilder builder(&getContext());
-
-        for (StringRef refSymName : referencedDeviceSyms) {
-          // Skip if section already exists
-          if (currentDevice.lookupSymbol(refSymName))
-            continue;
-
-          // Find referenced device
-          AIE::DeviceOp refDevice = nullptr;
-          for (auto &op : moduleOp.getBody()->getOperations()) {
-            if (auto dev = dyn_cast<AIE::DeviceOp>(op)) {
-              if (dev.getSymName() == refSymName) {
-                refDevice = dev;
-                break;
-              }
-            }
-          }
-
-          if (!refDevice)
-            continue;
-
-          // Find the generated configuration sequence
-          AIE::RuntimeSequenceOp configureSeq =
-              findGeneratedConfigure(refDevice);
-
-          if (!configureSeq)
-            continue;
-
-          // Create cert.section in current device
-          builder.setInsertionPoint(currentDevice.getBody()->getTerminator());
-          auto sectionOp =
-              AIEX::CertSectionOp::create(builder, configureSeq.getLoc(),
-                                          builder.getStringAttr(refSymName));
-
-          Block *sectionBlock = new Block();
-          sectionOp.getBody().push_back(sectionBlock);
-          builder.setInsertionPointToStart(sectionBlock);
-
-          // Create page
-          auto pageOp =
-              AIEX::CertPageOp::create(builder, configureSeq.getLoc());
-          Block *pageBlock = new Block();
-          pageOp.getBody().push_back(pageBlock);
-          builder.setInsertionPointToStart(pageBlock);
-
-          // Get unique job ID
-          uint32_t maxJobId = 0;
-          currentDevice.walk([&](AIEX::CertJobOp certJobOp) {
-            maxJobId = std::max(maxJobId, certJobOp.getJobId());
-          });
-
-          // Create job
-          auto jobOp = AIEX::CertJobOp::create(builder, configureSeq.getLoc(),
-                                               maxJobId + 1);
-
-          // Clone configure sequence body into job
-          IRMapping mapper;
-          configureSeq.getRegion().cloneInto(&jobOp.getBody(), mapper);
-
-          // Ensure terminators
-          AIEX::CertJobOp::ensureTerminator(jobOp.getBody(), builder,
-                                            configureSeq.getLoc());
-          AIEX::CertPageOp::ensureTerminator(pageOp.getBody(), builder,
-                                             configureSeq.getLoc());
-          AIEX::CertSectionOp::ensureTerminator(sectionOp.getBody(), builder,
-                                                configureSeq.getLoc());
-        }
-      }
+      if (failed(applyPatternsGreedily(currentDevice, expandPatterns,
+                                       GreedyRewriteConfig(), &changed)))
+        return signalPassFailure();
     }
-
-    // Inline RunOps first
-    RewritePatternSet p_run_inline(&getContext());
-    p_run_inline.insert<RunOpInlining>(&getContext());
-    if (failed(applyPatternsGreedily(currentDevice, std::move(p_run_inline))))
-      return signalPassFailure();
-
-    // Then convert ConfigureOps to cert.section + cert.load_pdi
-    RewritePatternSet p_configure(&getContext());
-    p_configure.insert<ConfigureOpToCertSection>(&getContext());
-    if (failed(applyPatternsGreedily(currentDevice, std::move(p_configure))))
-      return signalPassFailure();
 
     ConversionTarget target(getContext());
     target.addIllegalOp<AIE::RuntimeSequenceOp>();
