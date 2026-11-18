@@ -1,7 +1,0 @@
-<map id="xilinx::AIEX::SsaStridePolicy" name="xilinx::AIEX::SsaStridePolicy">
-<area shape="rect" id="Node000001" title=" " alt="" coords="9,106,213,134"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,105,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="68,45,87,81,103,105,98,105,82,83,66,50"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="129,5,205,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="158,46,140,83,123,107,120,103,135,81,153,49"/>
-</map>
