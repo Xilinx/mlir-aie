@@ -1,0 +1,9 @@
+<map id="xilinx::AIE::StructuralGraph" name="xilinx::AIE::StructuralGraph">
+<area shape="rect" id="Node000001" title="Ops and the labelled links between them, for ranking them by structure where a pass would otherwise f..." alt="" coords="319,83,515,111"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="33,5,181,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="196,42,295,64,363,82,358,83,294,69,197,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,75,209,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="224,94,321,96,316,98,224,100"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="5,143,209,222"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="223,148,366,111,361,112,224,153"/>
+</map>
