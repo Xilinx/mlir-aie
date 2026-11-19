@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::Placer::OverlayFit" name="xilinx::AIE::Placer::OverlayFit">
-<area shape="rect" id="Node000001" title=" " alt="" coords="5,128,140,173"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="14,5,64,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="37,46,40,76,45,103,57,127,52,128,40,105,35,76,36,51"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="88,5,126,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="102,47,81,129,76,127,97,49"/>
-</map>

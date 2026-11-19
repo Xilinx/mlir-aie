@@ -1,5 +1,0 @@
-<map id="xilinx::AIEX::AIEResourceStagesOptions" name="xilinx::AIEX::AIEResourceStagesOptions">
-<area shape="rect" id="Node000001" title="Options of aie&#45;resource&#45;stages, named and defaulted as aiecc&#39;s flags." alt="" coords="26,98,211,143"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,232,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="120,64,121,99,116,97,117,68"/>
-</map>

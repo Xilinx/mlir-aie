@@ -1,7 +1,0 @@
-<map id="xilinx::AIEX::SyncCover" name="xilinx::AIEX::SyncCover">
-<area shape="rect" id="Node000001" title="The channels an aiex.npu.sync syncChannelKey cannot pin down may wait on: its tile range expanded,..." alt="" coords="5,173,178,201"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="20,5,59,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="43,46,53,96,70,148,84,173,79,173,65,150,48,97,42,51"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="83,5,204,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="142,46,133,97,117,150,103,174,99,171,112,148,128,95,138,50"/>
-</map>
