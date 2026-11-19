@@ -741,6 +741,7 @@ DTYPES["mv"] = tuple(
         # dim_k: the bf16 kernel accumulates VEC_SIZE (64) elements at a
         # time, so the default dim_k of 32 is too short for it.
         {"input_dtype": bfloat16, "output_dtype": bfloat16, "dim_k": 256},
+        {"input_dtype": bfloat16, "output_dtype": np.float32, "dim_k": 256},
     )
 )
 
@@ -767,6 +768,9 @@ def mv(
     ``aie_kernels/linalg/mv_bf16.cc``, IRON's ``GEMV`` kernel, whose signature
     is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
     ``c`` so one core can fill several output blocks; A is row-major.
+    ``(bfloat16, np.float32)`` builds its vectorized row-major path with a
+    float32 ``c``: the sums the bf16 output rounds to nearest even, held to
+    [`mv_f32_bound`][aie.iron.kernels.linalg.mv_f32_bound].
 
     ``a_col_maj=True`` builds the same file with ``-DA_COL_MAJ``, signature
     ``(flags, A, b, acc, c)``: ``A`` is ``dim_k`` stored rows of a ``(K, M)``
@@ -796,7 +800,7 @@ def mv(
             ``a_col_maj``: the stored rows of A one call takes.
         input_dtype: Input element type: ``np.int16`` or ``bfloat16``.
         output_dtype: Output element type: ``np.int32`` for ``np.int16``
-            inputs, ``bfloat16`` for ``bfloat16`` inputs.
+            inputs, ``bfloat16`` or ``np.float32`` for ``bfloat16`` inputs.
         vectorized: If ``True`` use the vectorized variant.
         use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
             instead of Peano.  See [`mm`][aie.iron.kernels.linalg.mm] for the design-level
@@ -822,7 +826,7 @@ def mv(
     """
     if a_col_maj and a_coded:
         raise ValueError("mv(): a_col_maj and a_coded are two layouts of A; pick one")
-    if (input_dtype, output_dtype) == (bfloat16, bfloat16):
+    if input_dtype == bfloat16 and output_dtype in (bfloat16, np.float32):
         return _mv_bf16(
             dim_m,
             dim_k,
@@ -832,6 +836,7 @@ def mv(
             output_rows,
             a_col_maj,
             a_coded,
+            output_dtype,
         )
     if a_col_maj or a_coded:
         raise ValueError("mv(): a_col_maj and a_coded are bf16 layouts")
@@ -839,7 +844,8 @@ def mv(
         raise ValueError("mv(): output_rows needs the bf16 kernel's row_offset")
     if input_dtype != np.int16 or output_dtype != np.int32:
         raise ValueError(
-            f"mv(): only (np.int16, np.int32) and (bfloat16, bfloat16) are supported, got ({input_dtype}, {output_dtype})"
+            f"mv(): only (np.int16, np.int32), (bfloat16, bfloat16) and "
+            f"(bfloat16, np.float32) are supported, got ({input_dtype}, {output_dtype})"
         )
 
     prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
@@ -889,7 +895,15 @@ MV_COL_MAJ_LAST = 2
 
 
 def _mv_bf16(
-    dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj, a_coded
+    dim_m,
+    dim_k,
+    vectorized,
+    use_chess,
+    vec_size,
+    output_rows,
+    a_col_maj,
+    a_coded,
+    output_dtype,
 ) -> ExternalFunction:
     """bf16 matvec from ``aie_kernels/linalg/mv_bf16.cc`` (see [`mv`][aie.iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
@@ -900,9 +914,16 @@ def _mv_bf16(
         raise ValueError(
             f"mv(): output_rows ({output_rows}) must be a positive multiple of dim_m ({dim_m})"
         )
+    f32 = output_dtype == np.float32
+    if f32 and (not vectorized or a_col_maj or a_coded):
+        raise ValueError(
+            "mv(): a float32 output is the vectorized row-major kernel's only"
+        )
     tiled = output_rows is not None
+    # float64 for a float32 output, so its bound covers the kernel alone.
+    acc = np.float64 if f32 else np.float32
     b_ty = np.ndarray[(dim_k,), np.dtype[bfloat16]]
-    c_ty = np.ndarray[(output_rows or dim_m,), np.dtype[bfloat16]]
+    c_ty = np.ndarray[(output_rows or dim_m,), np.dtype[output_dtype]]
     flags = [f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"]
     if a_col_maj:
         if not vectorized or tiled:
@@ -973,7 +994,7 @@ def _mv_bf16(
         subscripts = "cmk,k->cm" if tiled else "cmk,ck->cm"
     else:
         prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
-        symbol = f"{prefix}_bf16_bf16"
+        symbol = f"{prefix}_bf16_{'f32' if f32 else 'bf16'}"
         arg_types = [
             np.int32,
             np.int32,
@@ -1007,20 +1028,63 @@ def _mv_bf16(
             layouts=layouts,
             reference=lambda a, b: np.einsum(
                 subscripts,
-                (coded.decode_rows(a, dim_k) if a_coded else a).astype(np.float32),
-                b.astype(np.float32),
+                (coded.decode_rows(a, dim_k) if a_coded else a).astype(acc),
+                b.astype(acc),
             ),
             sample=(
                 partial(mv_coded_sample, dim_m=dim_m, dim_k=dim_k, tiled=tiled)
                 if a_coded
                 else None
             ),
-            acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
+            acc_dtype=np.float32,  # accfloat; a bf16 output rounds it on store
             reduction=dim_k,
-            tolerance=_linalg_tolerance(bfloat16),
+            tolerance=(
+                Tolerance.bounded(
+                    lambda a, b: mv_f32_bound(
+                        np.einsum(
+                            subscripts,
+                            np.abs(np.asarray(a, np.float64)),
+                            np.abs(np.asarray(b, np.float64)),
+                        ),
+                        dim_k=dim_k,
+                        vec_size=vec_size,
+                    ),
+                    note=MV_F32_NOTE,
+                )
+                if f32
+                else _linalg_tolerance(bfloat16)
+            ),
             ops_per_call=2 * dim_m * dim_k,
         ),
     )
+
+
+MV_F32_NOTE = (
+    "two float32 ulps per add along the kernel's summation depth, of |A| @ |b| "
+    "(the float adder aligns without a guard bit); npu2 measured at most "
+    "1.64 * 2**-24 * |A| @ |b| over 54 draws of 9 shapes; npu1 unmeasured"
+)
+
+
+def mv_f32_bound(magnitude, *, dim_k: int, vec_size: int):
+    """How far the float32 [`mv`][aie.iron.kernels.linalg.mv] may sit from the exact ``A @ b``.
+
+    Every bf16 product is exact in float32. A product then passes through at
+    most ``2 * dim_k / vec_size + log2(vec_size) + vec_size / 32`` adds (lane
+    chains and halvings; AIE2's tail path adds two products a mac and sums
+    ``vec_size / 32`` accumulators), each up to two ulps of an operand no
+    larger than its share of ``|A| @ |b|``.
+
+    Args:
+        magnitude: ``|A| @ |b|`` for each output.
+        dim_k: The kernel's ``DIM_K``.
+        vec_size: The kernel's ``VEC_SIZE``.
+
+    Returns:
+        The bound on each output's absolute error, shaped like ``magnitude``.
+    """
+    depth = 2 * dim_k // vec_size + int(np.log2(vec_size)) + vec_size // 32
+    return depth * 2.0**-22 * np.asarray(magnitude, np.float64)
 
 
 def mv_coded_sample(rng, calls, *, dim_m: int, dim_k: int, tiled: bool):

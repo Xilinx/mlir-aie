@@ -473,6 +473,11 @@ mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down
 mv/8192x4/bfloat16/a_col_maj=True/vec_size=32/edge-eight-vectors
 mv/8192x4/bfloat16/a_col_maj=True/vec_size=64
 mv/2x3072x16/bfloat16/vec_size=64/llama-3b-decode
+mv/6x128x4/bfloat16_float32/vec_size=64/f32-edge-rows-not-multiple-of-4
+mv/4x64x4/bfloat16_float32/vec_size=64/f32-edge-one-chunk
+mv/10x512x4/bfloat16_float32/vec_size=64/f32-edge-mac-loop
+mv/4x2048x16/bfloat16_float32/vec_size=64/f32
+mv/8192x256/bfloat16_float32/output_rows=256/vec_size=64/f32-llama-decode-ffn-down
 nms/4420x1/float32/cap=320/classes=80/width=52/realistic_pyramid_finish
 nms/4420x91/float32/cap=320/classes=80/width=52/realistic_pyramid
 passthrough/1024x16/int16

@@ -1297,6 +1297,33 @@ CASES: list[Case] = [
         calls=16,
         tag="llama-3b-decode",
     ),
+    # The float32 matvec over the bf16 kernel's paths: four-row groups and a
+    # tail, one chunk, the mac loop, and llama 3.2 1B's decode scores and
+    # down projection (a C tile filled through row_offset).
+    *[
+        Case(
+            "mv",
+            dict(
+                dim_m=dim_m,
+                dim_k=dim_k,
+                input_dtype=bfloat16,
+                output_dtype=np.float32,
+                vec_size=vec_size,
+                **extra,
+            ),
+            calls=calls,
+            tag=tag,
+            smoke=True,
+            perf=tag == "f32",
+        )
+        for dim_m, dim_k, vec_size, calls, tag, extra in (
+            (6, 128, 64, 4, "f32-edge-rows-not-multiple-of-4", {}),
+            (4, 64, 64, 4, "f32-edge-one-chunk", {}),
+            (10, 512, 64, 4, "f32-edge-mac-loop", {}),
+            (4, 2048, 64, 16, "f32", {}),
+            (1, 8192, 64, 256, "f32-llama-decode-ffn-down", dict(output_rows=256)),
+        )
+    ],
     # The column-major bf16 matvec, a whole K per call: llama 3.2 1B's
     # attention context shape (64 head dims, 128 cached positions per call),
     # and the narrowest output block at the narrowest VEC_SIZE. Calls that

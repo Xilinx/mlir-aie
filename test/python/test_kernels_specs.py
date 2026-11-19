@@ -745,12 +745,32 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(),
         arg_count=3,
         expected_name="matvec_vectorized_i16_i32",
+        invalid_kwargs=[
+            (dict(input_dtype=np.int8, output_dtype=np.int8), "only.*supported"),
+            *[
+                (
+                    dict(
+                        dim_k=64,
+                        input_dtype=bfloat16,
+                        output_dtype=np.float32,
+                        **layout,
+                    ),
+                    "float32 output",
+                )
+                for layout in (
+                    dict(vectorized=False),
+                    dict(a_col_maj=True),
+                    dict(a_coded=True),
+                )
+            ],
+        ],
         name_variants=[
             (dict(vectorized=True), "matvec_vectorized_i16_i32"),
             (dict(vectorized=False), "matvec_scalar_i16_i32"),
-        ],
-        invalid_kwargs=[
-            (dict(input_dtype=np.int8, output_dtype=np.int8), "only.*supported"),
+            (
+                dict(dim_k=64, input_dtype=bfloat16, output_dtype=np.float32),
+                "matvec_vectorized_bf16_f32",
+            ),
         ],
         shape_checks=[
             (dict(dim_m=16, dim_k=64), 1, (64,)),

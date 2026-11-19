@@ -69,9 +69,9 @@ Matrix-vector multiplication kernel
  - r: Vector size; data from the matrix and vector will be loaded in and
 processed in chunks of this size
 */
-template <uint32_t r, uint32_t k>
+template <uint32_t r, uint32_t k, typename T_out>
 void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
-                       const bfloat16 *__restrict b, bfloat16 *__restrict c) {
+                       const bfloat16 *__restrict b, T_out *__restrict c) {
   static_assert(k % r == 0);
   static_assert(k >= r);
   ::aie::rounding_mode saved_rounding =
@@ -96,14 +96,17 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
     else
       return fold_rows<16>(u.template to_vector<float>());
   };
-  auto store4 = [](bfloat16 *__restrict out, auto deferred) {
+  auto store4 = [](T_out *__restrict out, auto deferred) {
     aie::vector<float, 16> sums;
     if constexpr (fold_late)
       sums = fold_rows<16>(deferred.template to_vector<float>());
     else
       sums = deferred;
-    aie::vector<bfloat16, 16> v =
-        aie::accum<accfloat, 16>(sums).template to_vector<bfloat16>();
+    aie::vector<T_out, 16> v;
+    if constexpr (std::is_same_v<T_out, float>)
+      v = sums;
+    else
+      v = aie::accum<accfloat, 16>(sums).template to_vector<T_out>();
     out[0] = v[0];
     out[1] = v[1];
     out[2] = v[2];
@@ -149,7 +152,7 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
       AIE_LOOP_UNROLL_FULL
       for (uint32_t q = 1; q < P; q++)
         sum = aie::add(sum, aie::accum<accfloat, 16>(acc[q]));
-      *c = static_cast<bfloat16>(aie::reduce_add(sum.to_vector<float>()));
+      *c = static_cast<T_out>(aie::reduce_add(sum.to_vector<float>()));
       continue;
     }
 #endif
@@ -157,8 +160,7 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
     AIE_LOOP_MIN_ITERATION_COUNT(chunks)
     for (uint32_t i = 0; i < chunks; i++, a += r)
       acc = aie::mac(acc, aie::load_v<r>(a), aie::load_v<r>(b + i * r));
-    *c =
-        static_cast<bfloat16>(aie::reduce_add(acc.template to_vector<float>()));
+    *c = static_cast<T_out>(aie::reduce_add(acc.template to_vector<float>()));
   }
   ::aie::set_rounding(saved_rounding);
 }
@@ -212,6 +214,17 @@ void matvec_vectorized_bf16_bf16(uint32_t m, uint32_t row_offset,
                                  const bfloat16 *__restrict a_in,
                                  const bfloat16 *__restrict b_in,
                                  bfloat16 *__restrict c_out) {
+  event0();
+  c_out += row_offset;
+  matvec_vectorized<VEC_SIZE, DIM_K>(m, a_in, b_in, c_out);
+  event1();
+}
+
+// The bf16 variant's float32 sums, before it rounds them.
+void matvec_vectorized_bf16_f32(uint32_t m, uint32_t row_offset,
+                                const bfloat16 *__restrict a_in,
+                                const bfloat16 *__restrict b_in,
+                                float *__restrict c_out) {
   event0();
   c_out += row_offset;
   matvec_vectorized<VEC_SIZE, DIM_K>(m, a_in, b_in, c_out);
