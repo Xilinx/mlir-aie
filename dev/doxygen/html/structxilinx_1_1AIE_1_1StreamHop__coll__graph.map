@@ -1,0 +1,9 @@
+<map id="xilinx::AIE::StreamHop" name="xilinx::AIE::StreamHop">
+<area shape="rect" id="Node000001" title="A switchbox a stream passes: the port it enters by and, where it is packet switched there,..." alt="" coords="318,108,485,136"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,219,84"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="234,73,294,89,354,107,348,108,293,94,234,78"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="93,108,131,136"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="147,119,319,120,316,124,147,125"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="51,164,173,192"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="188,167,293,150,352,137,357,136,294,155,188,172"/>
+</map>
