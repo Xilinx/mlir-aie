@@ -456,6 +456,7 @@ def softmax(
     period: int | None = None,
     scale: float | None = None,
     span: bool = False,
+    stats: bool = False,
 ) -> ExternalFunction:
     """Softmax over a row of ``tile_size`` elements, into bf16.
 
@@ -509,6 +510,11 @@ def softmax(
             out exactly 0 at any ``scale``, the span normalised alone, so a
             causal row gives only ``hi`` short of ``n`` and a sliding window
             gives both.
+        stats: Float input only, uncapped and unbanded: the kernel also
+            writes the row's ``(m, l)``, float32, after ``y``: its largest
+            logit ``x + addend + mask`` and the sum of ``exp(logit - m)``
+            ``y`` is divided by, what a split-KV merge weighs a part by
+            ([`attention_merge`][aie.iron.kernels.linalg.attention_merge]).
 
     Returns:
         ExternalFunction configured for the softmax kernel.
@@ -520,9 +526,20 @@ def softmax(
             an aie2 non-accurate build, a negative or non-finite ``scale``,
             a ``soft_cap`` outside
             [2^-100, 2^10], ``window`` or ``period`` without the other, or
-            either with ``masked``.
+            either with ``masked``, or ``stats`` with bf16 input, a
+            ``soft_cap`` or a band.
     """
     _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
+    if stats and (
+        np.dtype(input_dtype) != np.dtype(np.float32)
+        or soft_cap is not None
+        or window is not None
+        or period is not None
+    ):
+        raise ValueError(
+            "softmax: stats are the uncapped, unbanded float32 path's: a "
+            "capped row's maximum is in log2 units"
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     if np.dtype(input_dtype) == np.dtype(np.float32):
         if scale is not None or span:
@@ -536,7 +553,7 @@ def softmax(
                     "softmax: window/period and masked are different bands; " "give one"
                 )
             return _softmax_f32_banded(tile_size, soft_cap, window, period)
-        return _softmax_f32(tile_size, soft_cap, masked, addend)
+        return _softmax_f32(tile_size, soft_cap, masked, addend, stats)
     if np.dtype(input_dtype) != np.dtype(bfloat16):
         raise ValueError(
             f"softmax: input_dtype must be bfloat16 or float32, got {input_dtype}"
@@ -654,7 +671,7 @@ def _softmax_span_bf16(
 
 
 def _softmax_f32(
-    tile_size: int, soft_cap: float | None, masked: bool, addend: bool
+    tile_size: int, soft_cap: float | None, masked: bool, addend: bool, stats: bool
 ) -> ExternalFunction:
     """[`softmax`][aie.iron.kernels.activation.softmax]'s float32 input path."""
     # Below, 2 log2(e) / cap's bf16 limbs leave the normal floats; above, the
@@ -670,13 +687,18 @@ def _softmax_f32(
         flags.append("-DSOFTMAX_ADDEND")
     if masked:
         flags.append("-DSOFTMAX_MASKED")
+    if stats:
+        flags.append("-DSOFTMAX_STATS")
+    inputs = 1 + addend + masked
     arg_types = [
         f32_ty,
         *([f32_ty] if addend else []),
         *([bf16_ty] if masked else []),
         bf16_ty,
+        *([np.ndarray[(2,), np.dtype[np.float32]]] if stats else []),
         np.int32,
     ]
+    rows = dict(tile_size=tile_size, soft_cap=soft_cap)
     return _create_lut_kernel(
         "softmax_f32_bf16",
         "softmax.cc",
@@ -684,23 +706,31 @@ def _softmax_f32(
         compile_flags=flags,
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(*([In] * (len(arg_types) - 2)), Out, Param),
+            roles=(*([In] * inputs), *([Out] * (1 + stats)), Param),
             parameter_bindings=((len(arg_types) - 1, tile_size),),
             reference=_softmax_rows(
-                softmax_ref, addend, masked, tile_size=tile_size, soft_cap=soft_cap
+                softmax_with_stats_ref if stats else softmax_ref,
+                addend,
+                masked,
+                **rows,
             ),
             tolerance=Tolerance.bounded(
                 _softmax_rows(
-                    softmax_f32_bound,
+                    softmax_with_stats_bound if stats else softmax_f32_bound,
                     addend,
                     masked,
-                    tile_size=tile_size,
-                    soft_cap=soft_cap,
+                    **rows,
                 ),
                 note="derived per row: four bf16 roundings, exp2 within 1e-5 "
                 "twice, aie::inv, the f32 sum, and twice the logits' error "
                 "(f32 roundings of the row's largest logit, and the cap's "
-                "tanh); a 2^-125 floor for 2^x flushed to +0",
+                "tanh); a 2^-125 floor for 2^x flushed to +0"
+                + (
+                    "; m two ulps an add of its logit's terms, l the row's "
+                    "relative budget"
+                    if stats
+                    else ""
+                ),
             ),
             sample=lambda rng, calls: softmax_f32_sample(
                 rng,
@@ -1754,17 +1784,15 @@ def _softmax_logits(x, addend, mask, *, tile_size: int, soft_cap: float | None):
     return xf.reshape(-1, tile_size)
 
 
-def softmax_f32_bound(
-    x, addend=None, mask=None, *, tile_size: int, soft_cap: float | None = None
-):
-    """Return the float path's per-element bound on ``|y - softmax_ref|``.
+def _softmax_f32_rel(x, addend, mask, *, tile_size: int, soft_cap: float | None):
+    """Return the float path's relative error budget per row, and the exact softmax, both ``(rows, tile_size)``.
 
     Four bf16 roundings, 2^x's and ``aie::inv``'s errors and the sum's
     float32 rounding, plus twice the logits' error, ``2^-21`` of a kept
     logit's size. Capped, that is the row's largest logit plus the cap's
     tanh. Uncapped, the kernel centres the logits first, so the size is 128
     (the logits near the max) or a logit whose ``x + addend`` or ``+ mask``
-    rounds in float32. Below ``2^-125`` an output may be +0.
+    rounds in float32.
     """
     z = _softmax_logits(x, addend, mask, tile_size=tile_size, soft_cap=soft_cap)
     if soft_cap is not None:
@@ -1788,7 +1816,68 @@ def softmax_f32_bound(
     p = softmax_ref(
         _f64(x), addend, mask, tile_size=tile_size, soft_cap=soft_cap
     ).reshape(z.shape)
+    return rel, p
+
+
+def softmax_f32_bound(
+    x, addend=None, mask=None, *, tile_size: int, soft_cap: float | None = None
+):
+    """Return the float path's per-element bound on ``|y - softmax_ref|``.
+
+    The row's relative budget (``_softmax_f32_rel``) of each output; below
+    ``2^-125`` an output may be +0.
+    """
+    rel, p = _softmax_f32_rel(x, addend, mask, tile_size=tile_size, soft_cap=soft_cap)
     return np.maximum(rel * p, 2.0**-125).reshape(np.shape(x))
+
+
+def softmax_stats_ref(x, addend=None, mask=None, *, tile_size: int):
+    """Each row's ``(m, l)`` as [`softmax`][aie.iron.kernels.activation.softmax]'s ``stats`` writes it, in float64.
+
+    ``m`` the row's largest logit ``x + addend + mask``, ``l`` the sum of
+    ``exp(logit - m)``; ``(rows, 2)``.
+    """
+    z = _softmax_logits(x, addend, mask, tile_size=tile_size, soft_cap=None)
+    m = z.max(axis=1)
+    return np.stack([m, np.exp(z - m[:, None]).sum(axis=1)], axis=1)
+
+
+def softmax_with_stats_ref(
+    x, addend=None, mask=None, *, tile_size: int, soft_cap: float | None = None
+):
+    """[`softmax`][aie.iron.kernels.activation.softmax]'s ``stats`` path: ``softmax_ref`` and ``softmax_stats_ref``."""
+    return (
+        softmax_ref(x, addend, mask, tile_size=tile_size, soft_cap=soft_cap),
+        softmax_stats_ref(x, addend, mask, tile_size=tile_size),
+    )
+
+
+def softmax_with_stats_bound(
+    x, addend=None, mask=None, *, tile_size: int, soft_cap: float | None = None
+):
+    """``softmax_f32_bound``, and each row's ``(m, l)`` bound.
+
+    ``m`` is the row's largest logit summed in float32: exact without an
+    addend or mask, else two ulps an add of its largest term. ``l`` sums
+    the row's exponentials, each within the row's relative budget
+    (``_softmax_f32_rel``) and moved by ``m``'s error.
+    """
+    rel, _ = _softmax_f32_rel(x, addend, mask, tile_size=tile_size, soft_cap=None)
+    z = _softmax_logits(x, addend, mask, tile_size=tile_size, soft_cap=None)
+    terms = np.abs(_f64(x)).reshape(z.shape)
+    if addend is not None:
+        terms = terms + np.abs(_f64(addend)).reshape(z.shape)
+    if mask is not None:
+        terms = terms + np.abs(_f64(mask)).reshape(z.shape)
+    kept = np.where(z > -1e30, terms, 0.0).max(axis=1)
+    m_bound = 0.0 if addend is None and mask is None else 2.0**-21 * kept
+    m_bound = np.broadcast_to(m_bound, kept.shape)
+    sums = softmax_stats_ref(x, addend, mask, tile_size=tile_size)[:, 1]
+    l_bound = (rel[:, 0] + 2 * m_bound) * sums
+    return (
+        softmax_f32_bound(x, addend, mask, tile_size=tile_size),
+        np.stack([m_bound, l_bound], axis=1),
+    )
 
 
 def softmax_f32_sample(

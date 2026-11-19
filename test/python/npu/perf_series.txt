@@ -625,6 +625,10 @@ softmax/32x8/float32_bfloat16/f32
 softmax/32x8/float32_bfloat16/masked=True/f32
 softmax/32x8/float32_bfloat16/masked=True/soft_cap=7.888609052210118e-31/f32
 softmax/32x8/float32_bfloat16/soft_cap=50.0/f32
+softmax/32x8/float32_bfloat16+float32/stats=True/f32-stats
+softmax/160x8/float32_bfloat16+float32/addend=True/stats=True/f32-stats
+softmax/32x8/float32_bfloat16+float32/addend=True/masked=True/stats=True/f32-stats
+softmax/2048x8/float32_bfloat16+float32/stats=True/f32-stats
 swiglu/1024x16/bfloat16
 swiglu/1024x16/bfloat16/use_lut=True/lut
 swiglu/1024x256/bfloat16

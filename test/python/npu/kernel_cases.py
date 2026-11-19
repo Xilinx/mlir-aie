@@ -371,6 +371,23 @@ CASES: list[Case] = [
             (1024, dict(soft_cap=2.0**10, addend=True), False),
         )
     ],
+    # ... and a row's (m, l) for a split-KV merge: plain, with each input
+    # term, and a decode row of 2048 keys.
+    *[
+        check(
+            "softmax",
+            dict(tile_size=n, input_dtype=np.float32, stats=True, **kw),
+            calls=8,
+            tag="f32-stats",
+            smoke=smoke,
+        )
+        for n, kw, smoke in (
+            (32, {}, True),
+            (160, dict(addend=True), False),
+            (32, dict(masked=True, addend=True), True),
+            (2048, {}, False),
+        )
+    ],
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its

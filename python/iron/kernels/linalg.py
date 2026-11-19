@@ -2603,9 +2603,11 @@ def attention_merge(rows: int = 32, dim: int = 64) -> ExternalFunction:
     Parts of attention over disjoint keys, the same ``rows`` query rows each,
     merged into attention over all of them, one part a call. Signature
     ``(flags, o, stats, acc, out)``: ``o`` is a part's ``(rows, dim)``
-    float32 attention, normalized by its own sum; ``stats`` its ``(2,
-    rows)`` float32 row maxima ``m`` of its scores, then ``l``, the sums of
-    ``exp(s - m)`` over its keys. ``acc`` (``rows * dim + 2 * rows``
+    float32 attention, normalized by its own sum; ``stats`` its ``(rows,
+    2)`` float32: each row's maximum ``m`` of its scores and ``l``, the sum
+    of ``exp(s - m)`` over its keys, as a float32
+    [`softmax`][aie.iron.kernels.activation.softmax] with ``stats`` writes
+    them. ``acc`` (``rows * dim + 2 * rows``
     float32) carries the running sums from call to call: an
     ``ATTENTION_MERGE_FIRST`` call starts them, and an
     ``ATTENTION_MERGE_LAST`` call writes ``out``, ``(rows, dim)`` bf16:
@@ -2638,7 +2640,7 @@ def attention_merge(rows: int = 32, dim: int = 64) -> ExternalFunction:
         [
             np.int32,
             np.ndarray[(rows * dim,), np.dtype[np.float32]],
-            np.ndarray[(2 * rows,), np.dtype[np.float32]],
+            np.ndarray[(rows * 2,), np.dtype[np.float32]],
             np.ndarray[(acc,), np.dtype[np.float32]],
             np.ndarray[(rows * dim,), np.dtype[bfloat16]],
         ],
@@ -2655,7 +2657,7 @@ def attention_merge(rows: int = 32, dim: int = 64) -> ExternalFunction:
             layouts=(
                 None,
                 TensorLayout((rows, dim)),
-                TensorLayout((2, rows)),
+                TensorLayout((rows, 2)),
                 None,
                 TensorLayout((rows, dim)),
             ),
@@ -2680,8 +2682,8 @@ ATTENTION_MERGE_NOTE = (
 
 def _attention_merge_weights(stats, *, parts: int, rows: int):
     """Each part's share ``w_j / sum_j w_j`` of each row, and ``|m_j - M|``, 0 for an empty part."""
-    stats = np.asarray(stats, np.float64).reshape(-1, parts, 2, rows)
-    maxima, sums = stats[:, :, 0], stats[:, :, 1]
+    stats = np.asarray(stats, np.float64).reshape(-1, parts, rows, 2)
+    maxima, sums = stats[..., 0], stats[..., 1]
     empty = sums == 0
     top = np.where(empty, -np.inf, maxima).max(axis=1, keepdims=True)
     with np.errstate(invalid="ignore"):
@@ -2695,8 +2697,8 @@ def _attention_merge_weights(stats, *, parts: int, rows: int):
 def attention_merge_ref(o, stats, *, parts: int, rows: int, dim: int):
     """Numpy reference for [`attention_merge`][aie.iron.kernels.linalg.attention_merge] over ``parts`` parts, in float64.
 
-    ``o`` is ``(..., parts * rows * dim)`` and ``stats`` ``(..., parts * 2 *
-    rows)``, the parts in turn; returns ``(..., rows * dim)``.
+    ``o`` is ``(..., parts * rows * dim)`` and ``stats`` ``(..., parts *
+    rows * 2)``, the parts in turn; returns ``(..., rows * dim)``.
     """
     share, _ = _attention_merge_weights(stats, parts=parts, rows=rows)
     o = np.asarray(o, np.float64).reshape(-1, parts, rows, dim)
@@ -2713,7 +2715,7 @@ def attention_merge_sample(rng, calls, *, parts: int, rows: int, dim: int):
     empty = rng.random((calls, parts, rows)) < 0.1
     maxima = np.where(empty, -np.inf, rng.normal(0, 8, (calls, parts, rows)))
     sums = np.where(empty, 0.0, rng.uniform(1, 512, (calls, parts, rows)))
-    stats = np.stack([maxima, sums], axis=2).astype(np.float32)
+    stats = np.stack([maxima, sums], axis=-1).astype(np.float32)
     return [o.reshape(calls, -1), stats.reshape(calls, -1)]
 
 

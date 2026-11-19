@@ -12,7 +12,8 @@
 //   out = sum_j w_j o_j / sum_j w_j,  w_j = l_j exp(m_j - M),  M = max_j m_j.
 // A call folds one part in, online: the running maximum M, total L and
 // acc = sum w_j o_j are rescaled by exp(M - M') when a part raises M to M'.
-// o is ROWS x DIM float32 and stats 2 x ROWS float32 (m, then l). acc is the
+// o is ROWS x DIM float32 and stats ROWS x 2 float32, each row's m and l, as
+// a float32 softmax with stats writes them a row at a time. acc is the
 // core's: ROWS x DIM sums, then M, then L. The FIRST call starts it without
 // reading it, and the LAST writes out, ROWS x DIM bf16. A part with l = 0
 // attended no key and weighs nothing (its m may be -inf), and a row no part
@@ -85,9 +86,10 @@ static inline void fold_weights(const float *__restrict stats,
     return mul_limbs(bf16_limbs(aa), bf16_limbs(ba)).template to_vector<float>();
   };
   for (int32_t i = 0; i < ROWS; i += L) {
-    const auto l = aie::load_v<L>(stats + ROWS + i);
+    const auto [maxima, l] = aie::interleave_unzip(
+        aie::load_v<L>(stats + 2 * i), aie::load_v<L>(stats + 2 * i + L), 1);
     const auto empty = aie::eq(l, zeros);
-    const auto m = aie::select(aie::load_v<L>(stats + i), lowest, empty);
+    const auto m = aie::select(maxima, lowest, empty);
     const auto M = first ? lowest : aie::load_v<L>(state + i);
     const auto total = first ? zeros : aie::load_v<L>(state + ROWS + i);
     const auto M_new = aie::max(M, m);

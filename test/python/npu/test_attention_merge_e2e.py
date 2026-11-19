@@ -23,6 +23,7 @@ import aie.iron as iron
 import numpy as np
 import pytest
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.buffer import Buffer
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
@@ -103,7 +104,7 @@ def _attention_parts(rng, parts, rows, dim, keys):
         m = sj.max(axis=1)
         p = np.exp(sj - m[:, None])
         o.append(p / p.sum(axis=1, keepdims=True) @ v[j * keys : (j + 1) * keys])
-        stats.append(np.stack([m, p.sum(axis=1)]))
+        stats.append(np.stack([m, p.sum(axis=1)], axis=1))
     return np.stack(o), np.stack(stats), full
 
 
@@ -151,18 +152,40 @@ def test_the_merge_holds_its_bound_where_the_rescale_is_stressed(
 ):
     rng = np.random.default_rng(7 * parts + rows + dim)
     o, stats = kernels.attention_merge_sample(rng, 1, parts=parts, rows=rows, dim=dim)
-    o, stats = o.reshape(parts, rows, dim), stats.reshape(parts, 2, rows)
+    o, stats = o.reshape(parts, rows, dim), stats.reshape(parts, rows, 2)
     if draw == "far_maxima":
         # Each part's maximum up to 80 below the row's: weights down to e^-80.
-        stats[:, 0] = rng.uniform(-80, 0, (parts, rows))
+        stats[..., 0] = rng.uniform(-80, 0, (parts, rows))
         o = (o * 10.0 ** rng.uniform(-3, 3, o.shape)).astype(np.float32)
     if draw == "empty_rows":
         # Row 0 attended by no part (0 out); row 1 by the last part alone.
-        stats[:, 0, 0], stats[:, 1, 0] = -np.inf, 0
-        stats[:-1, 0, 1], stats[:-1, 1, 1] = -np.inf, 0
+        stats[:, 0] = -np.inf, 0
+        stats[:-1, 1] = -np.inf, 0
         stats[-1, 1, 1] = 3
     got = _merge(o, stats, parts, rows, dim)
     verdict = _held(got, o, stats, parts, rows, dim)
     assert verdict, verdict.detail
     if draw == "empty_rows":
         np.testing.assert_array_equal(got.reshape(rows, dim)[0].astype(np.float32), 0)
+
+
+@pytest.mark.parametrize(
+    "tile_size, options",
+    [(2048, {}), (160, dict(addend=True)), (1024, dict(masked=True))],
+    ids=["decode-row", "addend", "masked"],
+)
+def test_softmax_stats_hold_on_attention_rows(tile_size, options):
+    """A float32 softmax's (m, l), the merge's weights, on rows whose every key counts.
+
+    The contract's sample spreads logits wide, so one term dominates l;
+    attention's scores sit within a few units, so l sums thousands of bf16
+    exponentials, each rounded.
+    """
+    fn = kernels.softmax(tile_size, input_dtype=np.float32, stats=True, **options)
+    harness = kd.KernelDesign(fn)
+    rng = np.random.default_rng(tile_size)
+    inputs = harness.sample_inputs(rng)
+    inputs[0] = (rng.standard_normal(np.shape(inputs[0])) * 2).astype(np.float32)
+    raw = harness.run([np.array(x, copy=True) for x in inputs])
+    verdict = harness.check(raw, inputs)
+    assert verdict, verdict
