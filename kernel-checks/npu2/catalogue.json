@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "b67ba588e3783bdcd6dff26c6f3e27a7cdec0f0a",
- "date": "2026-11-18T08:33:43.816279+00:00",
+ "commit": "23be6fc4d591a9e8eaaea5bc77ee3ac12eca44af",
+ "date": "2026-11-19T07:51:57.517431+00:00",
  "swept": true,
  "kernels": [
   {
