@@ -894,6 +894,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "44450831651",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44450831651",
+   "date": "2026-11-19T03:21:13+00:00",
+   "commit": {
+    "id": "9e09d3c2058451902a732f6d384cb2a0fdb3e560",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/9e09d3c2058451902a732f6d384cb2a0fdb3e560",
+    "message": "[cert] Emit a section's stub in every uC block that loads it (#4084)",
+    "timestamp": "2026-11-18T21:26:52Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "INTEL(R) XEON(R) PLATINUM 8573C",
+   "device_raw": null,
+   "provenance": {
+    "commit": "9e09d3c205",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

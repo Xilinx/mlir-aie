@@ -1,0 +1,217 @@
+{
+ "schema": 1,
+ "target": "router",
+ "id": "44450831651",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44450831651",
+ "date": "2026-11-19T03:21:13+00:00",
+ "commit": {
+  "id": "9e09d3c2058451902a732f6d384cb2a0fdb3e560",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/9e09d3c2058451902a732f6d384cb2a0fdb3e560",
+  "message": "[cert] Emit a section's stub in every uC block that loads it (#4084)",
+  "timestamp": "2026-11-18T21:26:52Z"
+ },
+ "event": "schedule",
+ "pmode": null,
+ "device": "INTEL(R) XEON(R) PLATINUM 8573C",
+ "device_raw": null,
+ "provenance": {
+  "commit": "9e09d3c205",
+  "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 24,
+ "exitstatus": 1,
+ "failed": [
+  "xcvc1902/hops-on/seed=207760011+1/mutator priority crash",
+  "xcvc1902/hops-off/seed=207760011+1/mutator priority crash"
+ ],
+ "truncated": [],
+ "rows": {
+  "npu1": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0131,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 15.123,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 17.28,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  },
+  "npu2": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0133,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 15.239,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 13.45,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  },
+  "xcvc1902": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0181,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 18.876,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 222.86,
+    "unit": "ms"
+   },
+   "failed_mutations": {
+    "value": 2,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  }
+ },
+ "builds": {},
+ "detail": [
+  {
+   "run": "lit",
+   "tests": 2,
+   "failed": []
+  },
+  {
+   "device": "npu1",
+   "run": "properties",
+   "first_seed": 207760000,
+   "seeds": 2000,
+   "failed": []
+  },
+  {
+   "device": "npu1",
+   "run": "hops-on",
+   "first_seed": 207760000,
+   "seeds": 400,
+   "killed": 1899,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu1",
+   "run": "hops-off",
+   "first_seed": 207760000,
+   "seeds": 400,
+   "killed": 1893,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu2",
+   "run": "properties",
+   "first_seed": 207760000,
+   "seeds": 2000,
+   "failed": []
+  },
+  {
+   "device": "npu2",
+   "run": "hops-on",
+   "first_seed": 207760000,
+   "seeds": 400,
+   "killed": 1887,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "npu2",
+   "run": "hops-off",
+   "first_seed": 207760000,
+   "seeds": 400,
+   "killed": 1881,
+   "survived": 0,
+   "failures": 0
+  },
+  {
+   "device": "xcvc1902",
+   "run": "properties",
+   "first_seed": 207760000,
+   "seeds": 500,
+   "failed": []
+  },
+  {
+   "device": "xcvc1902",
+   "run": "hops-on",
+   "first_seed": 207760000,
+   "seeds": 100,
+   "killed": 429,
+   "survived": 0,
+   "failures": 1
+  },
+  {
+   "device": "xcvc1902",
+   "run": "hops-off",
+   "first_seed": 207760000,
+   "seeds": 100,
+   "killed": 425,
+   "survived": 0,
+   "failures": 1
+  }
+ ]
+}

@@ -932,6 +932,36 @@
     "xcvc1902/hops-off/seed=207750067+1/mutator multi-source crash"
    ],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "44450831651",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44450831651",
+   "date": "2026-11-19T03:21:13+00:00",
+   "commit": {
+    "id": "9e09d3c2058451902a732f6d384cb2a0fdb3e560",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/9e09d3c2058451902a732f6d384cb2a0fdb3e560",
+    "message": "[cert] Emit a section's stub in every uC block that loads it (#4084)",
+    "timestamp": "2026-11-18T21:26:52Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "INTEL(R) XEON(R) PLATINUM 8573C",
+   "device_raw": null,
+   "provenance": {
+    "commit": "9e09d3c205",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 1,
+   "failed": [
+    "xcvc1902/hops-on/seed=207760011+1/mutator priority crash",
+    "xcvc1902/hops-off/seed=207760011+1/mutator priority crash"
+   ],
+   "truncated": []
   }
  ]
 }
