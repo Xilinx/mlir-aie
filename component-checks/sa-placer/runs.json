@@ -1200,6 +1200,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "44473848799",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44473848799",
+   "date": "2026-11-19T06:40:12+00:00",
+   "commit": {
+    "id": "23be6fc4d591a9e8eaaea5bc77ee3ac12eca44af",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/23be6fc4d591a9e8eaaea5bc77ee3ac12eca44af",
+    "message": "Improve safety for BD reuse and shim sharing; placers share allocation's models (#4003)",
+    "timestamp": "2026-11-19T03:55:55Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "23be6fc4d5",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
