@@ -134,6 +134,30 @@ void eltwise_vadd_size(T_in *__restrict a, T_in *__restrict b,
   event1();
 }
 
+// float32 a + b in the float accumulator. Where the operands' signs differ
+// the adder aligns them without a guard bit, so a sum may be up to two ulps of
+// the larger operand off the correctly rounded one (measured on npu2).
+void eltwise_vadd_f32_size(const float *__restrict a, const float *__restrict b,
+                           float *__restrict c, int size) {
+  constexpr int lanes = 16;
+  event0();
+  const int F = (uint32_t)ADD_ELEMS / lanes;
+  AIE_PREPARE_FOR_PIPELINING
+  for (int i = 0; i < F; i++) {
+    aie::accum<accfloat, lanes> sum;
+    sum.from_vector(aie::load_v<lanes>(a));
+    sum = aie::add(sum, aie::load_v<lanes>(b));
+    aie::store_v(c, sum.template to_vector<float>());
+    a += lanes;
+    b += lanes;
+    c += lanes;
+  }
+  for (int i = 0; i < (int)((uint32_t)ADD_ELEMS % lanes); i++) {
+    c[i] = a[i] + b[i];
+  }
+  event1();
+}
+
 #ifdef ADD_INT8
 // int8 a + b on power-of-two scales: each operand is shifted up onto the
 // finer scale, and the int32 sum shifted down to the output's, rounding half
@@ -182,6 +206,11 @@ void eltwise_add_bf16_vector(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
 void eltwise_add_bf16_vector_size(bfloat16 *a_in, bfloat16 *b_in,
                                   bfloat16 *c_out, int size) {
   eltwise_vadd_size<bfloat16, bfloat16>(a_in, b_in, c_out, size);
+}
+
+void eltwise_add_f32_vector_size(float *a_in, float *b_in, float *c_out,
+                                 int size) {
+  eltwise_vadd_f32_size(a_in, b_in, c_out, size);
 }
 
 #ifdef ADD_INT8

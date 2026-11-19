@@ -78,6 +78,11 @@ def add_i8_ref(a, b, a_shift, b_shift, out_shift):
     return np.clip(np.round(total / 2.0 ** int(out_shift)), -128, 127).astype(np.int8)
 
 
+def _f32_add_bound(a, b):
+    """Two float32 ulps of the larger operand: the device's float adder drops a guard bit where signs differ."""
+    return 2 * np.spacing(np.maximum(np.abs(a), np.abs(b)).astype(np.float32))
+
+
 def mul_ref(a, b):
     """Numpy reference for [`mul`][aie.iron.kernels.eltwise.mul]: element-wise ``a * b`` in float32."""
     return a.astype(np.float32) * b.astype(np.float32)
@@ -332,17 +337,29 @@ def mul_add_ref(a, b, is_mul):
     return (a32 * b32 if int(is_mul) else a32 + b32).astype(a.dtype)
 
 
-def add_sized(tile_size: int = 1024) -> ExternalFunction:
-    """Element-wise bf16 addition, with a compiled-in element count.
+DTYPES["add_sized"] = tuple(({"dtype": bfloat16}, {"dtype": np.float32}))
+
+
+def add_sized(tile_size: int = 1024, dtype: type = bfloat16) -> ExternalFunction:
+    """Element-wise addition, bf16 or float32, with a compiled-in element count.
 
     Runtime-size sibling of [`add`][aie.iron.kernels.eltwise.add]; design passes
-    ``(a, b, c, size)`` for ABI compatibility. Scalar tails are supported.
+    ``(a, b, c, size)`` for ABI compatibility. Scalar tails are supported. A
+    float32 sum may be up to two ulps of the larger operand off numpy's: the
+    device's float adder aligns operands of differing sign without a guard bit.
+
+    Raises:
+        ValueError: ``tile_size`` is not positive, or ``dtype`` is neither
+            ``bfloat16`` nor ``np.float32``.
     """
     if tile_size <= 0:
         raise ValueError(f"add_sized() tile_size must be positive, got {tile_size}")
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    if np.dtype(dtype) not in (np.dtype(bfloat16), np.dtype(np.float32)):
+        raise ValueError(f"add_sized() dtype must be bfloat16 or float32, got {dtype}")
+    f32 = np.dtype(dtype) == np.dtype(np.float32)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32 if f32 else bfloat16]]
     return _make_extern(
-        "eltwise_add_bf16_vector_size",
+        "eltwise_add_f32_vector_size" if f32 else "eltwise_add_bf16_vector_size",
         _kernel_source("eltwise/add.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DADD_ELEMS={tile_size}"],
@@ -353,7 +370,15 @@ def add_sized(tile_size: int = 1024) -> ExternalFunction:
             parameter_bindings=((3, tile_size),),
             reference=add_ref,
             acc_dtype=np.float32,
-            tolerance=_BF16_ROUNDTRIP,
+            tolerance=(
+                Tolerance.bounded(
+                    _f32_add_bound,
+                    note="two ulps of the larger operand: the float adder "
+                    "aligns without a guard bit (measured on npu2)",
+                )
+                if f32
+                else _BF16_ROUNDTRIP
+            ),
             ops_per_call=tile_size,
         ),
     )
