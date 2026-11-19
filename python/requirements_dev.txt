@@ -49,4 +49,4 @@ pytest-rerunfailures
 pytest-xdist
 pyyaml
 cloudpickle # required by eudsl when it is vendored instead of installed
-reuse[charset-normalizer]==6.2.0
+reuse[charset-normalizer]==6.3.0
