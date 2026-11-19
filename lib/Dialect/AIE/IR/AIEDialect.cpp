@@ -747,9 +747,10 @@ LogicalResult ObjectFifoCreateOp::verify() {
            << consPorts.size() << " entries for " << getConsumerTiles().size()
            << " consumers";
 
-  // Helper to get tile interface from Value
+  // Helper to get tile interface from Value. A block argument has no defining
+  // op.
   auto getTileLikeFromValue = [](Value v) -> TileLike {
-    return llvm::dyn_cast<TileLike>(v.getDefiningOp());
+    return llvm::dyn_cast_or_null<TileLike>(v.getDefiningOp());
   };
 
   TileLike producerTile = getTileLikeFromValue(getProducerTile());
@@ -922,7 +923,7 @@ SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
 } // namespace
 
 TileLike ObjectFifoPoolOp::getTileLike() {
-  return dyn_cast<TileLike>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
 }
 
 int64_t ObjectFifoPoolOp::getObjectSize() {
@@ -939,6 +940,8 @@ int64_t ObjectFifoPoolOp::getObjectsPerBuffer() {
 }
 
 LogicalResult ObjectFifoPoolOp::verify() {
+  if (!getTileLike())
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   auto &target = (*this)->getParentOfType<DeviceOp>().getTargetModel();
   bool semaphoreLocks = target.hasProperty(AIETargetModel::UsesSemaphoreLocks);
 
@@ -1165,7 +1168,7 @@ selectSegments(ObjectFifoPoolOp pool, std::optional<ArrayAttr> selected) {
 }
 
 TileLike ObjectFifoCoreEndpointOp::getTileLike() {
-  return dyn_cast<TileLike>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
 }
 
 ObjectFifoPoolOp ObjectFifoCoreEndpointOp::getPoolOp() {
@@ -1178,6 +1181,8 @@ ObjectFifoCoreEndpointOp::getSelectedSegments() {
 }
 
 LogicalResult ObjectFifoCoreEndpointOp::verify() {
+  if (!getTileLike())
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool) {
     return emitOpError("references undefined pool '") << getPool() << "'";
@@ -1230,7 +1235,7 @@ MemRefType ObjectFifoCoreEndpointOp::getAccessType() {
 }
 
 TileLike ObjectFifoDmaEndpointOp::getTileLike() {
-  return dyn_cast<TileLike>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
 }
 
 ObjectFifoPoolOp ObjectFifoDmaEndpointOp::getPoolOp() {
@@ -1359,6 +1364,8 @@ void ObjectFifoDmaEndpointOp::setRouteChannel(int channel) {
 }
 
 LogicalResult ObjectFifoDmaEndpointOp::verify() {
+  if (!getTileLike())
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool) {
     return emitOpError("references undefined pool '") << getPool() << "'";
@@ -1492,7 +1499,7 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
 }
 
 TileLike RouteEndpointOp::getTileLike() {
-  return dyn_cast<TileLike>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
 }
 
 DMAChannelDir RouteEndpointOp::getRouteDirection() {
@@ -2679,7 +2686,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return fifo.emitOpError("objectfifo is read by more ObjectFifoLinkOps "
                               "on a tile than it has consumer ends there");
 
-  TileLike tile = llvm::dyn_cast<TileLike>(sharedTile.value().getDefiningOp());
+  TileLike tile =
+      llvm::dyn_cast_or_null<TileLike>(sharedTile.value().getDefiningOp());
   if (!tile)
     return emitError("shared tile must implement TileLike interface");
   // Each participant occupies its own slice of the shared object, so the link
@@ -3434,11 +3442,11 @@ LogicalResult CascadeFlowOp::verify() {
 }
 
 TileLike CascadeFlowOp::getSourceTileLike() {
-  return dyn_cast<TileLike>(getSourceTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getSourceTile().getDefiningOp());
 }
 
 TileLike CascadeFlowOp::getDestTileLike() {
-  return dyn_cast<TileLike>(getDestTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getDestTile().getDefiningOp());
 }
 
 TileOp CascadeFlowOp::getSourceTileOp() {
@@ -3490,11 +3498,14 @@ static std::string describeCascadeDirs(ArrayRef<CascadeDir> dirs) {
 }
 
 LogicalResult ConfigureCascadeOp::verify() {
-  if (!isa<TileOp>(getTile().getDefiningOp()))
+  Operation *tileDef = getTile().getDefiningOp();
+  if (!isa_and_nonnull<TileLike>(tileDef))
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
+  auto tile = dyn_cast<TileOp>(tileDef);
+  if (!tile)
     return emitOpError("requires a placed tile (aie.tile), not a logical tile");
 
   const auto &t = getTargetModel(*this);
-  TileOp tile = cast<TileOp>(getTile().getDefiningOp());
   CascadeDir inputDir = getInputDir();
   CascadeDir outputDir = getOutputDir();
 
@@ -4461,6 +4472,9 @@ bool xilinx::AIE::keepsPktHeader(TileID tile, Port master,
 // there. The placer checks logical tiles' channel budgets.
 static LogicalResult verifyFlowEndpoint(Operation *op, Value tile, Port port,
                                         bool isSource) {
+  if (!isa_and_nonnull<TileLike>(tile.getDefiningOp()))
+    return op->emitOpError(
+        "tile operand is not an aie.tile or aie.logical_tile");
   if (port.bundle != WireBundle::Core && port.bundle != WireBundle::DMA)
     return success();
   auto tileOp = dyn_cast_or_null<TileOp>(tile.getDefiningOp());
