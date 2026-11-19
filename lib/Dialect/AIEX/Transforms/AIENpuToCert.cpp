@@ -149,6 +149,21 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
   }
 };
 
+// Tile coordinates replace the upper bits of a tile-relative address. Warn
+// when the given address has upper bits of its own that disagree.
+static void warnOnMismatchedTileBits(Operation *op, uint32_t address,
+                                     uint32_t col, uint32_t row) {
+  const auto &tm = AIE::getTargetModel(op);
+  uint32_t expectedUpperBits = ((col & 0xff) << tm.getColumnShift()) |
+                               ((row & 0xff) << tm.getRowShift());
+  uint32_t upperBits = address & ~0xfffff;
+  if (upperBits != 0 && upperBits != expectedUpperBits)
+    op->emitWarning() << "address upper bits (0x" << llvm::utohexstr(upperBits)
+                      << ") don't match row=" << row << " col=" << col
+                      << " computed bits (0x"
+                      << llvm::utohexstr(expectedUpperBits) << ")";
+}
+
 struct NpuWrite32ToCertWrite32 : OpConversionPattern<AIEX::NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -170,25 +185,12 @@ struct NpuWrite32ToCertWrite32 : OpConversionPattern<AIEX::NpuWrite32Op> {
 
     uint32_t absoluteAddr = *absAddress;
 
-    // If row and col are specified, validate that the address upper bits match
+    // An address that became constant only after resolveRelativeAddresses,
+    // by folding or run inlining, still carries its tile coordinates.
     std::optional<uint32_t> col = op.getColumn();
     std::optional<uint32_t> row = op.getRow();
-    if (col && row) {
-      const auto &tm = AIE::getTargetModel(op);
-      uint32_t expectedUpperBits = ((*col & 0xff) << tm.getColumnShift()) |
-                                   ((*row & 0xff) << tm.getRowShift());
-
-      // Warn if the original address had non-zero upper bits that don't match
-      uint32_t origAddress = *address;
-      uint32_t origUpperBits = origAddress & ~0xfffff;
-      if (origUpperBits != 0 && origUpperBits != expectedUpperBits) {
-        op.emitWarning() << "address upper bits (0x"
-                         << llvm::utohexstr(origUpperBits)
-                         << ") don't match row=" << *row << " col=" << *col
-                         << " computed bits (0x"
-                         << llvm::utohexstr(expectedUpperBits) << ")";
-      }
-    }
+    if (col && row)
+      warnOnMismatchedTileBits(op, *address, *col, *row);
 
     rewriter.replaceOpWithNewOp<AIEX::CertWrite32Op>(op, absoluteAddr, *value);
     return success();
@@ -219,25 +221,10 @@ struct NpuMaskWrite32ToCertMaskWrite32
 
     uint32_t absoluteAddr = *absAddress;
 
-    // If row and col are specified, validate that the address upper bits match
     std::optional<uint32_t> col = op.getColumn();
     std::optional<uint32_t> row = op.getRow();
-    if (col && row) {
-      const auto &tm = AIE::getTargetModel(op);
-      uint32_t expectedUpperBits = ((*col & 0xff) << tm.getColumnShift()) |
-                                   ((*row & 0xff) << tm.getRowShift());
-
-      // Warn if the original address had non-zero upper bits that don't match
-      uint32_t origAddress = *address;
-      uint32_t origUpperBits = origAddress & ~0xfffff;
-      if (origUpperBits != 0 && origUpperBits != expectedUpperBits) {
-        op.emitWarning() << "address upper bits (0x"
-                         << llvm::utohexstr(origUpperBits)
-                         << ") don't match row=" << *row << " col=" << *col
-                         << " computed bits (0x"
-                         << llvm::utohexstr(expectedUpperBits) << ")";
-      }
-    }
+    if (col && row)
+      warnOnMismatchedTileBits(op, *address, *col, *row);
 
     rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(op, absoluteAddr,
                                                          *mask, *value);
@@ -1026,25 +1013,65 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
   SymbolTableCollection &symbolTables;
 };
 
-// Rewrite each tile- or buffer-relative blockwrite to the absolute address it
-// targets, so that splitting, address_patch matching and lowering all use the
-// raw address. This runs before configure sequences are cloned into another
-// device, where the buffer symbol would no longer resolve.
-static LogicalResult resolveBlockWriteAddresses(AIE::DeviceOp device) {
+// Rewrite each tile- or buffer-relative write32, maskwrite32, maskpoll and
+// blockwrite to the absolute address it targets, so that splitting,
+// address_patch matching and lowering all use the raw address. This runs before
+// configure sequences are cloned into another device, where the buffer symbol
+// would no longer resolve.
+static LogicalResult resolveRelativeAddresses(AIE::DeviceOp device) {
   AIE::NamedOpTable names(device);
   LogicalResult result = success();
-  device.walk([&](AIEX::NpuBlockWriteOp op) {
-    if (!op.getBuffer() && !(op.getColumn() && op.getRow()))
+  auto isRelative = [](auto op) {
+    return op.getBuffer() || (op.getColumn() && op.getRow());
+  };
+  auto dropRelative = [](auto op) {
+    op.removeBufferAttr();
+    op.removeColumnAttr();
+    op.removeRowAttr();
+  };
+  // These take the address as an operand. A runtime address is left to the
+  // lowering, which rejects it.
+  auto resolveOperand = [&](auto op, bool warnOnTileBits) {
+    if (!isRelative(op))
+      return;
+    std::optional<uint32_t> offset =
+        AIEX::getConstantIntOperand(op.getAddress());
+    if (!offset)
       return;
     std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
     if (!address) {
       result = failure();
       return;
     }
-    op.setAddress(*address);
-    op.removeBufferAttr();
-    op.removeColumnAttr();
-    op.removeRowAttr();
+    std::optional<uint32_t> col = op.getColumn();
+    std::optional<uint32_t> row = op.getRow();
+    if (warnOnTileBits && col && row)
+      warnOnMismatchedTileBits(op, *offset, *col, *row);
+    OpBuilder builder(op);
+    Value absolute = arith::ConstantOp::create(
+        builder, op.getLoc(),
+        builder.getI32IntegerAttr(static_cast<int32_t>(*address)));
+    op.getAddressMutable().set(absolute);
+    dropRelative(op);
+  };
+  device.walk([&](Operation *op) {
+    if (auto write = dyn_cast<AIEX::NpuWrite32Op>(op)) {
+      resolveOperand(write, /*warnOnTileBits=*/true);
+    } else if (auto write = dyn_cast<AIEX::NpuMaskWrite32Op>(op)) {
+      resolveOperand(write, /*warnOnTileBits=*/true);
+    } else if (auto poll = dyn_cast<AIEX::NpuMaskPollOp>(op)) {
+      resolveOperand(poll, /*warnOnTileBits=*/false);
+    } else if (auto write = dyn_cast<AIEX::NpuBlockWriteOp>(op)) {
+      if (!isRelative(write))
+        return;
+      std::optional<uint32_t> address = write.getAbsoluteAddress(&names);
+      if (!address) {
+        result = failure();
+        return;
+      }
+      write.setAddress(*address);
+      dropRelative(write);
+    }
   });
   return result;
 }
@@ -1066,7 +1093,7 @@ struct AIENpuToCertPass
 
     bool resolved = true;
     for (auto dev : devices)
-      resolved &= succeeded(resolveBlockWriteAddresses(dev));
+      resolved &= succeeded(resolveRelativeAddresses(dev));
     if (!resolved)
       return signalPassFailure();
 
