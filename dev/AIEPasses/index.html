@@ -5268,9 +5268,10 @@ routes the overlay once, before importing its fixed resources.
 Adaptive placement avoids application reservations; fixed placement uses
 shim MM2S channel zero. Supplied overlays must be explicitly referenced.</p>
 <h4 id="options_7">Options<a class="headerlink" href="#options_7" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>-configuration : Include and pre-route configuration transport
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>-adaptive      : Place configuration transport around application resources
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>-cover-columns : Additional columns touched by application routing
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>-configuration      : Include and pre-route configuration transport
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>-adaptive           : Place configuration transport around application resources
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>-cover-columns      : Additional columns touched by application routing
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>-packet-sw-objFifos : Count route ends with no packet header as packet switched, as aie-assign-packet-ids does with this option
 </code></pre></div>
 <h3 id="-aie-hoist-vector-transfer-pointers"><code>-aie-hoist-vector-transfer-pointers</code><a class="headerlink" href="#-aie-hoist-vector-transfer-pointers" title="Permanent link">&para;</a></h3>
 <p><em>Hoist vector transfer pointer computations out of scf.for loops in aie.core regions</em></p>
@@ -5523,6 +5524,10 @@ release more objects through a pool than the pool's DMA endpoint, bounded
 by an iteration count, will ever move.</p>
 <p>These are completeness rules, so a design that is deliberately partial --
 one whose other half is supplied elsewhere -- may decline to run this pass.</p>
+<p>On a design that passes, it also records on each shim input the outputs
+whose progress proves it consumed (<code>#aie.consumed_by</code>), replacing any
+earlier proof; a design that declines this pass keeps its inputs' buffer
+descriptor IDs apart.</p>
 <h3 id="-aie-place-tiles"><code>-aie-place-tiles</code><a class="headerlink" href="#-aie-place-tiles" title="Permanent link">&para;</a></h3>
 <p><em>Place logical tiles onto physical AIE tiles</em></p>
 <p>The sequential placer maps cores column-major and FIFO-connected Shim/Mem
@@ -5541,16 +5546,30 @@ ops are and connect to) rather than op order or symbol names, so a design
 declared in another order or under other names is placed alike. Logical
 tiles whose flows name the same DMA channel by index never share a
 physical tile.</p>
+<p>The pass places a module's devices one after another, so a device's
+placement may read the devices placed before it (a control overlay's
+channels). They go in an order set by each device's structure, not module
+order or names; devices alike in structure keep module order, which then
+only decides which of two indistinguishable devices goes first.</p>
 <h4 id="options_11">Options<a class="headerlink" href="#options_11" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>-placer                  : Placement algorithm to use (default: sequential_placer)
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>-cores-per-col           : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>-merge-logical-tiles     : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>-spread-unanchored-tiles : When true (default), a non-core aie.logical_tile with no CoreTile peers to derive a routing centroid from is ranked by current DMA load rather than by distance to column 0. Affects only designs with no core anchors (e.g. pure DMA passthrough); CoreTile placement and anchored non-core placement are unaffected.
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>-sa-seed                 : Random seed for SA placer (0 = non-deterministic).
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>-sa-effort               : Scales the SA placer's moves per temperature step and its greedy tail. Below 1.0 trades placement cost for compile time.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>-placer                    : Placement algorithm to use (default: sequential_placer)
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>-cores-per-col             : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>-merge-logical-tiles       : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>-spread-unanchored-tiles   : When true (default), a non-core aie.logical_tile with no CoreTile peers to derive a routing centroid from is ranked by current DMA load rather than by distance to column 0. Affects only designs with no core anchors (e.g. pure DMA passthrough); CoreTile placement and anchored non-core placement are unaffected.
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>-sa-seed                   : Random seed for SA placer (0 = non-deterministic).
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>-sa-effort                 : Scales the SA placer's moves per temperature step and its greedy tail. Below 1.0 trades placement cost for compile time.
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>-sa-walked-fifos           : ObjectFIFOs whose mem tile pools the SA placer counts as walked whole, one buffer each, as allocation lays out the pools a turn-sharing walk takes, as @&lt;device&gt;::@&lt;fifo&gt; (MLIR symbol references, quoted where a name needs it)
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>-sa-core-data-sizes        : Bytes the SA placer reserves for a core's own sections, as @&lt;device&gt;:&lt;core&gt;=&lt;bytes&gt;[@&lt;align&gt;], &lt;core&gt; counting the device's aie.core ops in order and &lt;align&gt; the alignment the sections start at (1 when absent). A core's declared data_size or measured_data_size still wins
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>-placement-budget          : Search budget per tile; the SA uses it to lay out core tiles as aie-assign-buffer-addresses will.
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>-ctrl-pkt-overlay          : Reserve on each shim the MM2S channel the configuration overlay of aie-generate-column-control-overlay will take
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>-ctrl-pkt-overlay-adaptive : With ctrl-pkt-overlay, where the overlay's MM2S channel goes, as aie-generate-column-control-overlay's adaptive option says: on, any channel no circuit holds; off, channel 0
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>-packet-sw-objFifos        : Count every route that asks for no packet header as packet switched, as aie-assign-packet-ids' packet-sw-objFifos makes it
 </code></pre></div>
 <h4 id="statistics_1">Statistics<a class="headerlink" href="#statistics_1" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>sa-final-cost : SA placer cost of the placement it kept
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>sa-final-cost   : SA placer cost of the placement it kept
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>sa-lock-groups  : Lock groups the SA counts on the placement it kept
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>sa-lock-penalty : SA lock penalty of the placement it kept
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>sa-lock-stopped : Devices whose kept placement's lock packing search stopped before it decided
 </code></pre></div>
 <h3 id="-aie-prepare-buffers"><code>-aie-prepare-buffers</code><a class="headerlink" href="#-aie-prepare-buffers" title="Permanent link">&para;</a></h3>
 <p><em>Check buffer placement and give every buffer a name</em></p>

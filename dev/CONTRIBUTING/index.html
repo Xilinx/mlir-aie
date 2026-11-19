@@ -4058,8 +4058,13 @@ clang-format, clang-tidy needs a real compile database
 (<code>compile_commands.json</code>) and the tablegen'd headers a file includes to parse
 anything, so it can't run as a bare per-file text check the way the
 formatting hooks do.</p>
-<p>If you already have a build (see <a href="../Building/">Building from source</a>),
-point the pre-push hook and CI at it — any build works, clang or GCC:</p>
+<p>Point the pre-push hook at a build configured with clang
+(<code>-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++</code>), as CI's is: LLVM's
+CMake gives a GCC build other warning flags (<code>-Wno-missing-field-initializers</code>
+among them), so clang-tidy's <code>clang-diagnostic-*</code> findings would differ from
+CI's, and <code>utils/run_clang_tidy.sh</code> refuses one. The build only needs the
+header targets CI's "Prepare compile_commands.json" step in
+<code>lintAndFormat.yml</code> lists, not a full compile:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># If your build wasn't configured with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON,</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># generate compile_commands.json in place:</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>ninja<span class="w"> </span>-C<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>compdb<span class="w"> </span>&gt;<span class="w"> </span>build/compile_commands.json
@@ -4069,11 +4074,11 @@ point the pre-push hook and CI at it — any build works, clang or GCC:</p>
 </code></pre></div>
 <p>The pre-push hook then runs it automatically on enabled files you've
 touched, via <code>utils/run_clang_tidy.sh</code> — a pinned <code>clang-tidy==22.1.8</code>
-(via <code>python/requirements_dev.txt</code>)
-rather than a bare <code>apt install clang-tidy</code>, so the version doesn't silently
-drift between your machine and CI. If there's no compile database yet, the
-hook fails with the setup hint above instead of silently skipping. To run it
-by hand:</p>
+(via <code>python/requirements_dev.txt</code>) rather than a bare
+<code>apt install clang-tidy</code>, so the version doesn't silently drift between your
+machine and CI; the script refuses any other version. If there's no compile
+database yet, the hook fails with the setup hint above instead of silently
+skipping. To run it by hand:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>utils/run_clang_tidy.sh<span class="w"> </span>&lt;file&gt;...
 </code></pre></div>
 <p>CI mirrors this exactly (see the <code>clang-tidy</code> step in
