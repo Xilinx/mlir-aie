@@ -45,9 +45,10 @@ class OperatorParam:
         init: It is a constructor argument.
         tunable: A tuner may choose it.
         domain: A tunable's search space, or None.
+        exact: Every value of it computes bit-identical results.
     """
 
-    def __init__(self, *, default, derive, array, repr, init, tunable, domain):
+    def __init__(self, *, default, derive, array, repr, init, tunable, domain, exact):
         self.default = default
         self.derive = derive
         self.array = array
@@ -55,6 +56,7 @@ class OperatorParam:
         self.init = init
         self.tunable = tunable
         self.domain = domain
+        self.exact = exact
         self.name = ""
         self.owner: type | None = None
 
@@ -121,6 +123,7 @@ def param(
         init=init,
         tunable=False,
         domain=None,
+        exact=True,
     )
 
 
@@ -130,6 +133,7 @@ def tunable(
     domain: Any = None,
     repr: bool = True,
     init: bool = True,
+    exact: bool = True,
 ) -> Any:
     """Declare a compile-time parameter a tuner may search.
 
@@ -146,6 +150,10 @@ def tunable(
             is not searched.
         repr: It is in the operator's repr and device symbols.
         init: It is a constructor argument.
+        exact: Every value computes bit-identical results. False where a
+            value regroups or rounds the arithmetic (a vector width that
+            splits a sum, a reduction's tiling), so a tuner holds a moved
+            value to no input worse than before rather than to bit identity.
 
     Returns:
         The ``OperatorParam`` the class body binds to the parameter's name.
@@ -171,6 +179,7 @@ def tunable(
         init=init,
         tunable=True,
         domain=domain,
+        exact=exact,
     )
 
 

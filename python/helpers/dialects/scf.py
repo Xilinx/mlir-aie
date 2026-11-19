@@ -1,6 +1,7 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+import inspect
 from contextlib import contextmanager
 from typing import Any, Iterator, Sequence
 
@@ -30,6 +31,43 @@ from ...ir import (  # pyright: ignore[reportMissingImports]
 from ..sourceloc import user_code_location
 
 
+def _normalize_bounds(start, stop, step):
+    """Return ``start``, ``stop``, ``step`` defaulted and typed as ``_for`` itself expects them.
+
+    A missing ``step`` defaults to 1; a missing ``stop`` makes ``start`` the
+    stop and 0 the start. A ``np.integer`` bound becomes a Python ``int``;
+    anything else (an MLIR ``Value``) passes through unchanged.
+    """
+    if step is None:
+        step = 1
+    if stop is None:
+        stop = start
+        start = 0
+    return tuple(
+        p.item() if isinstance(p, np.integer) else p for p in (start, stop, step)
+    )
+
+
+def _for_bounds(args: tuple, kwargs: dict) -> tuple:
+    """Return the ``start``, ``stop``, ``step`` that calling ``_for(*args, **kwargs)`` would use.
+
+    Binds against ``_for``'s own signature, so a positional or keyword
+    ``start``/``stop``/``step`` is picked up the same way whichever form it
+    was given in, and a change to ``_for``'s parameters can't drift this out
+    of step with it.
+
+    Args:
+        args: The positional arguments a ``_for`` call was (or would be) made
+            with.
+        kwargs: Its keyword arguments.
+
+    Returns:
+        The bounds, defaulted and typed as `_normalize_bounds` returns them.
+    """
+    bound = inspect.signature(_for).bind_partial(*args, **kwargs).arguments
+    return _normalize_bounds(bound.get("start"), bound.get("stop"), bound.get("step"))
+
+
 def _for(
     start,
     stop=None,
@@ -57,16 +95,10 @@ def _for(
             f"MLIR SCF for loops can only use integer types, not {type(start)}"
         )
 
-    if step is None:
-        step = 1
-    if stop is None:
-        stop = start
-        start = 0
+    start, stop, step = _normalize_bounds(start, stop, step)
     params = [start, stop, step]
     for i, p in enumerate(params):
-        if isinstance(p, np.integer):
-            p = p.item()
-        if isinstance(p, np.integer) or isinstance(p, int):
+        if isinstance(p, int):
             p = constant(p, index=True)
         elif not isinstance(p.type, IndexType):
             p = index_cast(p, to=T.index())
