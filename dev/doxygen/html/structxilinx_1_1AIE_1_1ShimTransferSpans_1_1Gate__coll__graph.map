@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::ShimTransferSpans::Gate" name="xilinx::AIE::ShimTransferSpans::Gate">
+<area shape="rect" id="Node000001" title="A shim input gating a receiving end&#39;s senders, per its #aie.consumed_by." alt="" coords="23,106,202,151"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,89,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="64,44,102,105,96,106,62,49"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="113,5,245,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="165,45,128,107,124,104,160,48"/>
+</map>

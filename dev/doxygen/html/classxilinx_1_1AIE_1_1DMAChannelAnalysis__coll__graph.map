@@ -1,0 +1,5 @@
+<map id="xilinx::AIE::DMAChannelAnalysis" name="xilinx::AIE::DMAChannelAnalysis">
+<area shape="rect" id="Node000001" title="Which DMA channels of each tile are already spoken for, so that a channel is handed out at most once ..." alt="" coords="5,106,239,134"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="82,5,162,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="124,47,125,106,119,104,120,50"/>
+</map>
