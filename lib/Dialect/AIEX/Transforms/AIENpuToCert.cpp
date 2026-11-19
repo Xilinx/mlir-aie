@@ -497,6 +497,20 @@ struct RunOpInlining : OpRewritePattern<AIEX::RunOp> {
 struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
   using OpRewritePattern::OpRewritePattern;
 
+  // Clone the configure body at the rewriter's insertion point. The body is
+  // an optional region, so `aiex.configure @device {}` has no block to clone.
+  static void cloneConfigureBody(AIEX::ConfigureOp op,
+                                 PatternRewriter &rewriter) {
+    if (op.getRegion().empty())
+      return;
+    IRMapping bodyMapper;
+    for (Operation &o : op.getRegion().front().getOperations()) {
+      if (isa<AIE::EndOp>(o))
+        continue;
+      rewriter.clone(o, bodyMapper);
+    }
+  }
+
   LogicalResult matchAndRewrite(AIEX::ConfigureOp op,
                                 PatternRewriter &rewriter) const override {
     // A run resolves its callee through the enclosing configure, so the
@@ -531,12 +545,7 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
           FlatSymbolRefAttr::get(rewriter.getContext(), deviceSymName));
 
       // Clone configure body operations after the load_pdi
-      IRMapping bodyMapper;
-      for (Operation &o : op.getRegion().front().getOperations()) {
-        if (isa<AIE::EndOp>(o))
-          continue;
-        rewriter.clone(o, bodyMapper);
-      }
+      cloneConfigureBody(op, rewriter);
 
       rewriter.eraseOp(op);
       return success();
@@ -582,12 +591,15 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
         findGeneratedConfigure(referencedDevice);
 
     if (configureSeq) {
-      // Clone operations from the "configure" runtime_sequence
+      // Clone operations from the "configure" runtime_sequence. An empty
+      // sequence (`{}`) has no block, and leaves the section job empty.
       IRMapping mapper;
-      for (Operation &o : configureSeq.getRegion().front().getOperations()) {
-        if (isa<AIE::EndOp>(o))
-          continue;
-        rewriter.clone(o, mapper);
+      if (!configureSeq.getRegion().empty()) {
+        for (Operation &o : configureSeq.getRegion().front().getOperations()) {
+          if (isa<AIE::EndOp>(o))
+            continue;
+          rewriter.clone(o, mapper);
+        }
       }
     } else {
       // "configure" was already converted - find the first cert.page
@@ -634,12 +646,7 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
     // Clone configure body operations after the load_pdi
     // Operations that reference external values were not cloned into the
     // section, so we clone them here into the main control flow
-    IRMapping bodyMapper;
-    for (Operation &o : op.getRegion().front().getOperations()) {
-      if (isa<AIE::EndOp>(o))
-        continue;
-      rewriter.clone(o, bodyMapper);
-    }
+    cloneConfigureBody(op, rewriter);
 
     // Erase the original configure op
     rewriter.eraseOp(op);
