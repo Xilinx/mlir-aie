@@ -299,12 +299,10 @@ partial_softmax_row_f32(const float *__restrict A, bfloat16 *__restrict P,
 
 // softmax(cap * tanh((x + addend) / cap) + mask) of one float32 row into
 // bf16, with the scaled logits written over x. A mask of lowest or -inf drops
-// its element; x + addend must be finite. Uncapped, stats (where given) takes
-// the row's largest logit m and l, the sum of exp(logit - m) y is divided by.
+// its element; x + addend must be finite.
 static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
                             const bfloat16 *__restrict mask,
-                            bfloat16 *__restrict y, const int32_t n,
-                            float *__restrict stats = nullptr) {
+                            bfloat16 *__restrict y, const int32_t n) {
   using Acc = aie::accum<accfloat, SM_VEC_LEN>;
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
@@ -376,10 +374,6 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
       (float)std::numeric_limits<bfloat16>::lowest(), 0.0f, 0.0f, 0.0f};
   partial_softmax_row_f32<SM_VEC_LEN>(x, y, state, n, 0, 1, (bfloat16)1.0f);
 
-  if (stats) {
-    stats[0] = centre.get(0);
-    stats[1] = state[3];
-  }
   const bfloat16 sum_inv = (bfloat16)aie::inv(state[3]);
   auto it_in = aie::cbegin_restrict_vector<SM_VEC_LEN>(y);
   auto it_out = aie::begin_restrict_vector<SM_VEC_LEN>(y);
@@ -584,25 +578,15 @@ void softmax_f32_bf16(float *restrict input,
 #ifdef SOFTMAX_MASKED
                       bfloat16 *restrict mask,
 #endif
-                      bfloat16 *restrict output,
-#ifdef SOFTMAX_STATS
-                      float *restrict stats,
-#endif
-                      const int32_t input_size) {
+                      bfloat16 *restrict output, const int32_t input_size) {
 #ifndef SOFTMAX_ADDEND
   constexpr float *addend = nullptr;
 #endif
 #ifndef SOFTMAX_MASKED
   constexpr bfloat16 *mask = nullptr;
 #endif
-#ifdef SOFTMAX_STATS
-  static_assert(!(SOFTMAX_SOFT_CAP > 0.0f),
-                "a capped row's maximum is in log2 units: no stats");
-#else
-  constexpr float *stats = nullptr;
-#endif
   event0();
-  softmax_f32_row(input, addend, mask, output, input_size, stats);
+  softmax_f32_row(input, addend, mask, output, input_size);
   event1();
 }
 

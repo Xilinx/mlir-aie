@@ -371,23 +371,6 @@ CASES: list[Case] = [
             (1024, dict(soft_cap=2.0**10, addend=True), False),
         )
     ],
-    # ... and a row's (m, l) for a split-KV merge: plain, with each input
-    # term, and a decode row of 2048 keys.
-    *[
-        check(
-            "softmax",
-            dict(tile_size=n, input_dtype=np.float32, stats=True, **kw),
-            calls=8,
-            tag="f32-stats",
-            smoke=smoke,
-        )
-        for n, kw, smoke in (
-            (32, {}, True),
-            (160, dict(addend=True), False),
-            (32, dict(masked=True, addend=True), True),
-            (2048, {}, False),
-        )
-    ],
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its
@@ -3554,17 +3537,6 @@ CASES += [
     ),
     # P*V's product at a head dimension past the key block.
     check("mha", dict(dim_m=16, dim_k=256, dim_n=64, pv=True), smoke=True),
-    # Split-KV decode's merge, one part a call: llama 3.2 1B's 32 packed
-    # heads; rows of 16 (the 16-lane weights); a 128-wide head. Merges of
-    # several parts are test_attention_merge_e2e.py's.
-    Case("attention_merge", dict(rows=32, dim=64), calls=4, smoke=True),
-    *[
-        check("attention_merge", dims, tag=tag, smoke=True)
-        for dims, tag in (
-            (dict(rows=16, dim=64), "edge-sixteen-rows"),
-            (dict(rows=32, dim=128), "edge-wide-head"),
-        )
-    ],
     # The prefill toolkit's S*V accumulate, one case per geometry. Each
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V

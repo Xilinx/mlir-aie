@@ -625,10 +625,6 @@ softmax/32x8/float32_bfloat16/f32
 softmax/32x8/float32_bfloat16/masked=True/f32
 softmax/32x8/float32_bfloat16/masked=True/soft_cap=7.888609052210118e-31/f32
 softmax/32x8/float32_bfloat16/soft_cap=50.0/f32
-softmax/32x8/float32_bfloat16+float32/stats=True/f32-stats
-softmax/160x8/float32_bfloat16+float32/addend=True/stats=True/f32-stats
-softmax/32x8/float32_bfloat16+float32/addend=True/masked=True/stats=True/f32-stats
-softmax/2048x8/float32_bfloat16+float32/stats=True/f32-stats
 swiglu/1024x16/bfloat16
 swiglu/1024x16/bfloat16/use_lut=True/lut
 swiglu/1024x256/bfloat16
@@ -829,9 +825,6 @@ attention_i8/640x2/int8/prob-shift-8
 attention_i8/640x2/int8/prob-shift-10
 attention_i8/640x2/int8/prob-shift-30
 attention_i8/640x2/int8/out-shift-clip
-attention_merge/2048x4/float32_bfloat16/dim=64/rows=32
-attention_merge/1024x4/float32_bfloat16/dim=64/rows=16/edge-sixteen-rows
-attention_merge/4096x4/float32_bfloat16/dim=128/rows=32/edge-wide-head
 bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128
 bn_conv2dk3_dw/2560x4/int8/bias=True/input_channels=128/input_width=20/output_channels=128/rounding=symmetric_inf/bias-symmetric-inf
 bn_conv2dk3_dw/3200x4/int8/bias=True/input_channels=80/input_width=40/output_channels=80/table=True/bias-bottom-row
