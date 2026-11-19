@@ -1,0 +1,21 @@
+<map id="xilinx::AIE::TileLayout" name="xilinx::AIE::TileLayout">
+<area shape="rect" id="Node000001" title="assign&#45;buffer&#45;addresses&#39; layout of one tile, or why there is none." alt="" coords="390,248,552,275"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="84,24,146,51"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="160,29,208,26,261,29,316,40,343,51,367,65,390,84,410,107,440,159,459,209,469,248,464,246,454,211,435,161,406,110,386,88,364,69,340,56,315,45,261,34,208,31,163,33"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="85,80,145,107"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="159,87,205,87,259,91,315,102,367,125,402,152,430,186,466,247,460,247,426,189,398,156,364,129,313,108,258,96,205,92,162,92"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="86,136,144,163"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="159,147,257,155,313,166,367,183,393,196,418,213,457,247,452,247,415,217,391,201,365,188,311,171,256,160,161,152"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="90,188,140,215"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="155,203,252,214,366,232,421,246,416,248,365,237,251,219,156,208"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="5,239,225,284"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="240,259,391,260,387,263,241,264"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="40,308,190,335"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="204,312,283,303,365,289,428,275,424,277,366,294,284,308,206,317"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="31,382,199,410"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="214,394,290,384,328,374,364,360,394,341,420,318,457,277,462,274,424,322,397,345,367,365,330,379,291,389,215,399"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="34,438,196,466"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="211,457,250,456,290,450,328,439,364,422,384,407,402,389,430,347,451,307,463,278,467,274,455,309,435,350,406,392,388,411,367,426,330,444,291,455,250,461,212,463"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="82,517,148,545"/>
+<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="164,538,210,543,263,543,316,533,341,523,364,509,391,485,413,455,430,422,443,387,460,323,467,278,470,274,465,324,448,389,435,424,417,458,395,488,367,514,343,528,318,538,263,548,210,548,163,543"/>
+</map>

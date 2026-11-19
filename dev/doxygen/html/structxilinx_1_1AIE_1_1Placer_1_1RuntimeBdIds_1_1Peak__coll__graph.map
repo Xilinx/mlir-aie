@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::Placer::RuntimeBdIds::Peak" name="xilinx::AIE::Placer::RuntimeBdIds::Peak">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,106,166,151"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="33,5,71,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="54,46,61,81,73,105,68,106,56,83,52,51"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="96,5,145,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="114,46,95,107,90,104,109,49"/>
+</map>
