@@ -5,7 +5,7 @@
 #
 """Worker and WorkerRuntimeBarrier: compute-core tasks and runtime synchronization primitives."""
 
-from typing import Callable
+from typing import Callable, Sequence
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -189,6 +189,8 @@ class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
         self._barriers = []
         # CascadeFlow registers each outgoing edge here for configuration discovery.
         self._outgoing_cascades: list = []
+        # The Worker this one's body runs in, once Worker.join spends it.
+        self._joined_into: "Worker | None" = None
 
         # Check arguments to the core. Some information is saved for resolution.
         # fn_args may nest lists (e.g. one fifo per column); iterate the flattened
@@ -289,6 +291,95 @@ class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
         """
         return [[factory(r, c) for c in range(cols)] for r in range(rows)]
 
+    @classmethod
+    def join(cls, workers: Sequence["Worker"], name: str | None = None) -> "Worker":
+        """Return one Worker that runs ``workers``' bodies in turn on one core.
+
+        Each pass of the joined Worker calls each one's ``core_fn`` with its
+        own ``fn_args``, in the order given, so a fifo one writes and a later
+        one reads becomes a fifo within the one tile. The joined Worker takes
+        over their fifo ends, the Buffers they own (an auto-placed one moves
+        to its tile) and their barriers; the setup kernels of all their
+        kernels run once before its loop. Each Worker given is spent: building
+        it afterwards raises.
+
+        Args:
+            workers: Two or more Workers, none built or joined yet.
+            name: Names the joined core, as ``Worker(name=)`` does.
+
+        Returns:
+            Worker: The joined Worker.
+
+        Raises:
+            ValueError: Fewer than two Workers, one given twice or already
+                joined, Workers pinned to different tiles or looping
+                differently (``while_true``), traced or lowered differently,
+                or a Worker with an outgoing cascade, whose flow names it.
+        """
+        workers = list(workers)
+        if len(workers) < 2 or len({id(w) for w in workers}) != len(workers):
+            raise ValueError("Worker.join takes two or more distinct Workers")
+        for w in workers:
+            if w._joined_into is not None:
+                raise ValueError(f"{w} is already joined into {w._joined_into}")
+            if w._outgoing_cascades:
+                raise ValueError(
+                    f"{w} sends on a cascade, whose flow names it; joining it is "
+                    f"not supported"
+                )
+        for what, values in (
+            ("loop (while_true)", [w._while_true for w in workers]),
+            ("trace", [(w.trace, w.trace_events) for w in workers]),
+            (
+                "objectfifo lowering",
+                [w._dynamic_objfifo_lowering for w in workers],
+            ),
+        ):
+            if len(set(map(repr, values))) != 1:
+                raise ValueError(f"Workers joined must share their {what}: {values}")
+        placed = [w._tile for w in workers if w._tile.col is not None]
+        if len({(t.col, t.row) for t in placed}) > 1:
+            raise ValueError(
+                f"Workers joined are pinned to different tiles: {[str(t) for t in placed]}"
+            )
+        for w in workers:
+            for handle in w._fifos:
+                if handle.endpoint is w:
+                    handle._endpoint = None
+            for buffer in w._buffers:
+                if buffer._owner_worker is w:
+                    buffer._owner_worker = None
+                    if not buffer._explicit_tile:
+                        buffer._tile = None
+        bounds = [0]
+        for w in workers:
+            bounds.append(bounds[-1] + len(w.fn_args))
+        bodies = [(w.core_fn, lo, hi) for w, lo, hi in zip(workers, bounds, bounds[1:])]
+
+        def joined_body(*args):
+            for fn, lo, hi in bodies:
+                with traced_body(fn):
+                    fn(*args[lo:hi])
+
+        stacks = [w.stack_size for w in workers if w.stack_size is not None]
+        data = [w.data_size for w in workers if w.data_size is not None]
+        joined = cls(
+            joined_body,
+            [arg for w in workers for arg in w.fn_args],
+            tile=placed[0] if placed else AnyComputeTile,
+            while_true=workers[0]._while_true,
+            stack_size=max(stacks) if stacks else None,
+            data_size=sum(data) if data else None,
+            trace=workers[0].trace,
+            trace_events=workers[0].trace_events,
+            dynamic_objfifo_lowering=workers[0]._dynamic_objfifo_lowering,
+            wait_for_parameters=any(w._wait_for_parameters for w in workers),
+            name=name,
+        )
+        for w in workers:
+            w._joined_into = joined
+        return joined
+
     def __str__(self) -> str:
         return f"Worker({self.name or self._site.describe(type(self).__name__)!r})"
 
@@ -342,6 +433,10 @@ class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
+        if self._joined_into is not None:
+            raise ValueError(
+                f"{self} is joined into {self._joined_into}; build that one instead"
+            )
         if not self._tile:
             raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
