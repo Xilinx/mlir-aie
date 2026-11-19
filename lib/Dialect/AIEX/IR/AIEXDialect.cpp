@@ -2217,6 +2217,9 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("SetLockOp is not supported on AIE1.");
 
+  if (!getLock().getDefiningOp<AIE::LockOp>())
+    return emitOpError("lock operand is not an aie.lock");
+
   if (std::optional<int64_t> value = getConstantIntValue(getValue())) {
     if (*value < 0)
       return emitOpError("Lock value must be non-negative");

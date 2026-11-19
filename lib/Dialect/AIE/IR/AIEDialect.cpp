@@ -747,9 +747,10 @@ LogicalResult ObjectFifoCreateOp::verify() {
            << consPorts.size() << " entries for " << getConsumerTiles().size()
            << " consumers";
 
-  // Helper to get tile interface from Value
+  // Helper to get tile interface from Value. A block argument has no defining
+  // op.
   auto getTileLikeFromValue = [](Value v) -> TileLike {
-    return llvm::dyn_cast<TileLike>(v.getDefiningOp());
+    return llvm::dyn_cast_or_null<TileLike>(v.getDefiningOp());
   };
 
   TileLike producerTile = getTileLikeFromValue(getProducerTile());
@@ -922,7 +923,7 @@ SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
 } // namespace
 
 TileLike ObjectFifoPoolOp::getTileLike() {
-  return dyn_cast<TileLike>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
 }
 
 int64_t ObjectFifoPoolOp::getObjectSize() {
@@ -939,6 +940,8 @@ int64_t ObjectFifoPoolOp::getObjectsPerBuffer() {
 }
 
 LogicalResult ObjectFifoPoolOp::verify() {
+  if (!getTileLike())
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   auto &target = (*this)->getParentOfType<DeviceOp>().getTargetModel();
   bool semaphoreLocks = target.hasProperty(AIETargetModel::UsesSemaphoreLocks);
 
@@ -1165,7 +1168,7 @@ selectSegments(ObjectFifoPoolOp pool, std::optional<ArrayAttr> selected) {
 }
 
 TileLike ObjectFifoCoreEndpointOp::getTileLike() {
-  return dyn_cast<TileLike>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
 }
 
 ObjectFifoPoolOp ObjectFifoCoreEndpointOp::getPoolOp() {
@@ -1178,6 +1181,8 @@ ObjectFifoCoreEndpointOp::getSelectedSegments() {
 }
 
 LogicalResult ObjectFifoCoreEndpointOp::verify() {
+  if (!getTileLike())
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool) {
     return emitOpError("references undefined pool '") << getPool() << "'";
@@ -1230,7 +1235,7 @@ MemRefType ObjectFifoCoreEndpointOp::getAccessType() {
 }
 
 TileLike ObjectFifoDmaEndpointOp::getTileLike() {
-  return dyn_cast<TileLike>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
 }
 
 ObjectFifoPoolOp ObjectFifoDmaEndpointOp::getPoolOp() {
@@ -1359,6 +1364,8 @@ void ObjectFifoDmaEndpointOp::setRouteChannel(int channel) {
 }
 
 LogicalResult ObjectFifoDmaEndpointOp::verify() {
+  if (!getTileLike())
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool) {
     return emitOpError("references undefined pool '") << getPool() << "'";
@@ -1492,7 +1499,7 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
 }
 
 TileLike RouteEndpointOp::getTileLike() {
-  return dyn_cast<TileLike>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
 }
 
 DMAChannelDir RouteEndpointOp::getRouteDirection() {
@@ -2679,7 +2686,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return fifo.emitOpError("objectfifo is read by more ObjectFifoLinkOps "
                               "on a tile than it has consumer ends there");
 
-  TileLike tile = llvm::dyn_cast<TileLike>(sharedTile.value().getDefiningOp());
+  TileLike tile =
+      llvm::dyn_cast_or_null<TileLike>(sharedTile.value().getDefiningOp());
   if (!tile)
     return emitError("shared tile must implement TileLike interface");
   // Each participant occupies its own slice of the shared object, so the link
@@ -3434,11 +3442,11 @@ LogicalResult CascadeFlowOp::verify() {
 }
 
 TileLike CascadeFlowOp::getSourceTileLike() {
-  return dyn_cast<TileLike>(getSourceTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getSourceTile().getDefiningOp());
 }
 
 TileLike CascadeFlowOp::getDestTileLike() {
-  return dyn_cast<TileLike>(getDestTile().getDefiningOp());
+  return dyn_cast_or_null<TileLike>(getDestTile().getDefiningOp());
 }
 
 TileOp CascadeFlowOp::getSourceTileOp() {
@@ -3490,11 +3498,14 @@ static std::string describeCascadeDirs(ArrayRef<CascadeDir> dirs) {
 }
 
 LogicalResult ConfigureCascadeOp::verify() {
-  if (!isa<TileOp>(getTile().getDefiningOp()))
+  Operation *tileDef = getTile().getDefiningOp();
+  if (!isa_and_nonnull<TileLike>(tileDef))
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
+  auto tile = dyn_cast<TileOp>(tileDef);
+  if (!tile)
     return emitOpError("requires a placed tile (aie.tile), not a logical tile");
 
   const auto &t = getTargetModel(*this);
-  TileOp tile = cast<TileOp>(getTile().getDefiningOp());
   CascadeDir inputDir = getInputDir();
   CascadeDir outputDir = getOutputDir();
 
@@ -4461,6 +4472,9 @@ bool xilinx::AIE::keepsPktHeader(TileID tile, Port master,
 // there. The placer checks logical tiles' channel budgets.
 static LogicalResult verifyFlowEndpoint(Operation *op, Value tile, Port port,
                                         bool isSource) {
+  if (!isa_and_nonnull<TileLike>(tile.getDefiningOp()))
+    return op->emitOpError(
+        "tile operand is not an aie.tile or aie.logical_tile");
   if (port.bundle != WireBundle::Core && port.bundle != WireBundle::DMA)
     return success();
   auto tileOp = dyn_cast_or_null<TileOp>(tile.getDefiningOp());
@@ -5175,23 +5189,29 @@ LogicalResult MemTileDMAOp::verify() {
             }
           }
         }
+        // This runs before the BDs' and use_locks' own verifiers, so an
+        // operand that is not an aie.buffer, aie.external_buffer or aie.lock
+        // (a block argument, say) is left for them to reject.
         for (Block *b : reachable) {
           for (DMABDOp bd : b->getOps<DMABDOp>()) {
-            if (auto bufferOp = bd.getBufferOp();
-                bufferOp.getTile() != getTile()) {
+            Operation *bufferDef = bd.getBuffer().getDefiningOp();
+            if (!isa_and_nonnull<BufferOp, ExternalBufferOp>(bufferDef))
+              continue;
+            if (auto bufferOp = dyn_cast<BufferOp>(bufferDef);
+                !bufferOp || bufferOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   bd.emitOpError()
                   << "is reachable from DMA channel "
                   << startOp.getChannelIndex()
                   << " and attempts to access a non-local buffer\n";
               err.attachNote(startOp->getLoc()) << "channel";
-              err.attachNote(bufferOp->getLoc()) << "buffer";
+              err.attachNote(bufferDef->getLoc()) << "buffer";
               return err;
             }
           }
           for (auto useLock : b->getOps<UseLockOp>()) {
-            if (auto lockOp = useLock.getLockOp();
-                lockOp.getTile() != getTile()) {
+            if (auto lockOp = useLock.getLock().getDefiningOp<LockOp>();
+                lockOp && lockOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
                   << "is reachable from DMA channel "
@@ -5941,7 +5961,8 @@ LogicalResult DMABDOp::verify() {
   // For unranked memrefs, we can't verify as strictly since we don't know
   // the buffer's defining op or its full type at compile time
   if (!isUnrankedMemRef) {
-    if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
+    if (!isa_and_nonnull<BufferOp, ExternalBufferOp>(
+            getBuffer().getDefiningOp()))
       return emitOpError(
           "BDs only support BufferOp or ExternalBufferOp operands.");
   }
@@ -5956,7 +5977,8 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("parent tile must implement TileLike interface");
 
   if (!isUnrankedMemRef && getOperation()->getParentOfType<MemOp>() &&
-      getBufferOp().getTile() != parentTileElement.getTile())
+      (!isa<BufferOp>(getBuffer().getDefiningOp()) ||
+       getBufferOp().getTile() != parentTileElement.getTile()))
     return emitOpError(
         "Core tile DMAs can only access a buffer in the same tile.");
 
@@ -6215,7 +6237,12 @@ LogicalResult DMABDOp::verify() {
   }
   if (!isUnrankedMemRef &&
       (parentTile.isMemTile() || parentTile.isCoreTile())) {
-    if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
+    // Only a shim DMA reaches an aie.external_buffer.
+    auto bufferOp = getBuffer().getDefiningOp<BufferOp>();
+    if (!bufferOp)
+      return emitOpError("Memtile and core tile DMAs can only access an "
+                         "aie.buffer, not an aie.external_buffer.");
+    if (auto baseAddr = bufferOp.getAddress(); baseAddr.has_value()) {
       int64_t offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
         return emitOpError("bd address must be 4 byte (32b) aligned; got "
@@ -6784,8 +6811,10 @@ struct UsesOneLockInDMABlock {
     auto *block = op->getBlock();
     int lockID = -1;
     for (auto op : block->getOps<UseLockOp>()) {
-      if (auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-          lock.getLockID().has_value()) {
+      // A sibling whose lock is not an aie.lock is rejected by its own
+      // verifier.
+      if (auto lock = op.getLock().getDefiningOp<LockOp>();
+          lock && lock.getLockID().has_value()) {
         if (lockID != -1 && lockID != lock.getLockIDValue())
           return failure();
         lockID = lock.getLockIDValue();
@@ -6832,10 +6861,33 @@ struct AccessesLocalLocks {
   }
 };
 
+// Whether `op` is in an aiex.dma_configure_task(_for). Checked by name to avoid
+// a dependency on the AIEX dialect.
+static bool isInRuntimeDmaTask(Operation *op) {
+  for (Operation *parent = op->getParentOp(); parent;
+       parent = parent->getParentOp()) {
+    StringRef name = parent->getName().getStringRef();
+    if (name == "aiex.dma_configure_task" ||
+        name == "aiex.dma_configure_task_for")
+      return true;
+  }
+  return false;
+}
+
 LogicalResult UseLockOp::verify() {
   // AIE.useLock cannot be used at the top level
   if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>((*this)->getParentOp()))
     return (*this)->emitOpError("must be used in a core or memory operation.");
+
+  bool inDmaBlock =
+      HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
+          .succeeded();
+  // A BD's lock fields are programmed from the aie.lock. In a core or a
+  // function the operand is a lock ID that may be a runtime value
+  // (--aie-localize-locks makes it a constant index), so it is not checked.
+  if ((inDmaBlock || isInRuntimeDmaTask(*this)) &&
+      !getLock().getDefiningOp<LockOp>())
+    return (*this)->emitOpError("lock operand is not an aie.lock");
 
   const auto &targetModel = getTargetModel(*this);
   if (targetModel.getTargetArch() == AIEArch::AIE1 && acquireGE())
@@ -6844,17 +6896,14 @@ LogicalResult UseLockOp::verify() {
 
   // Locks used inside a DMA/BD block are configured via static register writes
   // and therefore require a compile-time constant value.
-  if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
-          .succeeded() &&
-      !getConstantLockValue(*this))
+  if (inDmaBlock && !getConstantLockValue(*this))
     return (*this)->emitOpError(
         "lock value in a DMA/BD block must be a compile-time constant "
         "(defined by an arith.constant).");
 
   // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or
   // ShimDMAOp,
-  if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
-          .succeeded()) {
+  if (inDmaBlock) {
     if (!(*this)->getBlock())
       return (*this)->emitOpError("is not in a block.");
 
@@ -6878,18 +6927,9 @@ LogicalResult UseLockOp::verify() {
     return success();
   }
   // Or it can be in a DMAConfigureTaskOp or DMAConfigureTaskForOp (for runtime
-  // DMA configuration). Check by operation name to avoid circular dependency
-  // with AIEX dialect
-  {
-    Operation *operation = (*this)->getParentOp();
-    while (operation) {
-      StringRef name = operation->getName().getStringRef();
-      if (name == "aiex.dma_configure_task" ||
-          name == "aiex.dma_configure_task_for")
-        return success();
-      operation = operation->getParentOp();
-    }
-  }
+  // DMA configuration).
+  if (isInRuntimeDmaTask(*this))
+    return success();
   return (*this)->emitOpError()
          << "expects some parent op to be one of "
          << "AIE::device, AIE::core, func::func, AIE::mem, AIE::shimDMA, or "
@@ -7089,7 +7129,9 @@ void BDChainOp::print(OpAsmPrinter &printer) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimDMAAllocationOp::verify() {
-  TileLike tileLike = llvm::dyn_cast<TileLike>(getTile().getDefiningOp());
+  // A block argument has no defining op.
+  TileLike tileLike =
+      llvm::dyn_cast_or_null<TileLike>(getTile().getDefiningOp());
   if (!tileLike) {
     return emitOpError("tile operand must implement TileLike interface");
   }
