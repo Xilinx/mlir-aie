@@ -63,7 +63,7 @@ def get_events_for_device(device: str):
             ShimTileEvent=ShimTileEventAIE,
             MemTileEvent=None,  # AIE1 has no mem tiles
         )
-    elif "npu2p" in device:
+    elif "npu2" in device:
         return SimpleNamespace(
             CoreEvent=CoreEventAIE2P,
             MemEvent=MemEventAIE2P,
