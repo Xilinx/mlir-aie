@@ -1937,44 +1937,44 @@
   {
    "date": "2026-11-19",
    "merge": {
-    "merged": 55,
-    "hours_median": 20.8,
+    "merged": 54,
+    "hours_median": 19.9,
     "hours_p90": 452.9,
     "open": 47
    },
    "critical": {
     "buildAndTestRyzenAI.yml": {
      "main": 0.786,
-     "pull_requests": 0.729,
-     "flaky": 0.073,
+     "pull_requests": 0.74,
+     "flaky": 0.072,
      "minutes_median": 77.3,
      "queued_median": 5.6
     },
     "buildAndTestRyzenAIWindows.yml": {
      "main": 0.929,
-     "pull_requests": 0.747,
+     "pull_requests": 0.737,
      "flaky": 0.05,
      "minutes_median": 58.6,
      "queued_median": 0.4
     },
     "buildAndTestMulti.yml": {
      "main": 1.0,
-     "pull_requests": 0.864,
+     "pull_requests": 0.856,
      "flaky": 0.05,
      "minutes_median": 27.9,
      "queued_median": 0.2
     },
     "buildAndTestPythons.yml": {
      "main": 1.0,
-     "pull_requests": 0.857,
+     "pull_requests": 0.85,
      "flaky": 0.05,
      "minutes_median": 24.2,
      "queued_median": 0.2
     },
     "lintAndFormat.yml": {
      "main": 1.0,
-     "pull_requests": 0.878,
-     "flaky": 0.054,
+     "pull_requests": 0.88,
+     "flaky": 0.053,
      "minutes_median": 2.5,
      "queued_median": 0.2
     }
