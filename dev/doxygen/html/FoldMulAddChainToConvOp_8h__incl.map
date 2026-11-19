@@ -1,7 +1,0 @@
-<map id="lib/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.h" name="lib/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="130,5,344,67"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,115,213,143"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="197,67,141,108,138,104,192,68"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="237,115,496,143"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="281,65,338,106,333,106,279,70"/>
-</map>
