@@ -451,10 +451,12 @@ class HostRuntime(ABC):
                 trace_config.trace_size * CTRL_PKT_TRACE_REGION_FACTOR,
                 np.dtype(np.uint8),
             )
-            trace_buff = trace_buff[: trace_config.trace_size]
-        trace_buff = trace_buff.view(np.uint32).reshape(
-            trace_config.trace_size // np.dtype(np.uint32).itemsize
-        )
+            # Keep the whole region: with distribute-channels it holds two channels.
+            trace_buff = trace_buff.view(np.uint32).reshape(-1)
+        else:
+            trace_buff = trace_buff.view(np.uint32).reshape(
+                trace_config.trace_size // np.dtype(np.uint32).itemsize
+            )
         return trace_buff, ctrl_buff
 
     @classmethod

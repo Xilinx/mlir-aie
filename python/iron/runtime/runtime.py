@@ -661,9 +661,8 @@ class Runtime(Declared, DeviceResources, Resolvable):
             for rt_data in self._block_data
             if rt_data is not None
         ]
-        # The control packets come from a trailing buffer the host passes ahead
-        # of the trace buffer, which trace lowering appends after this one.
-        # The index counts host buffers only: a scalar argument takes no slot.
+        # Host buffers only: a scalar argument takes no slot. The control buffer
+        # comes after them, ahead of the trace buffer that trace lowering appends.
         ctrl_ddr_id = sum(
             1
             for rt_data in self._block_data

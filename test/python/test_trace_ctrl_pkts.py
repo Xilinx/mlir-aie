@@ -227,6 +227,7 @@ def test_host_splits_the_buffer_after_the_trace_region():
 
     config = TraceConfig(trace_size=trace_size, enable_ctrl_pkts=True)
     trace, ctrl = HostRuntime.extract_trace_from_args([Arg()], config)
-    assert trace.view(np.uint8).tolist() == [1] * trace_size
+    # Both channels' trace is kept
+    assert trace.view(np.uint8).tolist() == [1] * trace_size + [2] * trace_size
     assert ctrl.size == trace_size * 2
     assert ctrl[:4].tolist() == [3] * 4

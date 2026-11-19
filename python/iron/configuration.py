@@ -661,8 +661,7 @@ class DeviceConfiguration(DeviceResources):
                     core_trace_mode=self._core_trace_mode,
                 )
 
-            # The control packets use a shim tile of their own: the trace
-            # keeps its shim DMA channel busy until the buffer is full.
+            # Not the egress shim: its DMA channel stays busy until the trace ends.
             ctrl_pkt_shim = None
             if self._enable_ctrl_pkts and self._trace_size:
                 if self._egress_shim_col + 1 >= current_device.cols:
