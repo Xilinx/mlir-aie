@@ -5189,23 +5189,29 @@ LogicalResult MemTileDMAOp::verify() {
             }
           }
         }
+        // This runs before the BDs' and use_locks' own verifiers, so an
+        // operand that is not an aie.buffer, aie.external_buffer or aie.lock
+        // (a block argument, say) is left for them to reject.
         for (Block *b : reachable) {
           for (DMABDOp bd : b->getOps<DMABDOp>()) {
-            if (auto bufferOp = bd.getBufferOp();
-                bufferOp.getTile() != getTile()) {
+            Operation *bufferDef = bd.getBuffer().getDefiningOp();
+            if (!isa_and_nonnull<BufferOp, ExternalBufferOp>(bufferDef))
+              continue;
+            if (auto bufferOp = dyn_cast<BufferOp>(bufferDef);
+                !bufferOp || bufferOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   bd.emitOpError()
                   << "is reachable from DMA channel "
                   << startOp.getChannelIndex()
                   << " and attempts to access a non-local buffer\n";
               err.attachNote(startOp->getLoc()) << "channel";
-              err.attachNote(bufferOp->getLoc()) << "buffer";
+              err.attachNote(bufferDef->getLoc()) << "buffer";
               return err;
             }
           }
           for (auto useLock : b->getOps<UseLockOp>()) {
-            if (auto lockOp = useLock.getLockOp();
-                lockOp.getTile() != getTile()) {
+            if (auto lockOp = useLock.getLock().getDefiningOp<LockOp>();
+                lockOp && lockOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
                   << "is reachable from DMA channel "
@@ -5955,7 +5961,8 @@ LogicalResult DMABDOp::verify() {
   // For unranked memrefs, we can't verify as strictly since we don't know
   // the buffer's defining op or its full type at compile time
   if (!isUnrankedMemRef) {
-    if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
+    if (!isa_and_nonnull<BufferOp, ExternalBufferOp>(
+            getBuffer().getDefiningOp()))
       return emitOpError(
           "BDs only support BufferOp or ExternalBufferOp operands.");
   }
@@ -5970,7 +5977,8 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("parent tile must implement TileLike interface");
 
   if (!isUnrankedMemRef && getOperation()->getParentOfType<MemOp>() &&
-      getBufferOp().getTile() != parentTileElement.getTile())
+      (!isa<BufferOp>(getBuffer().getDefiningOp()) ||
+       getBufferOp().getTile() != parentTileElement.getTile()))
     return emitOpError(
         "Core tile DMAs can only access a buffer in the same tile.");
 
@@ -6229,7 +6237,12 @@ LogicalResult DMABDOp::verify() {
   }
   if (!isUnrankedMemRef &&
       (parentTile.isMemTile() || parentTile.isCoreTile())) {
-    if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
+    // Only a shim DMA reaches an aie.external_buffer.
+    auto bufferOp = getBuffer().getDefiningOp<BufferOp>();
+    if (!bufferOp)
+      return emitOpError("Memtile and core tile DMAs can only access an "
+                         "aie.buffer, not an aie.external_buffer.");
+    if (auto baseAddr = bufferOp.getAddress(); baseAddr.has_value()) {
       int64_t offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
         return emitOpError("bd address must be 4 byte (32b) aligned; got "
@@ -6798,8 +6811,10 @@ struct UsesOneLockInDMABlock {
     auto *block = op->getBlock();
     int lockID = -1;
     for (auto op : block->getOps<UseLockOp>()) {
-      if (auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-          lock.getLockID().has_value()) {
+      // A sibling whose lock is not an aie.lock is rejected by its own
+      // verifier.
+      if (auto lock = op.getLock().getDefiningOp<LockOp>();
+          lock && lock.getLockID().has_value()) {
         if (lockID != -1 && lockID != lock.getLockIDValue())
           return failure();
         lockID = lock.getLockIDValue();
@@ -6846,10 +6861,33 @@ struct AccessesLocalLocks {
   }
 };
 
+// Whether `op` is in an aiex.dma_configure_task(_for). Checked by name to avoid
+// a dependency on the AIEX dialect.
+static bool isInRuntimeDmaTask(Operation *op) {
+  for (Operation *parent = op->getParentOp(); parent;
+       parent = parent->getParentOp()) {
+    StringRef name = parent->getName().getStringRef();
+    if (name == "aiex.dma_configure_task" ||
+        name == "aiex.dma_configure_task_for")
+      return true;
+  }
+  return false;
+}
+
 LogicalResult UseLockOp::verify() {
   // AIE.useLock cannot be used at the top level
   if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>((*this)->getParentOp()))
     return (*this)->emitOpError("must be used in a core or memory operation.");
+
+  bool inDmaBlock =
+      HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
+          .succeeded();
+  // A BD's lock fields are programmed from the aie.lock. In a core or a
+  // function the operand is a lock ID that may be a runtime value
+  // (--aie-localize-locks makes it a constant index), so it is not checked.
+  if ((inDmaBlock || isInRuntimeDmaTask(*this)) &&
+      !getLock().getDefiningOp<LockOp>())
+    return (*this)->emitOpError("lock operand is not an aie.lock");
 
   const auto &targetModel = getTargetModel(*this);
   if (targetModel.getTargetArch() == AIEArch::AIE1 && acquireGE())
@@ -6858,17 +6896,14 @@ LogicalResult UseLockOp::verify() {
 
   // Locks used inside a DMA/BD block are configured via static register writes
   // and therefore require a compile-time constant value.
-  if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
-          .succeeded() &&
-      !getConstantLockValue(*this))
+  if (inDmaBlock && !getConstantLockValue(*this))
     return (*this)->emitOpError(
         "lock value in a DMA/BD block must be a compile-time constant "
         "(defined by an arith.constant).");
 
   // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or
   // ShimDMAOp,
-  if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
-          .succeeded()) {
+  if (inDmaBlock) {
     if (!(*this)->getBlock())
       return (*this)->emitOpError("is not in a block.");
 
@@ -6892,18 +6927,9 @@ LogicalResult UseLockOp::verify() {
     return success();
   }
   // Or it can be in a DMAConfigureTaskOp or DMAConfigureTaskForOp (for runtime
-  // DMA configuration). Check by operation name to avoid circular dependency
-  // with AIEX dialect
-  {
-    Operation *operation = (*this)->getParentOp();
-    while (operation) {
-      StringRef name = operation->getName().getStringRef();
-      if (name == "aiex.dma_configure_task" ||
-          name == "aiex.dma_configure_task_for")
-        return success();
-      operation = operation->getParentOp();
-    }
-  }
+  // DMA configuration).
+  if (isInRuntimeDmaTask(*this))
+    return success();
   return (*this)->emitOpError()
          << "expects some parent op to be one of "
          << "AIE::device, AIE::core, func::func, AIE::mem, AIE::shimDMA, or "
