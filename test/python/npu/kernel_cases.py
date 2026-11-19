@@ -3537,6 +3537,17 @@ CASES += [
     ),
     # P*V's product at a head dimension past the key block.
     check("mha", dict(dim_m=16, dim_k=256, dim_n=64, pv=True), smoke=True),
+    # Split-KV decode's merge, one part a call: llama 3.2 1B's 32 packed
+    # heads; rows of 16 (the 16-lane weights); a 128-wide head. Merges of
+    # several parts are test_attention_merge_e2e.py's.
+    Case("attention_merge", dict(rows=32, dim=64), calls=4, smoke=True),
+    *[
+        check("attention_merge", dims, tag=tag, smoke=True)
+        for dims, tag in (
+            (dict(rows=16, dim=64), "edge-sixteen-rows"),
+            (dict(rows=32, dim=128), "edge-wide-head"),
+        )
+    ],
     # The prefill toolkit's S*V accumulate, one case per geometry. Each
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V
