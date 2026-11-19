@@ -1,0 +1,9 @@
+<map id="xilinx::AIE::CoreSectionReservation" name="xilinx::AIE::CoreSectionReservation">
+<area shape="rect" id="Node000001" title=" " alt="" coords="27,128,199,173"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,56,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="43,45,74,103,94,128,89,128,70,106,40,50"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="80,5,146,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="115,47,116,129,111,127,111,50"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="188,5,254,33"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="219,46,210,78,194,106,165,130,162,125,190,103,205,76,215,50"/>
+</map>
