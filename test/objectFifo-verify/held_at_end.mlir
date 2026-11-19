@@ -178,3 +178,78 @@ module {
     }
   }
 }
+
+// -----
+
+// A fifo the runtime sequence re-arms gets its locks back each launch, so the
+// next run does not find the held object taken.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+      aie.end
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aiex.dma_channel_reset_for(@in)
+    }
+  }
+}
+
+// -----
+
+// Only @reset re-arms @in, so launching @run twice finds the held object taken.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    // expected-error@+1 {{ends with 1 acquired from @in__cons never released}}
+    %core = aie.core(%tile) {
+      // expected-note@+1 {{acquired here}}
+      %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+      aie.end
+    }
+    aie.runtime_sequence @run(%arg0: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @in} : memref<16xi32>
+    }
+    aie.runtime_sequence @reset(%arg0: memref<16xi32>) {
+      aiex.dma_channel_reset_for(@in)
+    }
+  }
+}
+
+// -----
+
+// @run fills @in and re-arms it; @aux moves only @other, so a launch of @aux
+// never has the core take from @in, and the exemption holds.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    %t2 = aie.tile(0, 3)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @other(%shim, {%t2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+      aie.end
+    }
+    %core2 = aie.core(%t2) {
+      %o = aie.objectfifo.acquire @other (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @other (Consume, 1)
+      aie.end
+    }
+    aie.runtime_sequence @run(%arg0: memref<16xi32>) {
+      aiex.dma_channel_reset_for(@in)
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @in} : memref<16xi32>
+    }
+    aie.runtime_sequence @aux(%arg0: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @other} : memref<16xi32>
+    }
+  }
+}

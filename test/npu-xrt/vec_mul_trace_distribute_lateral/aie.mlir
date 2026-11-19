@@ -51,9 +51,11 @@ module {
     // Core computation (column 0, row 2)
     %c = aie.core(%core_0) {
       %c0 = arith.constant 0 : index
-      %c_inf = arith.constant 9223372036854775807 : index
       %c1 = arith.constant 1 : index
-      scf.for %arg0 = %c0 to %c_inf step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %1 = aie.objectfifo.acquire @infactor_fwd(Consume, 1) : memref<1xi32>
         %c0_0 = arith.constant 0 : index
         %c4 = arith.constant 4 : index
@@ -68,6 +70,7 @@ module {
           aie.objectfifo.release @out(Produce, 1)
         }
         aie.objectfifo.release @infactor_fwd(Consume, 1)
+        scf.yield
       }
       aie.end
     }

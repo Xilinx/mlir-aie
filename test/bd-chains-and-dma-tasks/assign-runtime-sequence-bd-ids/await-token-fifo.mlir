@@ -38,7 +38,8 @@ aie.device(npu2) {
     // expected-note@+1 {{released here}}
     aiex.dma_free_task(%middle)
     %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.end
     }
@@ -137,7 +138,8 @@ aie.device(npu2) {
     // expected-note@+1 {{released here}}
     aiex.dma_free_task(%task)
     %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.end
     }
@@ -276,7 +278,8 @@ aie.device(npu2) {
     // expected-note@+1 {{released here}}
     aiex.dma_free_task(%b)
     %c = aiex.dma_configure_task(%tile, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
       aie.end
     }

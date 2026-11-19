@@ -22,6 +22,8 @@
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include <set>
+
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEMATERIALIZERUNTIMESEQUENCES
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -319,7 +321,8 @@ static LogicalResult copyReferencedSSAValues(
             SmallVector<NamedAttribute> filteredAttrs;
             for (auto namedAttr : dict) {
               StringRef name = namedAttr.getName().getValue();
-              if (name != "col" && name != "row") {
+              if (name != "col" && name != "row" &&
+                  name != "aiex.reserved_bd_ids") {
                 filteredAttrs.push_back(namedAttr);
               }
             }
@@ -336,6 +339,20 @@ static LogicalResult copyReferencedSSAValues(
                    << ") already exists in the device with different "
                       "attributes";
           }
+        }
+        // The callee's sequence ops move here, so the ids they pin do too.
+        if (auto calleeIds = tileOp->getAttrOfType<DenseI32ArrayAttr>(
+                "aiex.reserved_bd_ids")) {
+          std::set<int32_t> ids(calleeIds.asArrayRef().begin(),
+                                calleeIds.asArrayRef().end());
+          if (auto callerIds = existingTile->getAttrOfType<DenseI32ArrayAttr>(
+                  "aiex.reserved_bd_ids"))
+            ids.insert(callerIds.asArrayRef().begin(),
+                       callerIds.asArrayRef().end());
+          SmallVector<int32_t> sorted(ids.begin(), ids.end());
+          existingTile->setAttr(
+              "aiex.reserved_bd_ids",
+              DenseI32ArrayAttr::get(existingTile->getContext(), sorted));
         }
         clonedDefs[definingOp] = existingTile.getOperation();
       }
@@ -426,6 +443,7 @@ static LogicalResult inlineReferencedSymbolDefinitions(
 
       // Insert the cloned symbol at the device level, after its SSA
       // dependencies. A definition also named by SSA shares that clone.
+      bool cloned = !clonedDefs.contains(symbolDefOp);
       Operation *clonedSymbolDefOp =
           getOrClone(rewriter, symbolDefOp, argMap, clonedDefs,
                      clonedDefOpsInsertionPoint, allSymbolNames);
@@ -433,6 +451,29 @@ static LogicalResult inlineReferencedSymbolDefinitions(
           FlatSymbolRefAttr::get(clonedSymbolDefOp->getAttrOfType<StringAttr>(
               SymbolTable::getSymbolAttrName()));
       previouslyInlinedSymbolMap[oldSymbolRef] = newSymbolRef;
+      // A definition may itself name others, as a shim allocation's
+      // consumed_by names its outputs, and the clone must name their clones.
+      if (cloned &&
+          failed(inlineReferencedSymbolDefinitions(
+              rewriter, clonedSymbolDefOp, symbolDefOp, argMap,
+              previouslyInlinedSymbolMap, callerDevice, clonedDefs, calleeNames,
+              clonedDefOpsInsertionPoint, allSymbolNames)))
+        return std::make_pair(oldSymbolRef, WalkResult::interrupt());
+      // A copied consumption proof describes the device it came from.
+      auto allocation = dyn_cast<AIE::ShimDMAAllocationOp>(clonedSymbolDefOp);
+      ArrayAttr proofs = allocation ? allocation.getConsumedByAttr() : nullptr;
+      auto callee = symbolDefOp->getParentOfType<AIE::DeviceOp>();
+      if (cloned && proofs && callee && callee.getSymNameAttr()) {
+        SmallVector<Attribute> stamped;
+        for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>())
+          stamped.push_back(AIE::ConsumedByAttr::get(
+              proof.getContext(), proof.getOutput(), proof.getInputBytes(),
+              proof.getOutputBytes(), proof.getGranuleBytes(),
+              proof.getDevice()
+                  ? proof.getDevice()
+                  : FlatSymbolRefAttr::get(callee.getSymNameAttr())));
+        allocation.setConsumedByAttr(rewriter.getArrayAttr(stamped));
+      }
       return std::make_pair(newSymbolRef, WalkResult::advance());
     });
     if (!newAttr) {

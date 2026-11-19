@@ -2363,10 +2363,10 @@ MODEL_NIGHTS = """
 const router = BANDS.find(b => b.id === 'router'), allocator = BANDS.find(b => b.id === 'allocator');
 const cell = (value, unit) => ({ value, unit });
 const routerRecord = (id, date, npu2, extra) => ({ id, date, pmode: null, commit: { ...commit }, provenance: {}, rows: {
-  npu1: { failed_properties: cell(0, 'properties'), unrouted: cell(0, 'routings'), illegal: cell(0, 'routings'),
+  npu1: { failed_properties: cell(0, 'properties'), unrouted: cell(0, 'routings'), strict_misses: cell(0, 'designs'), illegal: cell(0, 'routings'),
           hop_ratio: cell(1.012, '×'), amsels_per_design: cell(14.87, 'amsels'), ms_per_design: cell(10.0, 'ms'),
           failed_mutations: cell(2, 'cases'), survived_corruptions: cell(1, 'corruptions') },
-  npu2: { failed_properties: cell(npu2, 'properties'), unrouted: cell(0, 'routings'), illegal: cell(npu2, 'routings'),
+  npu2: { failed_properties: cell(npu2, 'properties'), unrouted: cell(0, 'routings'), strict_misses: cell(1, 'designs'), illegal: cell(npu2, 'routings'),
           hop_ratio: cell(1.015, '×'), amsels_per_design: cell(14.96, 'amsels'), ms_per_design: cell(13.1, 'ms'),
           failed_mutations: cell(0, 'cases'), survived_corruptions: cell(0, 'corruptions') },
 }, detail: [
@@ -2408,9 +2408,9 @@ assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
 // A row per device: its seeds, the five correctness counts (nonzero red),
 // then what the routes cost; the verifier's catch rate on hover.
 assert.deepEqual(tableOf(card.table), [
-  ['', 'Seeds', 'Properties failed', 'Unrouted', 'Illegal', 'Mutations wrong', 'Corruptions missed', 'Hops ÷ known', 'Msels / design', 'Time / design'],
-  ['npu1', '20,370,000 + 2,000', '0', '0', '0', '2', '1', '1.012×', '14.9', '10 ms'],
-  ['npu2', '20,370,000 + 2,000', '1', '0', '1', '0', '0', '1.015×', '15', '13.1 ms'],
+  ['', 'Seeds', 'Properties failed', 'Unrouted', 'Strict misses', 'Illegal', 'Mutations wrong', 'Corruptions missed', 'Hops ÷ known', 'Msels / design', 'Time / design'],
+  ['npu1', '20,370,000 + 2,000', '0', '0', '0', '0', '2', '1', '1.012×', '14.9', '10 ms'],
+  ['npu2', '20,370,000 + 2,000', '1', '0', '1', '1', '0', '0', '1.015×', '15', '13.1 ms'],
 ]);
 assert.equal(all(card.table, n => n.className === 'vals worse').length, 4);
 assert.equal(all(card.table, n => n.title === 'the verifier caught 1999 of 2000 corruptions').length, 1);
@@ -2480,14 +2480,17 @@ for (const band of [router, allocator]) {
 const data = collect(historiesOf('router', [routerRecord('6', '2026-10-01T03:17:00Z', 0), routerRecord('7', '2026-10-02T03:17:00Z', 0)]));
 const hops = trendConfig(data, router.trend[0]);
 assert.deepEqual(hops.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]), [['npu1', [1.012, 1.012]], ['npu2', [1.015, 1.015]]]);
-// Its failures are a line per device, the counts summed, and only shown once one is above zero.
+// Its failures are a line per device, the counts summed, and only shown once one is above zero;
+// npu2's strict miss is tallied in its own tab, not counted as a failure.
 const failures = trendConfig(data, router.trend[3]);
 assert.deepEqual(failures.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]), [['npu1', [3, 3]], ['npu2', [0, 0]]]);
 assert.deepEqual(trendBox(data, router.trend, '').children[0].children[0].children.map(b => b.textContent),
-                 ['Route length', 'Arbiter use', 'Time per design', 'Failures']);
+                 ['Route length', 'Arbiter use', 'Time per design', 'Failures', 'Strict misses']);
 const clean = collect(historiesOf('router', [routerRecord('6', '2026-10-01T03:17:00Z', 0)].map(r => {
-  r.rows.npu1.failed_mutations = cell(0, 'cases'); r.rows.npu1.survived_corruptions = cell(0, 'corruptions'); return r; })));
-assert.ok(!trendBox(clean, router.trend, '').children[0].children[0].children.some(b => b.textContent === 'Failures'));
+  r.rows.npu1.failed_mutations = cell(0, 'cases'); r.rows.npu1.survived_corruptions = cell(0, 'corruptions');
+  r.rows.npu2.strict_misses = cell(0, 'designs'); return r; })));
+assert.deepEqual(trendBox(clean, router.trend, '').children[0].children[0].children.map(b => b.textContent),
+                 ['Route length', 'Arbiter use', 'Time per design']);
 """)
 
 

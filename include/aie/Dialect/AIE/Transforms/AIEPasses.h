@@ -36,6 +36,23 @@ inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
 inline constexpr llvm::StringLiteral kObjectFifoObjectSlotAttrName =
     "aie.objectfifo.object_slot";
 
+/// How `--aie-objectfifo-allocate` says a pool's buffers fit no memory its
+/// users reach; the diagnostic's symbol argument names the pool's objectFIFO,
+/// nested in its device.
+inline constexpr llvm::StringLiteral kNoBufferRoom =
+    "could not place buffers in accessible memory with available capacity";
+/// The note on it naming, as its symbol arguments, the mem tile pools channel
+/// turns walked whole: one buffer each, where the SA placer counts objects.
+inline constexpr llvm::StringLiteral kTurnWalkedNote =
+    "channel turns walked these objectFIFOs' mem tile pools whole: ";
+
+/// How `--aie-assign-buffer-addresses` says a buffer fits no tile memory left,
+/// and the note it adds, at the core, when a core on that tile keeps its own
+/// sections there; the note's symbol argument names the core's device.
+inline constexpr llvm::StringLiteral kNoTileRoom = "could not be placed: ";
+inline constexpr llvm::StringLiteral kCoreSectionsNote =
+    "this core keeps its own sections in ";
+
 /// Whether `whileOp` repeats forever: its condition is a constant true, and its
 /// condition region does nothing but forward its arguments to the body. This is
 /// how IRON's `Worker` writes a core that runs until reconfiguration. Such a
@@ -62,8 +79,8 @@ mlir::Operation *getObjectFifoLoopParent(mlir::Operation *op);
 #define GEN_PASS_DECL
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
-std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
-std::unique_ptr<mlir::OperationPass<DeviceOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEPlaceTilesPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEPlaceTilesPass(const AIEPlaceTilesOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPrepareBuffersPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
@@ -142,6 +159,7 @@ createAIEGenerateColumnControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEGenerateColumnControlOverlayPass(
     const AIEGenerateColumnControlOverlayOptions &options);
+bool getsColumnControlOverlay(DeviceOp device, bool configuration);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>

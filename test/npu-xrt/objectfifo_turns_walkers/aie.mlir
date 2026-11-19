@@ -40,8 +40,10 @@ module {
       %c2_i32 = arith.constant 2 : i32
       %c3_i32 = arith.constant 3 : i32
       %c4_i32 = arith.constant 4 : i32
-      %images = arith.constant 0xFFFFFFFF : index
-      scf.for %n = %c0 to %images step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<64xi32>
         %c0_ = aie.objectfifo.acquire @c(Consume, 1) : memref<64xi32>
         %o0 = aie.objectfifo.acquire @out(Produce, 1) : memref<64xi32>
@@ -91,6 +93,7 @@ module {
         aie.objectfifo.release @a(Consume, 1)
         aie.objectfifo.release @b(Consume, 1)
         aie.objectfifo.release @out(Produce, 1)
+        scf.yield
       }
       aie.end
     }

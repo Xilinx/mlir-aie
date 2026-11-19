@@ -24,7 +24,7 @@ from aie.iron import (
     Transport,
     Worker,
 )
-from aie.helpers.dialects.scf import _for as range_
+from aie.helpers.dialects.scf import _for as range_, forever_
 
 LINE_LEN = 8
 N_LINES = 16
@@ -37,7 +37,7 @@ LINE_TY = np.ndarray[(LINE_LEN,), np.dtype[np.int32]]
 
 def split_lines(of_in, of_even, of_odd):
     """Send alternate lines down the two fifos sharing the channel."""
-    for _ in range_(sys.maxsize):
+    for _ in forever_():
         for _ in range_(2):
             src = of_in.acquire(1)
             dst = of_even.acquire(1)
@@ -56,7 +56,7 @@ def split_lines(of_in, of_even, of_odd):
 
 def add(amount):
     def body(of_in, of_out):
-        for _ in range_(sys.maxsize):
+        for _ in forever_():
             src = of_in.acquire(1)
             dst = of_out.acquire(1)
             for b in range_(LINE_LEN):

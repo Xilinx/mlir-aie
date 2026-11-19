@@ -761,6 +761,10 @@ def AIE_NpuDmaMemcpyNdOp
     call to DataLayout */
     uint64_t getElementTypeBitwidth();
 
+    // Bytes the transfer moves; nullopt for runtime sizes or a length a
+    // scratchpad parameter sets.
+    std::optional<int64_t> getStaticBytesStreamed();
+
     /* Verifies the supported scope and bounds for a transfer carrying runtime
        (SSA) sizes/strides using the allocation resolved by verifySymbolUses(). */
     llvm::LogicalResult verifyDynamicSizesStrides(
@@ -1064,6 +1068,7 @@ def AIE_NpuSyncOp : AIEX_Op<"npu.sync", []> {
     If this operation appears to deadlock, ensure that at least one buffer descriptor is configured to issue a TCT on the channel you expect.
     By default, `dma_memcpy_nd` operations only issue tokens for `S2MM` channels, and `issue_token` must be set to `true` to issue tokens for `MM2S` channels.
   }];
+  let hasVerifier = 1;
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
@@ -1358,6 +1363,9 @@ def AIE_NpuLoadPdiOp
     The easiest workaround is to create an empty `aie.device(npu2) @empty {}` and load that before the main device load.
   }];
   let hasCanonicalizeMethod = 1;
+  let extraClassDeclaration = [{
+    bool loadsSamePdi(NpuLoadPdiOp other);
+  }];
 }
 
 def AIE_NpuWriteConfigOp
@@ -1428,7 +1436,9 @@ def AIE_NpuWriteTeardownOp
 
 def AIE_DMAConfigureTaskOp
     : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
-                                     TileElement, DMAConfigureTaskLike]>,
+                                     TileElement, DMAConfigureTaskLike,
+                                     DeclareOpInterfaceMethods<
+                                         SymbolUserOpInterface>]>,
       Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task "
                 "on a Channel and Direction on a Tile";
@@ -1440,6 +1450,9 @@ def AIE_DMAConfigureTaskOp
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
 
     An `aie.dma_bd` in a task may give more than 4 dimensions when all are constant; `aie-decompose-large-dma-bd` iterates every one past the innermost three.
+
+    `alloc` names the `aie.shim_dma_allocation` the task serves, on its tile,
+    direction and channel, whose `consumed_by` proofs then cover its pushes.
   }];
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
@@ -1449,7 +1462,7 @@ def AIE_DMAConfigureTaskOp
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
-      UnitAttr:$out_of_order);
+      UnitAttr:$out_of_order, OptionalAttr<FlatSymbolRefAttr>:$alloc);
 
   let regions = (region AnyRegion:$body);
 
@@ -1493,7 +1506,7 @@ def AIE_DMAConfigureTaskOp
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*packet=*/nullptr, /*out_of_order=*/nullptr);
+            /*packet=*/nullptr, /*out_of_order=*/nullptr, /*alloc=*/nullptr);
     }]>];
 }
 
@@ -1562,6 +1575,10 @@ def AIE_DMAConfigureTaskForOp
       return mlir::IntegerAttr::get(
           mlir::IntegerType::get(getContext(), 32), getRepeatCount());
     }
+    // Bytes the task streams each time its block runs, counting each start
+    // and the chain reachable from the body's entry; nullopt when any extent,
+    // repeat or start count is not static, or the total overflows.
+    std::optional<int64_t> getStaticBytesStreamed();
   }];
 }
 
@@ -1660,6 +1677,15 @@ def AIE_DMAStartTaskOp
     bool getPushIssueToken(DMAConfigureTaskOp task) {
       return task.getIssueToken() && !getNoToken();
     }
+    // The alignment the head buffer descriptor id of `task` needs: a push
+    // whose repeat count is a parameter writes that id with an update that
+    // clears its low two bits.
+    static uint32_t headBdIdAlignment(mlir::Value task) {
+      return llvm::any_of(task.getUsers(), [](mlir::Operation *user) {
+        auto start = llvm::dyn_cast<DMAStartTaskOp>(user);
+        return start && start.hasRepeatParameter();
+      }) ? 4 : 1;
+    }
   }];
 
   let extraClassDefinition = [{
@@ -1734,10 +1760,15 @@ def AIE_DMABdPoolPopOp
     this op in place of the implicit allocation a `dma_configure_task` performs.
     If the pool is empty at runtime, the generated builder yields no stream
     (`std::nullopt`).
+
+    With `id`, it takes that ID out of the pool for the rest of the sequence
+    and returns it: something outside the pool programs that ID, a static DMA
+    program or an `aiex.npu.dma_memcpy_nd`, so the pool must never hand it
+    out. `aie-lower-dynamic-bd-pool` emits one for each such ID.
   }];
 
   let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,
-      I32Attr:$bd_end);
+      I32Attr:$bd_end, OptionalAttr<I32Attr>:$id);
 
   let assemblyFormat = [{
     `(` $column `,` $row `)` `partition` ` ` `[` $bd_begin `,` $bd_end `)`
@@ -2055,6 +2086,8 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     A transfer whose offset and length are two different parameters also adds a
     `#aiex.joint_bound` to the length parameter's `joint_bounds`, which the host library
     checks when it syncs the scratchpad.
+    A parameter used as a DMA offset may get `offset_multiple`, the element count its values
+    must be a multiple of; the host library rejects others.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
     For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
@@ -2084,7 +2117,8 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
       OptionalAttr<ScratchpadParameterKind>:$kind,
       OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value,
       OptionalAttr<TypedArrayAttrBase<AIEX_JointBoundAttr,
-                                      "joint bounds">>:$joint_bounds);
+                                      "joint bounds">>:$joint_bounds,
+      OptionalAttr<ConfinedAttr<I32Attr, [IntPositive]>>:$offset_multiple);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }

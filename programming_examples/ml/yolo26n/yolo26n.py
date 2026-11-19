@@ -68,7 +68,7 @@ class Plan:
         )
 
 
-@iron.jit(aiecc_flags=["--placer=sa_placer", "--sa-seed=1", "--sa-effort=3"])
+@iron.jit(aiecc_flags=["--placer=sa_placer", "--sa-seed=1"])
 def yolo26n(
     image: In,
     scratch: InOut,

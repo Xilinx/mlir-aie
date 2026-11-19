@@ -65,8 +65,10 @@ module {
         %1 = arith.addi %arg1_i32, %c3_i32 : i32
         memref.store %1, %input_0_2_buffer[%arg1] : memref<8xi32>
       }
-      %c9223372036854775807 = arith.constant 9223372036854775807 : index
-      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %c1_ul1 = arith.constant 1 : i32
         aie.use_lock(%input_0_2_lock0, AcquireGreaterEqual, %c1_ul1)
         scf.for %arg1 = %c0 to %c8 step %c1 {
@@ -108,6 +110,7 @@ module {
         }
         %c1_ul6 = arith.constant 1 : i32
         aie.use_lock(%output_0_2_lock4, Release, %c1_ul6)
+        scf.yield
       }
       aie.end
     }
@@ -137,8 +140,10 @@ module {
         %1 = arith.addi %arg1_i32, %c3_i32 : i32
         memref.store %1, %input_0_3_buffer[%arg1] : memref<8xi32>
       }
-      %c9223372036854775807 = arith.constant 9223372036854775807 : index
-      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %c1_ul9 = arith.constant 1 : i32
         aie.use_lock(%input_0_3_lock0, AcquireGreaterEqual, %c1_ul9)
         scf.for %arg1 = %c0 to %c8 step %c1 {
@@ -180,6 +185,7 @@ module {
         }
         %c1_ul14 = arith.constant 1 : i32
         aie.use_lock(%output_0_3_lock4, Release, %c1_ul14)
+        scf.yield
       }
       aie.end
     }
@@ -209,8 +215,10 @@ module {
         %1 = arith.addi %arg1_i32, %c3_i32 : i32
         memref.store %1, %input_0_4_buffer[%arg1] : memref<8xi32>
       }
-      %c9223372036854775807 = arith.constant 9223372036854775807 : index
-      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %c1_ul17 = arith.constant 1 : i32
         aie.use_lock(%input_0_4_lock0, AcquireGreaterEqual, %c1_ul17)
         scf.for %arg1 = %c0 to %c8 step %c1 {
@@ -252,6 +260,7 @@ module {
         }
         %c1_ul22 = arith.constant 1 : i32
         aie.use_lock(%output_0_4_lock4, Release, %c1_ul22)
+        scf.yield
       }
       aie.end
     }
@@ -281,8 +290,10 @@ module {
         %1 = arith.addi %arg1_i32, %c3_i32 : i32
         memref.store %1, %input_0_5_buffer[%arg1] : memref<8xi32>
       }
-      %c9223372036854775807 = arith.constant 9223372036854775807 : index
-      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %c1_ul25 = arith.constant 1 : i32
         aie.use_lock(%input_0_5_lock0, AcquireGreaterEqual, %c1_ul25)
         scf.for %arg1 = %c0 to %c8 step %c1 {
@@ -324,6 +335,7 @@ module {
         }
         %c1_ul30 = arith.constant 1 : i32
         aie.use_lock(%output_0_5_lock4, Release, %c1_ul30)
+        scf.yield
       }
       aie.end
     }

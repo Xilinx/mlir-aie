@@ -5,8 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // The destination's two existing locks and 62 planned locks fill its budget.
-// Localizing the cheaper pool would need two more locks. Reject that trial
-// and localize the larger pool, which already has its locks at the destination.
+// Localizing the cheaper pool needs two more there; the resident pool's users
+// reach the neighbor's locks too, so one of its segments takes its locks there
+// and the cheaper pool is localized.
 module {
   aie.device(npu2) {
     %dst = aie.tile(0, 1)
@@ -62,8 +63,9 @@ module {
 }
 // CHECK-DAG: %[[DST:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[DST]]) {sym_name = "larger__buf0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "cheap__buf0"}
-// CHECK-DAG: aie.lock(%[[NEIGHBOR]]) {{.*}}sym_name = "cheap__prodlock0"
-// CHECK: @r3(%[[DST]]) drains @cheap {channelIndex = 3 : i32}
-// CHECK: @r4(%[[DST]]) drains @larger {channelIndex = 4 : i32}
+// CHECK-DAG: aie.buffer(%[[DST]]) {sym_name = "cheap__buf0"}
+// CHECK-DAG: aie.lock(%[[DST]]) {{.*}}sym_name = "cheap__prodlock0"
+// CHECK-DAG: aie.lock(%[[NEIGHBOR]]) {{.*}}sym_name = "resident__prodlock0"
+// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "larger__buf0"}
+// CHECK: @r3(%[[DST]]) drains @cheap {channelIndex = 4 : i32}
+// CHECK: @r4(%[[DST]]) drains @larger {channelIndex = 0 : i32}

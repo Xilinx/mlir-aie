@@ -274,7 +274,7 @@ static LogicalResult transformLoadPdi(
 static LogicalResult
 verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
                 function_ref<AIEX::ExpandMode(NpuLoadPdiOp)> expandMode,
-                bool teardown, bool initEntry) {
+                ArrayRef<bool> keepPreloads, bool teardown, bool initEntry) {
   if (initEntry && !teardown)
     return module.emitError(
         "aie-expand-load-pdi: init-entry requires teardown");
@@ -284,6 +284,23 @@ verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
         return existing->emitOpError()
                << "is named '" << initEntrySequenceName
                << "', which aie-expand-load-pdi reserves under init-entry";
+  // A load left alone is a PDI load; an expanded one resets only through the
+  // preload it gets.
+  llvm::MapVector<AIE::RuntimeSequenceOp, SmallVector<AIEX::ConfigStep>> steps;
+  for (auto [load, keepPreload] : llvm::zip_equal(loadPdiOps, keepPreloads)) {
+    NpuLoadPdiOp loadPdiOp = load;
+    if (auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>()) {
+      FlatSymbolRefAttr ref = loadPdiOp.getDeviceRefAttr();
+      bool expanded = expandMode(loadPdiOp) != AIEX::ExpandMode::none;
+      steps[seq].push_back(
+          {loadPdiOp, expanded ? NpuLoadPdiOp() : loadPdiOp,
+           expanded && keepPreload,
+           ref ? module.lookupSymbol<AIE::DeviceOp>(ref) : nullptr});
+    }
+  }
+  for (auto &[seq, seqSteps] : steps)
+    if (failed(AIEX::checkResidentsSurvive(seq, seqSteps)))
+      return failure();
   if (!teardown)
     return success();
   for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
@@ -404,17 +421,11 @@ struct AIEExpandLoadPdiPass
       }
     }
 
-    if (failed(verifyExpansion(module, loadPdiOps, expandMode, clTeardown,
-                               clInitEntry)))
-      return signalPassFailure();
-
-    OverlayCopies copies;
-    SmallVector<CtrlPktReload> ctrlPktReloads;
-    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> configData,
-        teardownData;
-    // The kind of each sequence's last load, which left the array as it is.
+    // A load gets a reset or overlay preload unless a teardown of the same kind
+    // left the array ready for it.
+    SmallVector<bool> keepPreloads;
     llvm::DenseMap<Operation *, std::optional<ArrayState>> arrayState;
-    for (auto [idx, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
+    for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
       auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
       std::optional<ArrayState> start;
       if (seq)
@@ -423,17 +434,26 @@ struct AIEExpandLoadPdiPass
           start = it->second;
       std::optional<ArrayState> &state =
           arrayState.try_emplace(seq, start).first->second;
-      // We need to insert a reset/overlay `load_pdi` if the last configuration
-      // was configured using a different mode, or if we did not insert a
-      // teardown.
       auto dev =
           module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
       auto mode = expandMode(loadPdiOp);
       ArrayState next = {mode, dev && mode == AIEX::ExpandMode::ctrlpkt
                                    ? dev.getOverlayAttr()
                                    : FlatSymbolRefAttr{}};
-      bool keepPreload = !clTeardown || state != next;
+      keepPreloads.push_back(!clTeardown || state != next);
       state = next;
+    }
+
+    if (failed(verifyExpansion(module, loadPdiOps, expandMode, keepPreloads,
+                               clTeardown, clInitEntry)))
+      return signalPassFailure();
+
+    OverlayCopies copies;
+    SmallVector<CtrlPktReload> ctrlPktReloads;
+    llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> configData,
+        teardownData;
+    for (auto [idx, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
+      bool keepPreload = keepPreloads[idx];
       AIEX::BlockwriteData *config = nullptr, *teardown = nullptr;
       if (clTeardown && expandMode(loadPdiOp) == AIEX::ExpandMode::ctrlpkt) {
         auto device = loadPdiOp->getParentOfType<AIE::DeviceOp>();

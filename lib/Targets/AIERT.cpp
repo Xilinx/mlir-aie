@@ -13,12 +13,11 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 
-#include <algorithm>
-
 extern "C" {
 #include "aie_codegen.h"
 }
 
+#include <algorithm>
 #include <filesystem>
 
 #define AIERC_STR(x) x, #x
@@ -520,11 +519,10 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       bdOp.getPadDimensions();
 
   if (padDims) {
-    // XAie_DmaDesc holds padding for d0 to d2 only, so a four-dimensional
-    // walk passes its three inner dimensions (the verifier keeps d3
-    // unpadded).
+    // The verifier leaves the dims past the tile's pad fields unpadded.
     llvm::SmallVector<XAie_PadDesc, 3> padDescs(
-        std::min<size_t>(padDims->size(), 3));
+        std::min(padDims->size(),
+                 targetModel.getDmaBdLayout(col, row)->padFields().size()));
     XAie_DmaPadTensor dmaPadTensor = {};
     dmaPadTensor.NumDim = padDescs.size();
     dmaPadTensor.PadDesc = padDescs.data();

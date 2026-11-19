@@ -19,7 +19,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.helpers.dialects.scf import _for as range_, if_
+from aie.helpers.dialects.scf import _for as range_, forever_, if_
 from aie.dialects.arith import cmpi, CmpIPredicate, constant
 from aie.extras import types as T
 
@@ -35,7 +35,7 @@ DONE_TY = np.ndarray[(1,), np.dtype[np.int32]]
 
 
 def core_body(of_in, of_out, of_trip, of_done):
-    for _ in range_(sys.maxsize):
+    for _ in forever_():
         trip_sv = of_trip.acquire(1)
         trip = trip_sv[0]
         # Inner loop ub is a runtime value from of_trip → the peel cannot

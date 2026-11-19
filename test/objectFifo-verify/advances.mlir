@@ -57,20 +57,21 @@ module {
 
 // -----
 
-// A hand-written forever loop is an scf.for with a bound no design counts to.
+// An scf.for runs its trip count, however large, so this core does not repeat
+// forever: it ends, still holding what it acquired.
 
 module {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)
     %tile = aie.tile(0, 2)
-    // expected-note@+1 {{the other end is here}}
     aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    // expected-error@+1 {{ends with 1 acquired from @in__cons never released}}
     %core = aie.core(%tile) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %cmax = arith.constant 4294967295 : index
       scf.for %i = %c0 to %cmax step %c1 {
-        // expected-error@+1 {{takes from @in__cons each time its loop repeats, but the loop releases none of them}}
+        // expected-note@+1 {{acquired here}}
         %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
       }
       aie.end
@@ -193,6 +194,63 @@ module {
       } do {
         %false = arith.constant false
         scf.if %false {
+          %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A finite loop under a branch that is never taken never runs, however often
+// the forever loop around it repeats.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %false = arith.constant false
+        scf.if %false {
+          scf.for %i = %c0 to %c2 step %c1 {
+            %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+          }
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Nor does a loop that runs no times.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        scf.for %i = %c0 to %c0 step %c1 {
           %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
         }
         scf.yield

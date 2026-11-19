@@ -31,9 +31,6 @@ namespace {
 constexpr size_t maxPeriodEvents = 4096;
 /// Periods simulated before giving up on a steady state.
 constexpr int maxPeriods = 256;
-/// From the AIE's 24-bit BD-loop saturation value up, an `scf.for` trip count
-/// is read as "forever", as aie-objectfifo-verify reads it.
-constexpr int64_t runsForever = (int64_t{1} << 24) - 2;
 } // namespace
 
 LogicalResult CoreTurns::read(ArrayRef<ObjectFifoCoreEndpointOp> ends,
@@ -67,6 +64,7 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
   ends = names.size();
   loop = nullptr;
   idle = false;
+  wholeRun.clear();
   DenseMap<StringAttr, unsigned> index;
   for (auto [i, name] : llvm::enumerate(names))
     index[name] = i;
@@ -275,32 +273,23 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
         if (auto release = dyn_cast<ObjectFifoReleaseOp>(op))
           if (std::optional<unsigned> end = endOf(op))
             releases.push_back({release, *end});
-      return wholeRunKeepsTurns(core, releases, reason);
+      return readWholeRun(core, releases, reason);
     }
   }
   reason = "the core never settles into a steady order";
   return failure();
 }
 
-LogicalResult CoreTurns::wholeRunKeepsTurns(
+LogicalResult CoreTurns::readWholeRun(
     CoreOp core, ArrayRef<std::pair<ObjectFifoReleaseOp, unsigned>> releases,
-    std::string &reason) const {
+    std::string &reason) {
   // A tail release behind a loop that runs forever is never reached.
   for (Operation *op = loop; op != core; op = op->getParentOp()) {
     auto whileOp = dyn_cast<scf::WhileOp>(op);
-    auto forOp = dyn_cast<scf::ForOp>(op);
-    std::optional<APInt> trips =
-        forOp ? forOp.getStaticTripCount() : std::nullopt;
-    if ((whileOp && isForeverLoop(whileOp)) ||
-        (trips && trips->getSExtValue() >= runsForever))
+    if (whileOp && isForeverLoop(whileOp))
       return success();
   }
 
-  // The channel keeps taking its turns from one run of the core to the next,
-  // so a finite core must move each pool's objects a whole number of turns'
-  // worth over its run; otherwise a later run starts out of step with the
-  // turns, and the channel can wait on a full pool while the core waits on
-  // another.
   SmallVector<int64_t> moved(ends, 0);
   for (auto [release, end] : releases) {
     int64_t runs = release.relNumber();
@@ -316,22 +305,30 @@ LogicalResult CoreTurns::wholeRunKeepsTurns(
     }
     moved[end] += runs;
   }
-  SmallVector<int64_t> counts(ends, 0);
-  for (unsigned end : order)
-    counts[end]++;
+  wholeRun = std::move(moved);
+  return success();
+}
+
+bool CoreTurns::wholeRunFits(ArrayRef<int64_t> counts) const {
+  // The channel keeps taking its turns from one run of the core to the next,
+  // so a finite core must move each pool's objects a whole number of turns'
+  // worth over its run; otherwise a later run starts out of step with the
+  // turns, and the channel can wait on a full pool while the core waits on
+  // another.
+  if (wholeRun.empty())
+    return true;
   std::optional<int64_t> whole;
   for (size_t i = 0; i < ends; i++) {
-    bool fits = counts[i] ? moved[i] % counts[i] == 0 &&
-                                (!whole || *whole == moved[i] / counts[i])
-                          : moved[i] == 0;
-    if (!fits) {
-      reason = "the core's whole run moves them out of step with the turns";
-      return failure();
+    if (!counts[i]) {
+      if (wholeRun[i])
+        return false;
+      continue;
     }
-    if (counts[i])
-      whole = moved[i] / counts[i];
+    if (wholeRun[i] % counts[i] || (whole && *whole != wholeRun[i] / counts[i]))
+      return false;
+    whole = wholeRun[i] / counts[i];
   }
-  return success();
+  return true;
 }
 
 bool CoreTurns::keepsUp(ArrayRef<int64_t> depths) {
@@ -347,6 +344,11 @@ bool CoreTurns::keepsUp(ArrayRef<int64_t> depths) {
       continue;
     size_t repeats = order.size() / length;
     if (llvm::any_of(counts, [&](int64_t c) { return c % repeats; }))
+      continue;
+    SmallVector<int64_t> perRun(counts);
+    for (int64_t &count : perRun)
+      count /= static_cast<int64_t>(repeats);
+    if (!wholeRunFits(perRun))
       continue;
     std::set<SmallVector<unsigned>> tried;
     // Counts for the window order[start, start + length), maintained
@@ -376,7 +378,7 @@ bool CoreTurns::keepsUp(ArrayRef<int64_t> depths) {
       return true;
     }
   }
-  return keepsUp(order, depths);
+  return wholeRunFits(counts) && keepsUp(order, depths);
 }
 
 Operation *CoreTurns::periodAcquire() const {

@@ -29,11 +29,10 @@ struct AIECanonicalizeDevicePass
 
     ModuleOp moduleOp = getOperation();
 
-    for (auto deviceOp : moduleOp.getOps<AIETarget>()) {
-      (void)deviceOp;
-      // We have a device..  Nothing to do.
+    // A module whose devices sit in nested modules has its devices already.
+    if (moduleOp.walk([](AIETarget) { return WalkResult::interrupt(); })
+            .wasInterrupted())
       return;
-    }
 
     // Builder with no insertion point, because we don't want to insert
     // the new op quite yet.

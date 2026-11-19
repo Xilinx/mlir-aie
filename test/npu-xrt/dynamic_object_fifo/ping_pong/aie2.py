@@ -14,11 +14,10 @@
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe
 import numpy as np
-import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 from aie.extras.context import mlir_mod_ctx
 
 N = 1024
@@ -51,7 +50,7 @@ def ping_pong():
             # Set up compute tiles
             @core(ComputeTile)
             def core_body():
-                for _ in range_(sys.maxsize):
+                for _ in forever_():
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
                     passthrough_64_i32(elemIn, elemOut)

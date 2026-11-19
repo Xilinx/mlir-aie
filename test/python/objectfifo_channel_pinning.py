@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# RUN: %python %s | aie-opt --pass-pipeline='any(aie.device(aie-place-tiles,aie-objectFifo-stateful-transform))' | FileCheck %s
+# RUN: %python %s | aie-opt --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform))' | FileCheck %s
 
 """Test pinning every hardware DMA channel an ObjectFifo pair uses.
 

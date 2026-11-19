@@ -11,7 +11,6 @@
 # implicitly via @device/@core/@runtime_sequence context managers) works
 # correctly through the JIT auto-detection path.
 
-import sys
 import pytest
 import numpy as np
 import aie.iron as iron
@@ -25,7 +24,7 @@ from aie.dialects.aiex import (
     shim_dma_single_bd_task,
 )
 from aie.iron import CompileTime, In, Out
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 
 
 @iron.jit
@@ -48,7 +47,7 @@ def passthrough(
 
         @core(ComputeTile)
         def core_body():
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
                 for i in range_(num_elements):

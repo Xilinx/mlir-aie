@@ -5,14 +5,16 @@
 
 """The router's model and shrinker, with the real aie-opt; no NPU required."""
 
-import argparse
 import importlib.util
+import json
+import random
 import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +24,7 @@ sys.path.insert(0, str(ROUTER_TESTING))
 import router_mutation  # noqa: E402
 import router_properties as rp  # noqa: E402  (paths set just above)
 import router_shrink  # noqa: E402
+from hw_case import HwCase  # noqa: E402
 
 # A case module with one variant, for router_hw.py's argument validation:
 # these never route, compile or touch an NPU.
@@ -77,6 +80,20 @@ OVER_CUT = """module {
     aie.flow(%t01, DMA : 5, %t05, DMA : 1)
     aie.flow(%t02, DMA : 0, %t03, Core : 0)
     aie.flow(%t02, DMA : 1, %t01, DMA : 0)
+  }
+}"""
+# Trees that share two receivers and cannot meet: the router routes them only
+# with allow-deadlock-prone, and no routing without the hold cycle is known.
+STOP_MEETING = """module {
+  aie.device(npu1_1col) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t03 = aie.tile(0, 3)
+    %t05 = aie.tile(0, 5)
+    aie.packet_flow(29) { aie.packet_source<%t01, DMA : 5> aie.packet_dest<%t00, DMA : 1> aie.packet_dest<%t05, DMA : 1> }
+    aie.packet_flow(28) { aie.packet_source<%t03, Core : 0> aie.packet_dest<%t00, DMA : 1> aie.packet_dest<%t05, DMA : 1> }
+    aie.packet_flow(23) { aie.packet_source<%t05, DMA : 1> aie.packet_dest<%t01, DMA : 1> }
+    aie.packet_flow(11) { aie.packet_source<%t05, Core : 0> aie.packet_dest<%t00, DMA : 1> aie.packet_dest<%t05, DMA : 1> }
   }
 }"""
 OVERUSED = r"cross from row 2 to row 3, which takes 7 channels across, and it has 6"
@@ -179,6 +196,125 @@ def test_the_model_rejects_a_mark_no_priority_flow_takes(priority):
     assert "ctrl masterset South:2 at (0, 0) carries no priority flow" in problems
 
 
+def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
+    d, _ = priority
+    strict = rp.aie_opt(d.emit(), True, strict=True)
+    assert strict.returncode == 0, strict.stderr
+    assert router_mutation.judge_strict(d, "route", True, strict)[0] == "ok"
+    # The shim mux no longer takes id 3 down to its DMA channel.
+    cut = strict.stdout.replace("aie.connect<North : 2, DMA : 0>", "")
+    assert cut != strict.stdout
+    broken = subprocess.CompletedProcess(strict.args, 0, cut, strict.stderr)
+    outcome, detail = router_mutation.judge_strict(d, "route", True, broken)
+    assert outcome == "illegal", detail
+    assert "id 3 from (0, 2) DMA:0" in detail
+
+
+def test_a_strict_rejection_without_a_witness_says_so():
+    d = rp.load_design(STOP_MEETING)
+    assert router_mutation.judge(d, "route", True, 0) == (
+        "ok",
+        "rejected strict, and no routing without a hold cycle is known",
+    )
+
+
+def test_a_packet_owed_twice_and_received_once_counts_as_missing():
+    a, b = [1, 2], [3, 4]
+    got = np.array([a, b, b], dtype=np.int32)
+    assert HwCase().check_packets([got], [[a, a, b]], 2) == [
+        "output 0: packets differ from the expected set (1 missing, 1 unexpected)"
+    ]
+    assert HwCase().check_packets([np.array([b, a], dtype=np.int32)], [[a, b]], 2) == []
+
+
+def test_a_run_stops_by_its_deadline_or_the_limit_whichever_is_first():
+    start = time.monotonic()
+    assert rp.run_end() - start <= rp.ROUTE_TIMEOUT_S + 1
+    assert rp.run_end(start) == start
+
+
+def test_a_run_past_its_deadline_is_a_timeout():
+    spent = rp.aie_opt("module {}", deadline=time.monotonic())
+    assert rp.run_failure(spent)[0] == "timeout"
+
+
+def test_a_router_timeout_is_not_called_a_crash(priority):
+    d, _ = priority
+    slow = rp.aie_opt(d.emit(), True, strict=True, deadline=time.monotonic())
+    assert slow.returncode == rp.TIMEOUT
+    outcome, detail = router_mutation.judge_strict(d, "route", True, slow)
+    assert outcome == "timeout", detail
+
+
+def test_a_timeout_on_a_design_the_verifier_rejects_is_a_timeout():
+    d = rp.load_design(PRIORITY)
+    d.packet_flows.append(d.packet_flows[-1])
+    assert router_mutation.must_reject(d) == "a packet flow twice"
+    with pytest.raises(Exception, match="duplicates an earlier packet flow"):
+        rp.canonical(d)
+    outcome, detail = router_mutation.judge(
+        d, "route", True, 0, deadline=time.monotonic()
+    )
+    assert outcome == "timeout", detail
+
+
+def test_shrinking_stops_a_judgement_at_its_budget():
+    seed = 207560359
+    d = rp.generate(seed, device="npu2")["design"]
+    ctx = {"shared": set(), "witness": lambda: None}
+    rng = random.Random(f"{seed}-port-cap")
+    _, e, expect = router_mutation.MUTATORS["port-cap"](rng, d, ctx)
+    start = time.monotonic()
+    _, finished = router_mutation.shrink_failure(
+        "mutator", "port-cap", (e, expect), True, seed, False, start + 5
+    )
+    assert not finished
+    # The router alone takes over a minute on this design.
+    assert time.monotonic() - start < 30
+
+
+def test_a_timeout_in_the_models_router_runs_is_a_timeout(priority):
+    d, _ = priority
+    with pytest.raises(rp.RouterTimeout):
+        rp.priority_trees(d, {}, deadline=time.monotonic())
+    outcome, detail = router_mutation.judge(
+        d, "model", True, 0, deadline=time.monotonic()
+    )
+    assert outcome == "timeout", detail
+    assert detail.startswith("model: routing the prioritized flows alone"), detail
+
+
+def test_a_seed_remembers_its_prioritized_routing_timed_out(priority):
+    d, _ = priority
+    trees = {}
+    with pytest.raises(rp.RouterTimeout):
+        rp.priority_trees(d, trees, deadline=time.monotonic())
+    with pytest.raises(rp.RouterTimeout):
+        rp.priority_trees(d, trees)
+    assert rp.priority_trees(d, {}) is not None
+
+
+@pytest.mark.parametrize("seed", [0, 4])
+def test_the_generator_names_a_seed_the_model_could_not_decide(seed):
+    with pytest.raises(rp.RouterTimeout):
+        rp.routable_case(seed, "npu1", deadline=time.monotonic())
+
+
+def test_the_properties_report_keeps_the_generators_undecided_seeds(tmp_path):
+    path = tmp_path / "npu1-properties.json"
+    run = rp.PropertiesReport(path, "npu1", 0, 3)
+    run.seed_done(0, "timeout")
+    run.seed_done(1, None)
+    partial = json.loads(path.read_text())
+    assert (partial["partial"], partial["seeds_done"]) == (True, 2)
+    assert partial["undecided"] == ["seed 0: timeout"]
+    run.add("unroutable", True, "0 left to the model")
+    run.add("strict-completeness", True, "0 undecided")
+    run.write(partial=False, counts={})
+    final = json.loads(path.read_text())
+    assert (final["partial"], final["undecided"]) == (False, ["seed 0: timeout"])
+
+
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
     d = rp.load_design(OVER_CUT)
     holds = router_shrink.holds_fn(OVERUSED, True)
@@ -208,6 +344,23 @@ def test_a_live_shared_budget_judges_before_shrinking(monkeypatch, tmp_path):
         router_mutation.shrink_failure(
             "mutator", "port-cap", (d, "route"), True, 0, False, time.monotonic() + 60
         )
+
+
+def test_a_last_candidate_judged_past_the_budget_leaves_shrinking_unfinished():
+    d = rp.load_design(OVER_CUT)
+    last = len(list(router_shrink.candidates(d)))
+    calls = [0]
+
+    def holds(e):
+        calls[0] += 1
+        if calls[0] == last:
+            time.sleep(1.5)
+        return False
+
+    small, finished = router_shrink.shrink(d, holds, budget_s=1)
+    assert calls[0] == last
+    assert not finished
+    assert small is d
 
 
 def test_an_unbounded_shrink_finishes_on_what_fails():
@@ -243,36 +396,25 @@ def router_hw():
 def test_an_unknown_variant_name_fails_instead_of_running_nothing(
     router_hw, hw_case, tmp_path
 ):
-    args = argparse.Namespace(
-        case=hw_case,
-        variant=["typo"],
-        runs=20,
-        process_timeout_s=120,
-        work=tmp_path / "work",
-        verdicts=None,
-        peano="unused",
-    )
-    assert router_hw.run_case(args) != 0
-    assert not (tmp_path / "work").exists()
+    work = tmp_path / "work"
+    argv = ["run", str(hw_case), "--variant", "typo", "--work", str(work)]
+    assert router_hw.main(argv + ["--peano", "unused"]) != 0
+    assert not work.exists()
 
 
-def test_a_nonpositive_runs_count_is_rejected(router_hw, hw_case):
-    result = subprocess.run(
-        [
-            sys.executable,
-            router_hw.__file__,
-            "run",
-            str(hw_case),
-            "--runs",
-            "0",
-            "--peano",
-            "unused",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode != 0
-    assert "--runs" in result.stderr
+def test_a_case_not_on_npu2_is_not_retargeted(router_hw, hw_case, tmp_path, capsys):
+    work = tmp_path / "work"
+    argv = ["run", str(hw_case), "--device", "npu1", "--work", str(work)]
+    assert router_hw.main(argv + ["--peano", "unused"]) != 0
+    assert "cannot retarget to npu1" in capsys.readouterr().err
+    assert not work.exists()
+
+
+def test_a_nonpositive_runs_count_is_rejected(router_hw, hw_case, capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        router_hw.main(["run", str(hw_case), "--runs", "0", "--peano", "unused"])
+    assert exit_info.value.code != 0
+    assert "--runs" in capsys.readouterr().err
 
 
 def test_a_router_failure_leaves_the_input_and_a_command_to_reproduce_it(

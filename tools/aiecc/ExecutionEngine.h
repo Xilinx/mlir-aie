@@ -244,6 +244,8 @@ struct Engine {
     std::string profileJson; // also write the summary here, as JSON
     // aiecc's main() entry; the JSON summary's process_ms counts from it.
     std::chrono::steady_clock::time_point processStart;
+    // Leave reporting the failed edge to the caller (reportFailedEdge).
+    bool deferFailedEdge = false;
     bool timesEdges() const { return profile || !profileJson.empty(); }
   };
 
@@ -254,6 +256,14 @@ struct Engine {
   EdgeBase *failedEdge = nullptr;
 
   explicit Engine(Options o) : opts(std::move(o)) {}
+
+  static void reportFailedEdge(EdgeBase *edge) {
+    llvm::errs() << "aiecc: edge '" << llvm::sys::path::filename(edge->name)
+                 << "'";
+    if (!edge->failedKey.empty())
+      llvm::errs() << " (key '" << edge->failedKey << "')";
+    llvm::errs() << " failed\n";
+  }
 
   // Fine-grained (edge, key) task scheduler for the reachable sub-graph.
   //
@@ -710,12 +720,8 @@ struct Engine {
         if (stalled)
           llvm::errs() << "aiecc: scheduler stalled with unsatisfied "
                           "dependencies\n";
-        else if (failedEdge) {
-          llvm::errs() << "aiecc: edge '" << displayName(failedEdge) << "'";
-          if (!failedEdge->failedKey.empty())
-            llvm::errs() << " (key '" << failedEdge->failedKey << "')";
-          llvm::errs() << " failed\n";
-        }
+        else if (failedEdge && !opts.deferFailedEdge)
+          reportFailedEdge(failedEdge);
         return mlir::failure();
       }
       return mlir::success();

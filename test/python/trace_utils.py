@@ -11,7 +11,7 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
 
@@ -59,7 +59,7 @@ def passthroughKernel():
             # Compute tile 2
             @core(ComputeTile2)
             def core_body():
-                for _ in range_(sys.maxsize):
+                for _ in forever_():
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)
                     passThroughLine(elemIn, elemOut, lineWidthInBytes)

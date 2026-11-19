@@ -35,9 +35,10 @@ module {
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
       %c4 = arith.constant 4 : index
-      %c9223372036854775807 = arith.constant 9223372036854775807 : index
-
-      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         scf.for %arg1 = %c0 to %c4 step %c2 {
           %c1_ul1 = arith.constant 1 : i32
           aie.use_lock(%in_cons_cons_lock, AcquireGreaterEqual, %c1_ul1)
@@ -59,6 +60,7 @@ module {
           %c1_ul8 = arith.constant 1 : i32
           aie.use_lock(%out_cons_lock, Release, %c1_ul8)
         }
+        scf.yield
       }
       aie.end
     }

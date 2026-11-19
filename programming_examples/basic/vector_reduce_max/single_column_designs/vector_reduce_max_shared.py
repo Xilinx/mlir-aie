@@ -86,10 +86,10 @@ def vector_reduce_max(
         names=[f"memA{i}" for i in range(n_cores)],
     )
 
-    min_val = (
-        np.array([bfloat16(float("-inf"))], dtype=dtype)
-        if dtype_str == "bf16"
-        else np.array([np.iinfo(dtype).min], dtype=dtype)
+    min_val = np.full(
+        out_tensor_size,
+        bfloat16(float("-inf")) if dtype_str == "bf16" else np.iinfo(dtype).min,
+        dtype=dtype,
     )
     out_fifos = []
     nextC_buffers = []

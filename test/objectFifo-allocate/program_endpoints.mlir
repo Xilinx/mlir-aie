@@ -159,9 +159,9 @@ module @programs_and_tasks {
 
 // -----
 
-// A runtime task's BDs do not steer the choice, so the device image does not
-// depend on the runtime sequence: an instruction stream built for another
-// sequence runs on it. The task pinned to S2MM 2 leaves the program the
+// A runtime task's unpinned BDs do not steer the choice, so the device image
+// does not depend on them: an instruction stream built for another sequence
+// pinning the same ids runs on it. The task on S2MM 2 leaves the program the
 // lowest free channel, S2MM 0.
 
 // CHECK-LABEL: @pinned_task_demand

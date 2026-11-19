@@ -176,7 +176,9 @@ static bool isUnderRuntimeControlFlow(AIE::DMABDOp op) {
   return false;
 }
 
-static std::optional<std::pair<AIE::TileOp, DMAConfigureTaskLike>>
+// The task a runtime descriptor belongs to, with the tile and channel it runs
+// on.
+static std::optional<std::tuple<AIE::TileOp, DMAConfigureTaskLike, int>>
 resolveTaskAndTile(AIE::DMABDOp op) {
   if (auto cfg = op->getParentOfType<DMAConfigureTaskOp>()) {
     // Decomposition is a shape rewrite, so an unplaced tile is not an error
@@ -184,7 +186,8 @@ resolveTaskAndTile(AIE::DMABDOp op) {
     AIE::TileOp tile = cfg.tryGetTileOp();
     if (!tile)
       return std::nullopt;
-    return std::make_pair(tile, cast<DMAConfigureTaskLike>(*cfg));
+    return std::make_tuple(tile, cast<DMAConfigureTaskLike>(*cfg),
+                           static_cast<int>(cfg.getChannel()));
   }
   if (auto cfgFor = op->getParentOfType<DMAConfigureTaskForOp>()) {
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
@@ -197,7 +200,8 @@ resolveTaskAndTile(AIE::DMABDOp op) {
     AIE::TileOp tile = allocOp.getTileOp();
     if (!tile)
       return std::nullopt;
-    return std::make_pair(tile, cast<DMAConfigureTaskLike>(*cfgFor));
+    return std::make_tuple(tile, cast<DMAConfigureTaskLike>(*cfgFor),
+                           static_cast<int>(allocOp.getChannelIndex()));
   }
   return std::nullopt;
 }
@@ -385,8 +389,8 @@ using ChannelKey = DmaQueueModel::ChannelKey;
 static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
   Operation *def = start.getTask().getDefiningOp();
   if (auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(def)) {
-    if (AIE::TileOp tile = cfg.tryGetTileOp())
-      return DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
+    if (cfg.tryGetTileOp())
+      return DmaQueueModel::keyOf(cfg);
     return std::nullopt;
   }
   auto cfgFor = dyn_cast_or_null<DMAConfigureTaskForOp>(def);
@@ -396,11 +400,9 @@ static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
   auto alloc = dev ? AIE::ShimDMAAllocationOp::getForSymbol(
                          dev, cfgFor.getAlloc().getRootReference())
                    : AIE::ShimDMAAllocationOp();
-  AIE::TileOp tile = alloc ? alloc.getTileOp() : AIE::TileOp();
-  if (!tile)
+  if (!alloc || !alloc.getTileOp())
     return std::nullopt;
-  return DmaQueueModel::keyOf(tile, alloc.getChannelDir(),
-                              alloc.getChannelIndex());
+  return DmaQueueModel::keyOf(alloc);
 }
 
 // Interleave the slices splitIntoTasks emitted with the starts around them.
@@ -575,8 +577,9 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
   if (!taskAndTile)
     return success();
 
-  AIE::TileOp tile = taskAndTile->first;
-  DMAConfigureTaskLike taskOp = taskAndTile->second;
+  AIE::TileOp tile = std::get<0>(*taskAndTile);
+  DMAConfigureTaskLike taskOp = std::get<1>(*taskAndTile);
+  int channel = std::get<2>(*taskAndTile);
 
   // A descriptor with more dimensions than a BD has cannot be lowered as it
   // is, so where this pass cannot reduce it, it says why.
@@ -744,7 +747,8 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
     return iterationScale(iterations, sub).isOne();
   });
   bool chainFits =
-      sharedRepeat && bds.size() <= targetModel.getNumBDs(col, row);
+      sharedRepeat &&
+      bds.size() <= targetModel.getNumBDsForChannel(col, row, channel);
   uint32_t depth = targetModel.getDmaTaskQueueDepth();
   if (!chainFits || (depth > 0 && bds.size() > depth)) {
     // The dynamic BD pool allocates a chain under runtime control flow, but
@@ -774,9 +778,10 @@ static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
     if (!chainFits)
       return op.emitOpError()
              << "cannot split this buffer descriptor: its " << bds.size()
-             << " slices outnumber the tile's "
-             << targetModel.getNumBDs(col, row)
-             << " buffer descriptors, and they cannot be separate tasks "
+             << " slices outnumber the "
+             << targetModel.getNumBDsForChannel(col, row, channel)
+             << " buffer descriptors its channel reaches, and they cannot be "
+                "separate tasks "
                 "because "
              << *why;
   }

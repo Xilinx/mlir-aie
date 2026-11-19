@@ -18,7 +18,7 @@
 // good-await-nested-loop-iter-arg.mlir only exercise homogeneous scf.for
 // nesting; this is the first test to cross a for/if boundary.
 //
-// All three configures (%init, %ta, %tb) share tile (2, 0) / S2MM / channel 3
+// All three configures (%init, %ta, %tb) share tile (2, 0) / S2MM / channel 1
 // -- required for correctness, since one static await site covers every
 // iteration regardless of which branch ran -- distinct from the unrelated
 // decoy on tile (0, 0) / MM2S / channel 0.
@@ -27,10 +27,8 @@
 // decoy: sync operands: column=0, row=0, direction=1, channel=0, column_num=1, row_num=1
 // CHECK: aiex.npu.sync
 // CHECK: scf.for
-// sync operands: column=2, row=0, direction=0, channel=3, column_num=1, row_num=1
-// CHECK-DAG: %[[COL:.*]] = arith.constant 2 : i32
-// CHECK-DAG: %[[CHAN:.*]] = arith.constant 3 : i32
-// CHECK: aiex.npu.sync(%[[COL]], %{{.*}}, %{{.*}}, %[[CHAN]], %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
+// sync operands: column=2, row=0, direction=0, channel=1, column_num=1, row_num=1
+// CHECK: aiex.npu.sync(%c2_i32{{(_[0-9]+)?}}, %c0_i32{{(_[0-9]+)?}}, %c0_i32{{(_[0-9]+)?}}, %c1_i32{{(_[0-9]+)?}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
 // CHECK: scf.if
 // CHECK: }
 
@@ -49,7 +47,7 @@ module {
       aiex.dma_await_task(%decoy)
 
       %c1 = arith.constant 1 : index
-      %init = aiex.dma_configure_task(%tile_2_0, S2MM, 3) {
+      %init = aiex.dma_configure_task(%tile_2_0, S2MM, 1) {
         aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
@@ -57,14 +55,14 @@ module {
       %last = scf.for %i = %c1 to %n step %c1 iter_args(%prev = %init) -> (index) {
         aiex.dma_await_task(%prev)
         %t = scf.if %cond -> (index) {
-          %ta = aiex.dma_configure_task(%tile_2_0, S2MM, 3) {
+          %ta = aiex.dma_configure_task(%tile_2_0, S2MM, 1) {
             aie.dma_bd(%arg0 : memref<1024xi32> offset = 512 len = 256) {bd_id = 1 : i32}
             aie.end
           } {issue_token = true}
           aiex.dma_start_task(%ta)
           scf.yield %ta : index
         } else {
-          %tb = aiex.dma_configure_task(%tile_2_0, S2MM, 3) {
+          %tb = aiex.dma_configure_task(%tile_2_0, S2MM, 1) {
             aie.dma_bd(%arg0 : memref<1024xi32> offset = 512 len = 256) {bd_id = 2 : i32}
             aie.end
           } {issue_token = true}

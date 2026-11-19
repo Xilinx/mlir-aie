@@ -86,19 +86,22 @@ module @window_beside_two_deep {
     aie.objectfifo @c(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@c_in] -> [@c] ([] [])
     aie.core(%t) {
-      %c0 = arith.constant 0 : index
-      %c1 = arith.constant 1 : index
-      %cmax = arith.constant 4294967295 : index
-      scf.for %i = %c0 to %cmax step %c1 {
+      %true = arith.constant true
+      %false = arith.constant false
+      %done = scf.while (%first = %true) : (i1) -> i1 {
+        %forever = arith.constant true
+        scf.condition(%forever) %first : i1
+      } do {
+      ^bb0(%first: i1):
         %a0, %a1, %a2 = aie.objectfifo.acquire @a(Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
         %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
-        %first = arith.cmpi eq, %i, %c0 : index
         scf.if %first {
           %c0_ = aie.objectfifo.acquire @c(Consume, 1) : memref<16xi32>
           aie.objectfifo.release @c(Consume, 1)
         }
         aie.objectfifo.release @b(Consume, 1)
         aie.objectfifo.release @a(Consume, 1)
+        scf.yield %false : i1
       }
       aie.objectfifo.release @a(Consume, 2)
       aie.end
@@ -141,6 +144,50 @@ module @windows_in_step {
         %b0, %b1 = aie.objectfifo.acquire @b(Consume, 2) : memref<16xi32>, memref<16xi32>
         aie.objectfifo.release @b(Consume, 1)
         aie.objectfifo.release @a(Consume, 1)
+      }
+      aie.objectfifo.release @a(Consume, 1)
+      aie.objectfifo.release @b(Consume, 1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Three-deep windows over a and b, each taking three and giving back two a
+// step: a period moves a, a, b, b, but a and b in turn keep up. Each run moves
+// 129 of each, a whole number of the turns a, b though not of the period's, so
+// the turns are taken.
+
+// CHECK-LABEL: @windows_in_step_of_the_shorter_turns
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__cons__dma(%{{.*}}) fills @a__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__cons__dma(%{{.*}}) fills @b__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+module @windows_in_step_of_the_shorter_turns {
+  aie.device(npu2) {
+    %s = aie.tile(0, 0)
+    %s1 = aie.tile(1, 0)
+    %m = aie.tile(0, 1)
+    %t = aie.tile(0, 2)
+    aie.objectfifo @a_in(%s, {%m}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%m, {%t}, 3 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@a_in] -> [@a] ([] [])
+    aie.objectfifo @b_in(%s, {%m}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%m, {%t}, 3 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@b_in] -> [@b] ([] [])
+    aie.objectfifo @c_in(%s1, {%m}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@c_in] -> [@c] ([] [])
+    aie.core(%t) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c64 = arith.constant 64 : index
+      %c = aie.objectfifo.acquire @c(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @c(Consume, 1)
+      scf.for %i = %c0 to %c64 step %c1 {
+        %a0, %a1, %a2 = aie.objectfifo.acquire @a(Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
+        %b0, %b1, %b2 = aie.objectfifo.acquire @b(Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
+        aie.objectfifo.release @b(Consume, 2)
+        aie.objectfifo.release @a(Consume, 2)
       }
       aie.objectfifo.release @a(Consume, 1)
       aie.objectfifo.release @b(Consume, 1)

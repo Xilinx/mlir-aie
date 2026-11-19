@@ -1,9 +1,11 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: aie-opt --aie-place-tiles --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: aie-opt --verify-diagnostics --aie-place-tiles --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: aie-opt --verify-diagnostics --aie-place-tiles='placer=sa_placer sa-seed=1' --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
 
-// Three packet FIFOs pinned to one core MM2S channel use one output channel.
+// Three packet FIFOs pinned to one core MM2S channel use one output channel,
+// as both placers count them, so they fit without an over-capacity warning.
 // CHECK-LABEL: module @shared_core_channel
 // CHECK-DAG: aie.objectfifo.dma_endpoint @a__prod__dma{{.*}}channelIndex = 0{{.*}}release_strategy = #aie.release_strategy<push_queue>
 // CHECK-DAG: aie.objectfifo.dma_endpoint @b__prod__dma{{.*}}channelIndex = 0{{.*}}release_strategy = #aie.release_strategy<push_queue>

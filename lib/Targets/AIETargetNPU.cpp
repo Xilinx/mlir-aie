@@ -630,6 +630,23 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return failure();
   }
 
+  SmallVector<AIEX::ConfigStep> steps;
+  for (Block &block : seq.getBody())
+    for (Operation &o : block) {
+      if (auto loadPdiOp = dyn_cast<NpuLoadPdiOp>(o)) {
+        FlatSymbolRefAttr ref = loadPdiOp.getDeviceRefAttr();
+        steps.push_back(
+            {&o, loadPdiOp, false,
+             ref ? moduleOp.lookupSymbol<AIE::DeviceOp>(ref) : nullptr});
+      } else if (auto writeConfigOp = dyn_cast<NpuWriteConfigOp>(o)) {
+        steps.push_back({&o, nullptr, false,
+                         moduleOp.lookupSymbol<AIE::DeviceOp>(
+                             writeConfigOp.getDeviceRefAttr())});
+      }
+    }
+  if (failed(AIEX::checkResidentsSurvive(seq, steps)))
+    return failure();
+
   NpuConfigCache ownConfigs;
   TxnEncoder encoder(deviceOp, instructions, locmap, foldDDRAddrOffset,
                      configs ? *configs : ownConfigs);

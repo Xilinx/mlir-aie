@@ -26,12 +26,11 @@
 
 import numpy as np
 import argparse
-import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 
 import aie.utils.trace as trace_utils
 
@@ -125,7 +124,7 @@ def my_passthrough_kernel(in1_size, out_size):
             def make_core_fn(idx):
                 @core(compute_tile)
                 def core_body():
-                    for _ in range_(sys.maxsize):
+                    for _ in forever_():
                         elemOut = of_join[idx].acquire(ObjectFifoPort.Produce, 1)
                         elemIn = of_split[idx].acquire(ObjectFifoPort.Consume, 1)
                         passThroughLine(elemIn, elemOut, elements_per_core_per_chunk)

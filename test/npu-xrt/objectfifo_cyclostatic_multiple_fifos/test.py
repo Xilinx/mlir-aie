@@ -13,7 +13,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.helpers.dialects.scf import _for as range_
+from aie.helpers.dialects.scf import _for as range_, forever_
 
 N_LINES = 10
 LINE_LEN = 8
@@ -31,7 +31,7 @@ LINE_TY = np.ndarray[(LINE_LEN,), np.dtype[np.int8]]
 
 
 def core_body(of_x, of_y, of_out):
-    for _ in range_(sys.maxsize):
+    for _ in forever_():
         for _ in range_(N_LINES):
             x = of_x.acquire(X_ACQ)
             y = of_y.acquire(Y_ACQ)

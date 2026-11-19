@@ -145,8 +145,29 @@ module {
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.runtime_sequence @runtime_repeat_too_many(%in: memref<65536xi32>, %r: i32) {
       %tk = aiex.dma_configure_task_for @a repeat %r : i32 {
-        // expected-error@+1 {{cannot split this buffer descriptor: its 18 slices outnumber the tile's 16 buffer descriptors, and they cannot be separate tasks because the task's repeat count is a runtime value}}
+        // expected-error@+1 {{cannot split this buffer descriptor: its 18 slices outnumber the 16 buffer descriptors its channel reaches, and they cannot be separate tasks because the task's repeat count is a runtime value}}
         aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 34786 sizes = [1, 1, 17393, 2] strides = [0, 0, 3, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// A mem tile has 48 descriptors, but a channel reaches only its half, 24: a
+// chain of 25 slices does not fit, though it is fewer than the tile's 48.
+
+module {
+  aie.device(npu2_1col) {
+    %mt = aie.tile(0, 1)
+    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<120000xi32>
+    aie.runtime_sequence @memtile_chain_over_channel(%r: i32) {
+      %tk = aiex.dma_configure_task(%mt, MM2S, 0) repeat %r : i32 {
+        // expected-error@+1 {{cannot split this buffer descriptor: its 25 slices outnumber the 24 buffer descriptors its channel reaches, and they cannot be separate tasks because the task's repeat count is a runtime value}}
+        aie.dma_bd(%buf : memref<120000xi32> offset = 0 len = 49186 sizes = [1, 1, 24593, 2] strides = [0, 0, 3, 1])
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%tk)

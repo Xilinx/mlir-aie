@@ -18,7 +18,7 @@ using namespace xilinx::AIE;
 
 void AIEX::addPlacementStage(OpPassManager &pm,
                              const AIEPlaceTilesOptions &options) {
-  pm.nest<DeviceOp>().addPass(createAIEPlaceTilesPass(options));
+  pm.addPass(createAIEPlaceTilesPass(options));
 }
 
 void AIEX::addTraceStage(OpPassManager &pm) {
@@ -38,16 +38,24 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool adaptiveOverlay, bool checkQueueSpace) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
+  // The verifier checks a parameter-waiting Worker's fifo volume per dispatch
+  // from the aiex.wait_scratchpad_parameters and parameter syncs that the
+  // scratchpad lowering below replaces. Split is idempotent, so the lowering
+  // after it splits again and does not verify twice.
+  if (!skipObjectFifoVerify) {
+    OpPassManager &verify = pm.nest<DeviceOp>();
+    verify.addPass(createAIEObjectFifoSplitPass());
+    verify.addPass(createAIEObjectFifoVerifyPass());
+  }
   // Before lock IDs and buffer addresses, which its new locks and buffers need.
   pm.addPass(createAIELowerScratchpadParametersPass());
 
   pm.nest<DeviceOp>().addPass(createAIEObjectFifoSplitPass());
-  if (!skipObjectFifoVerify)
-    pm.nest<DeviceOp>().addPass(createAIEObjectFifoVerifyPass());
   AIEGenerateColumnControlOverlayOptions overlay;
   overlay.configuration = ctrlPktOverlay || loadPdiToCtrlPkt;
   overlay.adaptive = adaptiveOverlay;
   overlay.coverColumns = llvm::to_vector(coverColumns);
+  overlay.packetSwitched = packetSwObjFifos;
   pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
   pm.addPass(createAIEImportOverlayPass());
   pm.addPass(createAIEAnnotateShimSharingPass());
@@ -101,6 +109,11 @@ void AIEX::registerAIEResourceStagesPipeline() {
         place.clCoresPerCol = options.coresPerCol;
         place.clSASeed = options.saSeed;
         place.clSAEffort = options.saEffort;
+        place.clPlacementBudget = options.placementBudget;
+        place.clCtrlPktOverlay =
+            options.ctrlPktOverlay || options.loadPdiToCtrlPkt;
+        place.clCtrlPktOverlayAdaptive = options.adaptiveOverlay;
+        place.clPacketSwObjectFifos = options.packetSwObjFifos;
         addPlacementStage(pm, place);
         addTraceStage(pm);
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,

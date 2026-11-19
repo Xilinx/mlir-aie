@@ -54,7 +54,7 @@ struct AIEAssignPacketIdsPass
     SmallVector<RouteOp> unpinned;
     for (auto route : device.getOps<RouteOp>()) {
       std::optional<PacketInfoAttr> packet = route.getPacket();
-      if ((packet || clPacketSwObjectFifos) &&
+      if (isPacketSwitched(packet.value_or(nullptr), clPacketSwObjectFifos) &&
           !(packet && packet->isAssigned()))
         unpinned.push_back(route);
     }
