@@ -627,6 +627,17 @@ struct InlineRuntimeCallsPattern : RewritePattern {
       }
     }
 
+    rewriter.setInsertionPoint(runOp);
+    for (Operation &calleeOp : calleeBody.getOps()) {
+      if (!isa<DMAConfigureTaskOp, DMAConfigureTaskForOp>(calleeOp))
+        continue;
+      Value task = argMap.lookup(calleeOp.getResult(0));
+      if (llvm::all_of(task.getUsers(), [](Operation *user) {
+            return isa<DMAStartTaskOp, DMAAwaitTaskOp>(user);
+          }))
+        DMAFreeTaskOp::create(rewriter, runOp.getLoc(), task);
+    }
+
     // The aiex.run op has been inlined; erase it.
     rewriter.eraseOp(runOp);
 

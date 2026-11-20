@@ -54,3 +54,42 @@ module @copy_over_static_bd_other_id {
     }
   }
 }
+
+// -----
+
+module @configured_after_completion {
+  aie.device(npu2) @cfg {
+    %shim = aie.tile(0, 0)
+    %buffer = aie.external_buffer {sym_name = "buffer"} : memref<8xi32>
+    aie.shim_dma(%shim) {
+      aie.dma_start(S2MM, 1, ^bd, ^end)
+    ^bd:
+      // expected-note@+1 {{the static program's buffer descriptor is here}}
+      aie.dma_bd(%buffer : memref<8xi32> offset = 0 len = 8) {bd_id = 0 : i32}
+      aie.next_bd ^end
+    ^end:
+      aie.end
+    }
+  }
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @data(%shim, MM2S, 1)
+    aie.shim_dma_allocation @ctrl(%shim, MM2S, 0)
+    aie.runtime_sequence @seq(%buffer: memref<8xi32>) {
+      %earlier = aiex.dma_configure_task_for @data {
+        aie.dma_bd(%buffer : memref<8xi32> offset = 0 len = 8) {bd_id = 0 : i32}
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%earlier)
+      aiex.npu.dma_wait {symbol = @data}
+      %configure = aiex.dma_configure_task_for @ctrl {
+        aie.dma_bd(%buffer : memref<8xi32> offset = 0 len = 8)
+        aie.end
+      } {issue_token = true, aiex.ctrl_pkt_transfer = @cfg}
+      aiex.dma_start_task(%configure)
+      aiex.dma_await_task(%configure)
+      // expected-error@+1 {{programs buffer descriptor ID 0, which a static DMA program on tile (0,0) already uses; give the copy another ID}}
+      aiex.npu.dma_memcpy_nd(%buffer[0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @data} : memref<8xi32>
+    }
+  }
+}

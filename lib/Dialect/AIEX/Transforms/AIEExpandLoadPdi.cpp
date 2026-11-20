@@ -498,7 +498,9 @@ struct AIEExpandLoadPdiPass
       std::optional<ArrayState> &state =
           arrayState.try_emplace(seq, start).first->second;
       auto dev =
-          module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
+          loadPdiOp.getDeviceRefAttr()
+              ? module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr())
+              : AIE::DeviceOp();
       auto mode = expandMode(loadPdiOp);
       ArrayState next = {mode, dev && mode == AIEX::ExpandMode::ctrlpkt
                                    ? dev.getOverlayAttr()

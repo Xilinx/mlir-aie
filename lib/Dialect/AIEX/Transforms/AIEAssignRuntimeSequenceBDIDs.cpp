@@ -725,6 +725,28 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::TileOp tile = allocationOf(copy).getTileOp();
     AIE::TileID tileId = tile.getTileID();
     auto id = static_cast<int32_t>(copy.getId());
+    auto staticConflict = [&]() -> LogicalResult {
+      InFlightDiagnostic diag =
+          copy.emitOpError("programs buffer descriptor ID ")
+          << id << ", which a static DMA program on tile (" << tile.getCol()
+          << "," << tile.getRow() << ") already uses; give the copy another ID";
+      SmallVector<AIE::DeviceOp, 3> devices{getOperation()};
+      for (AIE::DeviceOp device : {loadedDevice, configuredDevice})
+        if (device && !llvm::is_contained(devices, device))
+          devices.push_back(device);
+      for (AIE::DeviceOp device : devices)
+        for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+          if (program.getTileID() == tileId)
+            program.getDmaBody().walk([&](AIE::DMABDOp bd) {
+              if (bd.getBdId() == id)
+                diag.attachNote(bd.getLoc())
+                    << "the static program's buffer descriptor is here";
+            });
+      return diag;
+    };
+    BdIdGenerator &gen = getGeneratorForTile(tile);
+    if (gen.reserved.count(id))
+      return staticConflict();
     if (auto held = loadState.holdsOn.find({tileId, id});
         held != loadState.holdsOn.end() && warnUnsafeBdReuse) {
       const HeldBy &earlier = held->second.begin()->second;
@@ -735,7 +757,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       entry->second.tiles.insert({tile.getCol(), tile.getRow()});
       entry->second.count++;
     }
-    BdIdGenerator &gen = getGeneratorForTile(tile);
     loadState.holdsByChannel[key].push_back({order, tileId, id});
     loadState.holdsOn[{tileId, id}][order] = {copy, issuesToken};
     if (!gen.bdIdAlreadyAssigned(id)) {
@@ -797,22 +818,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     }
     // The id was already taken in the generator, owned by neither a copy
     // nor a live task: only a static DMA program claims an id that way.
-    InFlightDiagnostic diag = copy.emitOpError("programs buffer descriptor ID ")
-                              << id << ", which a static DMA program on tile ("
-                              << tile.getCol() << "," << tile.getRow()
-                              << ") already uses; give the copy another ID";
-    AIE::DeviceOp other =
-        loadedDevice && loadedDevice != getOperation() ? loadedDevice : nullptr;
-    for (AIE::DeviceOp candidate : {getOperation(), other})
-      if (candidate)
-        for (AIE::DmaBody program : candidate.getOps<AIE::DmaBody>())
-          if (program.getTileID() == tileId)
-            program.getDmaBody().walk([&](AIE::DMABDOp bd) {
-              if (bd.getBdId() == id)
-                diag.attachNote(bd.getLoc())
-                    << "the static program's buffer descriptor is here";
-            });
-    return diag;
+    return staticConflict();
   }
 
   void releaseRetiredCopies(const DmaQueueModel::ChannelKey &key) {

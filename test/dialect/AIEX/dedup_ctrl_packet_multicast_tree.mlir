@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --split-input-file -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s
-// RUN: aie-opt %s --split-input-file -aie-dedup-ctrl-packet-multicast=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s
+// RUN: aie-opt %s --split-input-file -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s --check-prefixes=CHECK,SHARED
+// RUN: aie-opt %s --split-input-file -aie-dedup-ctrl-packet-multicast=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefixes=CHECK,SHARED,PARALLEL
 
 // Memory tile (0, 1)'s MM2S 0 stream (push 1705524) takes arbiter 1 of
 // switchbox (0, 1), which the multicast of (0, 2) and (0, 3) on id 28 takes too,
@@ -338,6 +338,114 @@ module {
         aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
         aiex.control_packet {address = 36822548 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
         aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      }
+    }
+  }
+}
+
+// -----
+
+// SHARED-LABEL: aie.runtime_sequence @shared_arbiters()
+// SHARED-NEXT:    aiex.control_packet_group @cfg(Config) {
+// SHARED-NEXT:      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+// SHARED-NEXT:      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 9>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+// PARALLEL-NEXT:  {{^ *}}}
+// PARALLEL-NEXT:  aiex.control_packet_barrier
+// PARALLEL-NEXT:  aiex.control_packet_group @cfg(Config) {
+// SHARED-NEXT:      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+// SHARED-NEXT:      aiex.control_packet {address = 35782660 : ui32, data = array<i32: 9>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+// SHARED-NEXT:    {{^ *}}}
+// PARALLEL-NEXT:  aiex.control_packet_barrier
+// SHARED-NEXT:  {{^ *}}}
+module {
+  aie.device(npu2) @ov {
+    %t00 = aie.tile(0, 0)
+    %mux00 = aie.shim_mux(%t00) {
+      aie.connect<DMA : 1, North : 7>
+    }
+    %s00 = aie.switchbox(%t00) {
+      %route = aie.amsel<0> (0)
+      %other = aie.amsel<0> (1)
+      %north = aie.masterset(North : 0, %route)
+      %north1 = aie.masterset(North : 1, %other)
+      aie.packet_rules(South : 7) { aie.rule(31, 28, %route) }
+      aie.packet_rules(East : 0) { aie.rule(31, 28, %other) }
+    }
+    %t10 = aie.tile(1, 0)
+    %mux10 = aie.shim_mux(%t10) {
+      aie.connect<DMA : 1, North : 7>
+    }
+    %s10 = aie.switchbox(%t10) {
+      %route = aie.amsel<0> (0)
+      %west = aie.masterset(West : 0, %route)
+      aie.packet_rules(South : 7) { aie.rule(31, 28, %route) }
+    }
+    %t01 = aie.tile(0, 1)
+    %s01 = aie.switchbox(%t01) {
+      %route0 = aie.amsel<0> (0)
+      %route1 = aie.amsel<1> (0)
+      %north0 = aie.masterset(North : 0, %route0)
+      %north1 = aie.masterset(North : 1, %route1)
+      aie.packet_rules(South : 0) { aie.rule(31, 28, %route0) }
+      aie.packet_rules(South : 1) { aie.rule(31, 28, %route1) }
+    }
+    %t02 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+    %s02 = aie.switchbox(%t02) {
+      %route0 = aie.amsel<0> (0)
+      %route1 = aie.amsel<1> (0)
+      %control = aie.masterset(TileControl : 0, %route0) {keep_pkt_header = true}
+      %north = aie.masterset(North : 0, %route0)
+      %east = aie.masterset(East : 0, %route1)
+      aie.packet_rules(South : 0) { aie.rule(31, 28, %route0) }
+      aie.packet_rules(South : 1) { aie.rule(31, 28, %route1) }
+    }
+    %t03 = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+    %s03 = aie.switchbox(%t03) {
+      %route = aie.amsel<0> (0)
+      %control = aie.masterset(TileControl : 0, %route) {keep_pkt_header = true}
+      aie.packet_rules(South : 0) { aie.rule(31, 28, %route) }
+    }
+    %t12 = aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
+    %s12 = aie.switchbox(%t12) {
+      %route = aie.amsel<0> (0)
+      %control = aie.masterset(TileControl : 0, %route) {keep_pkt_header = true}
+      %north = aie.masterset(North : 0, %route)
+      aie.packet_rules(West : 0) { aie.rule(31, 28, %route) }
+    }
+    %t13 = aie.tile(1, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+    %s13 = aie.switchbox(%t13) {
+      %route = aie.amsel<0> (0)
+      %control = aie.masterset(TileControl : 0, %route) {keep_pkt_header = true}
+      aie.packet_rules(South : 0) { aie.rule(31, 28, %route) }
+    }
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1 (%t00, MM2S, 1) {aie.is_ctrl_pkt_overlay}
+    aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan1 (%t10, MM2S, 1) {aie.is_ctrl_pkt_overlay}
+    aie.wire(%mux00 : North, %s00 : South)
+    aie.wire(%t00 : DMA, %mux00 : DMA)
+    aie.wire(%mux10 : North, %s10 : South)
+    aie.wire(%t10 : DMA, %mux10 : DMA)
+    aie.wire(%s00 : North, %s01 : South)
+    aie.wire(%s00 : East, %s10 : West)
+    aie.wire(%s01 : North, %s02 : South)
+    aie.wire(%s02 : North, %s03 : South)
+    aie.wire(%s02 : East, %s12 : West)
+    aie.wire(%s12 : North, %s13 : South)
+  } {aie.ctrl_pkt_multicast = [{column = 0 : i32, id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>]}, {column = 1 : i32, id = 28 : i32, tiles = [#aie.tile<1, 2>, #aie.tile<1, 3>]}], aie.is_ctrl_pkt_overlay}
+  aie.device(npu2) @cfg {
+  } {overlay = @ov}
+  aie.device(npu2) {
+    aie.runtime_sequence @shared_arbiters() {
+      aiex.control_packet_group @cfg(Config) {
+        aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 2228228 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 3276804 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+      }
+      aiex.control_packet_group @cfg(Config) {
+        aiex.control_packet {address = 35782656 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 35782660 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 36831232 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 36831236 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       }
     }
   }

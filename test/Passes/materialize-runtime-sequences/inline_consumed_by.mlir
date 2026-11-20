@@ -5,7 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-materialize-runtime-sequences %s | FileCheck %s
+// RUN: aie-opt --aie-materialize-runtime-sequences --split-input-file %s | FileCheck %s
+// RUN: split-file %s %t
+// RUN: aie-opt --aie-materialize-runtime-sequences --aie-unroll-runtime-sequence-loops --aie-substitute-shim-dma-allocations --aie-assign-runtime-sequence-bd-ids="warn-unreleased-transfers=false warn-unsafe-bd-reuse=false" --split-input-file %t/tasks.mlir > /dev/null
 
 // A cloned shim allocation's consumed_by names the clone of its output, which
 // comes along even where the inlined sequence never names it. Two designs'
@@ -58,6 +60,86 @@ module {
         aie.end
       }
       aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+//--- tasks.mlir
+
+// CHECK-LABEL: aie.runtime_sequence @calls
+// CHECK: %[[FIRST_ALLOC:.*]] = aiex.dma_configure_task_for
+// CHECK: %[[FIRST_TILE:.*]] = aiex.dma_configure_task(
+// CHECK: aiex.dma_free_task(%[[FIRST_TILE]])
+// CHECK-NEXT: aiex.dma_free_task(%[[FIRST_ALLOC]])
+// CHECK-NEXT: %[[SECOND_ALLOC:.*]] = aiex.dma_configure_task_for
+// CHECK: %[[SECOND_TILE:.*]] = aiex.dma_configure_task(
+// CHECK: aiex.dma_free_task(%[[SECOND_TILE]])
+// CHECK-NEXT: aiex.dma_free_task(%[[SECOND_ALLOC]])
+// CHECK-NEXT: }
+module {
+  aie.device(npu2) @main {
+    aie.runtime_sequence @calls(%buffer: memref<16xi32>) {
+      aiex.configure @worker {
+        aiex.run @tasks(%buffer) : (memref<16xi32>)
+        aiex.run @tasks(%buffer) : (memref<16xi32>)
+      }
+    }
+  }
+
+  aie.device(npu2) @worker {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @input(%shim, MM2S, 0)
+    aie.runtime_sequence @tasks(%buffer: memref<16xi32>) {
+      %by_alloc = aiex.dma_configure_task_for @input {
+        aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 8)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%by_alloc)
+      aiex.dma_await_task(%by_alloc)
+      %by_tile = aiex.dma_configure_task(%shim, MM2S, 1) {
+        aie.dma_bd(%buffer : memref<16xi32> offset = 8 len = 8)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%by_tile)
+      aiex.dma_await_task(%by_tile)
+      aiex.dma_free_task(%by_tile)
+    }
+  }
+}
+
+// -----
+
+// CHECK-LABEL: aie.runtime_sequence @forwarded
+// CHECK: scf.for
+// CHECK: aiex.dma_free_task
+// CHECK-NOT: aiex.dma_free_task
+// CHECK-LABEL: aie.device(npu2) @worker
+module {
+  aie.device(npu2) @main {
+    aie.runtime_sequence @forwarded(%buffer: memref<16xi32>) {
+      aiex.configure @worker {
+        aiex.run @tasks(%buffer) : (memref<16xi32>)
+      }
+    }
+  }
+  aie.device(npu2) @worker {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @input(%shim, MM2S, 0)
+    aie.runtime_sequence @tasks(%buffer: memref<16xi32>) {
+      %zero = arith.constant 0 : index
+      %one = arith.constant 1 : index
+      %task = aiex.dma_configure_task_for @input {
+        aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%task)
+      aiex.npu.dma_wait {symbol = @input}
+      %result = scf.for %iteration = %zero to %one step %one iter_args(%forwarded = %task) -> (index) {
+        aiex.dma_free_task(%forwarded)
+        scf.yield %forwarded : index
+      }
     }
   }
 }

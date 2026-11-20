@@ -226,6 +226,16 @@ struct AIEDedupCtrlPacketMulticastPass
     // lands after it does so in order, along the multicast's own trail from
     // the same shim channel, or commutes with it.
     auto sendsFirst = [&]() -> FailureOr<bool> {
+      if (parallelShims) {
+        auto tree = info.trees.find(m.column);
+        if (tree != info.trees.end())
+          for (const auto &[column, other] : info.trees)
+            if (column != m.column &&
+                llvm::any_of(tree->second, [&](const Arbiter &arbiter) {
+                  return other.count(arbiter);
+                }))
+              return true;
+      }
       if (parallelShims && llvm::any_of(m.tiles, [&](AIE::TileID t) {
             return t.col != m.column;
           }))
