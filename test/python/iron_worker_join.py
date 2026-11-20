@@ -10,6 +10,7 @@
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron.dataflow.objectfifo import ObjectFifoLink
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU1Col1, Tile
 
@@ -82,5 +83,31 @@ def test_refusals():
         print(e)
 
 
+# A join on the first Worker's unplaced tile, which the second Worker reads
+# whole: the joined core keeps that tile, so the link, the delegate and the
+# core are on one.
+# CHECK-LABEL: a link on the first's tile
+# CHECK-DAG: aie.objectfifo @mine(%[[TILE:[a-z0-9_]+]], {%[[TILE]]}, 2 : i32)
+# CHECK-DAG: aie.objectfifo @joined_in(%[[TILE]], {%[[TILE]]}, 2 : i32)
+# CHECK-DAG: aie.objectfifo.allocate @mine(%[[TILE]])
+# CHECK-DAG: aie.objectfifo.allocate @joined_in(%[[TILE]])
+# CHECK-DAG: aie.core(%[[TILE]])
+def test_link_on_the_first_tile():
+    print("a link on the first's tile")
+    mine = ObjectFifo(tile_ty, depth=2, name="mine")
+    theirs = ObjectFifo(tile_ty, depth=2, name="theirs")
+    joined_in = ObjectFifo(
+        np.ndarray[(32,), np.dtype[np.int32]], depth=2, name="joined_in"
+    )
+    first = Worker(produce, fn_args=[mine.prod()])
+    second = Worker(consume, fn_args=[joined_in.cons()])
+    far = Worker(produce, fn_args=[theirs.prod()])
+    ObjectFifoLink([mine.cons(), theirs.cons()], joined_in.prod(), first.tile, [0, 16])
+    mine.delegate_tile = first.tile
+    joined_in.delegate_tile = first.tile
+    print(resolve([Worker.join([first, second]), far]))
+
+
 test_two_bodies_on_one_core()
 test_refusals()
+test_link_on_the_first_tile()

@@ -238,6 +238,19 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         return self._depth
 
     @property
+    def delegate_tile(self) -> Tile | None:
+        """The tile whose memory module keeps the objects (``aie.objectfifo.allocate``), or None; see ``__init__``."""
+        return self._delegate_tile
+
+    @delegate_tile.setter
+    def delegate_tile(self, tile: Tile | None) -> None:
+        if self._op is not None:
+            raise ValueError(
+                f"{self.display_name} is resolved; its objects' tile is set before"
+            )
+        self._delegate_tile = tile
+
+    @property
     def from_stream_per_cons(self) -> TensorAccessPattern | None:
         """How each consumer's DMA writes the stream into its object, unless ``cons()`` overrides it; None for a linear walk."""
         return self._from_stream_per_cons

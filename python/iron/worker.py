@@ -301,7 +301,9 @@ class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
         over their fifo ends, the Buffers they own (an auto-placed one moves
         to its tile) and their barriers; the setup kernels of all their
         kernels run once before its loop. Each Worker given is spent: building
-        it afterwards raises.
+        it afterwards raises. Unless one is pinned, the joined Worker takes
+        the first's tile, so a link or a delegate naming that tile is on its
+        core.
 
         Args:
             workers: Two or more Workers, none built or joined yet.
@@ -366,7 +368,7 @@ class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
         joined = cls(
             joined_body,
             [arg for w in workers for arg in w.fn_args],
-            tile=placed[0] if placed else AnyComputeTile,
+            tile=placed[0] if placed else workers[0]._tile,
             while_true=workers[0]._while_true,
             stack_size=max(stacks) if stacks else None,
             data_size=sum(data) if data else None,
