@@ -18,10 +18,9 @@
 // cores, which have no packets here, so nothing goes.
 
 // SPAN1-LABEL: aie.runtime_sequence @seq()
-// SPAN1-NEXT:  aiex.control_packet_group @cfg(Teardown) {
+// SPAN1-NEXT:  aiex.set_device @cfg
 // SPAN1-NEXT:    address = 2301952 : ui32, data = array<i32: 0>, multicast_id = 28 : i32
-// SPAN1-NEXT:  {{^ *}}}
-// SPAN1-NEXT:  aiex.control_packet_group @cfg(Config) {
+// SPAN1-NEXT:  aiex.control_packet_barrier
 // SPAN1-NEXT:    address = 2301952 : ui32, data = array<i32: 2>, multicast_id = 28 : i32
 // SPAN1-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
 // SPAN1-NEXT:    address = 2355204 : ui32, data = array<i32: 1>, opcode
@@ -47,19 +46,17 @@ module {
   }
   aie.device(npu2) @main {
     aie.runtime_sequence @seq() {
-      aiex.control_packet_group @cfg(Teardown) {
-        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 2355204 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3403780 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2355204 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3403780 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -70,27 +67,22 @@ module {
 // Tile (1, 2)'s own packets leave by column 1's channel. Serially that channel
 // is awaited after column 0's, so the program word stays in place; with
 // parallel shims they land alongside it, and its enable does not commute with
-// the word, so the word goes first, behind a barrier. The control packet
-// outside groups stays as it is.
+// the word, so the word goes first, behind a barrier.
 
 // SPAN2-LABEL: aie.runtime_sequence @seq()
-// SPAN2-NEXT:  aiex.control_packet_group @cfg(Config) {
+// SPAN2-NEXT:  aiex.set_device @cfg
 // SPAN2-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
 // SPAN2-NEXT:    address = 2301952 : ui32, data = array<i32: 1>, opcode
 // SPAN2-NEXT:    address = 35856384 : ui32, data = array<i32: 1>, opcode
-// SPAN2-NEXT:  {{^ *}}}
 // SPAN2-NEXT:  address = 3276800 : ui32, data = array<i32: 9>, opcode
 
 // PAR2-LABEL: // -----
 // PAR2:       aie.runtime_sequence @seq()
-// PAR2-NEXT:  aiex.control_packet_group @cfg(Config) {
+// PAR2-NEXT:  aiex.set_device @cfg
 // PAR2-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
-// PAR2-NEXT:  {{^ *}}}
 // PAR2-NEXT:  aiex.control_packet_barrier
-// PAR2-NEXT:  aiex.control_packet_group @cfg(Config) {
 // PAR2-NEXT:    address = 2301952 : ui32, data = array<i32: 1>, opcode
 // PAR2-NEXT:    address = 35856384 : ui32, data = array<i32: 1>, opcode
-// PAR2-NEXT:  {{^ *}}}
 // PAR2-NEXT:  address = 3276800 : ui32, data = array<i32: 9>, opcode
 
 module {
@@ -105,13 +97,12 @@ module {
   }
   aie.device(npu2) @main {
     aie.runtime_sequence @seq() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 35782656 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
@@ -135,10 +126,9 @@ module {
   }
   aie.device(npu2) @main {
     aie.runtime_sequence @reads() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2301952 : ui32, length = 1 : i32, opcode = 1 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3350528 : ui32, length = 1 : i32, opcode = 1 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2301952 : ui32, length = 1 : i32, opcode = 1 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, length = 1 : i32, opcode = 1 : i32, stream_id = 0 : i32}
     }
   }
 }

@@ -608,24 +608,23 @@ module {
 //--- stop-ctrlpkt.mlir
 
 // STOP-LABEL: aie.runtime_sequence()
+// STOP: aiex.set_device @cfg
 // STOP: aiex.npu.sync
-// STOP-NEXT: aiex.control_packet_group @cfg(Teardown) {
+// STOP-NEXT: aiex.control_packet_barrier
 // STOP-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
 // STOP-NEXT: aiex.control_packet {address = 3350528 : ui32, data = array<i32: 0>
-// STOP-NEXT: {{^ *}}}
 // STOP: %[[FIRST_STATUS:.*]] = arith.constant 2301956 : i32
 // STOP: %[[ZERO:.*]] = arith.constant 0 : i32
 // STOP: %[[ENABLE:.*]] = arith.constant 1 : i32
 // STOP-NEXT: aiex.npu.maskpoll(%[[FIRST_STATUS]], %[[ZERO]], %[[ENABLE]])
 // STOP: %[[SECOND_STATUS:.*]] = arith.constant 3350532 : i32
 // STOP: aiex.npu.maskpoll(%[[SECOND_STATUS]], %{{.*}}, %{{.*}})
-// STOP-NEXT: aiex.control_packet_group @cfg(Teardown) {
 // STOP-NEXT: aiex.control_packet {address = 2224208 : ui32, data = array<i32: 1>
-// STOP-NEXT: {{^ *}}}
 // STOP: %[[STALL:.*]] = arith.constant 960 : i32
 // STOP-NEXT: aiex.npu.maskpoll(%{{.*}}, %{{.*}}, %[[STALL]])
 
 // STOP-DMA-LABEL: aie.runtime_sequence(
+// STOP-DMA: aiex.set_device @cfg
 // STOP-DMA: aiex.npu.sync
 // STOP-DMA: %[[STOP_TASK:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
 // STOP-DMA: aiex.dma_start_task(%[[STOP_TASK]])

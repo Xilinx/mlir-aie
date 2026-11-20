@@ -97,13 +97,6 @@ mlir::Value createConstantArgPlus(mlir::OpBuilder &builder, mlir::Location loc,
 // starts a channel teardown cannot stop, or null.
 mlir::Operation *findShimDmaStart(AIE::DeviceOp device);
 
-// The control packets of `block` in order, including those inside groups.
-llvm::SmallVector<NpuControlPacketOp> controlPacketsOf(mlir::Block &block);
-
-// Moves the packets of each aiex.control_packet_group in `block` into its
-// place and erases the group.
-void inlineControlPacketGroups(mlir::Block &block);
-
 // The assigned controller_id of each tile of `device` that has one, which the
 // control packets to that tile route by.
 llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>

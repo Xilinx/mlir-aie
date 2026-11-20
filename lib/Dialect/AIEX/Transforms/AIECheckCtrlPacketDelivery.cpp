@@ -32,21 +32,21 @@ using namespace xilinx::AIEX;
 namespace {
 
 // Which packets of a run surely land before which, as aie-ctrl-packet-to-dma
-// delivers them (see groupRuns), by their index in the run.
+// delivers them, by their index in the run.
 struct RunOrder {
-  GroupRun &run;
+  PacketRun &run;
   bool parallelShims;
   OverlayMulticasts &multicasts;
   SmallVector<unsigned> steps;
 
-  RunOrder(GroupRun &run, bool parallelShims, OverlayMulticasts &multicasts)
+  RunOrder(PacketRun &run, bool parallelShims, OverlayMulticasts &multicasts)
       : run(run), parallelShims(parallelShims), multicasts(multicasts),
         steps(awaitSteps(run, parallelShims)) {}
 
   unsigned phaseOf(size_t i) const { return run[i].phase; }
 
   const OverlayMulticasts::Info *infoOf(size_t i) const {
-    return multicasts.of(run[i].group.getDeviceRefAttr());
+    return multicasts.of(run[i].device);
   }
 
   // Whether `a` has landed before `b` is sent: an earlier one on the same
@@ -80,7 +80,8 @@ struct RunOrder {
   // The first arbiter of `held` packet `i` takes, if any.
   std::optional<Arbiter> arbiterTaken(size_t i, ConfiguredDevices &devices,
                                       const std::set<Arbiter> &held) const {
-    return AIEX::arbiterTaken(run[i].packet, infoOf(i), devices, held);
+    return AIEX::arbiterTaken(run[i].packet, run[i].device, infoOf(i), devices,
+                 held);
   }
 
   bool sameColumn(size_t a, size_t b) const {
@@ -102,8 +103,7 @@ struct AIECheckCtrlPacketDeliveryPass
     for (auto device : module.getOps<AIE::DeviceOp>()) {
       PacketClassifier classifier(device.getTargetModel());
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
-        for (GroupRun &run : groupRuns(seq, {KindOrDeviceChange::NextPhase,
-                                             /*atBarriers=*/false}))
+        for (PacketRun &run : packetRuns(seq, true))
           if (failed(checkRun(run, classifier, devices, multicasts)))
             failedAny = true;
     }
@@ -112,11 +112,11 @@ struct AIECheckCtrlPacketDeliveryPass
   }
 
   // Checks one run against the pass description's rules.
-  LogicalResult checkRun(GroupRun &run, PacketClassifier &classifier,
+  LogicalResult checkRun(PacketRun &run, PacketClassifier &classifier,
                          ConfiguredDevices &devices,
                          OverlayMulticasts &multicasts) {
     SmallVector<Classified> writes;
-    for (GroupedPacket &p : run) {
+    for (ContextualPacket &p : run) {
       FailureOr<Classified> c = classifier.classify(p.packet);
       if (failed(c))
         return failure();
@@ -133,7 +133,7 @@ struct AIECheckCtrlPacketDeliveryPass
   // except where they commute.
   static LogicalResult checkOrder(const RunOrder &order,
                                   ArrayRef<Classified> writes) {
-    GroupRun &run = order.run;
+    PacketRun &run = order.run;
     // Each tile's packets in program order, a multicast's at every tile it
     // reaches, by index in the run.
     std::map<AIE::TileID, SmallVector<size_t>> byTile;
@@ -175,9 +175,9 @@ struct AIECheckCtrlPacketDeliveryPass
   static LogicalResult checkHolds(const RunOrder &order,
                                   ArrayRef<Classified> writes,
                                   ConfiguredDevices &devices) {
-    GroupRun &run = order.run;
+    PacketRun &run = order.run;
     for (auto [i, p] : llvm::enumerate(run)) {
-      FlatSymbolRefAttr device = p.group.getDeviceRefAttr();
+      FlatSymbolRefAttr device = p.device;
       for (AIE::TileID tile : order.tilesOf(i)) {
         std::set<Arbiter> held =
             devices.startedArbiters(device, tile, writes[i]);
@@ -206,7 +206,7 @@ struct AIECheckCtrlPacketDeliveryPass
   // The third rule: multicasts from two shim channels sent in one phase take
   // no common arbiter.
   static LogicalResult checkMulticastArbiters(const RunOrder &order) {
-    GroupRun &run = order.run;
+    PacketRun &run = order.run;
     // The first packet of each phase on each column's multicast.
     std::map<unsigned, std::map<int, size_t>> byPhase;
     for (auto [i, p] : llvm::enumerate(run)) {

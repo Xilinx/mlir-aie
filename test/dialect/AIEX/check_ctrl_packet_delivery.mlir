@@ -88,12 +88,11 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-note @+1 {{the stream is started here}}
-        aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 2), which a stream that the push to MM2S channel 0 of tile (0, 1) starts may hold, stalled}}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 2), which a stream that the push to MM2S channel 0 of tile (0, 1) starts may hold, stalled}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -172,12 +171,11 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-note @+1 {{the stream is started here}}
-        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 2), which a stream that the enable of core (0, 2) starts may hold, stalled}}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 2), which a stream that the enable of core (0, 2) starts may hold, stalled}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -259,12 +257,11 @@ module {
   } {overlay = @ov}
   aie.device(npu2) {
     aie.runtime_sequence @multicast_starts() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-note @+1 {{the stream is started here}}
-        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-        // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 3), which a stream that the enable of core (0, 3) starts may hold, stalled}}
-        aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 3), which a stream that the enable of core (0, 3) starts may hold, stalled}}
+      aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -335,14 +332,13 @@ module {
   } {overlay = @ov}
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-note @+1 {{the stream is started here}}
-        aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
-      aiex.control_packet_group @cfg(Teardown) {
-        // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (1, 1), which a stream that the enable of core (1, 3) starts may hold, stalled}}
-        aiex.control_packet {address = 35259956 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier
+      aiex.set_device @cfg
+      // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (1, 1), which a stream that the enable of core (1, 3) starts may hold, stalled}}
+      aiex.control_packet {address = 35259956 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -414,12 +410,11 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 3), which a stream that the enable of core (0, 3) starts may hold, stalled}}
-        aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        // expected-note @+1 {{the stream is started here}}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 3), which a stream that the enable of core (0, 3) starts may hold, stalled}}
+      aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -497,10 +492,9 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }

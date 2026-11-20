@@ -45,7 +45,7 @@ struct AIEReorderCtrlPacketsByTilePass
     for (auto device : module.getOps<AIE::DeviceOp>()) {
       PacketClassifier classifier(device.getTargetModel());
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
-        for (GroupRun &run : groupRuns(seq))
+        for (PacketRun &run : packetRuns(seq))
           if (failed(reorder(run, classifier, devices)))
             return signalPassFailure();
     }
@@ -55,17 +55,17 @@ struct AIEReorderCtrlPacketsByTilePass
   // the configuration) and place.
   struct Placed {
     std::tuple<WriteKind, uint32_t, uint32_t> key;
-    GroupedPacket entry;
+    ContextualPacket entry;
     Classified write;
     unsigned phase = 0;
     size_t rank = 0;
   };
 
   // Puts the run's packets in the order the pass description gives.
-  LogicalResult reorder(GroupRun &run, PacketClassifier &classifier,
+  LogicalResult reorder(PacketRun &run, PacketClassifier &classifier,
                         ConfiguredDevices &devices) {
     SmallVector<Placed> placed;
-    for (GroupedPacket entry : run) {
+    for (ContextualPacket entry : run) {
       FailureOr<Classified> c = classifier.classify(entry.packet);
       if (failed(c))
         return failure();
@@ -74,7 +74,7 @@ struct AIEReorderCtrlPacketsByTilePass
       // With gated-enable, a proved core's enable goes last among its
       // column's other writes.
       uint32_t row = tile.row;
-      FlatSymbolRefAttr device = entry.group.getDeviceRefAttr();
+      FlatSymbolRefAttr device = entry.device;
       if (part == WriteKind::ChannelStart &&
           devices.startGated(device, {tile, c->channel})) {
         part = WriteKind::Other;
@@ -98,33 +98,17 @@ struct AIEReorderCtrlPacketsByTilePass
           return std::tie(a.phase, a.rank) < std::tie(b.phase, b.rank);
         });
 
-    // The packets go back after the run, each in a group like its old one; a
-    // barrier ends each phase.
-    OpBuilder builder(&getContext());
-    builder.setInsertionPointAfter(run.back().group);
-    llvm::SetVector<Operation *> oldGroups;
-    for (GroupedPacket entry : run)
-      oldGroups.insert(entry.group);
-    ControlPacketGroupOp current;
+    Block *block = run.back().packet->getBlock();
+    auto end = std::next(run.back().packet->getIterator());
+    OpBuilder builder(block, end);
     std::optional<unsigned> phase;
     for (Placed &p : placed) {
-      GroupedPacket entry = p.entry;
-      if (phase && *phase != p.phase) {
+      ContextualPacket entry = p.entry;
+      if (phase && *phase != p.phase)
         ControlPacketBarrierOp::create(builder, entry.packet.getLoc());
-        current = nullptr;
-      }
       phase = p.phase;
-      if (!current) {
-        current = ControlPacketGroupOp::create(builder, entry.group.getLoc(),
-                                               entry.group.getKindAttr(),
-                                               entry.group.getDeviceRefAttr());
-        current.getBody().emplaceBlock();
-      }
-      Block &body = current.getBody().front();
-      entry.packet->moveBefore(&body, body.end());
+      entry.packet->moveBefore(block, end);
     }
-    for (Operation *group : oldGroups)
-      group->erase();
     return success();
   }
 
@@ -144,7 +128,7 @@ struct AIEReorderCtrlPacketsByTilePass
       placed[i].rank = i;
     if (start == n)
       return success();
-    FlatSymbolRefAttr device = placed[start].entry.group.getDeviceRefAttr();
+    FlatSymbolRefAttr device = placed[start].entry.device;
     // For each packet, the packets that wait for it and whether in a later
     // phase.
     SmallVector<SmallVector<std::pair<size_t, bool>>> waiters(n);

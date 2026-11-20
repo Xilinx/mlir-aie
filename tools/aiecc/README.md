@@ -146,17 +146,16 @@ and teardown.
 
 ### Control packet delivery
 
-Under `--load-pdi-to-ctrl-pkt`, each configuration's and teardown's control
-packets are an `aiex.control_packet_group`, which these passes rewrite; control
-packets written outside groups are sent as written.
+Under `--load-pdi-to-ctrl-pkt`, `aiex.set_device @device` selects the device
+configuration for subsequent operations. The marker has no region. Control
+packets, barriers, and runtime operations remain in the same block.
 
 - `aie-reorder-ctrl-packets-by-tile` puts each tile's packets together, so they
   go in one transfer, and moves MM2S queue pushes and core enables behind the
   rest of the configuration.
 - `aie-ctrl-packet-to-dma{chain-bds}` sends each run of transfers on one shim
-  channel as one BD chain with one await, and awaits at each change of group
-  kind or device, so a configuration's teardown lands before the next
-  configuration starts.
+  channel as one BD chain with one await. Device markers and explicit barriers
+  require completion of preceding control transfers.
 - `--ctrlpkt-parallel-shims` (default: on) starts every column's transfers
   before awaiting any. `aie-annotate-ctrl-packet-start-gating` proves which MM2S
   channels cannot move data before their configuration lands;
@@ -171,11 +170,10 @@ packets written outside groups are sent as written.
   `aie-check-ctrl-packet-delivery` also checks that each tile's writes land in
   order.
 
-With `--warn-unreleased-transfers` (default: on), a configuration's control
-packets that start on a shim tile where a transfer since the last `load_pdi` is
-neither awaited nor freed get a warning: with teardown no reset separates
-them, so the control packets may queue behind that transfer or reuse its
-buffer descriptors.
+The descriptor allocator reserves the selected device's static BDs before
+allocating its configuration transfers. It retains reservations for the loaded
+overlay and live runtime tasks. The application must complete its use of shared
+resources before the next configuration.
 
 ### Parameterized C++ transaction builders
 

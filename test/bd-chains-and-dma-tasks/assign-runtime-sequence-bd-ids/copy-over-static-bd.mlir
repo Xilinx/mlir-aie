@@ -82,10 +82,11 @@ module @configured_after_completion {
       } {issue_token = true}
       aiex.dma_start_task(%earlier)
       aiex.npu.dma_wait {symbol = @data}
+      aiex.set_device @cfg
       %configure = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buffer : memref<8xi32> offset = 0 len = 8)
         aie.end
-      } {issue_token = true, aiex.ctrl_pkt_transfer = @cfg}
+      } {issue_token = true}
       aiex.dma_start_task(%configure)
       aiex.dma_await_task(%configure)
       // expected-error@+1 {{programs buffer descriptor ID 0, which a static DMA program on tile (0,0) already uses; give the copy another ID}}

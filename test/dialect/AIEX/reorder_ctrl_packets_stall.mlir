@@ -16,15 +16,11 @@
 // both are in column 0. 2355200 writes (0, 2)'s switch.
 
 // CHECK-LABEL: aie.runtime_sequence
-// CHECK:         aiex.control_packet_group @cfg(Config) {
+// CHECK:         aiex.set_device @cfg
 // CHECK-NEXT:      aiex.control_packet {address = 2355200 : ui32
-// CHECK-NEXT:    {{^ *}}}
 // CHECK-NEXT:    aiex.control_packet_barrier
-// CHECK-NEXT:    aiex.control_packet_group @cfg(Config) {
 // CHECK-NEXT:      aiex.control_packet {address = 3350528 : ui32
-// CHECK-NEXT:    {{^ *}}}
 // CHECK-NEXT:    aiex.control_packet_barrier
-// CHECK-NEXT:    aiex.control_packet_group @cfg(Config) {
 // CHECK-NEXT:      aiex.control_packet {address = 1705524 : ui32
 // CHECK-NEXT:    {{^ *}}}
 
@@ -102,11 +98,10 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 2355200 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2355200 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -120,16 +115,12 @@ module {
 // switch.
 
 // CHECK-LABEL:   aie.runtime_sequence
-// CHECK:           aiex.control_packet_group @cfg(Config) {
+// CHECK:           aiex.set_device @cfg
 // CHECK-NEXT:        aiex.control_packet {address = 35909632 : ui32
-// CHECK-NEXT:      {{^ *}}}
 // CHECK-NEXT:      aiex.control_packet_barrier
-// CHECK-NEXT:      aiex.control_packet_group @cfg(Config) {
 // CHECK-NEXT:        aiex.control_packet {address = 35856384 : ui32
 // SERIAL-NEXT:       aiex.control_packet {address = 2219540 : ui32
-// PARALLEL-NEXT:   {{^ *}}}
 // PARALLEL-NEXT:   aiex.control_packet_barrier
-// PARALLEL-NEXT:   aiex.control_packet_group @cfg(Config) {
 // PARALLEL-NEXT:     aiex.control_packet {address = 2219540 : ui32
 // CHECK-NEXT:      {{^ *}}}
 module {
@@ -200,11 +191,10 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 35909632 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35909632 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -218,15 +208,11 @@ module {
 // barrier between.
 
 // CHECK-LABEL: aie.runtime_sequence
-// CHECK:         aiex.control_packet_group @cfg(Config) {
+// CHECK:         aiex.set_device @cfg
 // CHECK-NEXT:      aiex.control_packet {address = 2219540 : ui32
-// CHECK-NEXT:    {{^ *}}}
 // CHECK-NEXT:    aiex.control_packet_barrier
-// CHECK-NEXT:    aiex.control_packet_group @cfg(Config) {
 // CHECK-NEXT:      aiex.control_packet {address = 3350528 : ui32
-// CHECK-NEXT:    {{^ *}}}
 // CHECK-NEXT:    aiex.control_packet_barrier
-// CHECK-NEXT:    aiex.control_packet_group @cfg(Config) {
 // CHECK-NEXT:      aiex.control_packet {address = 2301952 : ui32
 // CHECK-NEXT:    {{^ *}}}
 module {
@@ -298,11 +284,10 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -315,13 +300,11 @@ module {
 // nothing.
 
 // CHECK-LABEL: aie.runtime_sequence
+// CHECK:         aiex.set_device @cfg
 // CHECK:         aiex.control_packet_barrier
-// CHECK-NEXT:    aiex.control_packet_group @cfg(Config) {
 // CHECK-NEXT:      aiex.control_packet {address = 3350528 : ui32
 // CHECK-NEXT:      aiex.control_packet {address = 4399104 : ui32
-// CHECK-NEXT:    {{^ *}}}
 // CHECK-NEXT:    aiex.control_packet_barrier
-// CHECK-NEXT:    aiex.control_packet_group @cfg(Config) {
 // CHECK-NEXT:      aiex.control_packet {address = 2301952 : ui32
 // CHECK-NEXT:    {{^ *}}}
 module {
@@ -397,12 +380,11 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -508,11 +490,10 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-error @+1 {{is the push to MM2S channel 0 of tile (0, 2), in a cycle of packets that start streams, each of which may hold, stalled, an arbiter the next one's control packets take}}
-        aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 3268116 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-error @+1 {{is the push to MM2S channel 0 of tile (0, 2), in a cycle of packets that start streams, each of which may hold, stalled, an arbiter the next one's control packets take}}
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3268116 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }

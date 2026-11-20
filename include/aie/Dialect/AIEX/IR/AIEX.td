@@ -229,11 +229,8 @@ and [Section 3 - My First Program](programming_guide/section-3/README.md).
   let useStrictPropertiesInAssemblyFormat = 0;
   // started_by marks an aie.dma_start or aie.core proved unable to act during
   // its configuration, listing the tiles (#aie.tile) of the cores whose enables
-  // may let it act; with none, only the host's transfers can. ctrl_pkt_transfer
-  // marks the DMA tasks aie-ctrl-packet-to-dma sends an
-  // aiex.control_packet_group's packets with, naming the group's device.
-  let discardableAttrs = (ins "::mlir::ArrayAttr":$started_by,
-      "::mlir::FlatSymbolRefAttr":$ctrl_pkt_transfer);
+  // may let it act; with none, only the host's transfers can.
+  let discardableAttrs = (ins "::mlir::ArrayAttr":$started_by);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1324,29 +1321,26 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   }];
 }
 
-def AIE_ControlPacketGroupOp
-    : AIEX_Op<"control_packet_group",
-              [HasAncestor<"AIE::RuntimeSequenceOp">, NoTerminator, SingleBlock,
+def AIE_SetDeviceOp
+    : AIEX_Op<"set_device",
+              [HasAncestor<"AIE::RuntimeSequenceOp">,
                DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
-  let summary = "Control packets of one configuration or its teardown";
+  let summary = "Select the device configuration for subsequent operations";
   let description = [{
-    The control packets that write the configuration of `device_ref`
-    (`Config`) or undo it (`Teardown`), as aie-expand-load-pdi generates them.
-    aie-ctrl-packet-to-dma inlines them; control packets outside groups keep
-    their own transfers.
+    Selects `device_ref` as the configuration context for subsequent operations
+    in the block, including nested operations. A nested marker applies within
+    its block. A real PDI load clears the context. The descriptor allocator
+    reserves that device's static BD
+    IDs from this point, including during transfers that install its
+    configuration. Other loaded resources and live runtime tasks retain their
+    reservations.
 
-    Example:
-    ```
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
-    ```
+    The operation emits no hardware instruction. The sequence must complete
+    the outgoing application's use of shared resources before replacing its
+    configuration. Explicit synchronization orders configuration delivery.
   }];
-  let arguments = (ins AIEX_ControlPacketGroupKind:$kind,
-      FlatSymbolRefAttr:$device_ref);
-  let regions = (region SizedRegion<1>:$body);
-  let assemblyFormat = [{ $device_ref `(` $kind `)` $body attr-dict }];
-  let hasVerifier = 1;
+  let arguments = (ins FlatSymbolRefAttr:$device_ref);
+  let assemblyFormat = [{ $device_ref attr-dict }];
 }
 
 def AIE_ControlPacketBarrierOp

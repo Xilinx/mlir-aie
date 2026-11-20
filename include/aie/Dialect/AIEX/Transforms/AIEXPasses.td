@@ -575,28 +575,20 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     a descriptor ends its stream packet and the switches route each to its
     tile.
 
-    Each transfer of an `aiex.control_packet_group` is an awaited
-    `aiex.dma_configure_task_for`, marked `aiex.ctrl_pkt_transfer` with the
-    device the group configures, so `aie-assign-runtime-sequence-bd-ids` keeps
-    that device's static descriptors out of it and later tasks. With
-    `chain-bds`, consecutive transfers on one channel with no op between them
-    are one task with chained descriptors and one await, split into several
-    chains when longer than the descriptors left by runtime tasks and the
-    static DMAs of the host device, the device the latest
-    `aiex.npu.load_pdi` loads and the device configured. A runtime task holds
-    its descriptors from its configure, after the last `aiex.npu.load_pdi`, to
-    its await or free; a remark notes chains it shortens.
+    `aiex.set_device` selects the configured device. Transfers in that context
+    use awaited `aiex.dma_configure_task_for` operations. Descriptor allocation
+    reserves the configured device's static descriptors before those tasks.
+    With `chain-bds`, consecutive transfers on one channel form a chain that
+    fits the descriptors available beside static programs and live tasks.
 
-    A change of group kind or device starts a new run, awaited after the one
-    before, so a configuration's teardown has landed before the next
-    configuration starts. With `parallel-shims`, a run's channels send at once,
-    phase by phase, each `aiex.control_packet_barrier` ending one phase. A
-    phase starts every channel's transfers before awaiting any. Each channel
-    keeps at most one chain, or as many single transfers as its task queue
-    holds, outstanding. Serially a barrier only ends a transfer.
+    A device marker or another runtime operation ends the preceding delivery
+    run. `aiex.control_packet_barrier` requires completion before the next
+    phase. With `parallel-shims`, each phase starts its channels before
+    awaiting them. Each channel holds one chain or a queue-depth-limited
+    number of single transfers.
 
-    Control packets outside groups keep an `aiex.npu.dma_memcpy_nd` and an
-    `aiex.npu.sync` per transfer.
+    Packets without a device context use an `aiex.npu.dma_memcpy_nd` and an
+    `aiex.npu.sync` per transfer. A real PDI load clears the context.
   }];
 
   let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
@@ -761,11 +753,8 @@ def AIEReorderCtrlPacketsByTile
     : Pass<"aie-reorder-ctrl-packets-by-tile", "mlir::ModuleOp"> {
   let summary = "Group each run of control packets by destination tile";
   let description = [{
-    In every runtime sequence, reorders each run of adjacent
-    `aiex.control_packet_group`s of one kind and device so every tile's packets
-    are contiguous, keeping each tile's order, which lets
-    `aie-ctrl-packet-to-dma` send them in one transfer. Control packets outside
-    groups are left as they are.
+    Reorders adjacent control packets by tile for DMA batching. Device
+    markers, explicit barriers, and other operations end each run.
 
     A run splits into the configuration and the enable phase, each stably sorted
     by tile (column, then row), with an `aiex.control_packet_barrier` between
@@ -777,7 +766,7 @@ def AIEReorderCtrlPacketsByTile
     written before the enable, still starts the channel.
 
     A push stays in the configuration when its channel's `aie.dma_start`, in the
-    device its group names, carries `aiex.started_by` (see
+    device selected by `aiex.set_device`, carries `aiex.started_by` (see
     `aie-annotate-ctrl-packet-start-gating`). With `gated-enable`, so does the
     enable of a core whose `aie.core` carries it, last among its column's
     packets. With `by-tile=false` the enable phase still moves behind the
@@ -856,12 +845,11 @@ def AIECheckCtrlPacketDelivery
     : Pass<"aie-check-ctrl-packet-delivery", "mlir::ModuleOp"> {
   let summary = "Check the order control packets land in";
   let description = [{
-    Checks the control packets of every runtime sequence's
-    `aiex.control_packet_group`s against the order `aie-ctrl-packet-to-dma`
-    delivers them in, serially or with `parallel-shims`. Other ops and control
-    packets outside groups separate runs and wait for them. A change of group
-    kind or device waits for the packets before it, as a barrier does, while a
-    stream they start stays in the run.
+    Checks flat control packets against the delivery order of
+    `aie-ctrl-packet-to-dma`, serially or with `parallel-shims`. Device markers
+    and barriers separate delivery phases. Other runtime operations separate
+    runs. A phase boundary completes packet delivery but does not stop streams
+    that earlier packets started.
 
     It checks three rules. First, the packets that reach a tile (its own and
     those on a control multicast, listed in `aie.ctrl_pkt_multicast` by its
@@ -903,9 +891,9 @@ def AIEDedupCtrlPacketMulticast
     : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
   let summary = "Send the control packets a multicast's tiles share once";
   let description = [{
-    For each run of adjacent `aiex.control_packet_group`s of one kind and
-    device, each stretch between barriers apart, and each control multicast
-    that device's overlay lists in `aie.ctrl_pkt_multicast`, compares the
+    For each run of adjacent control packets between explicit boundaries,
+    and each control multicast that the selected device's overlay lists in
+    `aie.ctrl_pkt_multicast`, compares the
     multicast's tiles' packets position by position. The leading packets that
     make the same write on every tile (apart from the address's column and row
     bits) and come first on the lowest tile, the base, stay only there, with the

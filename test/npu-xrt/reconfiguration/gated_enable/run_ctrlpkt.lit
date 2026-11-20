@@ -11,6 +11,6 @@
 // RUN: %run_on_npu2% ./test 1
 //
 // CHECKER-NOT: not proved gated
-// ENABLE:     aiex.control_packet_group @cfg(Config) {
+// ENABLE:     aiex.set_device @cfg
 // ENABLE-NOT: aiex.control_packet_barrier
 // ENABLE:     address = 35856384 : ui32, data = array<i32: 1>

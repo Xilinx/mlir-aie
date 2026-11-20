@@ -83,9 +83,10 @@ private:
 llvm::SmallVector<AIE::TileID>
 tilesReached(NpuControlPacketOp packet, const OverlayMulticasts::Info *info);
 
-// The first arbiter of `held` that `packet`, in a group, takes on its way: on
+// The first arbiter of `held` that `packet` takes on its way: on
 // its multicast's tree in `info`, or on its tile's control route.
 std::optional<Arbiter> arbiterTaken(NpuControlPacketOp packet,
+                                    mlir::FlatSymbolRefAttr device,
                                     const OverlayMulticasts::Info *info,
                                     ConfiguredDevices &devices,
                                     const std::set<Arbiter> &held);

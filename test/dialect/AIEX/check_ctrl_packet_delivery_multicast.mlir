@@ -27,12 +27,11 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence @order() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-note @+1 {{the earlier packet}}
-        aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-        // expected-error @+1 {{may land on tile (1, 2) before an earlier control packet it does not commute with}}
-        aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-note @+1 {{the earlier packet}}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-error @+1 {{may land on tile (1, 2) before an earlier control packet it does not commute with}}
+      aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -50,13 +49,10 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence @base_phase() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -74,10 +70,9 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence @commute() {
-      aiex.control_packet_group @cfg(Config) {
-        aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.control_packet {address = 35909636 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35909636 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -96,12 +91,11 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence @read() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-note @+1 {{the earlier packet}}
-        aiex.control_packet {address = 35782652 : ui32, length = 2 : i32, opcode = 1 : i32, stream_id = 0 : i32}
-        // expected-error @+1 {{may land on tile (1, 2) before an earlier control packet it does not commute with}}
-        aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-note @+1 {{the earlier packet}}
+      aiex.control_packet {address = 35782652 : ui32, length = 2 : i32, opcode = 1 : i32, stream_id = 0 : i32}
+      // expected-error @+1 {{may land on tile (1, 2) before an earlier control packet it does not commute with}}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -119,10 +113,9 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence @unknown() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-error @+1 {{is sent on multicast id 9 from tile (0, 2), which is not the lowest tile of a multicast on that id in the overlay of its device}}
-        aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 9 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-error @+1 {{is sent on multicast id 9 from tile (0, 2), which is not the lowest tile of a multicast on that id in the overlay of its device}}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 9 : i32, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -141,10 +134,9 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence @outside() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-error @+1 {{is sent on multicast id 28 from tile (0, 3), which is not the lowest tile of a multicast on that id}}
-        aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-error @+1 {{is sent on multicast id 28 from tile (0, 3), which is not the lowest tile of a multicast on that id}}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }
@@ -163,10 +155,9 @@ module {
   }
   aie.device(npu2) {
     aie.runtime_sequence @not_lowest() {
-      aiex.control_packet_group @cfg(Config) {
-        // expected-error @+1 {{is sent on multicast id 28 from tile (1, 2), which is not the lowest tile of a multicast on that id}}
-        aiex.control_packet {address = 35782656 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-      }
+      aiex.set_device @cfg
+      // expected-error @+1 {{is sent on multicast id 28 from tile (1, 2), which is not the lowest tile of a multicast on that id}}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }

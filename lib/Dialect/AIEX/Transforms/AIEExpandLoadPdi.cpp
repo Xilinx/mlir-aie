@@ -155,45 +155,6 @@ opsBetween(Block *block, Operation *after, Operation *end) {
                           end ? end->getIterator() : block->end());
 }
 
-// Wrapped in an aiex.control_packet_group only once every packet is in, since
-// masked writes fold onto the packets before them in the block.
-struct PacketGroup {
-  ControlPacketGroupKind kind;
-  AIE::DeviceOp device;
-  SmallVector<Operation *> packets;
-};
-
-static void collectGroup(iterator_range<Block::iterator> ops,
-                         ControlPacketGroupKind kind, AIE::DeviceOp device,
-                         SmallVectorImpl<PacketGroup> &groups) {
-  PacketGroup group{kind, device, {}};
-  for (Operation &op : ops)
-    if (isa<NpuControlPacketOp>(op))
-      group.packets.push_back(&op);
-  if (!group.packets.empty())
-    groups.push_back(std::move(group));
-}
-
-static void wrapGroup(PacketGroup &group) {
-  MLIRContext *ctx = group.device.getContext();
-  OpBuilder builder(ctx);
-  auto kind = ControlPacketGroupKindAttr::get(ctx, group.kind);
-  auto deviceRef = FlatSymbolRefAttr::get(group.device.getSymNameAttr());
-  ControlPacketGroupOp current;
-  Operation *next = nullptr;
-  for (Operation *packet : group.packets) {
-    if (!current || packet != next) {
-      builder.setInsertionPoint(packet);
-      current = ControlPacketGroupOp::create(builder, packet->getLoc(), kind,
-                                             deviceRef);
-      current.getBody().emplaceBlock();
-    }
-    next = packet->getNextNode();
-    Block &body = current.getBody().front();
-    packet->moveBefore(&body, body.end());
-  }
-}
-
 // Set `builder` at the next load_pdi, or at the block's end if there is none.
 static void setInsertionPointToSegmentEnd(OpBuilder &builder,
                                           NpuLoadPdiOp loadPdiOp) {
@@ -213,14 +174,14 @@ static void setInsertionPointToSegmentEnd(OpBuilder &builder,
 // `teardownData`, in program order, since masked writes fold onto the control
 // packets before them. Without teardown, control packets go in once every
 // load_pdi is known (`ctrlPktReloads`), so a sequence's loads share them.
-// Either way their packets are collected into `groups`.
 static LogicalResult
 transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
                  AIEX::ExpandMode defaultMode, bool keepPreload, bool teardown,
                  AIEX::BlockwriteData *configData,
                  AIEX::BlockwriteData *teardownData,
                  SmallVectorImpl<CtrlPktReload> &ctrlPktReloads,
-                 OverlayCopies &copies, SmallVectorImpl<PacketGroup> &groups) {
+                 OverlayCopies &copies,
+                 SmallVectorImpl<Operation *> &teardownStarts) {
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -302,8 +263,8 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
   auto config = opsBetween(loadPdiOp->getBlock(), beforeConfig, loadPdiOp);
   if (failed(verifyOverlayReachesTiles(loadPdiOp, overlay, config)))
     return failure();
-  collectGroup(config, ControlPacketGroupKind::Config, referencedDevice,
-               groups);
+  builder.setInsertionPoint(loadPdiOp->getBlock(), config.begin());
+  SetDeviceOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
 
   // Erase the load_pdi before inserting the teardown, so the teardown's masked
   // writes fold onto the configuration's writes instead of stopping at it.
@@ -320,8 +281,9 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
     emitError(loc, "Failed to generate teardown operations");
     return failure();
   }
-  collectGroup(opsBetween(block, beforeTeardown, end),
-               ControlPacketGroupKind::Teardown, referencedDevice, groups);
+  auto teardownOps = opsBetween(block, beforeTeardown, end);
+  if (!teardownOps.empty())
+    teardownStarts.push_back(&*teardownOps.begin());
   return success();
 }
 
@@ -515,7 +477,7 @@ struct AIEExpandLoadPdiPass
 
     OverlayCopies copies;
     SmallVector<CtrlPktReload> ctrlPktReloads;
-    SmallVector<PacketGroup> groups;
+    SmallVector<Operation *> teardownStarts;
     llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> configData,
         teardownData;
     for (auto [idx, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
@@ -530,7 +492,7 @@ struct AIEExpandLoadPdiPass
       }
       if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
                                   keepPreload, clTeardown, config, teardown,
-                                  ctrlPktReloads, copies, groups))) {
+                                  ctrlPktReloads, copies, teardownStarts))) {
         signalPassFailure();
         return;
       }
@@ -552,12 +514,15 @@ struct AIEExpandLoadPdiPass
         signalPassFailure();
         return;
       }
-      collectGroup(config, ControlPacketGroupKind::Config, reload.device,
-                   groups);
+      OpBuilder builder(reload.load->getBlock(), config.begin());
+      SetDeviceOp::create(builder, reload.load.getLoc(),
+                          FlatSymbolRefAttr::get(reload.device.getSymNameAttr()));
       reload.load.erase();
     }
-    for (PacketGroup &group : groups)
-      wrapGroup(group);
+    for (Operation *start : teardownStarts) {
+      OpBuilder builder(start);
+      ControlPacketBarrierOp::create(builder, start->getLoc());
+    }
 
     for (auto [device, kind] : initEntries) {
       FlatSymbolRefAttr preloadRef =

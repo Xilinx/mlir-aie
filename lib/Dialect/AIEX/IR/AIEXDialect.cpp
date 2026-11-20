@@ -2728,33 +2728,13 @@ AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return diag;
 }
 
-LogicalResult AIEX::ControlPacketGroupOp::verify() {
-  for (Operation &op : getBody().front())
-    if (!isa<NpuControlPacketOp>(op))
-      return op.emitOpError("cannot be in an aiex.control_packet_group, which "
-                            "holds only aiex.control_packet ops");
-  return success();
-}
-
-LogicalResult AIEX::ControlPacketGroupOp::verifySymbolUses(
+LogicalResult AIEX::SetDeviceOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
   Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
   if (!isa_and_present<AIE::DeviceOp>(
           symbolTable.lookupSymbolIn(scope, getDeviceRefAttr())))
     return emitOpError() << getDeviceRefAttr() << " is not a device";
   return success();
-}
-
-SmallVector<AIEX::NpuControlPacketOp> AIEX::controlPacketsOf(Block &block) {
-  SmallVector<NpuControlPacketOp> packets;
-  for (Operation &op : block) {
-    if (auto packet = dyn_cast<NpuControlPacketOp>(op))
-      packets.push_back(packet);
-    else if (auto group = dyn_cast<ControlPacketGroupOp>(op))
-      llvm::append_range(packets,
-                         group.getBody().front().getOps<NpuControlPacketOp>());
-  }
-  return packets;
 }
 
 llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>
@@ -2776,15 +2756,6 @@ std::set<uint32_t> AIEX::staticBdIds(ArrayRef<AIE::DeviceOp> devices,
         for (uint32_t id : AIE::getAssignedBdIds(program))
           ids.insert(id);
   return ids;
-}
-
-void AIEX::inlineControlPacketGroups(Block &block) {
-  for (auto group :
-       llvm::make_early_inc_range(block.getOps<ControlPacketGroupOp>())) {
-    Block &body = group.getBody().front();
-    block.getOperations().splice(group->getIterator(), body.getOperations());
-    group.erase();
-  }
 }
 
 Operation *AIEX::findShimDmaStart(AIE::DeviceOp device) {

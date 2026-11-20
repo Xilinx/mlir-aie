@@ -103,7 +103,7 @@ PacketClassifier::getRegisters(NpuControlPacketOp op) {
   return &registers.try_emplace(tile, std::move(regs)).first->second;
 }
 
-SmallVector<unsigned> AIEX::awaitSteps(const GroupRun &run,
+SmallVector<unsigned> AIEX::awaitSteps(const PacketRun &run,
                                        bool parallelShims) {
   SmallVector<unsigned> steps;
   for (size_t i = 0; i < run.size(); ++i) {
@@ -118,52 +118,58 @@ SmallVector<unsigned> AIEX::awaitSteps(const GroupRun &run,
   return steps;
 }
 
-bool AIEX::sameKindAndDevice(ControlPacketGroupOp a, ControlPacketGroupOp b) {
-  return a.getKind() == b.getKind() &&
-         a.getDeviceRefAttr() == b.getDeviceRefAttr();
+static FlatSymbolRefAttr configuredDeviceAt(Operation *op) {
+  while (op && !isa<AIE::RuntimeSequenceOp>(op)) {
+    for (Operation *previous = op->getPrevNode(); previous;
+         previous = previous->getPrevNode()) {
+      if (auto context = dyn_cast<SetDeviceOp>(previous))
+        return context.getDeviceRefAttr();
+      if (isa<NpuLoadPdiOp>(previous))
+        return {};
+    }
+    op = op->getParentOp();
+  }
+  return {};
 }
 
-SmallVector<GroupRun> AIEX::groupRuns(Block &block, RunSplit split) {
-  SmallVector<GroupRun> runs;
-  GroupRun run;
-  ControlPacketGroupOp last;
+SmallVector<PacketRun> AIEX::packetRuns(Block &block, bool includePhases) {
+  SmallVector<PacketRun> runs;
+  PacketRun run;
+  FlatSymbolRefAttr device = configuredDeviceAt(block.getParentOp());
   unsigned phase = 0;
   auto end = [&]() {
     if (!run.empty())
       runs.push_back(std::move(run));
     run.clear();
-    last = nullptr;
     phase = 0;
   };
   for (Operation &op : block) {
-    if (isa<ControlPacketBarrierOp>(op) && !split.atBarriers) {
-      if (last)
+    if (isa<SetDeviceOp, ControlPacketBarrierOp>(op)) {
+      if (includePhases)
         ++phase;
+      else
+        end();
+      if (auto context = dyn_cast<SetDeviceOp>(op))
+        device = context.getDeviceRefAttr();
       continue;
     }
-    auto group = dyn_cast<ControlPacketGroupOp>(op);
-    bool changes = group && last && !sameKindAndDevice(last, group);
-    if (!group ||
-        (changes && split.kindOrDevice == KindOrDeviceChange::EndsRun))
+    if (auto packet = dyn_cast<NpuControlPacketOp>(op)) {
+      run.push_back({packet, device, phase});
+    } else {
       end();
-    else if (changes && split.kindOrDevice == KindOrDeviceChange::NextPhase)
-      ++phase;
-    if (!group)
-      continue;
-    last = group;
-    for (auto packet : group.getBody().front().getOps<NpuControlPacketOp>())
-      run.push_back({packet, group, phase});
+      if (isa<NpuLoadPdiOp>(op))
+        device = {};
+    }
   }
   end();
   return runs;
 }
 
-SmallVector<GroupRun> AIEX::groupRuns(AIE::RuntimeSequenceOp seq,
-                                      RunSplit split) {
-  SmallVector<GroupRun> runs;
+SmallVector<PacketRun> AIEX::packetRuns(AIE::RuntimeSequenceOp seq,
+                                      bool includePhases) {
+  SmallVector<PacketRun> runs;
   seq.walk([&](Block *block) {
-    if (!isa<ControlPacketGroupOp>(block->getParentOp()))
-      llvm::append_range(runs, groupRuns(*block, split));
+    llvm::append_range(runs, packetRuns(*block, includePhases));
   });
   return runs;
 }
@@ -178,12 +184,14 @@ ConfiguredDevices::controlArbiterIn(FlatSymbolRefAttr device, AIE::TileID tile,
 }
 
 ConfiguredDevices::Info &ConfiguredDevices::infoOf(FlatSymbolRefAttr device) {
-  auto [it, fresh] = infos.try_emplace(device.getAttr());
+  auto [it, fresh] = infos.try_emplace(device ? device.getAttr() : StringAttr{});
   if (fresh)
     it->second = std::make_unique<Info>();
   Info &info = *it->second;
+  if (!fresh || !device)
+    return info;
   auto d = module.lookupSymbol<AIE::DeviceOp>(device);
-  if (!fresh || !d)
+  if (!d)
     return info;
   AIEXDialect::StartedByAttrHelper startedBy(module.getContext());
   d.walk([&](Operation *op) {
@@ -265,15 +273,14 @@ AIEX::tilesReached(NpuControlPacketOp packet,
 }
 
 std::optional<Arbiter> AIEX::arbiterTaken(NpuControlPacketOp packet,
+                                          FlatSymbolRefAttr device,
                                           const OverlayMulticasts::Info *info,
                                           ConfiguredDevices &devices,
                                           const std::set<Arbiter> &held) {
   const OverlayMulticasts::Multicast *m =
       info ? info->multicastOf(packet) : nullptr;
   if (!m)
-    return devices.controlArbiterIn(
-        cast<ControlPacketGroupOp>(packet->getParentOp()).getDeviceRefAttr(),
-        packet.getTileFromAddr(), held);
+    return devices.controlArbiterIn(device, packet.getTileFromAddr(), held);
   auto tree = info->trees.find(m->column);
   if (tree != info->trees.end())
     for (const Arbiter &a : tree->second)

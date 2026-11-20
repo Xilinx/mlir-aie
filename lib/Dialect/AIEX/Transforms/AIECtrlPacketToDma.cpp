@@ -47,25 +47,6 @@ static ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col) {
   return {};
 }
 
-// The packets that start a delivery run: the first of each run of groups
-// (see groupRuns), and each control packet the user wrote right after a group,
-// so a batch never mixes packets the user wrote with generated ones.
-static llvm::DenseSet<Operation *> runStarts(Block &block) {
-  llvm::DenseSet<Operation *> starts;
-  for (const GroupRun &run : groupRuns(block, {KindOrDeviceChange::EndsRun,
-                                               /*atBarriers=*/false}))
-    starts.insert(run.front().packet);
-  Operation *last = nullptr;
-  for (Operation &op : block) {
-    if (isa<NpuControlPacketOp>(op) &&
-        isa_and_present<ControlPacketGroupOp>(last))
-      starts.insert(&op);
-    if (!isa<ControlPacketBarrierOp>(op))
-      last = &op;
-  }
-  return starts;
-}
-
 struct AIECtrlPacketInferTilesPass
     : xilinx::AIEX::impl::AIECtrlPacketInferTilesBase<
           AIECtrlPacketInferTilesPass> {
@@ -76,7 +57,7 @@ struct AIECtrlPacketInferTilesPass
 
     auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
-      for (auto ctrlPktOp : controlPacketsOf(f.getBody().front())) {
+      for (auto ctrlPktOp : f.getOps<NpuControlPacketOp>()) {
         auto tOp = TileOp::getOrCreate(devBuilder, device,
                                        (int)ctrlPktOp.getColumnFromAddr(),
                                        (int)ctrlPktOp.getRowFromAddr());
@@ -149,8 +130,6 @@ struct AIECtrlPacketToDmaPass
     Operation *first;
     int run;   // batches of one run have no other op between them
     int phase; // the barriers before it in its run
-    // The device its group configures; null for packets the user wrote, which
-    // keep a transfer and a sync each.
     FlatSymbolRefAttr configures;
     // The multicast the packets go on.
     std::optional<int32_t> multicast;
@@ -228,8 +207,6 @@ struct AIECtrlPacketToDmaPass
                            chain.front()->shimDmaAllocName),
         /*issue_token=*/true, /*repeat_count=*/0,
         /*repeat_count_val=*/Value());
-    AIEXDialect::CtrlPktTransferAttrHelper(builder.getContext())
-        .setAttr(task, chain.front()->configures);
     OpBuilder::InsertionGuard guard(builder);
     Region &body = task.getBody();
     for (size_t i = 0; i < chain.size(); ++i)
@@ -348,12 +325,6 @@ struct AIECtrlPacketToDmaPass
       heldBds.clear();
       liveTasks.clear();
       loaded = {};
-      llvm::DenseSet<Operation *> starts = runStarts(entry);
-      llvm::DenseMap<Operation *, FlatSymbolRefAttr> generated;
-      for (auto group : entry.getOps<ControlPacketGroupOp>())
-        for (Operation &packet : group.getBody().front())
-          generated[&packet] = group.getDeviceRefAttr();
-      inlineControlPacketGroups(entry);
       auto controlPacketOps = f.getOps<AIEX::NpuControlPacketOp>();
       if (controlPacketOps.empty())
         continue;
@@ -393,7 +364,12 @@ struct AIECtrlPacketToDmaPass
       // and phases CtrlPacketRuns.h describes
       bool new_batch = true, inRun = false;
       int run = 0, phase = 0;
+      FlatSymbolRefAttr configured;
       for (Operation &o : entry) {
+        if (auto context = dyn_cast<SetDeviceOp>(o))
+          configured = context.getDeviceRefAttr();
+        else if (isa<NpuLoadPdiOp>(o))
+          configured = {};
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
 
         // A barrier ends the current batch and phase
@@ -402,8 +378,8 @@ struct AIECtrlPacketToDmaPass
           ++phase;
           continue;
         }
-        // Any other op, or the start of a run, ends the current batch and run
-        if (!ctrlPktOp || starts.contains(&o)) {
+        // Any other op ends the current batch and run.
+        if (!ctrlPktOp) {
           if (inRun)
             ++run;
           new_batch = true;
@@ -447,7 +423,7 @@ struct AIECtrlPacketToDmaPass
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              alloc.getSymName().str(),
                              static_cast<int>(alloc.getChannelIndex()), &o, run,
-                             phase, generated.lookup(&o), multicast});
+                             phase, configured, multicast});
         }
         new_batch = !batchable;
         ddrOffset += ctrlPktSize;

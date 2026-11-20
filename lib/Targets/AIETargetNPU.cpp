@@ -577,10 +577,10 @@ void TxnEncoder::encode(Operation &o) {
       })
       .Default([&](Operation *op) {
         // Pure values (constants, the operands above) need no encoding;
-        // control packets and their groups have their own translation.
+        // control packets have their own translation.
         // Anything else would be dropped from the binary without a trace.
         if (isMemoryEffectFree(op) || op->hasTrait<OpTrait::IsTerminator>() ||
-            isa<NpuControlPacketOp, ControlPacketGroupOp>(op))
+            isa<NpuControlPacketOp, SetDeviceOp>(op))
           return;
         op->emitOpError("has no static TXN encoding");
         result = failure();
@@ -679,8 +679,7 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
   const AIETargetModel &tm = deviceOp.getTargetModel();
   llvm::DenseMap<TileID, AIE::PacketInfoAttr> controllerIds =
       AIEX::controllerIdsOf(deviceOp);
-  for (AIEX::NpuControlPacketOp packetOp :
-       AIEX::controlPacketsOf(seq.getBody().front())) {
+  for (AIEX::NpuControlPacketOp packetOp : seq.getOps<AIEX::NpuControlPacketOp>()) {
 
     // The C API and Python callers can pass ops that were never verified,
     // and the encoding below relies on the verifier's checks.
