@@ -477,8 +477,8 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
         timeLinkOf[out] = linkOp;
     }
 
-    auto elemType = cast<MemRefType>(
-        cast<AIEObjectFifoType>(owner.getElemType()).getElementType());
+    auto elemType =
+        cast<MemRefType>(linkOp.getLinkedElemType(owner).getElementType());
     builder.setInsertionPoint(owner);
 
     SmallVector<std::pair<int64_t, int64_t>> extents = linkOp.getPoolSegments();

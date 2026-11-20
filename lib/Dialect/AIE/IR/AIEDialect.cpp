@@ -2431,7 +2431,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
                        walkable(depth) && segments == 1 &&
                            !link.getRepeatCount() && !link.walksStream() &&
                            !link.isDispatch() && !drainLaysOut && linkOrdered,
-                       objectBytes(link.getPoolOwner().getElemType()),
+                       objectBytes(link.getLinkedElemType(link.getPoolOwner())),
                        contiguousObjects,
                        channel};
 }
@@ -2848,7 +2848,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
       int64_t walked = 1;
       for (BDDimLayoutAttr dim : dims)
         walked *= dim.getSize();
-      int64_t object = elementsOf(getPoolOwner().getElemType());
+      int64_t object = elementsOf(getLinkedElemType(getPoolOwner()));
       if (!dims.empty() && (!pads || pads->empty()) && walked != object)
         return emitOpError()
                << "@" << outs[0].name().getValue() << "'s walk covers "
@@ -3053,6 +3053,13 @@ int64_t LinkPoolPlan::depthAt(const AIETargetModel &target,
   return result;
 }
 
+AIEObjectFifoType
+ObjectFifoLinkOp::getLinkedElemType(ObjectFifoCreateOp fifo) {
+  if (llvm::is_contained(getInputObjectFifos(), fifo))
+    return cast<AIEObjectFifoType>(fifo.getConsumerElemTypeOrDefault());
+  return cast<AIEObjectFifoType>(fifo.getElemType());
+}
+
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
   std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
   std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
@@ -3063,10 +3070,8 @@ ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
   // A window's pool holds the stream it walks, object by object.
   if (walksStream())
     return ins[0];
-  auto count = [](ObjectFifoCreateOp fifo) {
-    return cast<AIEObjectFifoType>(fifo.getElemType())
-        .getElementType()
-        .getNumElements();
+  auto count = [&](ObjectFifoCreateOp fifo) {
+    return getLinkedElemType(fifo).getElementType().getNumElements();
   };
   // Padding is applied as the objects leave, so the pool holds what arrives.
   if (outs[0].getInitValues() ||
@@ -3076,10 +3081,8 @@ ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
 }
 
 SmallVector<std::pair<int64_t, int64_t>> ObjectFifoLinkOp::getPoolSegments() {
-  auto count = [](ObjectFifoCreateOp fifo) {
-    return cast<AIEObjectFifoType>(fifo.getElemType())
-        .getElementType()
-        .getNumElements();
+  auto count = [&](ObjectFifoCreateOp fifo) {
+    return getLinkedElemType(fifo).getElementType().getNumElements();
   };
   int64_t whole = count(getPoolOwner());
   if (!isJoin() && !isDistribute())
@@ -3167,8 +3170,7 @@ std::vector<int> ObjectFifoLinkOp::getJoinTransferLengths() {
 std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
   std::vector<int> lengths;
   if (isDistribute()) {
-    auto fifoIn =
-        llvm::cast<AIEObjectFifoType>(getInputObjectFifos()[0].getElemType());
+    AIEObjectFifoType fifoIn = getLinkedElemType(getInputObjectFifos()[0]);
     auto elemTypeIn = llvm::cast<MemRefType>(fifoIn.getElementType());
     int lenIn = elemTypeIn.getNumElements();
     // dst_offsets is an I64ArrayAttr, so every element is an IntegerAttr and

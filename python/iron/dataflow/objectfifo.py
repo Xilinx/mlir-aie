@@ -1493,7 +1493,9 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         tap = out.to_stream
         if tap is None:
             return None
-        in_size = math.prod(self._srcs[0]._object_fifo.shape)
+        in_size = math.prod(
+            np_ndarray_type_get_shape(self._srcs[0]._object_fifo.consumer_obj_type)
+        )
         dims = tap.transformation_dims
         reach = sum((size - 1) * stride for size, stride in dims)
         inner = math.prod(size for size, _ in dims[1:])
@@ -1519,14 +1521,17 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         The link holds one shared object. A join or distribute splits it at its
         offsets and each participant moves its own segment, while the single
         fifo on the other side walks every segment; a 1:1 link moves the
-        larger object, or the arriving one when the departing walk pads.
+        larger object, or the arriving one when the departing walk pads. The
+        link's tile holds an input's objects as its consumer receives them
+        (`consumer_obj_type`).
         """
         srcs = [h._object_fifo for h in self._srcs]
         dsts = [h._object_fifo for h in self._dsts]
         if self._mode == ObjectFifoLinkMode.Time:
             return [math.prod(of.shape)]
+        in_size = math.prod(np_ndarray_type_get_shape(srcs[0].consumer_obj_type))
         if len(srcs) == len(dsts) == 1:
-            in_size, out_size = math.prod(srcs[0].shape), math.prod(dsts[0].shape)
+            out_size = math.prod(dsts[0].shape)
             objects = self._walked_objects()
             if objects is not None:
                 return [objects * in_size if of is dsts[0] else in_size]
@@ -1537,7 +1542,7 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
             if len(srcs) > 1
             else (srcs[0], dsts, self._dst_offsets)
         )
-        ends = [*offsets[1:], math.prod(shared.shape)]
+        ends = [*offsets[1:], in_size if shared is srcs[0] else math.prod(shared.shape)]
         sizes = [end - start for start, end in zip(offsets, ends)]
         for i, participant in enumerate(side):
             if participant is of:

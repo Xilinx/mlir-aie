@@ -3092,8 +3092,11 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     /// One channel taking turns between several outputs.
     bool isDispatch() { return isTime() && getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
-    // The fifo whose declared object type sizes the pool on the shared tile.
+    // The fifo whose object type on the shared tile sizes the pool.
     ObjectFifoCreateOp getPoolOwner();
+    // `fifo`'s object type on the shared tile: an input's as its consumer
+    // receives it (`consumerElemType`), an output's as its producer sends it.
+    AIEObjectFifoType getLinkedElemType(ObjectFifoCreateOp fifo);
     // The pool's (offset, size) segments in the owner's elements: one per
     // participant on a join's or distribute's many side, else the whole
     // object.
