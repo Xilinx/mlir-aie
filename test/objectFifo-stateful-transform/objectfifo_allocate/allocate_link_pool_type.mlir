@@ -119,3 +119,30 @@ module @join_segment_of_two_objects {
     }
   }
 }
+
+// -----
+
+// A join's input whose segment starts past the pool object's first element
+// would reach its core only as a strided view.
+module @join_segment_past_the_first {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 2)
+    %f = aie.tile(0, 5)
+    aie.objectfifo @in0(%f, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in1(%t, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%t, {%t}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in0, @in1] -> [@out] ([0, 16] [])
+    // expected-error@+1 {{places @in1's objects in the link's pool, but @in1's segment starts past the pool object's first element, so its core would reach it only as a strided view}}
+    aie.objectfifo.allocate @in1 (%t)
+    aie.core(%t) {
+      %0 = aie.objectfifo.acquire @in1(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in1(Produce, 1)
+      aie.end
+    }
+    aie.core(%f) {
+      %0 = aie.objectfifo.acquire @in0(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in0(Produce, 1)
+      aie.end
+    }
+  }
+}

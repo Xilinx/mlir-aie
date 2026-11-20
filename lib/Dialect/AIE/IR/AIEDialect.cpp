@@ -1225,6 +1225,12 @@ MemRefType ObjectFifoCoreEndpointOp::getAccessType() {
   if (offset == 0 && size == elemType.getNumElements()) {
     return elemType;
   }
+  // A leading run is a plain memref of its own, as the fifo's ends declare it.
+  if (offset == 0) {
+    return MemRefType::get({size}, elemType.getElementType(),
+                           MemRefLayoutAttrInterface{},
+                           elemType.getMemorySpace());
+  }
   return cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
       {size}, elemType, {offset}, {size}, {1}));
 }
@@ -2137,12 +2143,17 @@ LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
   else if (link.isDistribute())
     side = link.getOutputObjectFifos();
   auto at = llvm::find(side, *this);
-  bool segment =
-      at != side.end() &&
-      link.getPoolSegments()[at - side.begin()].second ==
-          link.getLinkedElemType(*this).getElementType().getNumElements();
-  if (owner.getElemType() != getElemType() && !segment)
-    return LinkPoolMisfit::ObjectType;
+  std::optional<std::pair<int64_t, int64_t>> segment;
+  if (at != side.end())
+    segment = link.getPoolSegments()[at - side.begin()];
+  if (owner.getElemType() != getElemType()) {
+    if (!segment ||
+        segment->second !=
+            link.getLinkedElemType(*this).getElementType().getNumElements())
+      return LinkPoolMisfit::ObjectType;
+    if (segment->first != 0)
+      return LinkPoolMisfit::SegmentOffset;
+  }
   return getInitValues() ? LinkPoolMisfit::InitialValues : LinkPoolMisfit::None;
 }
 
@@ -2544,6 +2555,11 @@ LogicalResult ObjectFifoAllocateOp::verify() {
                   "segment's";
         break;
       }
+      case LinkPoolMisfit::SegmentOffset:
+        diag << ", but @" << name
+             << "'s segment starts past the pool object's first element, so "
+                "its core would reach it only as a strided view";
+        break;
       case LinkPoolMisfit::InitialValues:
         diag << ", which starts with @" << link.getPoolOwner().name().getValue()
              << "'s initial objects, "

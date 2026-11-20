@@ -467,9 +467,12 @@ struct AIEObjectFifoLowerCoresPass
       auto [offset, size] = endpoint.getExtent();
       for (Value &buffer : buffers) {
         buffer = memref::SubViewOp::create(
-            builder, loc, accessType, buffer,
+            builder, loc, buffer,
             ArrayRef<OpFoldResult>{builder.getIndexAttr(offset)},
             {builder.getIndexAttr(size)}, {builder.getIndexAttr(1)});
+        // A leading run's view is the plain memref its acquires name.
+        if (buffer.getType() != accessType)
+          buffer = memref::CastOp::create(builder, loc, accessType, buffer);
       }
     }
     if (buffers.size() == 1) {
