@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::SAPlacer::VariableLink::Replan" name="xilinx::AIE::SAPlacer::VariableLink::Replan">
-<area shape="rect" id="Node000001" title=" " alt="" coords="354,52,516,97"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,267,67"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="282,52,356,64,350,65,282,58"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="59,91,213,136"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="228,102,329,89,350,89,356,88,330,94,229,107"/>
-</map>

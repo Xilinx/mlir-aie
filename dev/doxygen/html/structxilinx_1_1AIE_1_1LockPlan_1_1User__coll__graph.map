@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::LockPlan::User" name="xilinx::AIE::LockPlan::User">
-<area shape="rect" id="Node000001" title="A tile using the locks, localOnly when only its own (dmaLocalOnly)." alt="" coords="13,106,166,151"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,86,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="58,46,83,105,78,106,55,50"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="110,5,160,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="126,46,101,107,96,104,121,49"/>
-</map>

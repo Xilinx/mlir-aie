@@ -1,9 +1,0 @@
-<map id="xilinx::AIE::Placer::ShimSide" name="xilinx::AIE::Placer::ShimSide">
-<area shape="rect" id="Node000001" title=" " alt="" coords="283,83,417,127"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="20,5,168,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="183,49,259,72,285,82,280,82,258,77,183,55"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,74,183,136"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="198,102,285,104,280,106,199,108"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="21,160,167,188"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="176,154,258,133,280,129,286,127,259,138,177,159"/>
-</map>
