@@ -2136,7 +2136,8 @@ LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
   if (owner == *this)
     return LinkPoolMisfit::None;
   // A join's input, or a distribute's output, holds a segment of each pool
-  // object; one whose objects are that segment can be the pool's there.
+  // object; one whose objects are that segment, a rank-1 run of a rank-1
+  // pool object's elements, can be the pool's there.
   std::vector<ObjectFifoCreateOp> side;
   if (link.isJoin())
     side = link.getInputObjectFifos();
@@ -2147,9 +2148,12 @@ LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
   if (at != side.end())
     segment = link.getPoolSegments()[at - side.begin()];
   if (owner.getElemType() != getElemType()) {
-    if (!segment ||
-        segment->second !=
-            link.getLinkedElemType(*this).getElementType().getNumElements())
+    MemRefType pool = link.getLinkedElemType(owner).getElementType();
+    if (!segment || pool.getRank() != 1 || !pool.getLayout().isIdentity() ||
+        link.getLinkedElemType(*this).getElementType() !=
+            MemRefType::get({segment->second}, pool.getElementType(),
+                            MemRefLayoutAttrInterface{},
+                            pool.getMemorySpace()))
       return LinkPoolMisfit::ObjectType;
     if (segment->first != 0)
       return LinkPoolMisfit::SegmentOffset;

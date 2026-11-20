@@ -146,3 +146,60 @@ module @join_segment_past_the_first {
     }
   }
 }
+
+// -----
+
+// A two-dimensional lane leading a join is a run of the pool's elements only
+// as a rank-1 view, which its acquires do not name.
+module @join_two_dimensional_lane {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 2)
+    %f = aie.tile(0, 5)
+    aie.objectfifo @in0(%t, {%t}, 2 : i32) : !aie.objectfifo<memref<4x16xi32>>
+    aie.objectfifo @in1(%f, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @out(%t, {%t}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo.link [@in0, @in1] -> [@out] ([0, 64] [])
+    // expected-error@+1 {{a fifo that shares memory with a link must have the pool's object type (@in0's is 'memref<4x16xi32>'), or as a join's input or a distribute's output, its segment's}}
+    aie.objectfifo.allocate @in0 (%t)
+    aie.core(%t) {
+      %0 = aie.objectfifo.acquire @in0(Produce, 1) : memref<4x16xi32>
+      aie.objectfifo.release @in0(Produce, 1)
+      aie.end
+    }
+    aie.core(%f) {
+      %0 = aie.objectfifo.acquire @in1(Produce, 1) : memref<64xi32>
+      aie.objectfifo.release @in1(Produce, 1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A distribute whose two-dimensional pool object leads with a lane's run has
+// no rank-1 view of it to give that lane's core.
+module @distribute_two_dimensional_pool {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 2)
+    %f = aie.tile(0, 5)
+    aie.objectfifo @in(%t, {%t}, 2 : i32) : !aie.objectfifo<memref<2x16xi32>>
+    aie.objectfifo @out0(%t, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out1(%t, {%f}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@in] -> [@out0, @out1] ([] [0, 16])
+    aie.objectfifo.allocate @in (%t)
+    // expected-error@+1 {{a fifo that shares memory with a link must have the pool's object type (@out0's is 'memref<16xi32>'), or as a join's input or a distribute's output, its segment's}}
+    aie.objectfifo.allocate @out0 (%t)
+    aie.core(%t) {
+      %0 = aie.objectfifo.acquire @in(Produce, 1) : memref<2x16xi32>
+      aie.objectfifo.release @in(Produce, 1)
+      %1 = aie.objectfifo.acquire @out0(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @out0(Consume, 1)
+      aie.end
+    }
+    aie.core(%f) {
+      %0 = aie.objectfifo.acquire @out1(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @out1(Consume, 1)
+      aie.end
+    }
+  }
+}
