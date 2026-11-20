@@ -1,0 +1,9 @@
+<map id="PinnedRoutes" name="PinnedRoutes">
+<area shape="rect" id="Node000001" title=" " alt="" coords="303,65,413,93"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="61,5,158,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="174,24,279,46,327,64,321,65,278,51,174,30"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="14,57,205,102"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="220,77,305,78,300,80,221,82"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="5,126,214,187"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="228,122,278,107,319,94,324,93,280,112,230,128"/>
+</map>

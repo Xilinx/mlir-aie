@@ -1,0 +1,5 @@
+<map id="xilinx::AIE::LockPlan" name="xilinx::AIE::LockPlan">
+<area shape="rect" id="Node000001" title="Lock placement shared by aie&#45;objectfifo&#45;allocate and the SA placer, on plain records." alt="" coords="5,106,158,134"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="48,5,115,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="84,47,84,106,79,105,79,50"/>
+</map>
