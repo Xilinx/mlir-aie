@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --pass-pipeline='builtin.module(aie-materialize-runtime-sequences,aie.device(aie-assign-runtime-sequence-bd-ids{warn-unsafe-bd-reuse=true}))' \
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-materialize-runtime-sequences,aie-assign-runtime-sequence-bd-ids{warn-unsafe-bd-reuse=true})' \
 // RUN:   --mlir-disable-threading %s -o /dev/null 2> %t
 // RUN: FileCheck %s < %t
 // RUN: FileCheck %s --check-prefix=COUNT < %t

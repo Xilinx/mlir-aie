@@ -7,10 +7,10 @@
 
 // RUN: aie-opt --split-input-file --aie-place-tiles %s -o %t.seq
 // RUN: FileCheck %s --input-file=%t.seq
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform,aie-assign-bd-ids,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %t.seq -o /dev/null
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform,aie-assign-bd-ids,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd),aie-assign-runtime-sequence-bd-ids)' %t.seq -o /dev/null
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s -o %t.sa
 // RUN: FileCheck %s --check-prefix=SA --input-file=%t.sa
-// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform,aie-assign-bd-ids,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %t.sa -o /dev/null
+// RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-objectFifo-stateful-transform,aie-assign-bd-ids,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd),aie-assign-runtime-sequence-bd-ids)' %t.sa -o /dev/null
 
 // The placers count a shim's BD ids as aie-assign-bd-ids and
 // aie-assign-runtime-sequence-bd-ids hand them out, static aie.shim_dma BDs

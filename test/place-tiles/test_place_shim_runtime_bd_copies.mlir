@@ -10,8 +10,8 @@
 // as the BD-id pass does and keep the two shims apart, so the runtime
 // sequence's ids fit.
 
-// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s | FileCheck %s
-// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids))' %s | FileCheck %s
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd),aie-assign-runtime-sequence-bd-ids)' %s | FileCheck %s
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-place-tiles{placer=sa_placer sa-seed=1},aie.device(aie-objectFifo-stateful-transform,aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd),aie-assign-runtime-sequence-bd-ids)' %s | FileCheck %s
 
 // CHECK-LABEL: @copies
 // CHECK:       aie.shim_dma_allocation @in_a__shim_alloc(%[[A:shim_noc_tile_[0-9]+_0]], MM2S, 0)

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --pass-pipeline='builtin.module(aie.device(aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids))' \
+// RUN: aie-opt --pass-pipeline='builtin.module(aie.device(aie-substitute-shim-dma-allocations),aie-assign-runtime-sequence-bd-ids)' \
 // RUN:         --verify-diagnostics --split-input-file %s
 
 // A dispatch loads its own device first, so only a sequence that ends on
@@ -458,5 +458,55 @@ module {
     %t = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1, granule_bytes = 512>]}
     aie.shim_dma_allocation @out(%t, S2MM, 0)
+  }
+}
+
+// -----
+
+// @b's core takes a head object ahead of its rows (a vector riding its
+// matrix's stream, as IRON's GEMV sends B), which its proof, a lower bound
+// over the rows, does not count: @b's own sequence pushes 16 words past what
+// its output proves taken, so @b credits nothing by the proof and its next
+// dispatch counts on no clean start. @main ending on @b the same way is no
+// error.
+module {
+  aie.device(npu2) {
+    %shim_noc_tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%shim_noc_tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1, device = @b>]}
+    aie.shim_dma_allocation @out(%shim_noc_tile_0_0, S2MM, 0)
+    aie.runtime_sequence @main_seq(%arg0: memref<512xi32>, %arg1: memref<512xi32>) {
+      aiex.npu.load_pdi {device_ref = @b}
+      %0 = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%arg0 : memref<512xi32> offset = 0 len = 80)
+        aie.end
+      }
+      aiex.dma_start_task(%0)
+      %1 = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%arg1 : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%1)
+      aiex.dma_await_task(%1)
+      aiex.dma_free_task(%0)
+    }
+  }
+  aie.device(npu2) @b {
+    %shim_noc_tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%shim_noc_tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%shim_noc_tile_0_0, S2MM, 0)
+    aie.runtime_sequence @seq(%arg0: memref<512xi32>, %arg1: memref<512xi32>) {
+      %0 = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%arg0 : memref<512xi32> offset = 0 len = 80)
+        aie.end
+      }
+      aiex.dma_start_task(%0)
+      %1 = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%arg1 : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%1)
+      aiex.dma_await_task(%1)
+      aiex.dma_free_task(%0)
+    }
   }
 }

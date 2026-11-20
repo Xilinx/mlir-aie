@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --split-input-file --verify-diagnostics --pass-pipeline='builtin.module(aie-materialize-runtime-sequences,aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids))' %s | FileCheck %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --pass-pipeline='builtin.module(aie-materialize-runtime-sequences,aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations),aie-assign-runtime-sequence-bd-ids)' %s | FileCheck %s
 
 // @main calls @p0 and then @p1, which both send on shim (0, 0) MM2S 0. @p0
 // frees its task without awaiting it, so when @p1 reprograms the same BD id

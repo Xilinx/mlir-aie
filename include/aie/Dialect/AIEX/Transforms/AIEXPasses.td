@@ -350,7 +350,7 @@ def AIEResolveAddressPatchBuffers
 }
 
 def AIEAssignRuntimeSequenceBDIDs
-    : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
+    : Pass<"aie-assign-runtime-sequence-bd-ids", "mlir::ModuleOp"> {
   let summary =
       "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
   let description = [{
@@ -374,10 +374,15 @@ def AIEAssignRuntimeSequenceBDIDs
 
     A sequence that ends with another device's PDI loaded leaves that array to
     the next dispatch, whose proofs count on a clean start, so the stretch
-    since the latest load must balance under that device's proofs: no more
-    through an input than its output proves taken, the output not partway
-    through a granule, no other traffic on their channels, and transfer sizes
-    the pass can count. Otherwise the `aiex.npu.load_pdi` is an error.
+    since the latest load must balance under each proof that device's own
+    stretches balance (the proofs it credits by): no more through an input
+    than its output proves taken, the output not partway through a granule,
+    no other traffic on their channels, and transfer sizes the pass can count.
+    Otherwise the `aiex.npu.load_pdi` is an error. A proof a device's own
+    stretches leave unbalanced (a lower bound its core takes beyond, as a head
+    object read ahead of its rows) credits nothing there, so no stretch must
+    balance under it. The pass takes the whole module, reading every device's
+    proofs before rewriting any.
 
     Before allocating, the pass checks each channel's completion tokens (an
     await with no token to take would deadlock the host) and task queue

@@ -76,7 +76,7 @@ module {
 
 // Test 3: LOWER — end-to-end through BD-ID assignment and tasks-to-npu.
 //
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats),aie-assign-runtime-sequence-bd-ids,aie.device(aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWER
 
 // LOWER-LABEL: @lower_task_bd
@@ -215,7 +215,7 @@ module {
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=REPEAT-LEN
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats),aie-assign-runtime-sequence-bd-ids,aie.device(aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=REPEAT-LOWER
 
 // The 4096-element innermost run needs two dimensions, so the outermost 8 moves

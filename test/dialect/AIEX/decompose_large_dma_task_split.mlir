@@ -23,7 +23,7 @@
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file %s | FileCheck %s
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids{reclaim-bds=true}))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd),aie-assign-runtime-sequence-bd-ids{reclaim-bds=true})' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWERED
 
 // A transfer of 5 slices issued after a whole one. Only the later task

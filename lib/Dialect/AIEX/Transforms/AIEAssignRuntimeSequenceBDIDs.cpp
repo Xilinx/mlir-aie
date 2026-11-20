@@ -206,7 +206,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (resetChannels.count(key))
       return success();
     auto &starts =
-        loopingStartsOf(loadedDevice ? loadedDevice : getOperation());
+        loopingStartsOf(loadedDevice ? loadedDevice : current);
     auto it = starts.find(key);
     if (it == starts.end())
       return success();
@@ -769,8 +769,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                               << tile.getCol() << "," << tile.getRow()
                               << ") already uses; give the copy another ID";
     AIE::DeviceOp other =
-        loadedDevice && loadedDevice != getOperation() ? loadedDevice : nullptr;
-    for (AIE::DeviceOp candidate : {getOperation(), other})
+        loadedDevice && loadedDevice != current ? loadedDevice : nullptr;
+    for (AIE::DeviceOp candidate : {current, other})
       if (candidate)
         for (AIE::DmaBody program : candidate.getOps<AIE::DmaBody>())
           if (program.getTileID() == tileId)
@@ -886,7 +886,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         {seq.getOperation(), index}, false);
     if (!inserted)
       return it->second;
-    auto module = getOperation()->getParentOfType<ModuleOp>();
+    auto module = getOperation();
     if (!module)
       return false;
     ArrayAttr reads = seq.getScratchpadParametersAttr();
@@ -1039,7 +1039,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     auto entry = deviceState.balancedPairs.try_emplace({input, output}, true);
     if (entry.second)
       entry.first->second = llvm::all_of(
-          getOperation().getOps<AIE::RuntimeSequenceOp>(),
+          current.getOps<AIE::RuntimeSequenceOp>(),
           [&](AIE::RuntimeSequenceOp seq) {
             return stretchesUnbalanced(seq, nullptr, proofDevice(proof), input,
                                        output, {input}, {output},
@@ -1052,9 +1052,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // it from, else this one; none where that device is not in the module.
   AIE::DeviceOp proofDevice(AIE::ConsumedByAttr proof) {
     FlatSymbolRefAttr device = proof.getDevice();
-    Operation *module = getOperation()->getParentOp();
+    Operation *module = getOperation();
     if (!device)
-      return getOperation();
+      return current;
     return module ? SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(module,
                                                                         device)
                   : AIE::DeviceOp();
@@ -1063,7 +1063,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // The device `load` configures; none where it names none in the module.
   AIE::DeviceOp loadedBy(NpuLoadPdiOp load) {
     FlatSymbolRefAttr ref = load.getDeviceRefAttr();
-    Operation *module = getOperation()->getParentOp();
+    Operation *module = getOperation();
     return ref && module ? SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(
                                module, ref)
                          : AIE::DeviceOp();
@@ -1091,7 +1091,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(input);
     DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(output);
     auto fromLoad = dyn_cast_or_null<NpuLoadPdiOp>(from);
-    AIE::DeviceOp loaded = fromLoad ? loadedBy(fromLoad) : getOperation();
+    AIE::DeviceOp loaded = fromLoad ? loadedBy(fromLoad) : current;
     bool counting = !from;
     Volume in, out;
     Unbalanced why = Unbalanced::No;
@@ -1177,7 +1177,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     for (auto load : seq.getOps<NpuLoadPdiOp>())
       last = load;
     AIE::DeviceOp loaded = last ? loadedBy(last) : AIE::DeviceOp();
-    if (!loaded || loaded == getOperation())
+    if (!loaded || loaded == current)
       return success();
     SmallVector<std::tuple<AIE::ShimDMAAllocationOp, AIE::ShimDMAAllocationOp,
                            Unbalanced>>
@@ -1189,10 +1189,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>()) {
         auto output = AIE::ShimDMAAllocationOp::getForSymbol(
             loaded, proof.getOutput().getValue());
-        if (!output || proof.getDevice())
+        // A proof the loaded device's own stretches do not balance credits
+        // nothing there, so its next dispatch counts on no clean start.
+        if (!output || proof.getDevice() ||
+            !relied.contains({input.getOperation(), proof}))
           continue;
         SmallVector<AIE::ShimDMAAllocationOp> inputs, outputs;
-        for (auto copy : getOperation().getOps<AIE::ShimDMAAllocationOp>()) {
+        for (auto copy : current.getOps<AIE::ShimDMAAllocationOp>()) {
           ArrayAttr copied = copy.getConsumedByAttr();
           if (!copied ||
               DmaQueueModel::keyOf(copy) != DmaQueueModel::keyOf(input))
@@ -1269,7 +1272,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return;
     AIE::DeviceOp configured = opaqueLoad     ? AIE::DeviceOp()
                                : loadedDevice ? loadedDevice
-                                              : getOperation();
+                                              : current;
     for (auto [input, proof] : proofs->second) {
       if (!configured || proofDevice(proof) != configured)
         continue;
@@ -1372,7 +1375,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   void printParameter(llvm::raw_ostream &os, int64_t index,
                       AIE::RuntimeSequenceOp seq) {
-    auto module = getOperation()->getParentOfType<ModuleOp>();
+    auto module = getOperation();
     ArrayAttr reads = seq.getScratchpadParametersAttr();
     if (module)
       for (auto parameter : module.getOps<ScratchpadParameterOp>())
@@ -1412,7 +1415,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     auto seq = task->getParentOfType<AIE::RuntimeSequenceOp>();
     AIE::DeviceOp configured = opaqueLoad     ? AIE::DeviceOp()
                                : loadedDevice ? loadedDevice
-                                              : getOperation();
+                                              : current;
     size_t excess = 0;
     SmallVector<std::pair<int64_t, AIE::RuntimeSequenceOp>> exceeding;
     auto explainProof = [&](AIE::ConsumedByAttr proof, llvm::raw_ostream &os) {
@@ -1427,12 +1430,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         os << "the proof describes the array of "
            << (proof.getDevice()
                    ? proof.getDevice()
-                   : FlatSymbolRefAttr::get(getOperation().getSymNameAttr()))
+                   : FlatSymbolRefAttr::get(current.getSymNameAttr()))
            << ", which is not the one loaded";
         return;
       }
       if (!leavesNothing(input, output, proof)) {
-        for (auto other : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
+        for (auto other : current.getOps<AIE::RuntimeSequenceOp>()) {
           Verdict verdict;
           Unbalanced why = stretchesUnbalanced(
               other, nullptr, proofDevice(proof), input, output, {input},
@@ -1981,8 +1984,36 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     }
   }
 
+  // The proofs each device's own stretches balance, (input, proof): the ones
+  // its BD id assignment credits by, so the only ones a caller's last stretch
+  // must leave a clean start for. Every device's, before any is rewritten.
+  llvm::DenseSet<std::pair<Operation *, Attribute>> relied;
+  // The device being worked on.
+  AIE::DeviceOp current;
+
   void runOnOperation() override {
-    AIE::DeviceOp device = getOperation();
+    SmallVector<AIE::DeviceOp> devices(getOperation().getOps<AIE::DeviceOp>());
+    relied.clear();
+    for (AIE::DeviceOp device : devices) {
+      current = device;
+      deviceState = {};
+      deviceState.symbols.emplace(device);
+      for (auto input : device.getOps<AIE::ShimDMAAllocationOp>())
+        if (ArrayAttr proofs = input.getConsumedByAttr())
+          for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>())
+            if (auto output =
+                    deviceState.symbols->lookup<AIE::ShimDMAAllocationOp>(
+                        proof.getOutput().getAttr());
+                output && leavesNothing(input, output, proof))
+              relied.insert({input.getOperation(), proof});
+    }
+    for (AIE::DeviceOp device : devices)
+      if (failed(runOnDevice(device)))
+        return signalPassFailure();
+  }
+
+  LogicalResult runOnDevice(AIE::DeviceOp device) {
+    current = device;
     staticBdIds.clear();
     loopingStarts.clear();
     deviceState = {};
@@ -2140,19 +2171,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return WalkResult::advance();
     });
     emitUnsafeReuses();
-    if (wr.wasInterrupted())
-      return signalPassFailure();
+    return failure(wr.wasInterrupted());
   }
 };
 
 } // namespace
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 AIEX::createAIEAssignRuntimeSequenceBDIDsPass() {
   return std::make_unique<AIEAssignRuntimeSequenceBDIDsPass>();
 }
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 AIEX::createAIEAssignRuntimeSequenceBDIDsPass(
     const AIEAssignRuntimeSequenceBDIDsOptions &options) {
   return std::make_unique<AIEAssignRuntimeSequenceBDIDsPass>(options);

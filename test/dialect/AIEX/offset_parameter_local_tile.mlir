@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --verify-diagnostics \
-// RUN:   --pass-pipeline='builtin.module(aie-lower-scratchpad-parameters,aie.device(aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' %s \
+// RUN:   --pass-pipeline='builtin.module(aie-lower-scratchpad-parameters,aie-assign-runtime-sequence-bd-ids,aie.device(aie-dma-tasks-to-npu))' %s \
 // RUN:   | FileCheck %s
 
 // npu.update_from_scratchpad adds StateTable * func_arg into a BD register

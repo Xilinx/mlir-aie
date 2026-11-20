@@ -2008,8 +2008,10 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
   bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
-  dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
-  dpm.addPass(X::createAIEDMATasksToNPUPass());
+  // Module-scoped: every device's proofs are read before any is rewritten.
+  pm->addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
+  auto &after = pm->nest<xilinx::AIE::DeviceOp>();
+  after.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
   // set_lock + a START_QUEUE re-push) and lower the resulting dma_channel_reset
   // ops to maskwrite32 -- one pass. Runs before aie-dma-to-npu so the emitted
@@ -2017,15 +2019,15 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // aie-lower-set- lock so the emitted set_lock ops are lowered too. The head
   // bd_id + repeat it re-pushes were folded into the objectfifo_rearm_binding
   // by aie-assign-bd-ids.
-  dpm.addPass(X::createAIELowerDmaChannelResetPass());
+  after.addPass(X::createAIELowerDmaChannelResetPass());
   X::AIEDmaToNpuOptions dmaToNpuOpts;
   dmaToNpuOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
-  dpm.addPass(X::createAIEDmaToNpuPass(dmaToNpuOpts));
-  dpm.addPass(X::createAIELowerSetLockPass());
-  dpm.addPass(X::createAIELowerCoreResetPass());
+  after.addPass(X::createAIEDmaToNpuPass(dmaToNpuOpts));
+  after.addPass(X::createAIELowerSetLockPass());
+  after.addPass(X::createAIELowerCoreResetPass());
   // The lowerings give each write its own constants; shared, the sequence
   // carries about half the ops into every later edge.
-  dpm.addPass(mlir::createCSEPass());
+  after.addPass(mlir::createCSEPass());
   return pm;
 }
 
@@ -2079,18 +2081,20 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
   bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
-  dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
+  // Module-scoped: every device's proofs are read before any is rewritten.
+  pm->addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
+  auto &after = pm->nest<xilinx::AIE::DeviceOp>();
   // Without region simplification; see getNpuDmaLoweringPipeline.
   mlir::GreedyRewriteConfig canonicalize;
   canonicalize.setRegionSimplificationLevel(
       mlir::GreedySimplifyRegionLevel::Disabled);
-  dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
-  dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
-  dpm.addPass(X::createAIEDMATasksToNPUPass());
+  after.addPass(mlir::createCanonicalizerPass(canonicalize));
+  after.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
+  after.addPass(X::createAIEDMATasksToNPUPass());
   X::AIEDmaToNpuOptions dmaToNpuOpts;
   dmaToNpuOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
-  dpm.addPass(X::createAIEDmaToNpuPass(dmaToNpuOpts));
-  dpm.addPass(X::createAIELowerSetLockPass());
+  after.addPass(X::createAIEDmaToNpuPass(dmaToNpuOpts));
+  after.addPass(X::createAIELowerSetLockPass());
   return pm;
 }
 

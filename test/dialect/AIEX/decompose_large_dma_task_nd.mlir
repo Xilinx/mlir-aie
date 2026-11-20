@@ -20,7 +20,7 @@
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file %s | FileCheck %s
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd),aie-assign-runtime-sequence-bd-ids,aie.device(aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWERED
 
 // 12 iterations over [3 x 4]: the stride-262144 dimension does not continue the
