@@ -79,6 +79,17 @@ struct SwitchboxConnect {
   // The connection from srcPorts[i] to dstPorts[j] is cells[i * dstPorts.size()
   // + j].
   std::vector<Cell> cells;
+  // Per dst port of a crossbar: the circuit streams driving it, whether
+  // packet streams drive it, whether a flow ends at it, and the iterations it
+  // was over capacity. A circuit takes its output alone. Where every stream
+  // driving an output goes on along its wire, the wire's cells already see
+  // them all, so only an output a flow ends at is checked here.
+  std::vector<int> usedDestCapacity, overDestCapacity;
+  llvm::BitVector packetDest, flowEnds;
+  bool destinationOverCapacity(size_t j) const {
+    return flowEnds[j] && (usedDestCapacity[j] > 1 ||
+                           (usedDestCapacity[j] != 0 && packetDest[j]));
+  }
   // Units of dst ports tied to one arbiter (see planArbiters in
   // AIECreatePathFindFlows.cpp); a unit's leader lists the packet flows
   // (indices into the router's flows) leaving by any of its ports
@@ -102,6 +113,10 @@ struct SwitchboxConnect {
   // Size the cells and the per-port state to srcPorts and dstPorts.
   void resize() {
     cells.assign(srcPorts.size() * dstPorts.size(), Cell());
+    usedDestCapacity.assign(dstPorts.size(), 0);
+    overDestCapacity.assign(dstPorts.size(), 0);
+    packetDest = llvm::BitVector(dstPorts.size());
+    flowEnds = llvm::BitVector(dstPorts.size());
     packetOnlySrc = llvm::BitVector(srcPorts.size());
     circuitOnlyDst = llvm::BitVector(dstPorts.size());
     unitPacketFlows.resize(dstPorts.size());
