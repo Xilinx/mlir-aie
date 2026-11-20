@@ -885,10 +885,10 @@ LogicalResult ObjectFifoCreateOp::verify() {
     int64_t consSize = consMemref.getNumElements();
     if (consSize <= 0)
       return emitError("consumer element count must be positive");
-    if (prodSize % consSize != 0)
+    if (prodSize % consSize != 0 && consSize % prodSize != 0)
       return emitError("producer element size (")
-             << prodSize << ") must be an integer multiple of consumer "
-             << "element size (" << consSize << ")";
+             << prodSize << ") and consumer element size (" << consSize
+             << ") must be an integer multiple of one another";
   }
 
   return success();

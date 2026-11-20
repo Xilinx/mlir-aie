@@ -53,7 +53,7 @@ aie.device(xcve2302) {
 
 // -----
 
-// CHECK: producer element size (35) must be an integer multiple of consumer element size (10)
+// CHECK: producer element size (35) and consumer element size (10) must be an integer multiple of one another
 
 aie.device(npu2) {
    %tile01 = aie.tile(0, 1)

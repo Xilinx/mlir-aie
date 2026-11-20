@@ -187,7 +187,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
             consumer_obj_type (type[np.ndarray] | None, optional): Consumer element type for
                 asymmetric transfer granularity. When set, the producer sends obj_type-sized
                 transfers and the consumer receives consumer_obj_type-sized transfers.
-                Producer element count must be an integer multiple of consumer element count.
+                Either element count must be an integer multiple of the other.
                 Defaults to None.
             release_strategy (str | None, optional): What a release on the producer
                 handle starts. ``"cycle_buffers"``, the default, leaves the sending

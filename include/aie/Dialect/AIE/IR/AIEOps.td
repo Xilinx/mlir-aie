@@ -2734,8 +2734,8 @@ def AIE_ObjectFifoCreateOp
       TypeAttrOf<AIE_ObjectFifoType>:$elemType,
       // Optional consumer element type for asymmetric transfer granularity.
       // Producer sends elemType-sized transfers, consumer receives
-      // consumerElemType-sized transfers. Producer element size must be
-      // an integer multiple of consumer element size.
+      // consumerElemType-sized transfers. Either element size must be an
+      // integer multiple of the other.
       OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
       BDDimLayoutArrayAttr:$dimensionsToStream,
       BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
