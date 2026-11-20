@@ -3176,7 +3176,9 @@ def AIE_ObjectFifoPoolOp
     The body holds one `aie.objectfifo.segment` per way the object is divided,
     in increasing offset order, together covering it exactly. An ordinary pool
     has one segment spanning the whole object; a pool that several endpoints
-    fill or drain independently has one per participant.
+    fill or drain independently has one per participant. A pool several
+    readers drain whole, each at its own pace, instead has one whole-object
+    segment per reader, all of which its filler fills.
 
     On AIE1 a buffer is guarded by a single binary lock that rotates with it,
     with no way to guard part of a buffer; such a pool carries `locks`, one
@@ -3239,6 +3241,8 @@ def AIE_ObjectFifoPoolOp
 
     /// Byte-agnostic element count of one object, taken from the element type.
     int64_t getObjectSize();
+    /// Whether its segments are several whole-object ones, a reader each.
+    bool hasReaderSegments();
 
     /// Size of one object in bytes, under the closest data layout.
     int64_t getObjectSizeInBytes();

@@ -929,6 +929,15 @@ int64_t ObjectFifoPoolOp::getObjectSize() {
   return llvm::cast<MemRefType>(getElemType()).getNumElements();
 }
 
+bool ObjectFifoPoolOp::hasReaderSegments() {
+  std::vector<ObjectFifoSegmentOp> segments = getSegmentOps();
+  return segments.size() > 1 &&
+         llvm::all_of(segments, [&](ObjectFifoSegmentOp segment) {
+           return segment.getOffset() == 0 &&
+                  static_cast<int64_t>(segment.getSize()) == getObjectSize();
+         });
+}
+
 int64_t ObjectFifoPoolOp::getObjectsPerBuffer() {
   if (!getContiguous())
     return 1;
@@ -984,9 +993,15 @@ LogicalResult ObjectFifoPoolOp::verify() {
     return emitOpError("expects at least one segment");
   }
 
+  // Several readers of one object each hold a whole-object segment.
+  bool readers = hasReaderSegments();
   int64_t previous = -1;
   int64_t covered = 0;
   for (ObjectFifoSegmentOp segment : segments) {
+    if (readers) {
+      covered = segment.getSize();
+      continue;
+    }
     if (static_cast<int64_t>(segment.getOffset()) <= previous) {
       return emitOpError("segments must be ordered by increasing offset");
     }
@@ -1124,7 +1139,8 @@ LogicalResult verifyEndpoint(Operation *op, ObjectFifoPoolOp pool,
     }
     // The endpoint's memref is one run of the object, and `dimensions` pairs
     // with this list positionally.
-    if (static_cast<int64_t>(segment.getOffset()) <= previous) {
+    if (static_cast<int64_t>(segment.getOffset()) <= previous &&
+        !pool.hasReaderSegments()) {
       return op->emitOpError("segments must be named in increasing offset "
                              "order");
     }
@@ -1198,10 +1214,11 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
   }
 
   // The core sees one memref, so the segments it selects have to be a single
-  // run of the object.
+  // run of the object, or, of readers' segments, each the whole object.
   int64_t next = -1;
+  bool readers = pool.hasReaderSegments();
   for (ObjectFifoSegmentOp segment : getSelectedSegments()) {
-    if (next >= 0 && segment.getOffset() != next) {
+    if (next >= 0 && segment.getOffset() != next && !readers) {
       return emitOpError("a core endpoint's segments must be contiguous");
     }
     next = segment.getOffset() + segment.getSize();
@@ -2170,7 +2187,7 @@ std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
     return "an end is a Core stream port";
   if (getConsumerElemType())
     return "its consumer takes a different element type";
-  if (getConsumerTiles().size() > 1)
+  if (getConsumerTiles().size() > 1 && !getAllocate())
     return "it has more than one consumer";
   if (!getDimensionsToStream().empty())
     return "its producer reshapes the data (`dimensionsToStream`)";
@@ -2214,6 +2231,10 @@ std::optional<StringRef>
 ObjectFifoCreateOp::placedDmaReason(AIETargetModel::SharedMemory &shared) {
   if (std::optional<StringRef> reason = dmaReason())
     return reason;
+  // Allocated, its consumers reaching the pool drain it in place, the rest
+  // by DMA: the split sorts them one by one.
+  if (getConsumerTiles().size() > 1)
+    return "it has more than one consumer";
   std::optional<ObjectFifoAllocateOp> alloc = getAllocate();
   std::optional<TileID> producer = placedAt(getProducerTile());
   std::optional<TileID> consumer = placedAt(getConsumerTiles()[0]);
@@ -2514,7 +2535,11 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     return emitError("cannot retrieve associated object FIFO");
   if (!isa_and_nonnull<TileLike>(getDelegateTile().getDefiningOp()))
     return emitOpError("delegate must be a tile");
-  if (objFifo.getConsumerTiles().size() != 1)
+  // Several consumers share a pool only on their producer's tile, where
+  // each one reaching it drains it in place and the rest by DMA.
+  if (objFifo.getConsumerTiles().size() != 1 &&
+      (objFifo.getLink() ||
+       getDelegateTile() != objFifo.getProducerTile()))
     return emitError("can only be used in 1-to-1 object FIFOs");
   // A linked fifo that shares memory keeps its objects in the link's one
   // pool, which a core fills or drains one pool object per acquire. Whether
