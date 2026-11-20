@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-11-20T06:52:03+00:00",
+ "generated_at": "2026-11-20T12:51:21+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -2101,11 +2101,11 @@
     {
      "id": 44686137559,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44686137559",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-20T06:12:13Z",
      "run_started_at": "2026-11-20T06:12:13Z",
-     "updated_at": "2026-11-20T06:13:47Z",
+     "updated_at": "2026-11-20T07:10:01Z",
      "head_sha": "0f767004a478056b3f52496ac284d68b8b4535f4",
      "title": "Nightly Kernel Checks on Ryzen AI",
      "attempt": 1
@@ -2257,20 +2257,42 @@
     {
      "name": "Kernel checks (aie2p-8col)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44686137559/job/136121311451",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-20T06:13:35Z",
      "started_at": "2026-11-20T06:13:46Z",
-     "runner": "aie8"
+     "runner": "aie8",
+     "outcome": "passed"
     },
     {
      "name": "Kernel checks (aie2-4col)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44686137559/job/136121311463",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-20T06:13:35Z",
      "started_at": "2026-11-20T06:13:46Z",
-     "runner": "aie1"
+     "runner": "aie1",
+     "outcome": "passed"
+    },
+    {
+     "name": "report",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44686137559/job/136142102074",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-20T07:08:05Z",
+     "started_at": "2026-11-20T07:08:20Z",
+     "runner": "GitHub Actions 1011454428",
+     "outcome": "passed"
+    },
+    {
+     "name": "publish / publish",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44686137559/job/136142511931",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-20T07:09:06Z",
+     "started_at": "2026-11-20T07:09:20Z",
+     "runner": "GitHub Actions 1011454512",
+     "outcome": "passed"
     }
    ]
   },
@@ -2284,11 +2306,11 @@
     {
      "id": 44689409696,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44689409696",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-20T06:40:04Z",
      "run_started_at": "2026-11-20T06:40:04Z",
-     "updated_at": "2026-11-20T06:40:21Z",
+     "updated_at": "2026-11-20T07:59:51Z",
      "head_sha": "0f767004a478056b3f52496ac284d68b8b4535f4",
      "title": "Nightly Component Checks",
      "attempt": 1
@@ -2430,20 +2452,42 @@
     {
      "name": "SA placer seed sweep (CPU-only)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44689409696/job/136131371296",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-20T06:40:04Z",
      "started_at": "2026-11-20T06:40:20Z",
-     "runner": "GitHub Actions 1011452641"
+     "runner": "GitHub Actions 1011452641",
+     "outcome": "passed"
     },
     {
      "name": "runners / pick",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44689409696/job/136131371816",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-20T06:40:05Z",
      "started_at": "2026-11-20T06:40:20Z",
-     "runner": "GitHub Actions 1011452642"
+     "runner": "GitHub Actions 1011452642",
+     "outcome": "passed"
+    },
+    {
+     "name": "Design checks on hardware (mobilenet, llama, yolo26n; npu2)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44689409696/job/136140342325",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-20T07:03:44Z",
+     "started_at": "2026-11-20T07:03:53Z",
+     "runner": "aie8",
+     "outcome": "passed"
+    },
+    {
+     "name": "publish",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44689409696/job/136162343913",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-20T07:58:50Z",
+     "started_at": "2026-11-20T07:59:04Z",
+     "runner": "GitHub Actions 1011457894",
+     "outcome": "passed"
     }
    ]
   },
@@ -3084,13 +3128,37 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
-     "id": 44672737187,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44672737187",
+     "id": 44734162228,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44734162228",
      "status": "in_progress",
      "conclusion": null,
+     "created_at": "2026-11-20T12:14:45Z",
+     "run_started_at": "2026-11-20T12:14:45Z",
+     "updated_at": "2026-11-20T12:15:26Z",
+     "head_sha": "0f767004a478056b3f52496ac284d68b8b4535f4",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 44700810156,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44700810156",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-11-20T08:13:20Z",
+     "run_started_at": "2026-11-20T08:13:20Z",
+     "updated_at": "2026-11-20T08:38:55Z",
+     "head_sha": "0f767004a478056b3f52496ac284d68b8b4535f4",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 44672737187,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44672737187",
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-11-20T04:11:28Z",
      "run_started_at": "2026-11-20T04:11:28Z",
-     "updated_at": "2026-11-20T04:12:14Z",
+     "updated_at": "2026-11-20T07:03:10Z",
      "head_sha": "0f767004a478056b3f52496ac284d68b8b4535f4",
      "title": "MLIR Distro",
      "attempt": 1
@@ -3200,30 +3268,6 @@
      "run_started_at": "2026-11-18T16:09:53Z",
      "updated_at": "2026-11-18T17:47:27Z",
      "head_sha": "5248da31eab67055e4acad6187ab3f940ff0641a",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 44302104192,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44302104192",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-11-18T12:14:57Z",
-     "run_started_at": "2026-11-18T12:14:57Z",
-     "updated_at": "2026-11-18T12:51:58Z",
-     "head_sha": "5248da31eab67055e4acad6187ab3f940ff0641a",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 44265132998,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44265132998",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-11-18T08:13:23Z",
-     "run_started_at": "2026-11-18T08:13:23Z",
-     "updated_at": "2026-11-18T08:37:03Z",
-     "head_sha": "80cb709d682df6bcf130f890c8ae3fa3b65c295f",
      "title": "MLIR Distro",
      "attempt": 1
     }
@@ -4126,18 +4170,6 @@
      "attempt": 1
     },
     {
-     "id": 37431751549,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/37431751549",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-06T07:46:17Z",
-     "run_started_at": "2026-10-06T07:46:17Z",
-     "updated_at": "2026-10-06T07:48:17Z",
-     "head_sha": "74ccfe99b1e743925ef89065d4fe0d08cbd6391a",
-     "title": "Scorecard supply-chain security",
-     "attempt": 1
-    },
-    {
      "id": 36538582441,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/36538582441",
      "status": "completed",
@@ -4194,6 +4226,18 @@
      "run_started_at": "2026-09-01T07:39:39Z",
      "updated_at": "2026-09-01T07:41:27Z",
      "head_sha": "088cbd7b2524124ccf7a9c0e168d3c75cf768fea",
+     "title": "Scorecard supply-chain security",
+     "attempt": 1
+    },
+    {
+     "id": 32823289515,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/32823289515",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-08-25T07:47:09Z",
+     "run_started_at": "2026-08-25T07:47:09Z",
+     "updated_at": "2026-08-25T07:49:13Z",
+     "head_sha": "c2dacdf95b3ac276d83b593797fa459f7c7809c0",
      "title": "Scorecard supply-chain security",
      "attempt": 1
     }
