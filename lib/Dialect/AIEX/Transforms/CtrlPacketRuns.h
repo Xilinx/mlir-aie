@@ -28,10 +28,11 @@ struct ContextualPacket {
 using PacketRun = llvm::SmallVector<ContextualPacket>;
 
 llvm::SmallVector<PacketRun> packetRuns(mlir::Block &block,
-                                      bool includePhases = false);
+                                        bool includePhases = false);
 llvm::SmallVector<PacketRun> packetRuns(AIE::RuntimeSequenceOp seq,
-                                      bool includePhases = false);
-llvm::SmallVector<unsigned> awaitSteps(const PacketRun &run, bool parallelShims);
+                                        bool includePhases = false);
+llvm::SmallVector<unsigned> awaitSteps(const PacketRun &run,
+                                       bool parallelShims);
 
 } // namespace xilinx::AIEX
 

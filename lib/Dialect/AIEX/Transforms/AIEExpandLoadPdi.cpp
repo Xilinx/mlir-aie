@@ -174,14 +174,12 @@ static void setInsertionPointToSegmentEnd(OpBuilder &builder,
 // `teardownData`, in program order, since masked writes fold onto the control
 // packets before them. Without teardown, control packets go in once every
 // load_pdi is known (`ctrlPktReloads`), so a sequence's loads share them.
-static LogicalResult
-transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
-                 AIEX::ExpandMode defaultMode, bool keepPreload, bool teardown,
-                 AIEX::BlockwriteData *configData,
-                 AIEX::BlockwriteData *teardownData,
-                 SmallVectorImpl<CtrlPktReload> &ctrlPktReloads,
-                 OverlayCopies &copies,
-                 SmallVectorImpl<Operation *> &teardownStarts) {
+static LogicalResult transformLoadPdi(
+    NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
+    AIEX::ExpandMode defaultMode, bool keepPreload, bool teardown,
+    AIEX::BlockwriteData *configData, AIEX::BlockwriteData *teardownData,
+    SmallVectorImpl<CtrlPktReload> &ctrlPktReloads, OverlayCopies &copies,
+    SmallVectorImpl<Operation *> &teardownStarts) {
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -515,8 +513,9 @@ struct AIEExpandLoadPdiPass
         return;
       }
       OpBuilder builder(reload.load->getBlock(), config.begin());
-      SetDeviceOp::create(builder, reload.load.getLoc(),
-                          FlatSymbolRefAttr::get(reload.device.getSymNameAttr()));
+      SetDeviceOp::create(
+          builder, reload.load.getLoc(),
+          FlatSymbolRefAttr::get(reload.device.getSymNameAttr()));
       reload.load.erase();
     }
     for (Operation *start : teardownStarts) {

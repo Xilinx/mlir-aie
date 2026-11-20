@@ -835,6 +835,8 @@ def AIEScheduleCtrlPacketActivation
 
   let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
                         "Sort each part of a run by tile">,
+         Option<"useGating", "use-gating", "bool", /*default=*/"true",
+           "Use gating annotations to advance activation writes">,
                  Option<"gatedEnable", "gated-enable", "bool",
                         /*default=*/"false",
                         "Send the enables of proved cores with their column's "

@@ -2379,8 +2379,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         await.removeDeferCompletionAttr();
       for (DMAFreeTaskOp freeOp : frees)
         freeOp.erase();
-      for (auto context :
-           llvm::make_early_inc_range(seq.getOps<SetDeviceOp>()))
+      for (auto context : llvm::make_early_inc_range(seq.getOps<SetDeviceOp>()))
         context.erase();
       return WalkResult::advance();
     });

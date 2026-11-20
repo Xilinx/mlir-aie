@@ -107,13 +107,18 @@ struct AIECtrlPacketToDmaPass
     auto *ctx = device->getContext();
     auto loc = device->getLoc();
 
+    device.walk([](ControlPacketBarrierOp barrier) {
+      if (barrier.getCompilerOnly())
+        barrier.erase();
+    });
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       return; // Disable this pass for AIE1; AIE1 support NYI.
 
     SmallVector<Operation *> erased;
     auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
-
+      if (f.getBody().empty())
+        continue;
       Block &entry = f.getBody().front();
       auto controlPacketOps = f.getOps<AIEX::NpuControlPacketOp>();
       if (controlPacketOps.empty())
@@ -161,22 +166,18 @@ struct AIECtrlPacketToDmaPass
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
 
         // A barrier ends the current batch and phase
-        if (auto barrier = dyn_cast<ControlPacketBarrierOp>(o)) {
-          if (barrier.getCompilerOnly())
-            continue;
+        if (isa<ControlPacketBarrierOp>(o)) {
           new_batch = true;
           ++phase;
           continue;
         }
-        // Any other op ends the current batch and run.
         if (!ctrlPktOp) {
           if (inRun)
             ++run;
           new_batch = true;
           inRun = false;
           phase = 0;
-          if (!ctrlPktOp)
-            continue;
+          continue;
         }
         inRun = true;
         int col = ctrlPktOp.getColumnFromAddr();

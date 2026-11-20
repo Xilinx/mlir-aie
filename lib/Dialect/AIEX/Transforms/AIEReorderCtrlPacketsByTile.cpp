@@ -36,8 +36,8 @@ using namespace xilinx::AIEX;
 namespace {
 
 struct AIEScheduleCtrlPacketActivationPass
-  : xilinx::AIEX::impl::AIEScheduleCtrlPacketActivationBase<
-      AIEScheduleCtrlPacketActivationPass> {
+    : xilinx::AIEX::impl::AIEScheduleCtrlPacketActivationBase<
+          AIEScheduleCtrlPacketActivationPass> {
   using Base::Base;
 
   void runOnOperation() override {
@@ -76,10 +76,10 @@ struct AIEScheduleCtrlPacketActivationPass
       // column's other writes.
       uint32_t row = tile.row;
       FlatSymbolRefAttr device = entry.device;
-      if (part == WriteKind::ChannelStart &&
+      if (useGating && part == WriteKind::ChannelStart &&
           devices.startGated(device, {tile, c->channel})) {
         part = WriteKind::Other;
-      } else if (part == WriteKind::CoreEnable && gatedEnable &&
+      } else if (useGating && part == WriteKind::CoreEnable && gatedEnable &&
                  devices.startGated(device, {tile, -1})) {
         part = WriteKind::Other;
         row = std::numeric_limits<uint32_t>::max();
@@ -227,9 +227,10 @@ struct AIEReorderCtrlPacketsByTilePass
       }
       packet.erase();
     }
-    llvm::sort(surviving, [](NpuControlPacketOp left, NpuControlPacketOp right) {
-      return left.getAddress() < right.getAddress();
-    });
+    llvm::sort(surviving,
+               [](NpuControlPacketOp left, NpuControlPacketOp right) {
+                 return left.getAddress() < right.getAddress();
+               });
     for (NpuControlPacketOp packet : surviving)
       packet->moveBefore(block, end);
     packets.clear();

@@ -679,7 +679,8 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
   const AIETargetModel &tm = deviceOp.getTargetModel();
   llvm::DenseMap<TileID, AIE::PacketInfoAttr> controllerIds =
       AIEX::controllerIdsOf(deviceOp);
-  for (AIEX::NpuControlPacketOp packetOp : seq.getOps<AIEX::NpuControlPacketOp>()) {
+  for (AIEX::NpuControlPacketOp packetOp :
+       seq.getOps<AIEX::NpuControlPacketOp>()) {
 
     // The C API and Python callers can pass ops that were never verified,
     // and the encoding below relies on the verifier's checks.

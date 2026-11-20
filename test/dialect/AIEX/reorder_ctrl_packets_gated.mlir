@@ -7,6 +7,7 @@
 
 // RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation | FileCheck %s --check-prefixes=CHECK,CONTEXT
 // RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation=gated-enable=true | FileCheck %s --check-prefixes=GATED,CONTEXT
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation="use-gating=false gated-enable=true" | FileCheck %s --check-prefix=CONSERVATIVE
 
 // A queue push to a channel aie-annotate-ctrl-packet-start-gating proved gated
 // (the selected device marks that channel's aie.dma_start
@@ -43,6 +44,17 @@
 // GATED-NEXT:  aiex.control_packet_barrier
 // GATED-NEXT:    address = 1705532 : ui32, data = array<i32: 1>
 // GATED-NEXT:    address = 2219540 : ui32, data = array<i32: 2>
+
+// CONSERVATIVE-LABEL: aie.runtime_sequence
+// CONSERVATIVE-NEXT: aiex.set_device @cfg
+// CONSERVATIVE-NEXT: address = 1769472 : ui32, data = array<i32: 11>
+// CONSERVATIVE-NEXT: address = 2355204 : ui32, data = array<i32: 21>
+// CONSERVATIVE-NEXT: address = 35909636 : ui32, data = array<i32: 31>
+// CONSERVATIVE-NEXT: aiex.control_packet_barrier
+// CONSERVATIVE-NEXT: address = 1705532 : ui32, data = array<i32: 1>
+// CONSERVATIVE-NEXT: address = 1705524 : ui32, data = array<i32: 1>
+// CONSERVATIVE-NEXT: address = 2219540 : ui32, data = array<i32: 2>
+// CONSERVATIVE-NEXT: address = 2301952 : ui32, data = array<i32: 1>
 
 module {
   aie.device(npu2) @cfg {

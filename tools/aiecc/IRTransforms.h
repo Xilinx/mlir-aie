@@ -2052,11 +2052,13 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIELegalizeControlPacketPass());
     xilinx::AIEX::AIEScheduleCtrlPacketActivationOptions reorder;
+    reorder.useGating = cli::ctrlpktEarlyActivation;
     reorder.gatedEnable = cli::ctrlpktEarlyActivation;
     reorder.parallelShims = cli::ctrlpktParallelShims;
-    pm->addPass(xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass(reorder));
+    pm->addPass(
+        xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass(reorder));
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass());
+        xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass());
     pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass());
     if (cli::ctrlpktMulticastSpan)
       pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());

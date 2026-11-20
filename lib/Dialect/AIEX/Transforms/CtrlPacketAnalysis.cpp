@@ -169,7 +169,7 @@ SmallVector<PacketRun> AIEX::packetRuns(Block &block, bool includePhases) {
 }
 
 SmallVector<PacketRun> AIEX::packetRuns(AIE::RuntimeSequenceOp seq,
-                                      bool includePhases) {
+                                        bool includePhases) {
   SmallVector<PacketRun> runs;
   seq.walk([&](Block *block) {
     llvm::append_range(runs, packetRuns(*block, includePhases));
@@ -187,7 +187,8 @@ ConfiguredDevices::controlArbiterIn(FlatSymbolRefAttr device, AIE::TileID tile,
 }
 
 ConfiguredDevices::Info &ConfiguredDevices::infoOf(FlatSymbolRefAttr device) {
-  auto [it, fresh] = infos.try_emplace(device ? device.getAttr() : StringAttr{});
+  auto [it, fresh] =
+      infos.try_emplace(device ? device.getAttr() : StringAttr{});
   if (fresh)
     it->second = std::make_unique<Info>();
   Info &info = *it->second;

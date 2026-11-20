@@ -2728,8 +2728,8 @@ AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return diag;
 }
 
-LogicalResult AIEX::SetDeviceOp::verifySymbolUses(
-    SymbolTableCollection &symbolTable) {
+LogicalResult
+AIEX::SetDeviceOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
   if (!isa_and_present<AIE::DeviceOp>(
           symbolTable.lookupSymbolIn(scope, getDeviceRefAttr())))

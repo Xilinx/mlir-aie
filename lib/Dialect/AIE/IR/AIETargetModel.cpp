@@ -66,7 +66,7 @@ const RegisterInfo *AIETargetModel::lookupRegister(llvm::StringRef name,
 }
 
 bool AIETargetModel::isReorderableRegisterWrite(TileID tile,
-                                               uint32_t offset) const {
+                                                uint32_t offset) const {
   if ((offset & 3) || !isValidTile(tile) ||
       (getTargetArch() != AIEArch::AIE2 && getTargetArch() != AIEArch::AIE2p))
     return false;
@@ -81,8 +81,8 @@ bool AIETargetModel::isReorderableRegisterWrite(TileID tile,
   if (isCoreTile(tile.col, tile.row) || isMemTile(tile.col, tile.row) ||
       isShimNOCTile(tile.col, tile.row))
     if (const DmaBdLayout *layout = getDmaBdLayout(tile.col, tile.row))
-      for (uint32_t descriptor = 0;
-           descriptor < getNumBDs(tile.col, tile.row); ++descriptor)
+      for (uint32_t descriptor = 0; descriptor < getNumBDs(tile.col, tile.row);
+           ++descriptor)
         if (inRange(getDmaBdAddress(tile.col, tile.row, descriptor) &
                         ((1u << getRowShift()) - 1),
                     4 * layout->numWords))

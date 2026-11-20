@@ -238,10 +238,10 @@ inline cl::opt<bool> ctrlpktAdaptiveOverlay(
 inline cl::opt<bool> ctrlpktParallelShims(
     "ctrlpkt-parallel-shims",
     cl::desc("Send every column's control packets at once (default: on)"));
-  inline cl::opt<bool> ctrlpktVerifyDelivery(
+inline cl::opt<bool> ctrlpktVerifyDelivery(
     "ctrlpkt-verify-delivery", cl::init(false),
     cl::desc("Validate control-packet ordering and route contracts"));
-  inline cl::opt<bool> ctrlpktEarlyActivation(
+inline cl::opt<bool> ctrlpktEarlyActivation(
     "ctrlpkt-early-activation", cl::init(true),
     cl::desc("Advance DMA pushes and core enables with a gating proof"));
 inline cl::opt<unsigned> ctrlpktMulticastSpan(

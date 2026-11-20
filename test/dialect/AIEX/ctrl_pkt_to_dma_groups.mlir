@@ -102,3 +102,15 @@ module {
     }
   }
 }
+
+// -----
+
+// CHECK-LABEL: aie.runtime_sequence @compiler_only()
+// CHECK-NEXT: {{^ *}}}
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence @compiler_only() {
+      aiex.control_packet_barrier {compiler_only}
+    }
+  }
+}

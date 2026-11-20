@@ -169,8 +169,8 @@ struct AIEInsertCtrlPacketBarriersPass
     const auto &target = getOperation().getTargetModel();
     getOperation().walk([&](AIEX::NpuControlPacketOp packet) {
       auto data = packet.getData();
-      bool ordinary = packet.getOpcode() == 0 && data &&
-                      !packet.getMulticastId();
+      bool ordinary =
+          packet.getOpcode() == 0 && data && !packet.getMulticastId();
       if (ordinary)
         for (size_t index = 0; index < data->size(); ++index)
           ordinary &= target.isReorderableRegisterWrite(
@@ -203,8 +203,7 @@ struct AIECoalesceControlPacketsPass
             continue;
           }
           auto data = packet.getData().value();
-          if (previous &&
-              previous.getStreamId() == packet.getStreamId() &&
+          if (previous && previous.getStreamId() == packet.getStreamId() &&
               previous.getMulticastId() == packet.getMulticastId() &&
               previous.getTileFromAddr() == packet.getTileFromAddr() &&
               previous.getAddress() + 4 * previous.getData()->size() ==
@@ -212,7 +211,7 @@ struct AIECoalesceControlPacketsPass
               previous.getAddress() / 16 ==
                   (packet.getAddress() + 4 * data.size() - 1) / 16) {
             SmallVector<int32_t, 4> merged(previous.getData()->begin(),
-                                         previous.getData()->end());
+                                           previous.getData()->end());
             llvm::append_range(merged, data);
             previous.setDataAttr(DenseI32ArrayAttr::get(&getContext(), merged));
             previous.removeLengthAttr();

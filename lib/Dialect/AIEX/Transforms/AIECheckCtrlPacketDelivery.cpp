@@ -81,7 +81,7 @@ struct RunOrder {
   std::optional<Arbiter> arbiterTaken(size_t i, ConfiguredDevices &devices,
                                       const std::set<Arbiter> &held) const {
     return AIEX::arbiterTaken(run[i].packet, run[i].device, infoOf(i), devices,
-                 held);
+                              held);
   }
 
   bool sameColumn(size_t a, size_t b) const {
