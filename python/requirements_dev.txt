@@ -22,7 +22,7 @@ ruff
 # (compile_commands.json) to run -- see utils/run_clang_tidy.sh. Pin matches
 # the clang-format version used in CI so this repo tracks one clang-tool
 # version instead of two where practical.
-clang-tidy==22.1.8
+clang-tidy==23.1.4
 # nanobind ABI-couples to the prebuilt mlir distro wheel (built against the
 # same version); a mismatch breaks Value-subclass recognition at runtime. Keep
 # this constraint identical to utils/mlir_wheels/requirements.in and
