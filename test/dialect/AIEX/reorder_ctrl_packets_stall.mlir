@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --split-input-file -aie-reorder-ctrl-packets-by-tile -verify-diagnostics | FileCheck %s --check-prefixes=CHECK,SERIAL
-// RUN: aie-opt %s --split-input-file -aie-reorder-ctrl-packets-by-tile=parallel-shims=true -verify-diagnostics | FileCheck %s --check-prefixes=CHECK,PARALLEL
-// RUN: aie-opt %s --split-input-file -aie-reorder-ctrl-packets-by-tile -verify-diagnostics | aie-opt --split-input-file -aie-check-ctrl-packet-delivery
-// RUN: aie-opt %s --split-input-file -aie-reorder-ctrl-packets-by-tile=parallel-shims=true -verify-diagnostics | aie-opt --split-input-file -aie-check-ctrl-packet-delivery=parallel-shims=true
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation -verify-diagnostics | FileCheck %s --check-prefixes=CHECK,SERIAL
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation=parallel-shims=true -verify-diagnostics | FileCheck %s --check-prefixes=CHECK,PARALLEL
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation -verify-diagnostics | aie-opt --split-input-file -aie-check-ctrl-packet-delivery
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation=parallel-shims=true -verify-diagnostics | aie-opt --split-input-file -aie-check-ctrl-packet-delivery=parallel-shims=true
 
 // Memory tile (0, 1)'s MM2S 0 stream (queue 1705524) takes arbiter 0 of
 // switchbox (0, 2), which the control packets to tile (0, 3) take too, so

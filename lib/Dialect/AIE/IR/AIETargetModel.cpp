@@ -65,6 +65,43 @@ const RegisterInfo *AIETargetModel::lookupRegister(llvm::StringRef name,
   return db->lookupRegister(name, getModuleForTile(*this, tile, isMem));
 }
 
+bool AIETargetModel::isReorderableRegisterWrite(TileID tile,
+                                               uint32_t offset) const {
+  if ((offset & 3) || !isValidTile(tile) ||
+      (getTargetArch() != AIEArch::AIE2 && getTargetArch() != AIEArch::AIE2p))
+    return false;
+  auto inRange = [offset](uint32_t base, uint32_t bytes) {
+    return offset >= base && offset - base < bytes;
+  };
+  if ((isCoreTile(tile.col, tile.row) &&
+       (inRange(0, getLocalMemorySize()) ||
+        inRange(0x20000, getProgramMemorySize()))) ||
+      (isMemTile(tile.col, tile.row) && inRange(0, getMemTileSize())))
+    return true;
+  if (isCoreTile(tile.col, tile.row) || isMemTile(tile.col, tile.row) ||
+      isShimNOCTile(tile.col, tile.row))
+    if (const DmaBdLayout *layout = getDmaBdLayout(tile.col, tile.row))
+      for (uint32_t descriptor = 0;
+           descriptor < getNumBDs(tile.col, tile.row); ++descriptor)
+        if (inRange(getDmaBdAddress(tile.col, tile.row, descriptor) &
+                        ((1u << getRowShift()) - 1),
+                    4 * layout->numWords))
+          return true;
+  const RegisterDatabase *database = getRegisterDatabase();
+  const RegisterInfo *reg =
+      database ? database->lookupRegisterByOffset(
+                     offset, getModuleForTile(*this, tile, false))
+               : nullptr;
+  if (!reg)
+    return false;
+  llvm::StringRef name = reg->name;
+  return name.starts_with("Stream_Switch_Master_Config_") ||
+         name.starts_with("Stream_Switch_Slave_Config_") ||
+         (name.starts_with("Stream_Switch_Slave_") && name.contains("_Slot")) ||
+         (isShimNOCorPLTile(tile.col, tile.row) &&
+          (name == "Mux_Config" || name == "Demux_Config"));
+}
+
 std::optional<uint32_t> AIETargetModel::lookupEvent(llvm::StringRef name,
                                                     TileID tile,
                                                     bool isMem) const {

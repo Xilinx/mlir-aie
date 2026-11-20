@@ -150,30 +150,39 @@ Under `--load-pdi-to-ctrl-pkt`, `aiex.set_device @device` selects the device
 configuration for subsequent operations. The marker has no region. Control
 packets, barriers, and runtime operations remain in the same block.
 
-- `aie-reorder-ctrl-packets-by-tile` puts each tile's packets together, so they
-  go in one transfer, and moves MM2S queue pushes and core enables behind the
-  rest of the configuration.
+- `aie-schedule-ctrl-packet-activation` orders setup and activation. Optional
+  gating proofs permit early DMA pushes and core enables.
+- `aie-insert-ctrl-packet-barriers` isolates ordered writes with compiler-only
+  barriers. The target model classifies ordinary memory and configuration
+  registers; unknown effects remain ordered.
+- `aie-reorder-ctrl-packets-by-tile` sorts ordinary writes by address and
+  removes overwritten words between barriers.
+- `aie-coalesce-control-packets` merges adjacent writes into packets of up to
+  four words within each aligned 16-byte address block.
 - `aie-ctrl-packet-to-dma{chain-bds}` sends each run of transfers on one shim
   channel as one BD chain with one await. Device markers and explicit barriers
   require completion of preceding control transfers.
 - `--ctrlpkt-parallel-shims` (default: on) starts every column's transfers
   before awaiting any. `aie-annotate-ctrl-packet-start-gating` proves which MM2S
-  channels cannot move data before their configuration lands;
-  `aie-check-ctrl-packet-delivery` fails the build when a stream started early
-  could hold a later control packet of the configuration.
-- The same proof finds cores that do nothing visible before their configuration
-  lands; `aie-reorder-ctrl-packets-by-tile{gated-enable}` sends their enables
-  with their column's packets.
+  channels cannot move data before their configuration lands. Disable those
+  proofs and early core activation with `--ctrlpkt-early-activation=false`.
 - `--ctrlpkt-multicast-span=<w>` (default: 1; 0 off): the overlay gets a control
   multicast for the core tiles of each group of w columns, and
   `aie-dedup-ctrl-packet-multicast` sends the packets those tiles share once.
-  `aie-check-ctrl-packet-delivery` also checks that each tile's writes land in
-  order.
+  The pass reads declared multicast groups without route analysis. Delivery
+  barriers isolate each multicast prefix.
+- `--ctrlpkt-verify-delivery` runs the standalone ordering and route validator.
+  It is off by default and does not transform the program.
 
 The descriptor allocator reserves the selected device's static BDs before
 allocating its configuration transfers. It retains reservations for the loaded
 overlay and live runtime tasks. The application must complete its use of shared
 resources before the next configuration.
+
+Ordinary-write optimization assumes quiescent application resources and an
+intact control overlay. The application must leave no outstanding accesses or
+traffic that can block configuration. A compiler-only barrier prevents compiler
+movement; a delivery barrier additionally requires prior packets to complete.
 
 ### Parameterized C++ transaction builders
 

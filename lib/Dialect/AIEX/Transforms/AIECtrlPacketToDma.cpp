@@ -373,7 +373,9 @@ struct AIECtrlPacketToDmaPass
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
 
         // A barrier ends the current batch and phase
-        if (isa<ControlPacketBarrierOp>(o)) {
+        if (auto barrier = dyn_cast<ControlPacketBarrierOp>(o)) {
+          if (barrier.getCompilerOnly())
+            continue;
           new_batch = true;
           ++phase;
           continue;

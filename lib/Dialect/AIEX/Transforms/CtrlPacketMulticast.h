@@ -67,7 +67,8 @@ public:
     const Multicast *multicastOf(NpuControlPacketOp packet) const;
   };
 
-  explicit OverlayMulticasts(mlir::ModuleOp module) : module(module) {}
+  explicit OverlayMulticasts(mlir::ModuleOp module, bool traceRoutes = true)
+      : module(module), traceRoutes(traceRoutes) {}
 
   // The multicasts of the overlay `configured` references; null when it has
   // none.
@@ -75,6 +76,7 @@ public:
 
 private:
   mlir::ModuleOp module;
+  bool traceRoutes;
   // By overlay symbol; null when the overlay records no multicast.
   llvm::DenseMap<mlir::StringAttr, std::unique_ptr<Info>> infos;
 };

@@ -238,6 +238,12 @@ inline cl::opt<bool> ctrlpktAdaptiveOverlay(
 inline cl::opt<bool> ctrlpktParallelShims(
     "ctrlpkt-parallel-shims",
     cl::desc("Send every column's control packets at once (default: on)"));
+  inline cl::opt<bool> ctrlpktVerifyDelivery(
+    "ctrlpkt-verify-delivery", cl::init(false),
+    cl::desc("Validate control-packet ordering and route contracts"));
+  inline cl::opt<bool> ctrlpktEarlyActivation(
+    "ctrlpkt-early-activation", cl::init(true),
+    cl::desc("Advance DMA pushes and core enables with a gating proof"));
 inline cl::opt<unsigned> ctrlpktMulticastSpan(
     "ctrlpkt-multicast-span", cl::value_desc("w"),
     cl::desc("Send the control packets the core tiles of each <w> columns "
@@ -793,6 +799,10 @@ inline bool resolveOptions(bool resuming = false) {
              ctrlpktAdaptiveOverlay, ctrlPktOverlay || loadPdiToCtrlPkt,
              "--generate-ctrl-pkt-overlay or --load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktParallelShims, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktVerifyDelivery, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktEarlyActivation, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktMulticastSpan, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt");

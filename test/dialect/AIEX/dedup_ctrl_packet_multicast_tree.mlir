@@ -5,19 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --split-input-file -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s --check-prefixes=CHECK,SHARED
-// RUN: aie-opt %s --split-input-file -aie-dedup-ctrl-packet-multicast=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefixes=CHECK,SHARED,PARALLEL
+// RUN: aie-opt %s --split-input-file -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s --check-prefixes=CHECK,SHARED
+// RUN: aie-opt %s --split-input-file -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefixes=CHECK,SHARED
 
 // Memory tile (0, 1)'s MM2S 0 stream (push 1705524) takes arbiter 1 of
 // switchbox (0, 1), which the multicast of (0, 2) and (0, 3) on id 28 takes too,
-// but not their own routes, on ids 26 and 27. On the multicast, their enables
-// (2301952, 3350528) could wait behind that stream, so each stays.
+// but not their own routes, on ids 26 and 27. The core enables remain unicast
+// actions. Compiler-only barriers leave the delivery phase unchanged.
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK:         aiex.set_device @cfg
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:      aiex.control_packet {address = 1705524 : ui32
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:    {{^ *}}}
 module {
   aie.device(npu2) @ov {
@@ -177,18 +181,20 @@ module {
 
 // At span 2 the multicast on id 28 reaches (0, 2) and (1, 3) through arbiter 0
 // of switchbox (0, 3), which neither tile's own route takes. Core tile
-// (0, 2)'s MM2S 0 stream (push 2219540) takes that arbiter too. The push leads
-// both tiles' packets, but on the multicast the enables would follow it
-// unawaited, so none goes on it.
+// (0, 2)'s MM2S 0 stream (push 2219540) takes that arbiter too. The queue pushes
+// and core enables require separate action writes across device markers.
 
 // CHECK-LABEL: aie.runtime_sequence @own
 // CHECK:         aiex.set_device @cfg
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:    aiex.control_packet {address = 2219540 : ui32
 // CHECK-NOT:     multicast_id
 // CHECK:         {{^ *}}}
 // CHECK-LABEL: aie.runtime_sequence @after_marker
 // CHECK:         aiex.set_device @cfg
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:    aiex.control_packet {address = 2219540 : ui32
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:    aiex.set_device @cfg
 // CHECK-NOT:     multicast_id
 // CHECK:         {{^ *}}}
@@ -360,12 +366,14 @@ module {
 
 // SHARED-LABEL: aie.runtime_sequence @shared_arbiters()
 // SHARED-NEXT:    aiex.set_device @cfg
+// SHARED-NEXT:    aiex.control_packet_barrier{{$}}
 // SHARED-NEXT:      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
 // SHARED-NEXT:      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 9>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-// PARALLEL-NEXT:  aiex.control_packet_barrier
+// SHARED-NEXT:    aiex.control_packet_barrier{{$}}
+// SHARED-NEXT:    aiex.control_packet_barrier{{$}}
 // SHARED-NEXT:      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
 // SHARED-NEXT:      aiex.control_packet {address = 35782660 : ui32, data = array<i32: 9>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-// PARALLEL-NEXT:  aiex.control_packet_barrier
+// SHARED-NEXT:    aiex.control_packet_barrier{{$}}
 // SHARED-NEXT:  {{^ *}}}
 module {
   aie.device(npu2) @ov {

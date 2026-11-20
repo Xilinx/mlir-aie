@@ -2050,18 +2050,22 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   if (ctrlPkt) {
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIELegalizeControlPacketPass());
-    xilinx::AIEX::AIEReorderCtrlPacketsByTileOptions reorder;
-    reorder.gatedEnable = true;
+    xilinx::AIEX::AIEScheduleCtrlPacketActivationOptions reorder;
+    reorder.gatedEnable = cli::ctrlpktEarlyActivation;
     reorder.parallelShims = cli::ctrlpktParallelShims;
-    pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(reorder));
-    if (cli::ctrlpktMulticastSpan) {
-      xilinx::AIEX::AIEDedupCtrlPacketMulticastOptions dedup;
-      dedup.parallelShims = cli::ctrlpktParallelShims;
-      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass(dedup));
+    pm->addPass(xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass(reorder));
+    pm->nest<xilinx::AIE::DeviceOp>().addPass(
+      xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass());
+    pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass());
+    if (cli::ctrlpktMulticastSpan)
+      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
+    pm->nest<xilinx::AIE::DeviceOp>().addPass(
+        xilinx::AIEX::createAIECoalesceControlPacketsPass());
+    if (cli::ctrlpktVerifyDelivery) {
+      xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
+      check.parallelShims = cli::ctrlpktParallelShims;
+      pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));
     }
-    xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
-    check.parallelShims = cli::ctrlpktParallelShims;
-    pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));
   }
   return pm;
 }

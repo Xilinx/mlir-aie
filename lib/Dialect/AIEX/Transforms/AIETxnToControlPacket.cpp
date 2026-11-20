@@ -17,6 +17,8 @@
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIELEGALIZECONTROLPACKET
+#define GEN_PASS_DEF_AIEINSERTCTRLPACKETBARRIERS
+#define GEN_PASS_DEF_AIECOALESCECONTROLPACKETS
 #define GEN_PASS_DEF_AIETXNTOCONTROLPACKET
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
@@ -160,6 +162,70 @@ struct AIELegalizeControlPacketPass
   }
 };
 
+struct AIEInsertCtrlPacketBarriersPass
+    : xilinx::AIEX::impl::AIEInsertCtrlPacketBarriersBase<
+          AIEInsertCtrlPacketBarriersPass> {
+  void runOnOperation() override {
+    const auto &target = getOperation().getTargetModel();
+    getOperation().walk([&](AIEX::NpuControlPacketOp packet) {
+      auto data = packet.getData();
+      bool ordinary = packet.getOpcode() == 0 && data &&
+                      !packet.getMulticastId();
+      if (ordinary)
+        for (size_t index = 0; index < data->size(); ++index)
+          ordinary &= target.isReorderableRegisterWrite(
+              packet.getTileFromAddr(), packet.getLocalAddress() + 4 * index);
+      if (ordinary)
+        return;
+      OpBuilder builder(packet);
+      if (!isa_and_present<AIEX::ControlPacketBarrierOp>(packet->getPrevNode()))
+        AIEX::ControlPacketBarrierOp::create(builder, packet.getLoc(),
+                                             builder.getUnitAttr());
+      builder.setInsertionPointAfter(packet);
+      if (!isa_and_present<AIEX::ControlPacketBarrierOp>(packet->getNextNode()))
+        AIEX::ControlPacketBarrierOp::create(builder, packet.getLoc(),
+                                             builder.getUnitAttr());
+    });
+  }
+};
+
+struct AIECoalesceControlPacketsPass
+    : xilinx::AIEX::impl::AIECoalesceControlPacketsBase<
+          AIECoalesceControlPacketsPass> {
+  void runOnOperation() override {
+    getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
+      sequence.walk([&](Block *block) {
+        AIEX::NpuControlPacketOp previous;
+        for (Operation &operation : llvm::make_early_inc_range(*block)) {
+          auto packet = dyn_cast<AIEX::NpuControlPacketOp>(operation);
+          if (!packet || packet.getOpcode() != 0 || !packet.getData()) {
+            previous = {};
+            continue;
+          }
+          auto data = packet.getData().value();
+          if (previous &&
+              previous.getStreamId() == packet.getStreamId() &&
+              previous.getMulticastId() == packet.getMulticastId() &&
+              previous.getTileFromAddr() == packet.getTileFromAddr() &&
+              previous.getAddress() + 4 * previous.getData()->size() ==
+                  packet.getAddress() &&
+              previous.getAddress() / 16 ==
+                  (packet.getAddress() + 4 * data.size() - 1) / 16) {
+            SmallVector<int32_t, 4> merged(previous.getData()->begin(),
+                                         previous.getData()->end());
+            llvm::append_range(merged, data);
+            previous.setDataAttr(DenseI32ArrayAttr::get(&getContext(), merged));
+            previous.removeLengthAttr();
+            packet.erase();
+          } else {
+            previous = packet;
+          }
+        }
+      });
+    });
+  }
+};
+
 } // namespace
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
@@ -170,4 +236,14 @@ xilinx::AIEX::createAIETxnToControlPacketPass() {
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 xilinx::AIEX::createAIELegalizeControlPacketPass() {
   return std::make_unique<AIELegalizeControlPacketPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass() {
+  return std::make_unique<AIEInsertCtrlPacketBarriersPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+xilinx::AIEX::createAIECoalesceControlPacketsPass() {
+  return std::make_unique<AIECoalesceControlPacketsPass>();
 }

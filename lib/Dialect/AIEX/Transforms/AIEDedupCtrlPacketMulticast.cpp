@@ -9,19 +9,13 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "CtrlPacketClassifier.h"
-#include "CtrlPacketDevices.h"
 #include "CtrlPacketMulticast.h"
 #include "CtrlPacketRuns.h"
 
 #include "mlir/Pass/Pass.h"
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-
 #include <map>
 #include <optional>
-#include <set>
 #include <tuple>
 
 namespace xilinx::AIEX {
@@ -55,252 +49,58 @@ struct AIEDedupCtrlPacketMulticastPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    ConfiguredDevices devices(module);
-    OverlayMulticasts multicasts(module);
+    OverlayMulticasts multicasts(module, false);
     for (auto device : module.getOps<AIE::DeviceOp>()) {
-      PacketClassifier classifier(device.getTargetModel());
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>()) {
-        SmallVector<Block *> blocks;
-        seq.walk([&](Block *block) {
-          blocks.push_back(block);
-        });
-        for (Block *block : blocks) {
-          for (PacketRun &run : packetRuns(*block, true))
-            if (failed(dedupRun(run, multicasts, classifier, devices)))
-              return signalPassFailure();
-          for (auto barrier : llvm::make_early_inc_range(
-                   block->getOps<ControlPacketBarrierOp>()))
-            if (isa_and_present<ControlPacketBarrierOp>(barrier->getPrevNode()))
-              barrier.erase();
-        }
-      }
-    }
-  }
-
-  // Dedups each phase of a delivery run, which aie-ctrl-packet-to-dma
-  // awaits before the next, knowing the arbiters each packet's streams may
-  // take once started.
-  LogicalResult dedupRun(PacketRun &run, OverlayMulticasts &multicasts,
-                         PacketClassifier &classifier,
-                         ConfiguredDevices &devices) {
-    llvm::DenseMap<Operation *, std::set<Arbiter>> started;
-    for (ContextualPacket &p : run) {
-      FailureOr<Classified> c = classifier.classify(p.packet);
-      if (failed(c))
-        return failure();
-      std::set<Arbiter> held = devices.startedArbiters(
-          p.device, p.packet.getTileFromAddr(), *c);
-      if (!held.empty())
-        started[p.packet] = std::move(held);
-    }
-    // What the streams of the phases before may hold.
-    std::set<Arbiter> earlier;
-    for (size_t begin = 0, end; begin < run.size(); begin = end) {
-      SmallVector<NpuControlPacketOp> phase;
-      std::set<Arbiter> held;
-      for (end = begin; end < run.size() && run[end].phase == run[begin].phase;
-           ++end) {
-        phase.push_back(run[end].packet);
-        if (auto it = started.find(run[end].packet); it != started.end())
-          held.insert(it->second.begin(), it->second.end());
-      }
-      if (const OverlayMulticasts::Info *info =
-              multicasts.of(run[begin].device))
-        if (failed(dedupPhase(phase, run[begin].device, *info, classifier, devices, started,
-                              earlier)))
-          return failure();
-      earlier.insert(held.begin(), held.end());
-    }
-    return success();
-  }
-
-  // Dedups each multicast whose every tile has packets in the phase `run`.
-  LogicalResult
-  dedupPhase(ArrayRef<NpuControlPacketOp> run,
-             FlatSymbolRefAttr device,
-             const OverlayMulticasts::Info &info, PacketClassifier &classifier,
-             ConfiguredDevices &devices,
-             const llvm::DenseMap<Operation *, std::set<Arbiter>> &started,
-             const std::set<Arbiter> &earlier) {
-    // By the multicast's column.
-    std::map<int, std::map<AIE::TileID, SmallVector<NpuControlPacketOp>>>
-        members;
-    for (NpuControlPacketOp packet : run) {
-      AIE::TileID tile = packet.getTileFromAddr();
-      auto it = info.byTile.find(tile);
-      if (it != info.byTile.end())
-        members[it->second][tile].push_back(packet);
-    }
-    llvm::DenseMap<Operation *, size_t> position;
-    for (auto [i, packet] : llvm::enumerate(run))
-      position[packet] = i;
-    // The copies go after every multicast is done, since each reads the run.
-    SmallVector<Operation *> copies;
-    SmallVector<SmallVector<NpuControlPacketOp>> first;
-    for (auto &[column, tiles] : members) {
-      const OverlayMulticasts::Multicast &m = info.multicasts.at(column);
-      if (tiles.size() != m.tiles.size())
-        continue;
-      if (failed(dedupMulticast(run, device, position, tiles, m, classifier, devices,
-                                started, earlier, info, copies, first)))
-        return failure();
-    }
-    for (Operation *op : copies)
-      op->erase();
-    if (!first.empty())
-      sendFirst(run.front(), first);
-    return success();
-  }
-
-  // Moves each multicast's packets to send first to the stretch's start, each
-  // ahead of a barrier of its own.
-  static void sendFirst(NpuControlPacketOp start,
-                        ArrayRef<SmallVector<NpuControlPacketOp>> first) {
-    OpBuilder builder(start);
-    auto insertion = ControlPacketBarrierOp::create(builder, start.getLoc());
-    for (const SmallVector<NpuControlPacketOp> &packets : first) {
-      for (NpuControlPacketOp packet : packets)
-        packet->moveBefore(insertion);
-      builder.setInsertionPoint(insertion);
-      ControlPacketBarrierOp::create(builder, start.getLoc());
-    }
-    insertion.erase();
-  }
-
-  // Sends the leading packets every tile of the multicast has in common once,
-  // from the lowest tile, collecting those to send first where the pass
-  // description says.
-  LogicalResult
-  dedupMulticast(ArrayRef<NpuControlPacketOp> run,
-                 FlatSymbolRefAttr device,
-                 const llvm::DenseMap<Operation *, size_t> &position,
-                 std::map<AIE::TileID, SmallVector<NpuControlPacketOp>> &tiles,
-                 const OverlayMulticasts::Multicast &m,
-                 PacketClassifier &classifier, ConfiguredDevices &devices,
-                 const llvm::DenseMap<Operation *, std::set<Arbiter>> &started,
-                 const std::set<Arbiter> &earlier,
-                 const OverlayMulticasts::Info &info,
-                 SmallVectorImpl<Operation *> &copies,
-                 SmallVectorImpl<SmallVector<NpuControlPacketOp>> &first) {
-    SmallVector<SmallVector<NpuControlPacketOp> *> lists;
-    for (auto &[tile, packets] : tiles)
-      lists.push_back(&packets);
-    SmallVector<NpuControlPacketOp> &base = *lists.front();
-    // Each tile's prefix is its first packets in the stretch, so the
-    // multicast changes no tile's order of its own packets. Only writes go
-    // on it, since every tile would answer a read.
-    size_t len = 0;
-    for (; len < base.size() && base[len].getOpcode() == 0; ++len) {
-      Write w = appliedWrite(base[len]);
-      bool common = llvm::all_of(llvm::drop_begin(lists), [&](auto *packets) {
-        return len < packets->size() && appliedWrite((*packets)[len]) == w &&
-               position.lookup(base[len]) < position.lookup((*packets)[len]);
-      });
-      if (!common)
-        break;
-    }
-
-    // The prefix stays in place only if every other packet to a member that
-    // lands after it does so in order, along the multicast's own trail from
-    // the same shim channel, or commutes with it.
-    auto sendsFirst = [&]() -> FailureOr<bool> {
-      if (parallelShims) {
-        auto tree = info.trees.find(m.column);
-        if (tree != info.trees.end())
-          for (const auto &[column, other] : info.trees)
-            if (column != m.column &&
-                llvm::any_of(tree->second, [&](const Arbiter &arbiter) {
-                  return other.count(arbiter);
-                }))
-              return true;
-      }
-      if (parallelShims && llvm::any_of(m.tiles, [&](AIE::TileID t) {
-            return t.col != m.column;
-          }))
-        return true;
-      SmallVector<Classified> shared;
-      for (size_t i = 0; i < len; ++i) {
-        FailureOr<Classified> c = classifier.classify(base[i]);
-        if (failed(c))
-          return failure();
-        shared.push_back(std::move(*c));
-      }
-      for (auto &[tile, packets] : tiles) {
-        if (info.keepsOrder(m, tile, parallelShims))
-          continue;
-        for (NpuControlPacketOp packet : llvm::drop_begin(packets, len)) {
-          if (!drainMerge)
-            return true;
-          FailureOr<Classified> c = classifier.classify(packet);
-          if (failed(c))
-            return failure();
-          if (llvm::any_of(shared, [&](const Classified &s) {
-                return !s.commutesWith(*c);
+        for (PacketRun &run : packetRuns(seq)) {
+          const OverlayMulticasts::Info *info =
+              multicasts.of(run.front().device);
+          if (!info || llvm::any_of(run, [&](ContextualPacket entry) {
+                return entry.packet.getStreamId() !=
+                       run.front().packet.getStreamId();
               }))
-            return true;
+            continue;
+          std::map<AIE::TileID, SmallVector<NpuControlPacketOp>> byTile;
+          for (ContextualPacket entry : run)
+            byTile[entry.packet.getTileFromAddr()].push_back(entry.packet);
+          for (const auto &[column, multicast] : info->multicasts) {
+            if (multicast.tiles.size() < 2 ||
+                llvm::any_of(multicast.tiles, [&](AIE::TileID tile) {
+                  return !byTile.count(tile);
+                }))
+              continue;
+            auto &base = byTile.at(multicast.tiles.front());
+            size_t count = 0;
+            for (; count < base.size(); ++count) {
+              NpuControlPacketOp packet = base[count];
+              if (packet.getOpcode() != 0 || !packet.getData() ||
+                  packet.getMulticastId())
+                break;
+              Write write = appliedWrite(packet);
+              if (llvm::any_of(llvm::drop_begin(multicast.tiles),
+                               [&](AIE::TileID tile) {
+                                 auto &copies = byTile.at(tile);
+                                 return count >= copies.size() ||
+                                        copies[count].getMulticastId() ||
+                                        appliedWrite(copies[count]) != write;
+                               }))
+                break;
+            }
+            if (!count)
+              continue;
+            for (size_t index = 0; index < count; ++index) {
+              base[index].setMulticastId(multicast.id);
+              for (AIE::TileID tile : llvm::drop_begin(multicast.tiles))
+                byTile.at(tile)[index].erase();
+            }
+            OpBuilder builder(base.front());
+            ControlPacketBarrierOp::create(builder, base.front().getLoc());
+            builder.setInsertionPointAfter(base[count - 1]);
+            ControlPacketBarrierOp::create(builder, base[count - 1].getLoc());
+          }
         }
       }
-      return false;
-    };
-
-    // Sending packet `i` of every tile from the base's position, or the
-    // stretch's start, moves each copy ahead of the packets between, and onto
-    // the base's shim channel with the packets before it in the stretch, none
-    // of which is awaited first. So it must start no stream one of those may
-    // wait behind (see aie-reorder-ctrl-packets-by-tile).
-    llvm::DenseSet<Operation *> merged;
-    auto startsAheadOfBlocked = [&](size_t i) {
-      for (auto *packets : lists) {
-        NpuControlPacketOp copy = (*packets)[i];
-        auto held = started.find(copy);
-        if (held == started.end())
-          continue;
-        for (size_t k = 0, end = position.lookup(copy); k < end; ++k)
-          if (!merged.contains(run[k]) &&
-              arbiterTaken(run[k], device, &info, devices, held->second))
-            return true;
-      }
-      return false;
-    };
-    for (size_t i = 0; i < len; ++i) {
-      for (auto *packets : lists)
-        merged.insert((*packets)[i]);
-      if (startsAheadOfBlocked(i)) {
-        len = i;
-        break;
-      }
     }
-    if (len == 0)
-      return success();
-
-    // On the multicast the prefix takes the tree's arbiters, which no stream
-    // started in a phase before, or by a packet of this one, the prefix's own
-    // included, may hold.
-    if (auto tree = info.trees.find(m.column); tree != info.trees.end()) {
-      auto takes = [&](const std::set<Arbiter> &held) {
-        return llvm::any_of(tree->second,
-                            [&](const Arbiter &a) { return held.count(a); });
-      };
-      if (takes(earlier) || llvm::any_of(run, [&](NpuControlPacketOp p) {
-            auto held = started.find(p);
-            return held != started.end() && takes(held->second);
-          }))
-        return success();
-    }
-    FailureOr<bool> moveFirst = sendsFirst();
-    if (failed(moveFirst))
-      return failure();
-
-    SmallVector<NpuControlPacketOp> prefix;
-    for (size_t i = 0; i < len; ++i) {
-      base[i].setMulticastId(m.id);
-      prefix.push_back(base[i]);
-      for (auto *packets : llvm::drop_begin(lists))
-        copies.push_back((*packets)[i]);
-    }
-    if (*moveFirst)
-      first.push_back(std::move(prefix));
-    return success();
   }
 };
 
@@ -309,10 +109,4 @@ struct AIEDedupCtrlPacketMulticastPass
 std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass() {
   return std::make_unique<AIEDedupCtrlPacketMulticastPass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass(
-    const AIEDedupCtrlPacketMulticastOptions &options) {
-  return std::make_unique<AIEDedupCtrlPacketMulticastPass>(options);
 }

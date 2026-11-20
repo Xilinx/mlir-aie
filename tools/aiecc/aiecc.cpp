@@ -1881,7 +1881,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 mlir::OwningOpRef<mlir::ModuleOp> annotated =
                     physicalN.get().get().clone();
                 mlir::PassManager pm(&context);
-                if (loadPdiToCtrlPkt)
+                if (loadPdiToCtrlPkt && ctrlpktEarlyActivation)
                   pm.addPass(xilinx::AIEX::
                                  createAIEAnnotateCtrlPacketStartGatingPass());
                 pm.addPass(

@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --split-input-file -aie-reorder-ctrl-packets-by-tile | FileCheck %s --check-prefixes=CHECK,CONTEXT
-// RUN: aie-opt %s --split-input-file -aie-reorder-ctrl-packets-by-tile=gated-enable=true | FileCheck %s --check-prefixes=GATED,CONTEXT
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation | FileCheck %s --check-prefixes=CHECK,CONTEXT
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation=gated-enable=true | FileCheck %s --check-prefixes=GATED,CONTEXT
 
 // A queue push to a channel aie-annotate-ctrl-packet-start-gating proved gated
 // (the selected device marks that channel's aie.dma_start

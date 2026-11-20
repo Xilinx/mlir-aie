@@ -12,5 +12,5 @@
 //
 // CHECKER-NOT: not proved gated
 // ENABLE:     aiex.set_device @cfg
-// ENABLE-NOT: aiex.control_packet_barrier
+// ENABLE-NOT: aiex.control_packet_barrier{{$}}
 // ENABLE:     address = 35856384 : ui32, data = array<i32: 1>

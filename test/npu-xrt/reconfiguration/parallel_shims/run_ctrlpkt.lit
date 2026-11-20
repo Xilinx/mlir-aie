@@ -12,5 +12,5 @@
 //
 // CHECKER-NOT: not proved gated
 // GATED:     aiex.set_device @cfg
-// GATED-NOT: aiex.control_packet_barrier
+// GATED-NOT: aiex.control_packet_barrier{{$}}
 // GATED:     address = 1705524 : ui32, data

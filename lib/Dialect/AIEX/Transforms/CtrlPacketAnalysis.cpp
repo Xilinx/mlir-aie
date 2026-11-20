@@ -144,6 +144,9 @@ SmallVector<PacketRun> AIEX::packetRuns(Block &block, bool includePhases) {
     phase = 0;
   };
   for (Operation &op : block) {
+    if (auto barrier = dyn_cast<ControlPacketBarrierOp>(op);
+        barrier && barrier.getCompilerOnly() && includePhases)
+      continue;
     if (isa<SetDeviceOp, ControlPacketBarrierOp>(op)) {
       if (includePhases)
         ++phase;
@@ -292,7 +295,7 @@ std::optional<Arbiter> AIEX::arbiterTaken(NpuControlPacketOp packet,
 // Reads `overlay`'s aie.ctrl_pkt_multicast and the routes of its control
 // channels; null when it records no multicast.
 static std::unique_ptr<OverlayMulticasts::Info>
-readMulticasts(AIE::DeviceOp overlay) {
+readMulticasts(AIE::DeviceOp overlay, bool traceRoutes) {
   MLIRContext *ctx = overlay.getContext();
   ArrayAttr listed =
       AIE::AIEDialect::CtrlPktMulticastAttrHelper(ctx).getAttr(overlay);
@@ -311,6 +314,8 @@ readMulticasts(AIE::DeviceOp overlay) {
     }
     info->multicasts[m.column] = std::move(m);
   }
+  if (!traceRoutes)
+    return info;
   for (auto [tile, id] : controllerIdsOf(overlay))
     info->controllerIds[tile] = id.assignedId();
   std::map<int, int> channels;
@@ -359,7 +364,7 @@ OverlayMulticasts::of(FlatSymbolRefAttr configured) {
   if (fresh)
     if (auto overlay =
             module.lookupSymbol<AIE::DeviceOp>(device.getOverlayAttr()))
-      it->second = readMulticasts(overlay);
+      it->second = readMulticasts(overlay, traceRoutes);
   return it->second.get();
 }
 

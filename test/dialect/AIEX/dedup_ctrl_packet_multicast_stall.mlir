@@ -5,20 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --split-input-file -aie-reorder-ctrl-packets-by-tile=parallel-shims=true -aie-dedup-ctrl-packet-multicast=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s
-// RUN: aie-opt %s --split-input-file -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation=parallel-shims=true -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s
 
 // Core (0, 3)'s stream takes arbiter 0 of switchbox (0, 3), which the control
 // packets to tile (0, 4) take too, so (0, 4)'s core enable (4399104) goes
-// before (0, 3)'s (3350528), a barrier between, which keeps (0, 3)'s enable off
-// the multicast with (0, 2)'s (2301952).
+// before (0, 3)'s (3350528). A hardware barrier separates those enables.
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK:         aiex.set_device @cfg
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:      aiex.control_packet {address = 4399104 : ui32
-// CHECK-NEXT:    aiex.control_packet_barrier
+// CHECK-NEXT:    aiex.control_packet_barrier{{$}}
 // CHECK-NEXT:      aiex.control_packet {address = 3350528 : ui32
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:    {{^ *}}}
 module {
   aie.device(npu2) @ov {
@@ -104,14 +106,18 @@ module {
 
 // Memory tile (1, 1)'s MM2S 0 stream (push 35259956) takes arbiter 0 of
 // switchbox (1, 2), which the control packets to tile (1, 3) take too, so core
-// (1, 3)'s enable (36904960) goes first, a barrier between. It goes on the
-// multicast from column 0 with core (0, 3)'s (3350528), still first.
+// (1, 3)'s enable (36904960) precedes the push. A hardware barrier separates
+// the enable from the push.
 
 // CHECK-LABEL:     aie.runtime_sequence
 // CHECK:             aiex.set_device @cfg
-// CHECK-NEXT:          aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
-// CHECK-NEXT:        aiex.control_packet_barrier
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:          aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:          aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode
+// CHECK-NEXT:        aiex.control_packet_barrier{{$}}
 // CHECK-NEXT:          aiex.control_packet {address = 35259956 : ui32
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:        {{^ *}}}
 module {
   aie.device(npu2) @ov {
@@ -204,15 +210,17 @@ module {
 
 // Core (1, 3)'s stream takes arbiter 0 of switchbox (1, 1), which the control
 // packets to memory tile (1, 1) take too, so the push (35259956) goes before
-// core (1, 3)'s enable (36904960), a barrier between, which keeps that enable
-// off the multicast with core (0, 3)'s (3350528).
+// core (1, 3)'s enable (36904960). A hardware barrier separates them.
 
 // CHECK-LABEL:     aie.runtime_sequence
 // CHECK:             aiex.set_device @cfg
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:          aiex.control_packet {address = 35259956 : ui32
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:          aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:        aiex.control_packet_barrier
+// CHECK-NEXT:        aiex.control_packet_barrier{{$}}
 // CHECK-NEXT:          aiex.control_packet {address = 36904960 : ui32
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
 // CHECK-NEXT:        {{^ *}}}
 module {
   aie.device(npu2) @ov {

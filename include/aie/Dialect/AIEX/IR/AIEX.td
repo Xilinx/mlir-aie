@@ -1349,8 +1349,14 @@ def AIE_ControlPacketBarrierOp
   let summary = "Order the control packets around it";
   let description = [{
     Every control packet before it in its run lands before any after it.
+    With `compiler_only`, the barrier only prevents compiler transformations
+    across it. DMA lowering removes that form without adding synchronization.
   }];
+  let arguments = (ins UnitAttr:$compiler_only);
   let assemblyFormat = [{ attr-dict }];
+  let builders = [OpBuilder<(ins), [{
+    build($_builder, $_state, /*compiler_only=*/nullptr);
+  }]>];
 }
 
 // NPU Bd Write operation

@@ -25,6 +25,7 @@
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEREORDERCTRLPACKETSBYTILE
+#define GEN_PASS_DEF_AIESCHEDULECTRLPACKETACTIVATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
@@ -34,9 +35,9 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-struct AIEReorderCtrlPacketsByTilePass
-    : xilinx::AIEX::impl::AIEReorderCtrlPacketsByTileBase<
-          AIEReorderCtrlPacketsByTilePass> {
+struct AIEScheduleCtrlPacketActivationPass
+  : xilinx::AIEX::impl::AIEScheduleCtrlPacketActivationBase<
+      AIEScheduleCtrlPacketActivationPass> {
   using Base::Base;
 
   void runOnOperation() override {
@@ -186,6 +187,76 @@ struct AIEReorderCtrlPacketsByTilePass
   }
 };
 
+struct AIEReorderCtrlPacketsByTilePass
+    : xilinx::AIEX::impl::AIEReorderCtrlPacketsByTileBase<
+          AIEReorderCtrlPacketsByTilePass> {
+  static void normalize(SmallVectorImpl<NpuControlPacketOp> &packets) {
+    if (packets.size() < 2) {
+      packets.clear();
+      return;
+    }
+    Block *block = packets.back()->getBlock();
+    auto end = std::next(packets.back()->getIterator());
+    llvm::DenseSet<uint32_t> written;
+    SmallVector<NpuControlPacketOp> surviving;
+    for (NpuControlPacketOp packet : llvm::reverse(packets)) {
+      auto data = packet.getData().value();
+      SmallVector<bool, 4> live;
+      for (size_t index = 0; index < data.size(); ++index)
+        live.push_back(written.insert(packet.getAddress() + 4 * index).second);
+      if (llvm::all_of(live, [](bool value) { return value; })) {
+        surviving.push_back(packet);
+        continue;
+      }
+      OpBuilder builder(packet);
+      for (size_t begin = 0; begin < data.size();) {
+        if (!live[begin]) {
+          ++begin;
+          continue;
+        }
+        size_t limit = begin + 1;
+        while (limit < data.size() && live[limit])
+          ++limit;
+        auto fragment = NpuControlPacketOp::create(
+            builder, packet.getLoc(),
+            builder.getUI32IntegerAttr(packet.getAddress() + 4 * begin),
+            IntegerAttr{}, packet.getOpcodeAttr(), packet.getStreamIdAttr(),
+            builder.getDenseI32ArrayAttr(data.slice(begin, limit - begin)));
+        surviving.push_back(fragment);
+        begin = limit;
+      }
+      packet.erase();
+    }
+    llvm::sort(surviving, [](NpuControlPacketOp left, NpuControlPacketOp right) {
+      return left.getAddress() < right.getAddress();
+    });
+    for (NpuControlPacketOp packet : surviving)
+      packet->moveBefore(block, end);
+    packets.clear();
+  }
+
+  void runOnOperation() override {
+    getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
+      sequence.walk([&](Block *block) {
+        SmallVector<NpuControlPacketOp> packets;
+        for (Operation &operation : llvm::make_early_inc_range(*block)) {
+          auto packet = dyn_cast<NpuControlPacketOp>(operation);
+          if (!packet || packet.getOpcode() != 0 || !packet.getData() ||
+              packet.getMulticastId()) {
+            normalize(packets);
+            continue;
+          }
+          if (!packets.empty() &&
+              packets.back().getStreamId() != packet.getStreamId())
+            normalize(packets);
+          packets.push_back(packet);
+        }
+        normalize(packets);
+      });
+    });
+  }
+};
+
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -194,7 +265,12 @@ xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass() {
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(
-    const AIEReorderCtrlPacketsByTileOptions &options) {
-  return std::make_unique<AIEReorderCtrlPacketsByTilePass>(options);
+xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass() {
+  return std::make_unique<AIEScheduleCtrlPacketActivationPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass(
+    const AIEScheduleCtrlPacketActivationOptions &options) {
+  return std::make_unique<AIEScheduleCtrlPacketActivationPass>(options);
 }

@@ -406,9 +406,7 @@ def AIEAssignRuntimeSequenceBDIDs
        Option<"warnUnreleasedTransfers", "warn-unreleased-transfers", "bool",
               /*default=*/"true",
               "Warn when a straight-line runtime sequence leaves DMA transfers "
-              "neither awaited nor freed, or starts a configuration's control "
-              "packets on a shim tile with such transfers since the last "
-              "load_pdi. Completion established indirectly through "
+        "neither awaited nor freed. Completion established indirectly through "
               "computation or other channels may not be visible.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
@@ -739,6 +737,33 @@ def AIETxnToControlPacket : Pass<"aie-txn-to-ctrl-packet", "AIE::DeviceOp"> {
   ];
 }
 
+def AIEInsertCtrlPacketBarriers
+    : Pass<"aie-insert-ctrl-packet-barriers", "AIE::DeviceOp"> {
+  let summary = "Isolate ordered register writes with compiler barriers";
+  let description = [{
+    Requires quiescent application resources and an intact control overlay.
+    The target model identifies ordinary storage writes. Compiler-only
+    barriers surround every other packet, including reads and unknown
+    effects. These barriers preserve ordering without waiting for hardware.
+    Run this pass before ordinary-write normalization and coalescing.
+  }];
+  let constructor = "xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass()";
+  let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
+}
+
+def AIECoalesceControlPackets
+    : Pass<"aie-coalesce-control-packets", "AIE::DeviceOp"> {
+  let summary = "Merge adjacent control-packet writes";
+  let description = [{
+    Combines adjacent writes with consecutive addresses and matching
+    destinations and header settings. Compiler barriers must isolate ordered
+    writes before this pass. The merged payload stays within one aligned
+    four-word line.
+  }];
+  let constructor = "xilinx::AIEX::createAIECoalesceControlPacketsPass()";
+  let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
+}
+
 def AIELegalizeControlPacket
     : Pass<"aie-legalize-ctrl-packet", "AIE::DeviceOp"> {
   let summary = "Legalize control packet operations for target";
@@ -751,7 +776,21 @@ def AIELegalizeControlPacket
 
 def AIEReorderCtrlPacketsByTile
     : Pass<"aie-reorder-ctrl-packets-by-tile", "mlir::ModuleOp"> {
-  let summary = "Group each run of control packets by destination tile";
+  let summary = "Order ordinary control writes and remove overwritten words";
+  let description = [{
+    Requires compiler barriers around action-triggering and unknown writes.
+    Within each uninterrupted sequence of ordinary unicast writes, retains
+    the last value for each word and orders the surviving packets by address.
+    Header changes and other operations end the sequence. Run before multicast
+    selection and adjacent-write coalescing.
+  }];
+  let constructor = "xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass()";
+  let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
+}
+
+def AIEScheduleCtrlPacketActivation
+    : Pass<"aie-schedule-ctrl-packet-activation", "mlir::ModuleOp"> {
+  let summary = "Schedule configuration and activation delivery";
   let description = [{
     Reorders adjacent control packets by tile for DMA batching. Device
     markers, explicit barriers, and other operations end each run.
@@ -797,7 +836,7 @@ def AIEReorderCtrlPacketsByTile
                         "delivery">,
   ];
 
-  let constructor = "xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass()";
+  let constructor = "xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -891,41 +930,15 @@ def AIEDedupCtrlPacketMulticast
     : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
   let summary = "Send the control packets a multicast's tiles share once";
   let description = [{
-    For each run of adjacent control packets between explicit boundaries,
-    and each control multicast that the selected device's overlay lists in
-    `aie.ctrl_pkt_multicast`, compares the
-    multicast's tiles' packets position by position. The leading packets that
-    make the same write on every tile (apart from the address's column and row
-    bits) and come first on the lowest tile, the base, stay only there, with the
-    multicast's id as their `multicast_id`; the other tiles' copies go. A
-    multicast with a tile that has no packets in the stretch is left alone. Run
-    it after `aie-reorder-ctrl-packets-by-tile`: a copy that starts streams is
-    kept, with the packets after it, if a packet before it in the stretch may
-    wait behind one of those streams, since on the multicast it would go out
-    with that packet unawaited.
+    Requires quiescent application resources, compiler barriers around ordered
+    writes, and ordinary-write normalization. The overlay declares disjoint
+    multicast destination groups in `aie.ctrl_pkt_multicast`.
 
-    A later packet to one of the tiles lands after the base only if it leaves
-    by the same control channel and passes the same switch input ports as the
-    multicast does to that tile, or, serially, leaves by another column's
-    channel, awaited after the base's. Where some later packet to a tile does
-    not and
-    does not commute with the base (as `aie-check-ctrl-packet-delivery` defines
-    it), the base moves to the start of its stretch, followed by an
-    `aiex.control_packet_barrier`, so `aie-ctrl-packet-to-dma` sends it first.
-    With `drain-merge=false` it moves whenever some tile's later packets do not
-    land after it that way. With `parallel-shims` it moves whenever the
-    multicast has a tile in another column, whose packets land alongside it
-    from their own shim channel.
+    Replaces matching leading writes to every tile of a group with packets
+    from its source column carrying `multicast_id`. Delivery barriers surround
+    each selected prefix, so later actions wait for its completion. Runs with
+    different stream IDs remain unchanged. The pass does not inspect routes.
   }];
-
-  let options = [Option<"drainMerge", "drain-merge", "bool",
-                        /*default=*/"true",
-                        "Leave the base in place when the later packets that "
-                        "may overtake it commute with it">,
-                 Option<"parallelShims", "parallel-shims", "bool",
-                        /*default=*/"false",
-                        "Dedup for parallel-shims delivery">,
-  ];
 
   let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",

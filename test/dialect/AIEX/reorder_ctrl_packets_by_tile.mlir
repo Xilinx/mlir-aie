@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-reorder-ctrl-packets-by-tile | FileCheck %s
-// RUN: aie-opt %s -aie-reorder-ctrl-packets-by-tile=by-tile=false | FileCheck %s --check-prefix=NOSORT
+// RUN: aie-opt %s -aie-schedule-ctrl-packet-activation | FileCheck %s
+// RUN: aie-opt %s -aie-schedule-ctrl-packet-activation=by-tile=false | FileCheck %s --check-prefix=NOSORT
+// RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile | FileCheck %s --check-prefix=NORMALIZE
 
 // The pass sorts each packet run by tile (column, then row).
 // It retains each tile's packet order. MM2S queue pushes
@@ -51,6 +52,34 @@
 // NOSORT-NEXT: address = 1705524 : ui32, data = array<i32: 1>
 // NOSORT-NEXT: address = 35856384 : ui32, data = array<i32: 1>
 // NOSORT-NEXT: address = 2301952 : ui32, data = array<i32: 1>
+
+// NORMALIZE-LABEL: aie.runtime_sequence
+// NORMALIZE-NEXT: aiex.set_device @cfg
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 35856384 : ui32, data = array<i32: 1>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 2301952 : ui32, data = array<i32: 0>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 2301952 : ui32, data = array<i32: 2>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 2219536 : ui32, data = array<i32: 2>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 1769472 : ui32, data = array<i32: 11>, opcode
+// NORMALIZE-NEXT: address = 2215936 : ui32, data = array<i32: 22>, opcode
+// NORMALIZE-NEXT: address = 2355204 : ui32, data = array<i32: 21>, opcode
+// NORMALIZE-NEXT: address = 35909636 : ui32, data = array<i32: 31>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 2219540 : ui32, data = array<i32: 1>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 1705524 : ui32, data = array<i32: 1>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 1835008 : ui32, data = array<i32: 12>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only}
+// NORMALIZE-NEXT: address = 2301952 : ui32, data = array<i32: 1>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier{{$}}
+// NORMALIZE-NEXT: address = 2355204 : ui32, data = array<i32: 7>, opcode
+// NORMALIZE-NEXT: address = 35909636 : ui32, data = array<i32: 7>, opcode
+// NORMALIZE-NEXT: {{^ *}}}
 
 aie.device(npu2) @cfg {
 }
