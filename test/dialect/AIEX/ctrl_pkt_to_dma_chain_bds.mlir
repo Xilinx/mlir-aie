@@ -5,18 +5,35 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file | FileCheck %s --implicit-check-not=aiex.ctrl_pkt_transfer
-// RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file -verify-diagnostics -o /dev/null
-// RUN: aie-opt %s "-aie-ctrl-packet-to-dma=chain-bds=true parallel-shims=true" --split-input-file -verify-diagnostics -o /dev/null
-// RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids -aie-dma-tasks-to-npu | FileCheck %s --check-prefix=NPU --implicit-check-not=aiex.set_device
+// RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file | FileCheck %s --check-prefix=DEFER --implicit-check-not=aiex.ctrl_pkt_transfer
+// RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids=chain-tasks=true | FileCheck %s --implicit-check-not=aiex.set_device --implicit-check-not=defer_completion
+// RUN: aie-opt %s "-aie-ctrl-packet-to-dma=chain-bds=true parallel-shims=true" --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids=chain-tasks=true -verify-diagnostics -o /dev/null
+// RUN: aie-opt %s -aie-ctrl-packet-to-dma=chain-bds=true --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids=chain-tasks=true -aie-dma-tasks-to-npu | FileCheck %s --check-prefix=NPU --implicit-check-not=aiex.set_device
 
-// One run of generated batches on one channel is one task, one BD per batch (a
-// batch is a run of packets to one tile), in stream order. Another op ends the
-// run.
+// DEFER-LABEL: @one_run
+// DEFER:       aiex.set_device @cfg
+// DEFER-NEXT:  %[[FIRST:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// DEFER-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 6)
+// DEFER-NEXT:    aie.end
+// DEFER-NEXT:  } {issue_token = true}
+// DEFER-NEXT:  aiex.dma_start_task(%[[FIRST]])
+// DEFER-NEXT:  aiex.dma_await_task(%[[FIRST]]) {defer_completion}
+// DEFER-NEXT:  %[[SECOND:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// DEFER-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
+// DEFER-NEXT:    aie.end
+// DEFER-NEXT:  } {issue_token = true}
+// DEFER-NEXT:  aiex.dma_start_task(%[[SECOND]])
+// DEFER-NEXT:  aiex.dma_await_task(%[[SECOND]]) {defer_completion}
+// DEFER-NEXT:  %[[LAST:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// DEFER-NEXT:    aie.dma_bd({{.*}} offset = 9 len = 3)
+// DEFER-NEXT:    aie.end
+// DEFER-NEXT:  } {issue_token = true}
+// DEFER-NEXT:  aiex.dma_start_task(%[[LAST]])
+// DEFER-NEXT:  aiex.dma_await_task(%[[LAST]]){{$}}
+// DEFER-NEXT:  aiex.npu.write32
 
 // CHECK-LABEL: @one_run
-// CHECK:       aiex.set_device @cfg
-// CHECK-NEXT:  %[[T:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK:       %[[T:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd(%[[ARG:.*]] : memref<?xi32> offset = 0 len = 6)
 // CHECK-NEXT:    aie.next_bd ^[[B1:.*]]
 // CHECK-NEXT:  ^[[B1]]:
@@ -25,14 +42,14 @@
 // CHECK-NEXT:  ^[[B2]]:
 // CHECK-NEXT:    aie.dma_bd(%[[ARG]] : memref<?xi32> offset = 9 len = 3)
 // CHECK-NEXT:    aie.end
-// CHECK-NEXT:  } {issue_token = true}
+// CHECK-NEXT:  } {alloc = @ctrlpkt_col0_mm2s_chan0, issue_token = true}
 // CHECK-NEXT:  aiex.dma_start_task(%[[T]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[T]])
 // CHECK-NEXT:  aiex.npu.write32
-// CHECK-NEXT:  %[[U:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:  %[[U:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd(%[[ARG]] : memref<?xi32> offset = 12 len = 3)
 // CHECK-NEXT:    aie.end
-// CHECK-NEXT:  } {issue_token = true}
+// CHECK-NEXT:  } {alloc = @ctrlpkt_col0_mm2s_chan0, issue_token = true}
 // CHECK-NEXT:  aiex.dma_start_task(%[[U]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[U]])
 // CHECK-NOT:   aiex.npu.dma_memcpy_nd
@@ -75,15 +92,15 @@ module {
 // order relative to the other channel's.
 
 // CHECK-LABEL: @two_columns
-// CHECK:       aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK:       aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
 // CHECK-NEXT:    aie.end
 // CHECK:       aiex.dma_await_task
-// CHECK-NEXT:  aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHECK-NEXT:  aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 3 len = 3)
 // CHECK-NEXT:    aie.end
 // CHECK:       aiex.dma_await_task
-// CHECK-NEXT:  aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:  aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
 // CHECK-NEXT:    aie.end
 module {
@@ -110,12 +127,12 @@ module {
 // A chain holds at most the shim tile's 16 BDs, so 17 batches are two tasks.
 
 // CHECK-LABEL: @long_run
-// CHECK:       aiex.dma_configure_task_for
+// CHECK:       aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-COUNT-15: aie.next_bd
 // CHECK:       aie.dma_bd({{.*}} offset = 45 len = 3)
 // CHECK-NEXT:  aie.end
 // CHECK:       aiex.dma_await_task
-// CHECK-NEXT:  aiex.dma_configure_task_for
+// CHECK-NEXT:  aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 48 len = 3)
 // CHECK-NEXT:    aie.end
 module {
@@ -154,7 +171,7 @@ module {
 // A read ends its batch and sends only its two header words.
 
 // CHECK-LABEL: @read
-// CHECK:       aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK:       aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
 // CHECK:         aie.dma_bd({{.*}} offset = 3 len = 2)
 // CHECK:         aie.dma_bd({{.*}} offset = 5 len = 3)
@@ -180,13 +197,13 @@ module {
 // The shim tile's static DMA holds 14 of its 16 BDs, so a chain holds 2.
 
 // CHECK-LABEL: @static_bds
-// CHECK:       aiex.dma_configure_task_for
+// CHECK:       aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
 // CHECK-NEXT:    aie.next_bd
 // CHECK:         aie.dma_bd({{.*}} offset = 3 len = 3)
 // CHECK-NEXT:    aie.end
 // CHECK:       aiex.dma_await_task
-// CHECK-NEXT:  aiex.dma_configure_task_for
+// CHECK-NEXT:  aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
 // CHECK-NEXT:    aie.end
 module {
@@ -260,13 +277,13 @@ module {
 // its control packets set up, so a chain holds 2, on the other ids.
 
 // CHECK-LABEL: @configured_static_bds
-// CHECK:       aiex.dma_configure_task_for
+// CHECK:       aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
 // CHECK-NEXT:    aie.next_bd
 // CHECK:         aie.dma_bd({{.*}} offset = 3 len = 3)
 // CHECK-NEXT:    aie.end
 // CHECK:       aiex.dma_await_task
-// CHECK-NEXT:  aiex.dma_configure_task_for
+// CHECK-NEXT:  aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
 // CHECK-NEXT:    aie.end
 
@@ -347,13 +364,13 @@ module {
 // chain holds 2, on the other ids.
 
 // CHECK-LABEL: @loaded_static_bds
-// CHECK:       aiex.dma_configure_task_for
+// CHECK:       aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
 // CHECK-NEXT:    aie.next_bd
 // CHECK:         aie.dma_bd({{.*}} offset = 3 len = 3)
 // CHECK-NEXT:    aie.end
 // CHECK:       aiex.dma_await_task
-// CHECK-NEXT:  aiex.dma_configure_task_for
+// CHECK-NEXT:  aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
 // CHECK-NEXT:    aie.end
 
@@ -437,13 +454,13 @@ module {
 // holds 6.
 
 // CHECK-LABEL: @in_flight
-// CHECK:       aiex.dma_configure_task_for @data
-// CHECK:       aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
+// CHECK:       aiex.dma_configure_task(%shim_noc_tile_0_0, S2MM, 0)
+// CHECK:       aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-COUNT-5: aie.next_bd
 // CHECK:       aie.dma_bd({{.*}} offset = 15 len = 3)
 // CHECK-NEXT:  aie.end
 // CHECK:       aiex.dma_await_task
-// CHECK-NEXT:  aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
+// CHECK-NEXT:  aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 18 len = 3)
 // CHECK-NEXT:    aie.end
 
@@ -495,7 +512,6 @@ module {
       } {issue_token = true}
       aiex.dma_start_task(%t)
       aiex.set_device @cfg
-      // expected-remark @+1 {{control packet chains on shim tile (0, 0) hold at most 6 buffer descriptors: runtime transfers there not yet awaited or freed hold 10}}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -513,12 +529,12 @@ module {
 // Each raw packet batch uses a transfer and a sync.
 
 // CHECK-LABEL: @user
-// CHECK-NOT:   aiex.dma_configure_task_for
+// CHECK-NOT:   aiex.dma_configure_task
 // CHECK:       aiex.npu.dma_memcpy_nd
 // CHECK:       aiex.npu.sync
 // CHECK:       aiex.npu.dma_memcpy_nd
 // CHECK:       aiex.npu.sync
-// CHECK-NOT:   aiex.dma_configure_task_for
+// CHECK-NOT:   aiex.dma_configure_task
 module {
   aie.device(npu2_1col) {
     %tile_0_0 = aie.tile(0, 0)

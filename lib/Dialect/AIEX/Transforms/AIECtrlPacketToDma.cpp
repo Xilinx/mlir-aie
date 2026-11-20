@@ -9,19 +9,11 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "CtrlPacketRuns.h"
-
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
-#include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/TypeSwitch.h"
-
-#include <deque>
-#include <map>
 #include <optional>
 
 namespace xilinx::AIEX {
@@ -74,48 +66,6 @@ struct AIECtrlPacketInferTilesPass
   }
 };
 
-// The shim tile column and descriptor count of a runtime task `op` configures,
-// if it is on a shim tile.
-static std::optional<std::pair<int, uint32_t>> shimTask(DeviceOp device,
-                                                        Operation *op) {
-  auto bds = [](Region &body) {
-    uint32_t n = 0;
-    body.walk([&](AIE::DMABDOp) { ++n; });
-    return n;
-  };
-  auto chainLength = [&](AIE::BDChainOp chain) {
-    return chain ? bds(chain.getBody()) : 0u;
-  };
-  auto shimCol = [](AIE::TileOp tile) -> std::optional<int> {
-    if (tile && tile.isShimTile())
-      return tile.getCol();
-    return std::nullopt;
-  };
-  auto allocCol = [&](SymbolRefAttr alloc) -> std::optional<int> {
-    auto shim = ShimDMAAllocationOp::getForSymbol(
-        device, alloc.getRootReference().getValue());
-    return shim ? shimCol(shim.getTileOp()) : std::nullopt;
-  };
-  std::optional<int> col;
-  uint32_t n = 0;
-  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(op)) {
-    col = shimCol(cfg.tryGetTileOp());
-    n = bds(cfg.getBody());
-  } else if (auto cfg = dyn_cast<DMAConfigureTaskForOp>(op)) {
-    col = allocCol(cfg.getAlloc());
-    n = bds(cfg.getBody());
-  } else if (auto start = dyn_cast<DMAStartBdChainOp>(op)) {
-    col = shimCol(start.getTileOp());
-    n = chainLength(start.getBDChainOp());
-  } else if (auto start = dyn_cast<DMAStartBdChainForOp>(op)) {
-    col = allocCol(start.getAllocAttr());
-    n = chainLength(device.lookupSymbol<AIE::BDChainOp>(start.getSymbol()));
-  }
-  if (!col)
-    return std::nullopt;
-  return std::make_pair(*col, n);
-}
-
 struct AIECtrlPacketToDmaPass
     : xilinx::AIEX::impl::AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
   using Base::Base;
@@ -135,176 +85,20 @@ struct AIECtrlPacketToDmaPass
     std::optional<int32_t> multicast;
   };
 
-  // The descriptors the static DMAs leave on each shim tile, by the loaded
-  // and the configured device.
-  llvm::DenseMap<std::tuple<int, Operation *, Attribute>, uint32_t> staticFree;
-  // The device the latest aiex.npu.load_pdi the second pass has reached loads.
-  DeviceOp loaded;
-  // The descriptors each shim tile's runtime tasks hold at the op the second
-  // pass has reached: those of tasks configured since the last load_pdi and
-  // not yet awaited or freed. aie-assign-runtime-sequence-bd-ids, which
-  // allocates them later, keeps an awaited task's until it knows the task done.
-  llvm::DenseMap<int, uint32_t> heldBds;
-  llvm::DenseMap<Value, std::pair<int, uint32_t>> liveTasks;
-
-  void noteHeld(Operation &op) {
-    op.walk([&](Operation *inner) {
-      Value done;
-      if (auto await = dyn_cast<DMAAwaitTaskOp>(inner))
-        done = await.getTask();
-      else if (auto free = dyn_cast<DMAFreeTaskOp>(inner))
-        done = free.getTask();
-      if (auto load = dyn_cast<NpuLoadPdiOp>(inner)) {
-        heldBds.clear();
-        liveTasks.clear();
-        loaded = {};
-        if (FlatSymbolRefAttr ref = load.getDeviceRefAttr())
-          loaded = SymbolTable::lookupNearestSymbolFrom<DeviceOp>(
-              getOperation()->getParentOp(), ref);
-      } else if (done) {
-        auto it = liveTasks.find(done);
-        if (it != liveTasks.end()) {
-          heldBds[it->second.first] -= it->second.second;
-          liveTasks.erase(it);
-        }
-      } else if (auto task = shimTask(getOperation(), inner)) {
-        heldBds[task->first] += task->second;
-        liveTasks[inner->getResult(0)] = *task;
-      }
-    });
-  }
-
-  // The descriptors a chain configuring `configures` may hold on column
-  // `col`'s shim tile: those runtime tasks and the static DMAs that
-  // aie-assign-runtime-sequence-bd-ids reserves leave, at least one.
-  uint32_t chainBdLimit(DeviceOp device, int col,
-                        FlatSymbolRefAttr configures) {
-    auto [it, fresh] = staticFree.try_emplace({col, loaded, configures});
-    if (fresh) {
-      SmallVector<DeviceOp, 3> devices{device};
-      if (loaded)
-        devices.push_back(loaded);
-      if (configures)
-        if (auto configured = SymbolTable::lookupNearestSymbolFrom<DeviceOp>(
-                device->getParentOp(), configures))
-          devices.push_back(configured);
-      size_t used = AIEX::staticBdIds(devices, {col, 0}).size();
-      uint32_t total = device.getTargetModel().getNumBDs(col, 0);
-      it->second = used < total ? total - used : 0;
-    }
-    uint32_t held = heldBds.lookup(col);
-    return held < it->second ? it->second - held : 1;
-  }
-
-  // One task over the chain's batches from `buffer`, each one buffer
-  // descriptor, linked in order.
   static DMAConfigureTaskForOp emitTask(OpBuilder &builder, Location loc,
-                                        Value buffer,
-                                        ArrayRef<const BatchInfo *> chain) {
+                                        Value buffer, const BatchInfo &batch) {
     auto task = DMAConfigureTaskForOp::create(
         builder, loc, builder.getIndexType(),
-        SymbolRefAttr::get(builder.getContext(),
-                           chain.front()->shimDmaAllocName),
+        SymbolRefAttr::get(builder.getContext(), batch.shimDmaAllocName),
         /*issue_token=*/true, /*repeat_count=*/0,
         /*repeat_count_val=*/Value());
     OpBuilder::InsertionGuard guard(builder);
-    Region &body = task.getBody();
-    for (size_t i = 0; i < chain.size(); ++i)
-      builder.createBlock(&body, body.end());
-    for (auto [block, batch] : llvm::zip(body, chain)) {
-      builder.setInsertionPointToEnd(&block);
-      AIE::DMABDOp::create(builder, loc, buffer,
-                           static_cast<int>(batch->startOffset),
-                           static_cast<int>(batch->totalSize));
-      if (block.getNextNode())
-        AIE::NextBDOp::create(builder, loc, block.getNextNode());
-      else
-        AIE::EndOp::create(builder, loc);
-    }
+    builder.createBlock(&task.getBody());
+    AIE::DMABDOp::create(builder, loc, buffer,
+                         static_cast<int>(batch.startOffset),
+                         static_cast<int>(batch.totalSize));
+    AIE::EndOp::create(builder, loc);
     return task;
-  }
-
-  // parallel-shims (see the pass description).
-  void emitParallelRun(OpBuilder &builder, Location loc, Value buffer,
-                       DeviceOp device, ArrayRef<BatchInfo> batches) {
-    const AIE::AIETargetModel &targetModel = device.getTargetModel();
-    int phases = 0;
-    for (const BatchInfo &batch : batches)
-      phases = std::max(phases, batch.phase + 1);
-    for (int phase = 0; phase < phases; ++phase) {
-      // Each allocation's chains, and how many may be in flight at once.
-      llvm::MapVector<StringRef, SmallVector<SmallVector<const BatchInfo *>>>
-          tasks;
-      llvm::StringMap<size_t> window;
-      for (const BatchInfo &batch : batches) {
-        if (batch.phase != phase)
-          continue;
-        int col = batch.tileId.col;
-        uint32_t numBds = chainBdLimit(device, col, batch.configures);
-        auto &list = tasks[batch.shimDmaAllocName];
-        if (list.empty()) {
-          uint32_t depth = targetModel.getDmaTaskQueueDepth(
-              col, 0, batch.shimChan, DMAChannelDir::MM2S);
-          window[batch.shimDmaAllocName] =
-              chainBds ? 1 : (depth ? std::min(depth, numBds) : numBds);
-        }
-        if (list.empty() || !chainBds || list.back().size() >= numBds)
-          list.emplace_back();
-        list.back().push_back(&batch);
-      }
-      size_t rounds = 0;
-      for (auto &[name, list] : tasks)
-        rounds = std::max(rounds, list.size());
-      SmallVector<std::deque<DMAConfigureTaskForOp>> outstanding(tasks.size());
-      for (size_t r = 0; r < rounds; ++r) {
-        for (auto [i, entry] : llvm::enumerate(tasks)) {
-          auto &[name, list] = entry;
-          if (r >= list.size())
-            continue;
-          if (outstanding[i].size() >= window[name]) {
-            DMAAwaitTaskOp::create(builder, loc, outstanding[i].front());
-            outstanding[i].pop_front();
-          }
-          DMAConfigureTaskForOp task = emitTask(builder, loc, buffer, list[r]);
-          DMAStartTaskOp::create(builder, loc, task);
-          outstanding[i].push_back(task);
-        }
-      }
-      for (auto &queue : outstanding)
-        for (DMAConfigureTaskForOp task : queue)
-          DMAAwaitTaskOp::create(builder, loc, task);
-    }
-  }
-
-  // A remark for each column whose chains in the run starting at `begin` the
-  // descriptors runtime tasks hold make shorter.
-  void remarkHeldBds(DeviceOp device, ArrayRef<BatchInfo> batches,
-                     const BatchInfo *begin) {
-    std::map<int, size_t> longest;
-    std::map<std::pair<int, int>, size_t> perPhase;
-    size_t length = 0;
-    for (const BatchInfo *it = begin;
-         it != batches.end() && it->run == begin->run; ++it) {
-      int col = it->tileId.col;
-      if (parallelShims) {
-        length = ++perPhase[{col, it->phase}];
-      } else {
-        bool joins = it != begin && std::prev(it)->phase == it->phase &&
-                     std::prev(it)->shimDmaAllocName == it->shimDmaAllocName;
-        length = joins ? length + 1 : 1;
-      }
-      longest[col] = std::max(longest[col], length);
-    }
-    for (auto [col, n] : longest) {
-      uint32_t held = heldBds.lookup(col);
-      uint32_t limit = chainBdLimit(device, col, begin->configures);
-      if (held && n > limit)
-        begin->first->emitRemark("control packet chains on shim tile (")
-            << col << ", 0) hold at most " << limit
-            << " buffer descriptors: runtime transfers there not yet "
-               "awaited or freed hold "
-            << held;
-    }
   }
 
   void runOnOperation() override {
@@ -316,15 +110,11 @@ struct AIECtrlPacketToDmaPass
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       return; // Disable this pass for AIE1; AIE1 support NYI.
 
-    staticFree.clear();
     SmallVector<Operation *> erased;
     auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
 
       Block &entry = f.getBody().front();
-      heldBds.clear();
-      liveTasks.clear();
-      loaded = {};
       auto controlPacketOps = f.getOps<AIEX::NpuControlPacketOp>();
       if (controlPacketOps.empty())
         continue;
@@ -360,8 +150,6 @@ struct AIECtrlPacketToDmaPass
 
       int64_t ddrOffset = 0;
 
-      // First pass: collect and batch control packet operations into the runs
-      // and phases CtrlPacketRuns.h describes
       bool new_batch = true, inRun = false;
       int run = 0, phase = 0;
       FlatSymbolRefAttr configured;
@@ -437,7 +225,6 @@ struct AIECtrlPacketToDmaPass
       for (Operation &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
         if (!ctrlPktOp) {
-          noteHeld(o);
           if (!isa<ControlPacketBarrierOp>(o))
             builder.clone(o, mapping);
           continue;
@@ -451,42 +238,21 @@ struct AIECtrlPacketToDmaPass
         if (batchIt->first != &o)
           continue;
 
-        if (chainBds && batchIt->configures &&
-            (batchIt == batches.begin() ||
-             std::prev(batchIt)->run != batchIt->run))
-          remarkHeldBds(device, batches, &*batchIt);
-
         int col = ctrlPktOp.getColumnFromAddr();
 
-        if (parallelShims && batchIt->configures) {
-          auto runEnd = batchIt;
-          while (runEnd != batches.end() && runEnd->run == batchIt->run)
-            ++runEnd;
-          emitParallelRun(builder, loc, newBlockArg, device,
-                          ArrayRef<BatchInfo>(&*batchIt, runEnd - batchIt));
-          batchIt = runEnd;
-          continue;
-        }
-
         if (batchIt->configures) {
-          uint32_t maxBds =
-              chainBds ? chainBdLimit(device, col, batchIt->configures) : 1;
-          auto chainEnd = std::next(batchIt);
-          while (chainEnd != batches.end() &&
-                 static_cast<uint32_t>(chainEnd - batchIt) < maxBds &&
-                 chainEnd->run == batchIt->run &&
-                 chainEnd->phase == batchIt->phase &&
-                 chainEnd->shimDmaAllocName == batchIt->shimDmaAllocName)
-            ++chainEnd;
-
-          SmallVector<const BatchInfo *> chain;
-          for (auto it = batchIt; it != chainEnd; ++it)
-            chain.push_back(&*it);
-          DMAConfigureTaskForOp task =
-              emitTask(builder, loc, newBlockArg, chain);
+          DMAConfigureTaskForOp task = emitTask(
+              builder, batchIt->first->getLoc(), newBlockArg, *batchIt);
           DMAStartTaskOp::create(builder, loc, task);
-          DMAAwaitTaskOp::create(builder, loc, task);
-          batchIt = chainEnd;
+          auto next = std::next(batchIt);
+          bool defer =
+              next != batches.end() && next->run == batchIt->run &&
+              next->phase == batchIt->phase &&
+              (parallelShims || (chainBds && next->shimDmaAllocName ==
+                                                 batchIt->shimDmaAllocName));
+          DMAAwaitTaskOp::create(builder, loc, task,
+                                 defer ? builder.getUnitAttr() : UnitAttr{});
+          ++batchIt;
           continue;
         }
 

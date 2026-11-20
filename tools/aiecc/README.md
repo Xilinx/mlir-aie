@@ -159,9 +159,12 @@ packets, barriers, and runtime operations remain in the same block.
   removes overwritten words between barriers.
 - `aie-coalesce-control-packets` merges adjacent writes into packets of up to
   four words within each aligned 16-byte address block.
-- `aie-ctrl-packet-to-dma{chain-bds}` sends each run of transfers on one shim
-  channel as one BD chain with one await. Device markers and explicit barriers
-  require completion of preceding control transfers.
+- `aie-ctrl-packet-to-dma` emits DMA tasks and marks internal awaits with
+  `defer_completion`. Device markers and delivery barriers end each interval.
+- `aie-assign-runtime-sequence-bd-ids{chain-tasks}` schedules independent task
+  triples and forms same-channel chains from the available descriptor IDs.
+  The driver enables it for control packets. Other producers can use the same
+  deferrable-await contract; allocation does not inspect transfer payloads.
 - `--ctrlpkt-parallel-shims` (default: on) starts every column's transfers
   before awaiting any. `aie-annotate-ctrl-packet-start-gating` proves which MM2S
   channels cannot move data before their configuration lands. Disable those

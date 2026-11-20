@@ -382,10 +382,20 @@ def AIEAssignRuntimeSequenceBDIDs
     Before allocating, the pass checks each channel's completion tokens (an
     await with no token to take would deadlock the host) and task queue
     (`enforce-queue-depth`).
+
+    `defer_completion` on an await permits independent task triples to share
+    a completion boundary. The allocator schedules compatible single-BD,
+    single-start tasks within its current descriptor and queue limits. With
+    `chain-tasks`, it links tasks on the same channel into chains that fit.
+    An unmarked await or another operation ends the interval. Tasks with
+    explicit IDs, repeats, locks, or additional handle uses remain unchanged.
   }];
 
   let options =
-      [Option<
+     [Option<"chainTasks", "chain-tasks", "bool", /*default=*/"false",
+          "Combine compatible tasks across deferrable awaits into chains "
+          "that fit the available descriptor IDs.">,
+      Option<
            "enforceQueueDepth", "enforce-queue-depth", "bool",
            /*default=*/"true",
            "Insert an aiex.npu.maskpoll before any dma_start_task that could "
@@ -574,27 +584,26 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     tile.
 
     `aiex.set_device` selects the configured device. Transfers in that context
-    use awaited `aiex.dma_configure_task_for` operations. Descriptor allocation
-    reserves the configured device's static descriptors before those tasks.
-    With `chain-bds`, consecutive transfers on one channel form a chain that
-    fits the descriptors available beside static programs and live tasks.
+    use one configure/start/await triple per batch. `chain-bds` marks internal
+    awaits on one channel as deferrable. `parallel-shims` also permits deferral
+    across channels within a delivery phase. The descriptor allocator selects
+    the schedule and forms chains with its `chain-tasks` option.
 
     A device marker or another runtime operation ends the preceding delivery
-    run. `aiex.control_packet_barrier` requires completion before the next
-    phase. With `parallel-shims`, each phase starts its channels before
-    awaiting them. Each channel holds one chain or a queue-depth-limited
-    number of single transfers.
+    run. A delivery barrier ends the phase with an unmarked await.
+    Compiler-only barriers require no DMA synchronization.
 
     Packets without a device context use an `aiex.npu.dma_memcpy_nd` and an
     `aiex.npu.sync` per transfer. A real PDI load clears the context.
   }];
 
   let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
-                        "Chain each run of transfers on one shim channel into "
-                        "one task with one await">,
+           "Permit allocation to chain consecutive transfers on "
+           "one shim channel">,
                  Option<"parallelShims", "parallel-shims", "bool",
                         /*default=*/"false",
-                        "Send a run's shim channels at once, phase by phase">,
+           "Permit independent shim channels to share a "
+           "completion boundary">,
   ];
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";

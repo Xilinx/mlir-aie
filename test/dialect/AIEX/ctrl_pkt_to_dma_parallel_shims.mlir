@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-ctrl-packet-to-dma=parallel-shims=true --split-input-file | FileCheck %s --implicit-check-not=aiex.ctrl_pkt_transfer
-// RUN: aie-opt %s -aie-ctrl-packet-to-dma="parallel-shims=true chain-bds=true" --split-input-file | FileCheck %s --check-prefix=CHAIN --implicit-check-not=aiex.ctrl_pkt_transfer
-// RUN: aie-opt %s -aie-ctrl-packet-to-dma=parallel-shims=true --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids -aie-dma-tasks-to-npu 2>&1 | FileCheck %s --check-prefix=NPU --implicit-check-not=warning --implicit-check-not=error --implicit-check-not=maskpoll32 --implicit-check-not=aiex.set_device
-// RUN: aie-opt %s -aie-ctrl-packet-to-dma="parallel-shims=true chain-bds=true" --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids -aie-dma-tasks-to-npu 2>&1 | FileCheck %s --check-prefix=NPU --implicit-check-not=warning --implicit-check-not=error --implicit-check-not=maskpoll32 --implicit-check-not=aiex.set_device
+// RUN: aie-opt %s -aie-ctrl-packet-to-dma=parallel-shims=true --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids=chain-tasks=false | FileCheck %s --implicit-check-not=aiex.ctrl_pkt_transfer --implicit-check-not=aiex.set_device --implicit-check-not=defer_completion
+// RUN: aie-opt %s -aie-ctrl-packet-to-dma="parallel-shims=true chain-bds=true" --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids=chain-tasks=true | FileCheck %s --check-prefix=CHAIN --implicit-check-not=aiex.ctrl_pkt_transfer --implicit-check-not=aiex.set_device --implicit-check-not=defer_completion
+// RUN: aie-opt %s -aie-ctrl-packet-to-dma=parallel-shims=true --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids=chain-tasks=false -aie-dma-tasks-to-npu 2>&1 | FileCheck %s --check-prefix=NPU --implicit-check-not=warning --implicit-check-not=error --implicit-check-not=maskpoll32 --implicit-check-not=aiex.set_device
+// RUN: aie-opt %s -aie-ctrl-packet-to-dma="parallel-shims=true chain-bds=true" --split-input-file -aie-materialize-bd-chains -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids=chain-tasks=true -aie-dma-tasks-to-npu 2>&1 | FileCheck %s --check-prefix=NPU --implicit-check-not=warning --implicit-check-not=error --implicit-check-not=maskpoll32 --implicit-check-not=aiex.set_device
 
 // The lowered sequences need no queue guard and no BD the shim does not have.
 // NPU: aiex.npu.push_queue
@@ -18,54 +18,52 @@
 // own task; with it, a channel's transfers in a phase are one chain.
 
 // CHECK-LABEL: @two_columns
-// CHECK:       aiex.set_device @cfg
-// CHECK-NEXT:  %[[A0:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK:       %[[A0:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
 // CHECK:       aiex.dma_start_task(%[[A0]])
-// CHECK-NEXT:  %[[B0:.*]] = aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHECK-NEXT:  %[[B0:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 3 len = 3)
 // CHECK:       aiex.dma_start_task(%[[B0]])
-// CHECK-NEXT:  %[[A1:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:  %[[A1:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
 // CHECK:       aiex.dma_start_task(%[[A1]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[A0]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[A1]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[B0]])
-// CHECK-NEXT:  %[[A2:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:  %[[A2:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 9 len = 6)
 // CHECK:       aiex.dma_start_task(%[[A2]])
-// CHECK-NEXT:  %[[B1:.*]] = aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHECK-NEXT:  %[[B1:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 15 len = 3)
 // CHECK:       aiex.dma_start_task(%[[B1]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[A2]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[B1]])
 // CHECK-NEXT:  aiex.npu.write32
-// CHECK-NEXT:  %[[A3:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:  %[[A3:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 18 len = 3)
 // CHECK:       aiex.dma_start_task(%[[A3]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[A3]])
 // CHECK-NOT:   aiex.npu.dma_memcpy_nd
 
 // CHAIN-LABEL: @two_columns
-// CHAIN:       aiex.set_device @cfg
-// CHAIN-NEXT:  %[[A:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHAIN:       %[[A:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHAIN-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
 // CHAIN-NEXT:    aie.next_bd
 // CHAIN-NEXT:  ^bb{{[0-9]+}}:
 // CHAIN-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
 // CHAIN-NEXT:    aie.end
 // CHAIN:       aiex.dma_start_task(%[[A]])
-// CHAIN-NEXT:  %[[B:.*]] = aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHAIN-NEXT:  %[[B:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0) {
 // CHAIN-NEXT:    aie.dma_bd({{.*}} offset = 3 len = 3)
 // CHAIN-NEXT:    aie.end
 // CHAIN:       aiex.dma_start_task(%[[B]])
 // CHAIN-NEXT:  aiex.dma_await_task(%[[A]])
 // CHAIN-NEXT:  aiex.dma_await_task(%[[B]])
-// CHAIN-NEXT:  %[[C:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHAIN-NEXT:  %[[C:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHAIN-NEXT:    aie.dma_bd({{.*}} offset = 9 len = 6)
 // CHAIN-NEXT:    aie.end
 // CHAIN:       aiex.dma_start_task(%[[C]])
-// CHAIN-NEXT:  %[[D:.*]] = aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHAIN-NEXT:  %[[D:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0) {
 // CHAIN:       aiex.dma_start_task(%[[D]])
 // CHAIN-NEXT:  aiex.dma_await_task(%[[C]])
 // CHAIN-NEXT:  aiex.dma_await_task(%[[D]])
@@ -104,7 +102,7 @@ module {
 // CHECK-LABEL: @queue_window
 // CHECK-COUNT-4: aiex.dma_start_task
 // CHECK-NEXT:  aiex.dma_await_task
-// CHECK-NEXT:  aiex.dma_configure_task_for
+// CHECK-NEXT:  aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 12 len = 3)
 // CHECK:       aiex.dma_start_task
 // CHECK-COUNT-4: aiex.dma_await_task
@@ -145,13 +143,13 @@ module {
 // CHECK-LABEL: @long_phase
 
 // CHAIN-LABEL: @long_phase
-// CHAIN:       %[[A:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHAIN:       %[[A:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHAIN-COUNT-15: aie.next_bd
 // CHAIN:       aiex.dma_start_task(%[[A]])
-// CHAIN-NEXT:  %[[B:.*]] = aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHAIN-NEXT:  %[[B:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0) {
 // CHAIN:       aiex.dma_start_task(%[[B]])
 // CHAIN-NEXT:  aiex.dma_await_task(%[[A]])
-// CHAIN-NEXT:  %[[C:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHAIN-NEXT:  %[[C:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHAIN-NEXT:    aie.dma_bd({{.*}} offset = 51 len = 3)
 // CHAIN-NEXT:    aie.end
 // CHAIN:       aiex.dma_start_task(%[[C]])
@@ -198,17 +196,15 @@ module {
 // configuration's packets start.
 
 // CHECK-LABEL: @drain
-// CHECK-NEXT:  aiex.set_device @cfg
-// CHECK-NEXT:  %[[T0:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:  %[[T0:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 0 len = 3)
-// CHECK:       %[[T1:.*]] = aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHECK:       %[[T1:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 3 len = 3)
 // CHECK:       aiex.dma_await_task(%[[T0]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[T1]])
-// CHECK-NEXT:  aiex.set_device @next
-// CHECK-NEXT:  %[[C0:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0 {
+// CHECK-NEXT:  %[[C0:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 6 len = 3)
-// CHECK:       %[[C1:.*]] = aiex.dma_configure_task_for @ctrlpkt_col1_mm2s_chan0 {
+// CHECK:       %[[C1:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0) {
 // CHECK-NEXT:    aie.dma_bd({{.*}} offset = 9 len = 3)
 // CHECK:       aiex.dma_await_task(%[[C0]])
 // CHECK-NEXT:  aiex.dma_await_task(%[[C1]])

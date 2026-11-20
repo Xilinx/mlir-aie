@@ -1779,13 +1779,22 @@ def AIE_DMAAwaitTaskOp
     configure that set it up. Under the dynamic BD pool path this configure must
     dominate the await; an await after an `scf.if` on a task configured inside a
     branch is rejected (move the await inside the branch that configures it).
+
+    `defer_completion` permits allocation to combine this task with subsequent
+    configure/start/await triples. The transfers must be independent across
+    channels, and no observer may require intermediate completion tokens.
+    An unmarked await or an intervening operation ends the interval.
   }];
 
-  let arguments = (ins Index:$task);
+  let arguments = (ins Index:$task, UnitAttr:$defer_completion);
 
   let assemblyFormat = [{
     `(` $task `)` attr-dict
   }];
+
+  let builders = [OpBuilder<(ins "::mlir::Value":$task), [{
+    build($_builder, $_state, task, /*defer_completion=*/nullptr);
+  }]>];
 
   let extraClassDeclaration = [{
     DMAConfigureTaskOp getTaskOp();

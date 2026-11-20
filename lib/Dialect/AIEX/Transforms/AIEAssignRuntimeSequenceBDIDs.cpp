@@ -593,6 +593,169 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   };
   llvm::DenseMap<Operation *, PushCounts> pushCounts;
 
+  struct TaskTriple {
+    DMAConfigureTaskOp configure;
+    DMAStartTaskOp start;
+    DMAAwaitTaskOp await;
+  };
+  struct TaskSchedule {
+    Block *block;
+    Operation *after;
+    SmallVector<SmallVector<TaskTriple>> chains;
+    SmallVector<std::pair<size_t, bool>> events;
+  };
+
+  static std::optional<TaskTriple> taskTriple(Operation *operation) {
+    auto configure = dyn_cast_or_null<DMAConfigureTaskOp>(operation);
+    if (!configure || !configure.getBody().hasOneBlock() ||
+        configure.getRepeatCount() || configure.getRepeatCountVal() ||
+        !configure.getIssueToken() || configure.getOutOfOrder() ||
+        !configure.getResult().hasNUses(2))
+      return std::nullopt;
+    auto start = dyn_cast_or_null<DMAStartTaskOp>(configure->getNextNode());
+    auto await = start ? dyn_cast_or_null<DMAAwaitTaskOp>(start->getNextNode())
+                       : DMAAwaitTaskOp();
+    if (!start || !await || start.getTask() != configure.getResult() ||
+        await.getTask() != configure.getResult() || start.getRepeatCount() ||
+        start.getRepeatCountVal() || start.getNoToken() ||
+        start.hasRepeatParameter())
+      return std::nullopt;
+    Block &body = configure.getBody().front();
+    if (body.getNumArguments() || body.getOperations().size() != 2 ||
+        !isa<AIE::DMABDOp>(body.front()) || !isa<AIE::EndOp>(body.back()))
+      return std::nullopt;
+    auto bd = cast<AIE::DMABDOp>(body.front());
+    if (bd.getBdId() || bd.getNextBdId())
+      return std::nullopt;
+    return TaskTriple{configure, start, await};
+  }
+
+  bool fitsNow(DMAConfigureTaskOp configure) {
+    if (opaqueLoad)
+      return false;
+    BdIdGenerator available = getGeneratorForTile(configure.getTileOp());
+    for (auto [id, copy] : forbidden.lookup(configure))
+      available.reserved.insert(id);
+    return available
+        .nextBdId(configure.getChannel(),
+                  DMAStartTaskOp::headBdIdAlignment(configure.getResult()))
+        .has_value();
+  }
+
+  LogicalResult
+  allocateDeferredTasks(ArrayRef<TaskTriple> tasks,
+                        llvm::function_ref<WalkResult(Operation *)> visit) {
+    std::map<DmaQueueModel::ChannelKey, SmallVector<TaskTriple>> channels;
+    for (TaskTriple task : tasks)
+      channels[DmaQueueModel::keyOf(task.configure)].push_back(task);
+    TaskSchedule schedule{tasks.front().configure->getBlock(),
+                          tasks.back().await->getNextNode(),
+                          {},
+                          {}};
+    std::map<DmaQueueModel::ChannelKey, size_t> next;
+    std::map<DmaQueueModel::ChannelKey, std::deque<size_t>> pending;
+    std::map<DmaQueueModel::ChannelKey, size_t> windows;
+    uint32_t depth = getOperation().getTargetModel().getDmaTaskQueueDepth();
+    for (const auto &[key, list] : channels) {
+      const ChannelPushes &channel = startedOnChannel[key];
+      windows[key] =
+          chainTasks ? 1 : depth - (channel.tasks.size() - channel.finished);
+    }
+    auto retire = [&](std::deque<size_t> &queue) -> LogicalResult {
+      size_t index = queue.front();
+      for (TaskTriple task : schedule.chains[index])
+        if (visit(task.await).wasInterrupted())
+          return failure();
+      windows[DmaQueueModel::keyOf(schedule.chains[index].front().configure)] =
+          chainTasks ? 1 : depth;
+      schedule.events.emplace_back(index, true);
+      queue.pop_front();
+      return success();
+    };
+    size_t remaining = tasks.size();
+    while (remaining) {
+      bool progress = false;
+      for (auto &[key, list] : channels) {
+        size_t &position = next[key];
+        if (position == list.size())
+          continue;
+        auto &queue = pending[key];
+        if (queue.size() >= windows[key] && failed(retire(queue)))
+          return failure();
+        SmallVector<TaskTriple> chain;
+        while (position < list.size() && fitsNow(list[position].configure)) {
+          TaskTriple task = list[position];
+          if (!chain.empty() &&
+              (task.configure->getAttrDictionary() !=
+                   chain.front().configure->getAttrDictionary() ||
+               task.configure.getPacketAttr() !=
+                   chain.front().configure.getPacketAttr()))
+            break;
+          if (visit(task.configure).wasInterrupted())
+            return failure();
+          chain.push_back(task);
+          ++position;
+          --remaining;
+          if (!chainTasks)
+            break;
+        }
+        if (chain.empty())
+          continue;
+        for (TaskTriple task : chain)
+          if (visit(task.start).wasInterrupted())
+            return failure();
+        size_t index = schedule.chains.size();
+        schedule.chains.push_back(std::move(chain));
+        schedule.events.emplace_back(index, false);
+        queue.push_back(index);
+        progress = true;
+      }
+      if (!progress) {
+        auto waiting = llvm::find_if(
+            pending, [](const auto &entry) { return !entry.second.empty(); });
+        if (waiting == pending.end() || failed(retire(waiting->second)))
+          return failure();
+      }
+    }
+    for (auto &[key, queue] : pending)
+      while (!queue.empty())
+        if (failed(retire(queue)))
+          return failure();
+    roundState.schedules.push_back(std::move(schedule));
+    return success();
+  }
+
+  static void commitSchedule(TaskSchedule &schedule) {
+    for (auto &chain : schedule.chains) {
+      TaskTriple first = chain.front();
+      for (TaskTriple task : llvm::drop_begin(chain)) {
+        Operation *end = first.configure.getBody().back().getTerminator();
+        OpBuilder builder(end);
+        AIE::NextBDOp::create(builder, end->getLoc(),
+                              &task.configure.getBody().front());
+        end->erase();
+        first.configure.getBody().getBlocks().splice(
+            first.configure.getBody().end(),
+            task.configure.getBody().getBlocks());
+        task.await.erase();
+        task.start.erase();
+        task.configure.erase();
+      }
+    }
+    auto insertion =
+        schedule.after ? schedule.after->getIterator() : schedule.block->end();
+    for (auto [index, await] : schedule.events) {
+      TaskTriple first = schedule.chains[index].front();
+      if (await) {
+        first.await.removeDeferCompletionAttr();
+        first.await->moveBefore(schedule.block, insertion);
+      } else {
+        first.configure->moveBefore(schedule.block, insertion);
+        first.start->moveBefore(schedule.block, insertion);
+      }
+    }
+  }
+
   void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
                 bool issuesToken, Operation *origin,
                 AIE::ShimDMAAllocationOp allocation,
@@ -639,6 +802,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     // What one allocation of the sequence did that the next undoes.
     SmallVector<AIE::DMABDOp> assignedHere;
     SmallVector<Operation *> insertedHere;
+    SmallVector<TaskSchedule> schedules;
   };
   RoundState roundState;
 
@@ -1930,6 +2094,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return constant.getResult();
     };
     Value maskValue = cst(mask);
+    for (TaskSchedule &schedule : roundState.schedules)
+      if (schedule.after == op.getOperation())
+        schedule.after = maskValue.getDefiningOp();
     Value compareValue = cst(0);
     Value statusValue = cst(*status);
     auto poll = NpuMaskPollOp::create(b, op.getLoc(), statusValue, compareValue,
@@ -2025,6 +2192,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             deviceState.proofsByOutput[output].push_back({input, proof});
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
+      if (seq.getBody().empty())
+        return WalkResult::advance();
       if (failed(checkForeignTail(seq)))
         return WalkResult::interrupt();
       // Skip sequences already handled by the dynamic free-list pool path
@@ -2150,7 +2319,45 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             held.push_back(std::move(diag));
             return success();
           });
-          r = seq.walk(visit);
+          r = WalkResult::advance();
+          auto &body = seq.getBody().front();
+          for (auto iterator = body.begin(); iterator != body.end();) {
+            Operation *operation = &*iterator++;
+            SmallVector<TaskTriple> tasks;
+            auto triple = taskTriple(operation);
+            while (triple) {
+              tasks.push_back(*triple);
+              if (!triple->await.getDeferCompletion())
+                break;
+              triple = taskTriple(triple->await->getNextNode());
+            }
+            bool eligible =
+                tasks.size() > 1 && tasks.front().await.getDeferCompletion() &&
+                llvm::all_of(tasks, [&](TaskTriple task) {
+                  const auto &channel =
+                      startedOnChannel[DmaQueueModel::keyOf(task.configure)];
+                  return fitsNow(task.configure) &&
+                         channel.tasks.size() - channel.finished <
+                             getOperation()
+                                 .getTargetModel()
+                                 .getDmaTaskQueueDepth() &&
+                         llvm::none_of(
+                             channel.tasks,
+                             [](const StartedTask &push) {
+                               return push.issuesToken;
+                             });
+                });
+            if (eligible) {
+              iterator = std::next(tasks.back().await->getIterator());
+              if (failed(allocateDeferredTasks(tasks, visit))) {
+                r = WalkResult::interrupt();
+                break;
+              }
+            } else if (operation->walk(visit).wasInterrupted()) {
+              r = WalkResult::interrupt();
+              break;
+            }
+          }
         }
         if (!roundState.reallocate)
           break;
@@ -2166,6 +2373,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (r.wasInterrupted())
         return WalkResult::interrupt();
       warnLeaks(seq);
+      for (TaskSchedule &schedule : roundState.schedules)
+        commitSchedule(schedule);
+      for (auto await : seq.getOps<DMAAwaitTaskOp>())
+        await.removeDeferCompletionAttr();
       for (DMAFreeTaskOp freeOp : frees)
         freeOp.erase();
       for (auto context :
