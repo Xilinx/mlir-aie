@@ -282,6 +282,8 @@ private:
   std::vector<llvm::SmallVector<Edge, 4>> edges;
   std::map<std::pair<Agent::Kind, TileDMAChannel>, unsigned> agentIDs;
   llvm::DenseSet<unsigned> modeled;
+  /// Receivers more than one agent sends to.
+  llvm::DenseSet<unsigned> merging;
 };
 
 /// Which streams can deadlock against each other if they share an arbiter or

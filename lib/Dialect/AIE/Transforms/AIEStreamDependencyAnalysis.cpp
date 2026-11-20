@@ -935,6 +935,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
           addEdge(p, q, EdgeKind::Lock);
   }
 
+  DenseMap<unsigned, unsigned> senderOf;
   for (const RoutedStream &s : streams) {
     std::optional<unsigned> from, to;
     if (std::optional<Agent> agent = Agent::at(s.src, true))
@@ -945,6 +946,8 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
       continue;
     addEdge(*from, *to, EdgeKind::Stream, /*sends=*/true);
     addEdge(*to, *from, EdgeKind::Stream, /*sends=*/false, /*receives=*/true);
+    if (senderOf.try_emplace(*to, *from).first->second != *from)
+      merging.insert(*to);
   }
 
   // The host issues a channel's transfer only after every wait before it in
@@ -1140,15 +1143,13 @@ SmallVector<unsigned> StreamWaitGraph::drainersOf(unsigned agent) const {
 SmallVector<unsigned>
 StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
                            ArrayRef<unsigned> avoid) const {
-  // A state is an agent plus `took`, the subset of channel agents already
-  // waited on to reach it, and `taking`, whether it was reached as a DMA
-  // receiver still taking data. A state is dropped once a prior state at the
-  // same agent is at least as free and took a subset of the same agents: it
-  // leads nowhere new. Live states per agent therefore form an antichain in
-  // that subset lattice, so by Sperner's theorem their count can be
-  // exponential in the worst case -- a known, understood limitation, not an
-  // oversight. No smaller *exact* representation preserves this dominance
-  // search's soundness.
+  // A state is an agent plus `took`, the merging receivers already waited on
+  // to take data, which a chain may not come back to, and `taking`, whether it
+  // was reached as a DMA receiver still taking data. A state is dropped once a
+  // prior state at the same agent is at least as free and took a subset of
+  // the same agents: it leads nowhere new. A chain that comes back to a
+  // receiver with one sender can skip the loop (to that sender, if it leaves
+  // for it), so the shortest chain never does and `took` leaves them out.
   struct State {
     unsigned agent;
     bool taking;
@@ -1192,7 +1193,7 @@ StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
       bool takes = e.kind == EdgeKind::Stream && e.sends &&
                    agents[e.to].kind == Agent::Kind::Channel;
       llvm::SparseBitVector<> took = state.took;
-      if (takes)
+      if (takes && merging.contains(e.to))
         took.set(e.to);
       visit({e.to, takes, std::move(took), index});
     }
