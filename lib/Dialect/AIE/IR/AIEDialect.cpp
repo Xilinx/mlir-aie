@@ -2129,7 +2129,19 @@ LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
   ObjectFifoCreateOp owner = link.getPoolOwner();
   if (owner == *this)
     return LinkPoolMisfit::None;
-  if (owner.getElemType() != getElemType())
+  // A join's input, or a distribute's output, holds a segment of each pool
+  // object; one whose objects are that segment can be the pool's there.
+  std::vector<ObjectFifoCreateOp> side;
+  if (link.isJoin())
+    side = link.getInputObjectFifos();
+  else if (link.isDistribute())
+    side = link.getOutputObjectFifos();
+  auto at = llvm::find(side, *this);
+  bool segment =
+      at != side.end() &&
+      link.getPoolSegments()[at - side.begin()].second ==
+          link.getLinkedElemType(*this).getElementType().getNumElements();
+  if (owner.getElemType() != getElemType() && !segment)
     return LinkPoolMisfit::ObjectType;
   return getInitValues() ? LinkPoolMisfit::InitialValues : LinkPoolMisfit::None;
 }
@@ -2527,6 +2539,9 @@ LogicalResult ObjectFifoAllocateOp::verify() {
                 "object type (@"
              << name << "'s is " << objFifo.getElemType().getElementType()
              << ")";
+        if (link.isJoin() || link.isDistribute())
+          diag << ", or as a join's input or a distribute's output, its "
+                  "segment's";
         break;
       }
       case LinkPoolMisfit::InitialValues:

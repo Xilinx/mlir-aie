@@ -467,7 +467,8 @@ struct PlannedDmaEnd {
 // (ObjectFifoCreateOp::linkPoolMisfit).
 enum class LinkPoolMisfit {
   None,
-  // The pool's owner has another object type.
+  // The pool's owner has another object type, and the fifo's objects are not
+  // its segment of the pool's (a join's input, a distribute's output).
   ObjectType,
   // The fifo has initial objects, but the pool starts with its owner's.
   InitialValues,

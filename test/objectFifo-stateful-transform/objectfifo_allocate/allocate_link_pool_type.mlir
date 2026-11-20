@@ -92,3 +92,30 @@ module @init_values_on_producer_tile {
     }
   }
 }
+
+// -----
+
+// A join's input whose segment holds two of its objects would fill it in two
+// acquires, so it cannot be the pool's there.
+module @join_segment_of_two_objects {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 2)
+    %f = aie.tile(0, 5)
+    aie.objectfifo @in0(%t, {%t}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
+    aie.objectfifo @in1(%f, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%t, {%t}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in0, @in1] -> [@out] ([0, 16] [])
+    // expected-error@+1 {{a fifo that shares memory with a link must have the pool's object type (@in0's is 'memref<8xi32>'), or as a join's input or a distribute's output, its segment's}}
+    aie.objectfifo.allocate @in0 (%t)
+    aie.core(%t) {
+      %0 = aie.objectfifo.acquire @in0(Produce, 1) : memref<8xi32>
+      aie.objectfifo.release @in0(Produce, 1)
+      aie.end
+    }
+    aie.core(%f) {
+      %0 = aie.objectfifo.acquire @in1(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in1(Produce, 1)
+      aie.end
+    }
+  }
+}
