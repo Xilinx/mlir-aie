@@ -2395,6 +2395,11 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
     return size();
   if (maxAcquire == 1 && size() == 1)
     return 1;
+  // Out of order, each sending buffer names a receiving one, and the depth
+  // asked for is what keeps a channel the fifo shares from stalling on a
+  // full pool while its core waits on another fifo's packet behind it.
+  if (getOutOfOrder())
+    return std::max(size(), maxAcquire + 1);
   return maxAcquire + 1;
 }
 

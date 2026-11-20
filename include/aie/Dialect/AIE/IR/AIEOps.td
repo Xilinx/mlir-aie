@@ -2907,7 +2907,9 @@ def AIE_ObjectFifoCreateOp
 
     /// Objects in the pool an end keeps on its own tile when the fifo moves by
     /// DMA: the producer's when `consumer` is empty, else that consumer's. An
-    /// end wired to a core stream port keeps none.
+    /// end wired to a core stream port keeps none. A core's end keeps what its
+    /// largest acquire needs plus one, and an out-of-order fifo's at least its
+    /// depth.
     int dmaDepth(std::optional<unsigned> consumer);
     /// Objects in the one pool of a fifo whose ends share a memory module.
     int sharedDepth();
