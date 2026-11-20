@@ -201,6 +201,7 @@ class Program:
         shimtile_events: list | None = None,
         egress_shim_col: int = 0,
         core_trace_mode=TraceMode.EventTime,
+        enable_ctrl_pkts: bool = False,
     ):
         """Enable hardware tracing for this program.
 
@@ -232,6 +233,14 @@ class Program:
                 egress trace packets to DDR. Defaults to 0.
             core_trace_mode (TraceMode, optional): Trace mode for core tiles.
                 Defaults to Event-Time.
+            enable_ctrl_pkts (bool, optional): Read each traced unit's
+                ``Trace_Status`` register with control packets after the
+                sequence, so the host can tell when a unit overran and dropped
+                events. Uses the shim tile next to ``egress_shim_col`` and a
+                control packet buffer ahead of the trace buffer, so it needs a
+                dedicated trace buffer and a matching
+                ``TraceConfig(enable_ctrl_pkts=True)`` on the host. Defaults to
+                False.
         """
         configuration = self._entry.configuration
         assert configuration is not None
@@ -245,6 +254,7 @@ class Program:
             shimtile_events=shimtile_events,
             egress_shim_col=egress_shim_col,
             core_trace_mode=core_trace_mode,
+            enable_ctrl_pkts=enable_ctrl_pkts,
         )
 
     def resolve_program(
