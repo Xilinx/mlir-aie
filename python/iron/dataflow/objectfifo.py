@@ -287,6 +287,16 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         return self._obj_type
 
     @property
+    def repeat_count(self) -> int | None:
+        """How many times the sending end replicates each object, or None; see ``__init__``."""
+        return self._repeat_count
+
+    @property
+    def transport(self) -> Transport | None:
+        """The hardware path asked for, or None for the lowering's choice; see ``__init__``."""
+        return self._transport
+
+    @property
     def consumer_obj_type(self) -> type[np.ndarray]:
         """The tensor type of each buffer at a consumer: ``obj_type`` unless the transfer is asymmetric."""
         return self._consumer_obj_type or self._obj_type

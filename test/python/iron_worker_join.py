@@ -87,6 +87,7 @@ def test_refusals():
 # whole: the joined core keeps that tile, so the link, the delegate and the
 # core are on one.
 # CHECK-LABEL: a link on the first's tile
+# CHECK: moves by its own choice: None None
 # CHECK-DAG: aie.objectfifo @mine(%[[TILE:[a-z0-9_]+]], {%[[TILE]]}, 2 : i32)
 # CHECK-DAG: aie.objectfifo @joined_in(%[[TILE]], {%[[TILE]]}, 2 : i32)
 # CHECK-DAG: aie.objectfifo.allocate @mine(%[[TILE]])
@@ -105,6 +106,7 @@ def test_link_on_the_first_tile():
     ObjectFifoLink([mine.cons(), theirs.cons()], joined_in.prod(), first.tile, [0, 16])
     mine.delegate_tile = first.tile
     joined_in.delegate_tile = first.tile
+    print("moves by its own choice:", mine.repeat_count, mine.transport)
     print(resolve([Worker.join([first, second]), far]))
 
 
