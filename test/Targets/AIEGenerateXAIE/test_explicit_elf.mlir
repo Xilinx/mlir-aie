@@ -10,7 +10,7 @@
 // CHECK: mlir_aie_configure_cores
 // CHECK: __mlir_aie_try(XAie_CoreReset(ctx->XAieDevInst, XAie_TileLoc(3,3)));
 // CHECK: __mlir_aie_try(XAie_CoreDisable(ctx->XAieDevInst, XAie_TileLoc(3,3)));
-// CHECK: XAie_LoadElf(ctx->XAieDevInst, XAie_TileLoc(3,3), (const char*)"test.elf",0);
+// CHECK: XAie_LoadElfPartial(ctx->XAieDevInst, XAie_TileLoc(3,3), (const char*)"test.elf", XAIE_LOAD_ELF_ALL);
 // CHECK: mlir_aie_start_cores
 // CHECK: __mlir_aie_try(XAie_CoreUnreset(ctx->XAieDevInst, XAie_TileLoc(3,3)));
 // CHECK: __mlir_aie_try(XAie_CoreEnable(ctx->XAieDevInst, XAie_TileLoc(3,3)));
