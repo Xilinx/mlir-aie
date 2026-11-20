@@ -1228,6 +1228,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "44689409696",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44689409696",
+   "date": "2026-11-20T06:40:04+00:00",
+   "commit": {
+    "id": "0f767004a478056b3f52496ac284d68b8b4535f4",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/0f767004a478056b3f52496ac284d68b8b4535f4",
+    "message": "[AIE] Reject block-argument tile, lock and buffer operands instead of crashing in verifiers (#4088)",
+    "timestamp": "2026-11-19T19:22:24Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "0f767004a4",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

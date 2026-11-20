@@ -1032,6 +1032,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "llama-chain-hw",
+   "id": "44689409696",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44689409696",
+   "date": "2026-11-20T06:40:04+00:00",
+   "commit": {
+    "id": "0f767004a478056b3f52496ac284d68b8b4535f4",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/0f767004a478056b3f52496ac284d68b8b4535f4",
+    "message": "[AIE] Reject block-argument tile, lock and buffer operands instead of crashing in verifiers (#4088)",
+    "timestamp": "2026-11-19T19:22:24Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "0f767004a4",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 71,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
