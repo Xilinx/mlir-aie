@@ -3198,11 +3198,6 @@ def AIE_ObjectFifoPoolOp
       }
     ```
 
-    `out_of_order_tags` is a compiler-generated array of receiving BD tags,
-    indexed by buffer slot. DMA lowering attaches each tag as `bd_tag` to a
-    receiving descriptor. Broadcast destinations share these tags; a relay's
-    incoming and outgoing transfers have separate mappings. BD ID assignment
-    later resolves the tags to hardware IDs.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, AIEI32Attr:$depth,
@@ -3223,9 +3218,7 @@ def AIE_ObjectFifoPoolOp
       UnitAttr:$contiguous,
       // On a contiguous pool, `[before, after]` objects of zeros around the
       // `depth` objects in its buffer, which no endpoint fills.
-      OptionalAttr<DenseI32ArrayAttr>:$zeroObjects,
-      // Receiving BD tags indexed by buffer slot.
-      OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags);
+      OptionalAttr<DenseI32ArrayAttr>:$zeroObjects);
 
   let regions = (region SizedRegion<1>:$segments);
 
@@ -3379,10 +3372,16 @@ def AIE_ObjectFifoDmaEndpointOp
     `out_of_order` has direction-specific behavior. A filling endpoint
     receives over S2MM and enables packet-directed BD selection. A draining
     endpoint sends over MM2S and places the matching receiving BD ID in each
-    packet header. The draining endpoint's `out_of_order_tags` references the
-    destination pools' receiving tags, indexed by destination buffer slot.
-    This mapping is separate from its own pool's receiving tags, so relaying
-    an object can select a different BD ID on the next hop.
+    packet header. `out_of_order_tags` is a compiler-generated array of BD
+    tags, indexed by buffer slot: on a filling endpoint, the tag each
+    receiving descriptor takes as its `bd_tag`, which BD ID assignment later
+    resolves to a hardware ID; on a draining endpoint, its destination's,
+    which each packet header names. A filling endpoint's tags are its own, so
+    endpoints filling disjoint segments of one pool (a join) share a channel,
+    each packet naming the segment of the buffer it lands in. Broadcast
+    destinations share their tags; a relay's incoming and outgoing transfers
+    have separate mappings, so relaying an object can select a different BD ID
+    on the next hop.
 
     On a draining (MM2S) endpoint, `release_strategy` selects cyclic DMA
     execution or core-issued tasks, as described for `aie.objectfifo`.

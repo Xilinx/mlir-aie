@@ -2833,13 +2833,15 @@ struct AIEObjectFifoAllocatePass
 
     // Routes still identify each sender's receiving buffers here, but hardware
     // BD IDs are assigned later. Preserve that pairing with temporary tags
-    // before lowering erases the routes.
-    llvm::EquivalenceClasses<Operation *> matchingPools;
-    DenseMap<Operation *, int64_t> descriptorCounts;
+    // before lowering erases the routes. Each receiving endpoint takes its own
+    // run of tags, so endpoints filling disjoint segments of one pool name
+    // distinct descriptors; a broadcast's receivers share one run.
+    llvm::EquivalenceClasses<Operation *> sharing;
+    SmallVector<ObjectFifoDmaEndpointOp> receivers;
     for (auto flow : device.getOps<RouteOp>()) {
       if (flow.getSources().size() != 1)
         continue;
-      ObjectFifoPoolOp first;
+      ObjectFifoDmaEndpointOp first;
       for (auto destName : flow.getDestinationNames()) {
         RouteEndpoint receiver = lookupEndpoint(destName);
         auto dst =
@@ -2848,28 +2850,24 @@ struct AIEObjectFifoAllocatePass
                 : nullptr;
         if (!dst || !dst.getOutOfOrder())
           continue;
-        ObjectFifoPoolOp pool = dst.getPoolOp();
         if (!first)
-          first = pool;
-        matchingPools.unionSets(first.getOperation(), pool.getOperation());
-        descriptorCounts[pool] = dst.getNumDescriptors();
+          first = dst;
+        if (sharing.findLeader(dst.getOperation()) == sharing.member_end())
+          receivers.push_back(dst);
+        sharing.unionSets(first.getOperation(), dst.getOperation());
       }
     }
     int32_t nextTag = 0;
     DenseMap<Operation *, DenseI32ArrayAttr> tagsOfGroup;
-    for (ObjectFifoPoolOp pool : pools) {
-      auto member = matchingPools.findLeader(pool.getOperation());
-      if (member == matchingPools.member_end())
-        continue;
-      Operation *leader = *member;
-      auto &tags = tagsOfGroup[leader];
+    for (ObjectFifoDmaEndpointOp dst : receivers) {
+      auto &tags = tagsOfGroup[*sharing.findLeader(dst.getOperation())];
       if (!tags) {
         SmallVector<int32_t> values;
-        for (int64_t slot = 0; slot < descriptorCounts.lookup(pool); ++slot)
+        for (int64_t slot = 0; slot < dst.getNumDescriptors(); ++slot)
           values.push_back(nextTag++);
         tags = builder.getDenseI32ArrayAttr(values);
       }
-      pool.setOutOfOrderTagsAttr(tags);
+      dst.setOutOfOrderTagsAttr(tags);
     }
 
     // A sender references the next hop's receiving slots, independently of
@@ -2890,7 +2888,7 @@ struct AIEObjectFifoAllocatePass
                 ? dyn_cast<ObjectFifoDmaEndpointOp>(receiver.getOperation())
                 : nullptr;
         if (dst && dst.getOutOfOrder()) {
-          src.setOutOfOrderTagsAttr(dst.getPoolOp().getOutOfOrderTagsAttr());
+          src.setOutOfOrderTagsAttr(dst.getOutOfOrderTagsAttr());
           break;
         }
       }

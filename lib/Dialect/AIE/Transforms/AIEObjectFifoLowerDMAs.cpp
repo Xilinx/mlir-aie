@@ -262,9 +262,7 @@ struct AIEObjectFifoLowerDMAsPass
                            descriptor.size);
     }
     if (endpoint.getOutOfOrder()) {
-      auto tags =
-          drains ? endpoint.getOutOfOrderTags() : pool.getOutOfOrderTags();
-      if (tags) {
+      if (auto tags = endpoint.getOutOfOrderTags()) {
         assert(descriptor.object < static_cast<int64_t>(tags->size()) &&
                "the allocator names every descriptor of an out-of-order pool");
         int64_t slot = transmittedObject >= 0 && drains
@@ -566,8 +564,8 @@ struct AIEObjectFifoLowerDMAsPass
     // Reserve tags from both pool allocation and hand-written descriptors.
     nextSendTag = 0;
     usedSendTags.clear();
-    for (auto pool : device.getOps<ObjectFifoPoolOp>())
-      if (auto tags = pool.getOutOfOrderTags())
+    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
+      if (auto tags = endpoint.getOutOfOrderTags())
         usedSendTags.insert(tags->begin(), tags->end());
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
       if (auto push = endpoint.getCorePushAttr())

@@ -79,8 +79,7 @@ struct AIEObjectFifoSplitPass
         disableSynchronization || from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
-        /*contiguous=*/false, /*zeroObjects=*/nullptr,
-        /*out_of_order_tags=*/DenseI32ArrayAttr());
+        /*contiguous=*/false, /*zeroObjects=*/nullptr);
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -196,8 +195,7 @@ struct AIEObjectFifoSplitPass
         fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr(), /*contiguous=*/false,
-        /*zeroObjects=*/nullptr,
-        /*out_of_order_tags=*/DenseI32ArrayAttr());
+        /*zeroObjects=*/nullptr);
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }

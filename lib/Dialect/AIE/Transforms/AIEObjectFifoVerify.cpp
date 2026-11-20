@@ -1561,20 +1561,24 @@ struct AIEObjectFifoVerifyPass
     }
   }
 
-  /// An out-of-order sender names the buffer each object lands in, and one BD
-  /// carries one such name, so the ends have to hold the same buffers in the
-  /// same order. Naming a slice of a larger buffer would need the sender split
-  /// into one descriptor per slice, which nothing does yet.
+  /// An out-of-order sender names the descriptor each object lands in, and
+  /// one BD carries one such name, so the ends have to hold the same number of
+  /// descriptors, each moving as many bytes: a receiver's descriptor may fill
+  /// a segment of a larger buffer (a join's), but naming several from one
+  /// sending descriptor would need the sender split, which nothing does yet.
   LogicalResult verifyOutOfOrderPools(DeviceOp device) {
     auto lookup = [&](FlatSymbolRefAttr name) {
       return dyn_cast_or_null<ObjectFifoDmaEndpointOp>(
           SymbolTable::lookupNearestSymbolFrom(device, name.getAttr()));
     };
-    auto objectBytes = [](ObjectFifoPoolOp pool) -> int64_t {
-      auto type = dyn_cast<MemRefType>(pool.getElemType());
+    auto segmentBytes = [](ObjectFifoDmaEndpointOp end) -> int64_t {
+      auto type = dyn_cast<MemRefType>(end.getPoolOp().getElemType());
       if (!type)
         return 0;
-      return (type.getNumElements() * type.getElementTypeBitWidth() + 7) / 8;
+      int64_t elements = 0;
+      for (ObjectFifoSegmentOp segment : end.getSelectedSegments())
+        elements += segment.getSize();
+      return (elements * type.getElementTypeBitWidth() + 7) / 8;
     };
     for (auto flow : device.getOps<RouteOp>()) {
       if (flow.getSources().size() != 1)
@@ -1585,29 +1589,26 @@ struct AIEObjectFifoVerifyPass
       for (auto destName :
            flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
         ObjectFifoDmaEndpointOp dst = lookup(destName);
-        if (!dst || !dst.getOutOfOrder())
+        if (!dst || !dst.getOutOfOrder() || !dst.getPoolOp())
           continue;
         if (!firstReceiver)
           firstReceiver = dst;
         if (firstReceiver.getNumDescriptors() != dst.getNumDescriptors() ||
-            objectBytes(firstReceiver.getPoolOp()) !=
-                objectBytes(dst.getPoolOp()))
+            segmentBytes(firstReceiver) != segmentBytes(dst))
           return flow.emitOpError(
               "out-of-order broadcast destinations require matching buffer "
               "counts and object sizes");
-        if (!src || !src.getOutOfOrder())
-          continue;
-        ObjectFifoPoolOp from = src.getPoolOp(), to = dst.getPoolOp();
-        if (!from || !to)
+        if (!src || !src.getOutOfOrder() || !src.getPoolOp())
           continue;
         if (src.getNumDescriptors() != dst.getNumDescriptors() ||
-            objectBytes(from) != objectBytes(to))
+            segmentBytes(src) != segmentBytes(dst))
           return src.emitOpError("sends out of order from ")
                  << src.getNumDescriptors() << " buffers of "
-                 << objectBytes(from) << " bytes into "
-                 << dst.getNumDescriptors() << " of " << objectBytes(to)
-                 << "; an out-of-order fifo needs the same buffers at both "
-                    "ends, because one descriptor names one whole buffer";
+                 << segmentBytes(src) << " bytes into "
+                 << dst.getNumDescriptors() << " of " << segmentBytes(dst)
+                 << "; an out-of-order fifo needs as many descriptors at "
+                    "both ends, each moving as many bytes, because one "
+                    "descriptor names one whole receiving descriptor";
       }
     }
     return success();

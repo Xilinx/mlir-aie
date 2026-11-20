@@ -106,12 +106,13 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
 
     // Credits belong to the channel, including bounded FIFOs sharing it with
     // an unbounded FIFO. Every such pool needs a local core release to count.
-    DenseMap<StringRef, ObjectFifoDmaEndpointOp> receiverOfPool;
+    // A joined pool has a receiver per segment, each taking a packet an object.
+    DenseMap<StringRef, SmallVector<ObjectFifoDmaEndpointOp>> receiversOfPool;
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
       if (endpoint.getOutOfOrder() && !endpoint.drains() &&
           unboundedChannels.contains(channelKey(endpoint)))
-        receiverOfPool[endpoint.getPool()] = endpoint;
-    if (receiverOfPool.empty())
+        receiversOfPool[endpoint.getPool()].push_back(endpoint);
+    if (receiversOfPool.empty())
       return;
     DenseSet<StringRef> replenishedPools;
 
@@ -129,22 +130,29 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
                 device, release.getObjFifoNameAttr());
         if (!endpoint || !endpoint.drains())
           return WalkResult::advance();
-        auto it = receiverOfPool.find(endpoint.getPool());
-        if (it == receiverOfPool.end())
+        auto it = receiversOfPool.find(endpoint.getPool());
+        if (it == receiversOfPool.end())
           return WalkResult::advance();
-        std::optional<int32_t> channel = it->second.getChannelIndex();
-        if (!channel) {
-          it->second.emitOpError("receives out of order without a channel; "
+        DenseMap<int, int32_t> packetsOfChannel;
+        for (ObjectFifoDmaEndpointOp receiver : it->second) {
+          std::optional<int32_t> channel = receiver.getChannelIndex();
+          if (!channel) {
+            receiver.emitOpError("receives out of order without a channel; "
                                  "run --aie-objectfifo-allocate first");
-          return WalkResult::interrupt();
+            return WalkResult::interrupt();
+          }
+          auto receiverTile = receiver.getTile().getDefiningOp<TileOp>();
+          auto coreTile = core.getTileOp();
+          if (receiverTile.getCol() != coreTile.getCol() ||
+              receiverTile.getRow() != coreTile.getRow())
+            continue;
+          packetsOfChannel[*channel] += release.relNumber();
         }
-        auto receiverTile = it->second.getTile().getDefiningOp<TileOp>();
-        auto coreTile = core.getTileOp();
-        if (receiverTile.getCol() != coreTile.getCol() ||
-            receiverTile.getRow() != coreTile.getRow())
+        if (packetsOfChannel.empty())
           return WalkResult::advance();
         replenishedPools.insert(endpoint.getPool());
-        releasesOfChannel[*channel].emplace_back(release, release.relNumber());
+        for (auto [channel, packets] : packetsOfChannel)
+          releasesOfChannel[channel].emplace_back(release, packets);
         return WalkResult::advance();
       });
       if (walked.wasInterrupted())
@@ -165,9 +173,9 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
         }
       }
     }
-    for (auto &[pool, receiver] : receiverOfPool) {
+    for (auto &[pool, receivers] : receiversOfPool) {
       if (!replenishedPools.contains(pool)) {
-        receiver.emitOpError(
+        receivers.front().emitOpError(
             "unbounded out-of-order receiving channel requires a local core "
             "consumer release to replenish it; specify iter_count on every "
             "FIFO sharing this channel");
