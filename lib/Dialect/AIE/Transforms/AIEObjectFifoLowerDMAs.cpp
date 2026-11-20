@@ -44,6 +44,10 @@ struct Descriptor {
   /// How the address steps on each run of a descriptor that walks a
   /// contiguous pool's objects in turn.
   BDIterationAttr iteration = nullptr;
+  /// In a chain moving one object, only the first takes its lock and only
+  /// the last gives it back.
+  bool acquires = true;
+  bool releases = true;
 };
 
 Block *findEndOpBlock(Region &region) {
@@ -169,17 +173,25 @@ struct AIEObjectFifoLowerDMAsPass
     SmallVector<Descriptor> descriptors;
     for (auto [index, buffer] : llvm::enumerate(buffers)) {
       for (auto [position, segment] : llvm::enumerate(segments)) {
-        descriptors.push_back(
-            {buffer, segment.getOffset(), segment.getSize(),
-             position < dimensions.size() ? dimensions[position]
-                                          : BDDimLayoutArrayAttr(),
-             position < padding.size() ? padding[position]
-                                       : BDPadLayoutArrayAttr(),
-             drains ? segment.getConsumeLockAttr()
-                    : segment.getProduceLockAttr(),
-             drains ? segment.getProduceLockAttr()
-                    : segment.getConsumeLockAttr(),
-             static_cast<int64_t>(index)});
+        auto [piece, count] = endpoint.getSegmentChain(position);
+        for (int64_t k = 0; k < count; k++) {
+          Descriptor descriptor{
+              buffer,
+              segment.getOffset() + k * piece,
+              std::min(piece, segment.getSize() - k * piece),
+              position < dimensions.size() ? dimensions[position]
+                                           : BDDimLayoutArrayAttr(),
+              position < padding.size() ? padding[position]
+                                        : BDPadLayoutArrayAttr(),
+              drains ? segment.getConsumeLockAttr()
+                     : segment.getProduceLockAttr(),
+              drains ? segment.getProduceLockAttr()
+                     : segment.getConsumeLockAttr(),
+              static_cast<int64_t>(index)};
+          descriptor.acquires = k == 0;
+          descriptor.releases = k + 1 == count;
+          descriptors.push_back(descriptor);
+        }
       }
     }
     return descriptors;
@@ -212,6 +224,10 @@ struct AIEObjectFifoLowerDMAsPass
           lookupNamedOp<LockOp>(device, descriptor.releaseLock.getAttr());
     }
 
+    if (!descriptor.acquires)
+      acquireLock = nullptr;
+    if (!descriptor.releases)
+      releaseLock = nullptr;
     if (descriptor.acquireValue)
       acquireValue = *descriptor.acquireValue;
     if (descriptor.releaseValue)

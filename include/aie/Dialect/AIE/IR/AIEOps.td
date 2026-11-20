@@ -3433,12 +3433,19 @@ def AIE_ObjectFifoDmaEndpointOp
     /// Segments this endpoint is responsible for.
     std::vector<ObjectFifoSegmentOp> getSelectedSegments();
 
-    /// Descriptors in one pass over the pool: one per object and selected
-    /// segment; on a contiguous pool, one per output of a draining walk over
-    /// the stream, and otherwise one stepping through the objects, or one
-    /// per turn of the unrolled chain of turns, each stepping over the
-    /// others' objects.
+    /// Descriptors in one pass over the pool: per object, each selected
+    /// segment's chain (`getSegmentChain`); on a contiguous pool, one per
+    /// output of a draining walk over the stream, and otherwise one stepping
+    /// through the objects, or one per turn of the unrolled chain of turns,
+    /// each stepping over the others' objects.
     int64_t getNumDescriptors();
+    /// The elements each descriptor of selected segment `position`'s chain
+    /// moves, and how many it takes: one, unless the segment is past one
+    /// descriptor's length on this tile and its descriptors walk, pad, tag,
+    /// repeat or take turns in no way a chain would split (each piece then
+    /// moves the next part of the object; the first takes the object's lock
+    /// and the last gives it back).
+    std::pair<int64_t, int64_t> getSegmentChain(size_t position);
     /// Whether this end drains a contiguous pool by a walk over its stream.
     bool walksStream();
     /// The window a stream walk reads, in the pool's objects.

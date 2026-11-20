@@ -1040,6 +1040,31 @@ int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
   return getMemRefSizeInBytes(getElemType(), DataLayout::closest(*this));
 }
 
+// The elements each descriptor of a chain moving `elements` of `element` on a
+// tile of `type` takes, and how many: equal pieces of whole address granules,
+// none past one descriptor's length. One, for an element with no bit width.
+static std::pair<int64_t, int64_t> descriptorChain(const AIETargetModel &target,
+                                                   AIETileType type,
+                                                   int64_t elements,
+                                                   Type element) {
+  if (!element.isIntOrFloat())
+    return {elements, 1};
+  int64_t bits = element.getIntOrFloatBitWidth();
+  int64_t granularity = target.getAddressGenGranularity();
+  int64_t granule = std::max<int64_t>(granularity / bits, 1);
+  int64_t most = llvm::alignDown(
+      static_cast<int64_t>(target.getDmaBdMaxLen(type)) * granularity / bits,
+      granule);
+  if (most <= 0 || elements <= most)
+    return {elements, 1};
+  int64_t piece = std::min<int64_t>(
+      llvm::alignTo(
+          llvm::divideCeil(elements, llvm::divideCeil(elements, most)),
+          granule),
+      most);
+  return {piece, llvm::divideCeil(elements, piece)};
+}
+
 // Whether one iterating descriptor could walk a pool of `depth` objects on a
 // tile: a mem tile's pool, deeper than one object and no deeper than a lock
 // counts (ObjectFifoPoolOp::canWalkWhole, ObjectFifoCreateOp::plannedDmaEnd).
@@ -1092,9 +1117,13 @@ StringRef ObjectFifoPoolOp::getBaseName() {
 
 bool ObjectFifoPoolOp::canWalkWhole() {
   auto device = (*this)->getParentOfType<DeviceOp>();
+  auto type = llvm::cast<MemRefType>(getElemType());
   return walksWholeDepth(
              getTileLike().isMemTile(), getDepth(),
              static_cast<int64_t>(device.getTargetModel().getMaxLockValue())) &&
+         descriptorChain(device.getTargetModel(), getTileLike().getTileType(),
+                         type.getNumElements(), type.getElementType())
+                 .second == 1 &&
          !getContiguous() && getSegmentOps().size() == 1 && !getRepeatCount() &&
          !getBuffers() &&
          llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
@@ -1287,7 +1316,33 @@ int64_t ObjectFifoDmaEndpointOp::getNumDescriptors() {
     StreamWindow window;
     return succeeded(getStreamWindow(window)) ? window.outputs : 0;
   }
-  return pool.getDepth() * getSelectedSegments().size();
+  int64_t perObject = 0;
+  size_t segments = getSelectedSegments().size();
+  for (size_t position = 0; position < segments; position++)
+    perObject += getSegmentChain(position).second;
+  return pool.getDepth() * perObject;
+}
+
+std::pair<int64_t, int64_t>
+ObjectFifoDmaEndpointOp::getSegmentChain(size_t position) {
+  std::vector<ObjectFifoSegmentOp> segments = getSelectedSegments();
+  int64_t size = segments[position].getSize();
+  ObjectFifoPoolOp pool = getPoolOp();
+  auto type = llvm::dyn_cast<MemRefType>(pool.getElemType());
+  auto dims = getDimensions();
+  auto pads = getPadDimensions();
+  bool walks =
+      dims && position < dims->size() && !(*dims)[position].getValue().empty();
+  bool padded =
+      pads && position < pads->size() && !(*pads)[position].getValue().empty();
+  bool turns = (getTurns() && !getTurns()->empty()) ||
+               (getDispatch() && !getDispatch()->empty());
+  if (!type || pool.getContiguous() || walks || padded || getOutOfOrder() ||
+      getPacketAttr() || turns || getRepeat() > 1 ||
+      getReleaseStrategy() == ObjectFifoRelease::PushQueue)
+    return {size, 1};
+  return descriptorChain(getTargetModel(*this), getTileLike().getTileType(),
+                         size, type.getElementType());
 }
 
 bool ObjectFifoDmaEndpointOp::walksStream() {
@@ -2438,10 +2493,39 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
       }
   }
   int64_t depth = link.getPoolDepth(positions);
-  int64_t segments = link.getPoolSegments().size();
-  int64_t selected =
-      (drains ? link.isDistribute() : link.isJoin()) ? 1 : segments;
-  int64_t descriptors = depth * selected;
+  SmallVector<std::pair<int64_t, int64_t>> poolSegments =
+      link.getPoolSegments();
+  int64_t segments = poolSegments.size();
+  // Each selected segment is a chain of descriptors where it is past one
+  // (ObjectFifoDmaEndpointOp::getSegmentChain).
+  Type element = link.getLinkedElemType(link.getPoolOwner())
+                     .getElementType()
+                     .getElementType();
+  BDDimLayoutArrayAttr from =
+      drains ? nullptr : getDimensionsFromStream(getConsumerTiles()[*consumer]);
+  bool chains = !link.walksStream() && !link.isDispatch() && !link.isMerge() &&
+                !link.getRepeatCount() && !packetHeader() &&
+                ordered(*this, drains) &&
+                (drains ? getDimensionsToStream().empty()
+                        : !from || from.getValue().empty());
+  auto chain = [&](int64_t elements) {
+    return chains ? descriptorChain(device.getTargetModel(),
+                                    tileLike.getTileType(), elements, element)
+                        .second
+                  : 1;
+  };
+  int64_t perObject = 0;
+  if (drains ? link.isDistribute() : link.isJoin()) {
+    std::vector<ObjectFifoCreateOp> side =
+        drains ? link.getOutputObjectFifos() : link.getInputObjectFifos();
+    size_t index = llvm::find(side, *this) - side.begin();
+    perObject = index < poolSegments.size() ? chain(poolSegments[index].second)
+                                            : 1;
+  } else {
+    for (auto [offset, size] : poolSegments)
+      perObject += chain(size);
+  }
+  int64_t descriptors = depth * perObject;
   int64_t contiguousObjects = 0;
   if (link.walksStream()) {
     StreamWindow window;
@@ -2476,7 +2560,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
                        link,
                        -1,
                        depth,
-                       walkable(depth) && segments == 1 &&
+                       walkable(depth) && segments == 1 && perObject == 1 &&
                            !link.getRepeatCount() && !link.walksStream() &&
                            !link.isDispatch() && !drainLaysOut && linkOrdered,
                        objectBytes(link.getLinkedElemType(link.getPoolOwner())),
