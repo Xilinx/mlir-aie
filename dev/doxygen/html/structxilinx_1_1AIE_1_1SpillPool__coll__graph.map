@@ -1,9 +1,0 @@
-<map id="xilinx::AIE::SpillPool" name="xilinx::AIE::SpillPool">
-<area shape="rect" id="Node000001" title="A mem tile pool as aie&#45;objectfifo&#45;allocate packs it: count buffers of bytes homed on home,..." alt="" coords="61,128,211,156"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,72,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="51,45,68,74,88,103,117,128,112,128,85,106,64,77,50,50"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="96,5,176,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="138,47,138,128,133,127,134,50"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="201,5,239,33"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="215,46,205,78,189,106,161,130,158,126,184,103,200,75,211,50"/>
-</map>

@@ -1,9 +1,0 @@
-<map id="xilinx::AIE::Placer::StreamNet" name="xilinx::AIE::Placer::StreamNet">
-<area shape="rect" id="Node000001" title=" " alt="" coords="133,168,267,212"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,14,102,42"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="67,53,96,97,132,142,163,167,157,167,128,146,91,100,66,58"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="126,5,274,50"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="202,64,203,168,198,167,198,67"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="298,14,348,42"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="308,53,242,145,222,169,219,165,238,142,303,55"/>
-</map>
