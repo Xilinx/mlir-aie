@@ -890,7 +890,8 @@ static CoreLockAcquiresAttr collectCoreLockAcquires(CoreOp core) {
           call, call.getCalleeAttr());
       if (callee && !callee.isExternal())
         pending.push_back(callee);
-      else
+      else if (!callee ||
+               !callee->getAttrOfType<UnitAttr>("aie.no_lock_acquires"))
         unknown = true;
     });
     operation->walk([&](Operation *nested) {

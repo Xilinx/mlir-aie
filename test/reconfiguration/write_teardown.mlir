@@ -42,6 +42,8 @@
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" --aie-reorder-ctrl-packets-by-tile --aie-ctrl-packet-to-dma="chain-bds=true parallel-shims=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP-DMA
 // RUN: aie-opt --aie-annotate-core-lock-acquires %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" --verify-diagnostics %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE-DRAIN
+// RUN: aie-opt --aie-annotate-core-lock-acquires %t/external-contract.mlir | FileCheck %s --check-prefix=EXTERNAL
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" %t/external-contract.mlir | FileCheck %s --check-prefix=EXTERNAL-DRAIN
 
 // ANNOTATE-LABEL: aie.device(npu2_1col) @lock_cfg
 // ANNOTATE: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>, <column = 0, row = 2, lock_id = 5, action = Acquire, value = 3>, <column = 0, row = 2, lock_id = 6, action = AcquireGreaterEqual, value = 2>, <column = 0, row = 2, lock_id = 6, action = AcquireGreaterEqual, value = 3>]>
@@ -432,6 +434,36 @@ module {
   }
   aie.device(npu2_1col) @main {
     aie.runtime_sequence @counter_range() {
+      aiex.npu.load_pdi {device_ref = @cfg}
+    }
+  }
+}
+
+//--- external-contract.mlir
+
+// EXTERNAL: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>]>
+// EXTERNAL-DRAIN-LABEL: aie.runtime_sequence @external_contract
+// EXTERNAL-DRAIN: arith.constant 2224208 : i32
+// EXTERNAL-DRAIN: arith.constant 960 : i32
+// EXTERNAL-DRAIN: aiex.npu.maskpoll
+module {
+  aie.device(npu2_1col) @cfg {
+    %tile = aie.tile(0, 2)
+    %lock = aie.lock(%tile, 5) {init = 0 : i32}
+    func.func private @kernel() attributes {aie.no_lock_acquires}
+    func.func private @wrapper() {
+      func.call @kernel() : () -> ()
+      return
+    }
+    aie.core(%tile) {
+      %one = arith.constant 1 : i32
+      aie.use_lock(%lock, AcquireGreaterEqual, %one)
+      func.call @wrapper() : () -> ()
+      aie.end
+    }
+  }
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence @external_contract() {
       aiex.npu.load_pdi {device_ref = @cfg}
     }
   }

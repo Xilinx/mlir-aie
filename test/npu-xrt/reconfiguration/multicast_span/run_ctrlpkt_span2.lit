@@ -5,6 +5,13 @@
 //
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: cd %t.d
-// RUN: %aiecc --get-full-elf --load-pdi-to-ctrl-pkt --ctrlpkt-multicast-span=2 %S/aie.mlir
+// RUN: %aiecc -j1 --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-teardown=true --ctrlpkt-multicast-span=2 --get=npu_expanded.mlir %S/aie.mlir
+// RUN: FileCheck %s < npu_expanded.mlir
+// RUN: FileCheck %s --check-prefix=TEARDOWN < npu_expanded.mlir
 // RUN: %host_clang -o test %S/../parallel_shims/test.cpp -std=c++17 %host_link_flags %xrt_flags
 // RUN: %run_on_npu2% ./test 4
+//
+// CHECK: aiex.control_packet {address = 2113536 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
+// CHECK-NOT: data = array<i32: 1>, multicast_id
+// TEARDOWN: aiex.npu.load_pdi
+// TEARDOWN-NOT: aiex.npu.load_pdi

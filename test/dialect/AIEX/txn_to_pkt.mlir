@@ -9,6 +9,10 @@
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-coalesce-control-packets | FileCheck %s --check-prefix=MERGE
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-coalesce-control-packets | FileCheck %s --check-prefix=ORDER
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-coalesce-control-packets | FileCheck %s --check-prefix=MULTI
+// RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile="address-order=false" | FileCheck %s --check-prefix=DSE
+// RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile="eliminate-dead-writes=false" | FileCheck %s --check-prefix=SORT
+// RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile="address-order=false eliminate-dead-writes=false" | FileCheck %s --check-prefix=RETAIN
+// RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=RAW-MULTI
 // CHECK: aiex.control_packet {address = 65432 : ui32, data = array<i32: 123, 456, 789, 43981, -2147483648, -1, -2, -3>
 
 module {
@@ -45,12 +49,36 @@ module {
     // ORDER-NEXT: aiex.control_packet {address = 2301952 : ui32
     // ORDER-NEXT: aiex.control_packet_barrier {compiler_only}
     // ORDER-NEXT: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 9>
+    // DSE-LABEL: @overwritten
+    // DSE-NEXT: address = 2228236 : ui32, data = array<i32: 4>
+    // DSE-NEXT: address = 2228224 : ui32, data = array<i32: 1>
+    // DSE-NEXT: address = 2228228 : ui32, data = array<i32: 7, 8>
+    // SORT-LABEL: @overwritten
+    // SORT-NEXT: address = 2228224 : ui32, data = array<i32: 1, 2, 3>
+    // SORT-NEXT: address = 2228236 : ui32, data = array<i32: 4>
+    // SORT-NEXT: address = 2228228 : ui32, data = array<i32: 7, 8>
+    // RETAIN-LABEL: @overwritten
+    // RETAIN-NEXT: address = 2228236 : ui32, data = array<i32: 4>
+    // RETAIN-NEXT: address = 2228224 : ui32, data = array<i32: 1, 2, 3>
+    // RETAIN-NEXT: address = 2228228 : ui32, data = array<i32: 7, 8>
     aie.runtime_sequence @overwritten() {
       aiex.control_packet {address = 2228236 : ui32, data = array<i32: 4>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1, 2, 3>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228228 : ui32, data = array<i32: 7, 8>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // DSE-LABEL: @reverse_overlap
+    // DSE-NEXT: address = 2228232 : ui32, data = array<i32: 2>
+    // DSE-NEXT: address = 2228224 : ui32, data = array<i32: 3, 4>
+    // DSE-NEXT: {{^ *}}}
+    // SORT-LABEL: @reverse_overlap
+    // SORT-NEXT: address = 2228228 : ui32, data = array<i32: 1, 2>
+    // SORT-NEXT: address = 2228224 : ui32, data = array<i32: 3, 4>
+    // SORT-NEXT: {{^ *}}}
+    aie.runtime_sequence @reverse_overlap() {
+      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 1, 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 3, 4>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
   aie.device(npu2) @overlay {
@@ -86,6 +114,18 @@ module {
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 1 : i32}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // RAW-MULTI-LABEL: @interleaved_overwrite
+    // RAW-MULTI-NEXT: aiex.set_device @cfg
+    // RAW-MULTI-NEXT: address = 3276800 : ui32, data = array<i32: 7>, opcode
+    // RAW-MULTI-NEXT: address = 3276800 : ui32, data = array<i32: 9>, opcode
+    // RAW-MULTI-NEXT: address = 2228224 : ui32, data = array<i32: 7>, opcode
+    // RAW-MULTI-NEXT: {{^ *}}}
+    aie.runtime_sequence @interleaved_overwrite() {
+      aiex.set_device @cfg
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }

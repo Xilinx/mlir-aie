@@ -43,6 +43,11 @@ def AIE_Dialect : Dialect {
     That sequence is named `configure` unless a user sequence already has the
     name, so consumers key on the attribute, not the name.
 
+    An external `func.func` with `aie.no_lock_acquires` declares that its body
+    and every transitive callee perform no AIE lock acquisitions. Core lock
+    analysis uses this contract while collecting explicit lock operations.
+    An external declaration without the attribute has unknown lock effects.
+
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
@@ -60,6 +65,7 @@ def AIE_Dialect : Dialect {
       "::mlir::UnitAttr":$priority_route, "::mlir::ArrayAttr":$shareable_with,
       "::mlir::UnitAttr":$reserve_controller_packet_ids,
       "::mlir::UnitAttr":$generated_configure,
+      "::mlir::UnitAttr":$no_lock_acquires,
       "::mlir::ArrayAttr":$ctrl_pkt_multicast);
 }
 

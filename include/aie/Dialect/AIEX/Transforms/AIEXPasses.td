@@ -792,7 +792,15 @@ def AIEReorderCtrlPacketsByTile
     the last value for each word and orders the surviving packets by address.
     Header changes and other operations end the sequence. Run before multicast
     selection and adjacent-write coalescing.
+
+    `address-order` and `eliminate-dead-writes` select each transformation
+    independently. Address ordering without elimination partitions each
+    sequence at overlapping writes to retain their order.
   }];
+  let options = [Option<"addressOrder", "address-order", "bool",
+                        /*default=*/"true", "Sort ordinary writes by address">,
+                 Option<"eliminateDeadWrites", "eliminate-dead-writes", "bool",
+                        /*default=*/"true", "Remove overwritten words">];
   let constructor = "xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass()";
   let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
 }
@@ -942,7 +950,8 @@ def AIEDedupCtrlPacketMulticast
   let summary = "Send the control packets a multicast's tiles share once";
   let description = [{
     Requires quiescent application resources, compiler barriers around ordered
-    writes, and ordinary-write normalization. The overlay declares disjoint
+    writes, and disjoint destination words within each run. The pass retains
+    runs with overlapping writes. The overlay declares disjoint
     multicast destination groups in `aie.ctrl_pkt_multicast`.
 
     Replaces matching leading writes to every tile of a group with packets

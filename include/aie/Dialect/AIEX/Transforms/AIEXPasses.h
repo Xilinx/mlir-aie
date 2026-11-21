@@ -102,6 +102,9 @@ createAIEDedupCtrlPacketMulticastPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEReorderCtrlPacketsByTilePass(
+    const AIEReorderCtrlPacketsByTileOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEScheduleCtrlPacketActivationPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEScheduleCtrlPacketActivationPass(

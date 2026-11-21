@@ -5,9 +5,10 @@
 //
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: cd %t.d
-// RUN: %aiecc --get-full-elf --load-pdi-to-ctrl-pkt --get=npu_expanded.mlir %S/aie.mlir
+// RUN: %aiecc -j1 --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-teardown=true --get=npu_expanded.mlir %S/aie.mlir
 // RUN: FileCheck %s < npu_expanded.mlir
 // RUN: %host_clang -o test %S/../parallel_shims/test.cpp -std=c++17 %host_link_flags %xrt_flags
 // RUN: %run_on_npu2% ./test 2
 //
-// CHECK: aiex.control_packet {address = {{[0-9]+}} : ui32, data = {{.*}}, multicast_id = 28 : i32
+// CHECK: aiex.control_packet {address = 2113536 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
+// CHECK-NOT: data = array<i32: 1>, multicast_id

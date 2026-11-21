@@ -244,6 +244,18 @@ inline cl::opt<bool> ctrlpktVerifyDelivery(
 inline cl::opt<bool> ctrlpktEarlyActivation(
     "ctrlpkt-early-activation", cl::init(true),
     cl::desc("Advance DMA pushes and core enables with a gating proof"));
+inline cl::opt<bool> ctrlpktAddressOrder(
+    "ctrlpkt-address-order", cl::init(true),
+    cl::desc("Sort ordinary control-packet writes by address"));
+inline cl::opt<bool> ctrlpktEliminateDeadWrites(
+    "ctrlpkt-eliminate-dead-writes", cl::init(true),
+    cl::desc("Remove overwritten control-packet words"));
+inline cl::opt<bool>
+    ctrlpktCoalesce("ctrlpkt-coalesce", cl::init(true),
+                    cl::desc("Merge adjacent control-packet writes"));
+inline cl::opt<bool> ctrlpktChainBds(
+    "ctrlpkt-chain-bds", cl::init(true),
+    cl::desc("Chain control-packet DMA tasks with deferrable completion"));
 inline cl::opt<unsigned> ctrlpktMulticastSpan(
     "ctrlpkt-multicast-span", cl::value_desc("w"),
     cl::desc("Send the control packets the core tiles of each <w> columns "
@@ -803,6 +815,14 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(ctrlpktVerifyDelivery, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktEarlyActivation, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktAddressOrder, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktEliminateDeadWrites, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktCoalesce, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktChainBds, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktMulticastSpan, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt");

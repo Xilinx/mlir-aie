@@ -190,8 +190,10 @@ struct AIEScheduleCtrlPacketActivationPass
 struct AIEReorderCtrlPacketsByTilePass
     : xilinx::AIEX::impl::AIEReorderCtrlPacketsByTileBase<
           AIEReorderCtrlPacketsByTilePass> {
-  static void normalize(SmallVectorImpl<NpuControlPacketOp> &packets) {
-    if (packets.size() < 2) {
+  using Base::Base;
+
+  void normalize(SmallVectorImpl<NpuControlPacketOp> &packets) {
+    if (packets.size() < 2 || (!addressOrder && !eliminateDeadWrites)) {
       packets.clear();
       return;
     }
@@ -200,6 +202,10 @@ struct AIEReorderCtrlPacketsByTilePass
     llvm::DenseSet<uint32_t> written;
     SmallVector<NpuControlPacketOp> surviving;
     for (NpuControlPacketOp packet : llvm::reverse(packets)) {
+      if (!eliminateDeadWrites) {
+        surviving.push_back(packet);
+        continue;
+      }
       auto data = packet.getData().value();
       SmallVector<bool, 4> live;
       for (size_t index = 0; index < data.size(); ++index)
@@ -227,12 +233,14 @@ struct AIEReorderCtrlPacketsByTilePass
       }
       packet.erase();
     }
-    llvm::sort(surviving,
-               [](NpuControlPacketOp left, NpuControlPacketOp right) {
-                 return left.getAddress() < right.getAddress();
-               });
-    for (NpuControlPacketOp packet : surviving)
-      packet->moveBefore(block, end);
+    if (addressOrder) {
+      llvm::sort(surviving,
+                 [](NpuControlPacketOp left, NpuControlPacketOp right) {
+                   return left.getAddress() < right.getAddress();
+                 });
+      for (NpuControlPacketOp packet : surviving)
+        packet->moveBefore(block, end);
+    }
     packets.clear();
   }
 
@@ -240,19 +248,34 @@ struct AIEReorderCtrlPacketsByTilePass
     getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
       sequence.walk([&](Block *block) {
         SmallVector<NpuControlPacketOp> packets;
+        llvm::DenseSet<uint32_t> written;
+        auto finish = [&] {
+          normalize(packets);
+          written.clear();
+        };
         for (Operation &operation : llvm::make_early_inc_range(*block)) {
           auto packet = dyn_cast<NpuControlPacketOp>(operation);
           if (!packet || packet.getOpcode() != 0 || !packet.getData() ||
               packet.getMulticastId()) {
-            normalize(packets);
+            finish();
             continue;
           }
           if (!packets.empty() &&
               packets.back().getStreamId() != packet.getStreamId())
-            normalize(packets);
+            finish();
+          if (addressOrder && !eliminateDeadWrites) {
+            size_t words = packet.getData()->size();
+            for (size_t index = 0; index < words; ++index)
+              if (written.contains(packet.getAddress() + 4 * index)) {
+                finish();
+                break;
+              }
+            for (size_t index = 0; index < words; ++index)
+              written.insert(packet.getAddress() + 4 * index);
+          }
           packets.push_back(packet);
         }
-        normalize(packets);
+        finish();
       });
     });
   }
@@ -263,6 +286,12 @@ struct AIEReorderCtrlPacketsByTilePass
 std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass() {
   return std::make_unique<AIEReorderCtrlPacketsByTilePass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(
+    const AIEReorderCtrlPacketsByTileOptions &options) {
+  return std::make_unique<AIEReorderCtrlPacketsByTilePass>(options);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>

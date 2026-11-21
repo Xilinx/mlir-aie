@@ -14,6 +14,8 @@
 
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/DenseSet.h"
+
 #include <map>
 #include <optional>
 #include <tuple>
@@ -55,9 +57,18 @@ struct AIEDedupCtrlPacketMulticastPass
         for (PacketRun &run : packetRuns(seq)) {
           const OverlayMulticasts::Info *info =
               multicasts.of(run.front().device);
+          llvm::DenseSet<uint32_t> written;
           if (!info || llvm::any_of(run, [&](ContextualPacket entry) {
-                return entry.packet.getStreamId() !=
-                       run.front().packet.getStreamId();
+                NpuControlPacketOp packet = entry.packet;
+                if (packet.getStreamId() != run.front().packet.getStreamId() ||
+                    packet.getOpcode() != 0 || !packet.getData() ||
+                    packet.getMulticastId())
+                  return true;
+                for (size_t index = 0; index < packet.getData()->size();
+                     ++index)
+                  if (!written.insert(packet.getAddress() + 4 * index).second)
+                    return true;
+                return false;
               }))
             continue;
           std::map<AIE::TileID, SmallVector<NpuControlPacketOp>> byTile;

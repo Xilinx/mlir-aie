@@ -38,6 +38,16 @@
 // RUN: not %aiecc --ctrlpkt-multicast-span=2 %s 2>&1 | FileCheck %s --check-prefix=SPAN-LDPDI-CTRLPKT
 // SPAN-LDPDI-CTRLPKT: aiecc: --ctrlpkt-multicast-span requires --load-pdi-to-ctrl-pkt
 
+// RUN: not %aiecc -j1 --ctrlpkt-address-order %s 2>&1 | FileCheck %s --check-prefix=ORDER-LDPDI-CTRLPKT
+// ORDER-LDPDI-CTRLPKT: aiecc: --ctrlpkt-address-order requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc -j1 --ctrlpkt-eliminate-dead-writes %s 2>&1 | FileCheck %s --check-prefix=DSE-LDPDI-CTRLPKT
+// DSE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-eliminate-dead-writes requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc -j1 --ctrlpkt-coalesce %s 2>&1 | FileCheck %s --check-prefix=COALESCE-LDPDI-CTRLPKT
+// COALESCE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-coalesce requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc -j1 --ctrlpkt-chain-bds %s 2>&1 | FileCheck %s --check-prefix=CHAIN-LDPDI-CTRLPKT
+// CHAIN-LDPDI-CTRLPKT: aiecc: --ctrlpkt-chain-bds requires --load-pdi-to-ctrl-pkt
+// RUN: %aiecc -j1 -n --ctrlpkt-address-order=false --ctrlpkt-eliminate-dead-writes=false --ctrlpkt-coalesce=false --ctrlpkt-chain-bds=false %s
+
 // Under --load-pdi-to-ctrl-pkt the teardown is on by default with full-ELF
 // output, and off without it.
 // RUN: %aiecc -n --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-init-entry %s
