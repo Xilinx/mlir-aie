@@ -4,8 +4,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // An object past one buffer descriptor's length (131071 words on npu2) moves
-// as a chain of descriptors: the first takes the object's lock, the last
-// gives it back, and none is past the length.
+// as a chain of descriptors, none past the length. Each BD has one acquire
+// and one release field: the first takes the object's lock and releases by
+// zero, the last acquires disabled (acq_en = false) and gives the lock back.
 
 module @long_segment {
   aie.device(npu2) {
@@ -31,17 +32,21 @@ module @long_segment {
 // CHECK:       ^[[F0]]:
 // CHECK:         aie.use_lock(%free, AcquireGreaterEqual, %{{.*}})
 // CHECK-NEXT:    aie.dma_bd(%b0 : memref<262144xbf16> offset = 0 len = 131072)
+// CHECK:         aie.use_lock(%full, Release, %c0{{.*}})
 // CHECK-NEXT:    aie.next_bd ^[[F1:bb[0-9]+]]
 // CHECK:       ^[[F1]]:
+// CHECK:         aie.use_lock(%free, AcquireGreaterEqual, %{{.*}}) {acq_en = false}
 // CHECK-NEXT:    aie.dma_bd(%b0 : memref<262144xbf16> offset = 131072 len = 131072)
-// CHECK:         aie.use_lock(%full, Release, %{{.*}})
+// CHECK:         aie.use_lock(%full, Release, %c1{{.*}})
 // CHECK-NEXT:    aie.next_bd ^[[F0]]
 // CHECK:         aie.dma_start(MM2S, 0, ^[[D0:bb[0-9]+]], ^{{bb[0-9]+}})
 // CHECK:       ^[[D0]]:
 // CHECK:         aie.use_lock(%full, AcquireGreaterEqual, %{{.*}})
 // CHECK-NEXT:    aie.dma_bd(%b0 : memref<262144xbf16> offset = 0 len = 131072)
+// CHECK:         aie.use_lock(%free, Release, %c0{{.*}})
 // CHECK-NEXT:    aie.next_bd ^[[D1:bb[0-9]+]]
 // CHECK:       ^[[D1]]:
+// CHECK:         aie.use_lock(%full, AcquireGreaterEqual, %{{.*}}) {acq_en = false}
 // CHECK-NEXT:    aie.dma_bd(%b0 : memref<262144xbf16> offset = 131072 len = 131072)
-// CHECK:         aie.use_lock(%free, Release, %{{.*}})
+// CHECK:         aie.use_lock(%free, Release, %c1{{.*}})
 // CHECK-NEXT:    aie.next_bd ^[[D0]]

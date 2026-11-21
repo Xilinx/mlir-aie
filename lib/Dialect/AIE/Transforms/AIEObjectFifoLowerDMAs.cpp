@@ -224,16 +224,22 @@ struct AIEObjectFifoLowerDMAsPass
           lookupNamedOp<LockOp>(device, descriptor.releaseLock.getAttr());
     }
 
-    if (!descriptor.acquires)
-      acquireLock = nullptr;
-    if (!descriptor.releases)
-      releaseLock = nullptr;
+    // A BD has one acquire and one release field: a chain's first piece
+    // releases by zero, its last acquires disabled, and the ones between
+    // take no lock.
+    if (!descriptor.acquires && !descriptor.releases)
+      acquireLock = releaseLock = nullptr;
     if (descriptor.acquireValue)
       acquireValue = *descriptor.acquireValue;
     if (descriptor.releaseValue)
       releaseValue = *descriptor.releaseValue;
+    if (!descriptor.releases)
+      releaseValue = 0;
     if (acquireLock) {
-      UseLockOp::create(builder, loc, acquireLock, action, acquireValue);
+      auto acquire =
+          UseLockOp::create(builder, loc, acquireLock, action, acquireValue);
+      if (!descriptor.acquires)
+        acquire.setAcqEn(false);
     }
     if (packet) {
       DMABDPACKETOp::create(builder, loc, packet.getPktType(),

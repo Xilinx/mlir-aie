@@ -1337,12 +1337,15 @@ ObjectFifoDmaEndpointOp::getSegmentChain(size_t position) {
       pads && position < pads->size() && !(*pads)[position].getValue().empty();
   bool turns = (getTurns() && !getTurns()->empty()) ||
                (getDispatch() && !getDispatch()->empty());
-  if (!type || pool.getContiguous() || walks || padded || getOutOfOrder() ||
+  // A binary lock has no release that leaves it as it is.
+  const AIETargetModel &targetModel = getTargetModel(*this);
+  if (!type || !targetModel.hasProperty(AIETargetModel::UsesSemaphoreLocks) ||
+      pool.getContiguous() || walks || padded || getOutOfOrder() ||
       getPacketAttr() || turns || getRepeat() > 1 ||
       getReleaseStrategy() == ObjectFifoRelease::PushQueue)
     return {size, 1};
-  return descriptorChain(getTargetModel(*this), getTileLike().getTileType(),
-                         size, type.getElementType());
+  return descriptorChain(targetModel, getTileLike().getTileType(), size,
+                         type.getElementType());
 }
 
 bool ObjectFifoDmaEndpointOp::walksStream() {
@@ -2508,7 +2511,9 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer,
                      .getElementType();
   BDDimLayoutArrayAttr from =
       drains ? nullptr : getDimensionsFromStream(getConsumerTiles()[*consumer]);
-  bool chains = !link.walksStream() && !link.isDispatch() && !link.isMerge() &&
+  bool chains = device.getTargetModel().hasProperty(
+                    AIETargetModel::UsesSemaphoreLocks) &&
+                !link.walksStream() && !link.isDispatch() && !link.isMerge() &&
                 !link.getRepeatCount() && !packetHeader() &&
                 ordered(*this, drains) &&
                 (drains ? getDimensionsToStream().empty()
