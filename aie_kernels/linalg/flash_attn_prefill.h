@@ -16,10 +16,10 @@
 #include "../common/exp2_bf16.h"
 
 // Flash-attention prefill (online softmax) in two geometries: global (head_dim
-// 512, chunk 8) and sliding-window (head_dim 256, chunk 16), over a 128-key
-// block. PrefillGeom<DH> carries the four steps tuned per variant: attn_qk and
-// attn_fv decompose 1x1 vs 2x2, calculate_l sums through one MMUL accumulator
-// vs two, reorder_s has no global equivalent.
+// 512, chunk 8) and sliding-window (head_dim 256 or 128, chunk 16), over a
+// 128-key block. PrefillGeom<DH> carries the four steps tuned per variant:
+// attn_qk and attn_fv decompose 1x1 vs 2x2, calculate_l sums through one MMUL
+// accumulator vs two, reorder_s has no global equivalent.
 //
 // Pure compute; synchronization belongs to the design driving this.
 //
@@ -28,13 +28,15 @@
 using bf16 = bfloat16;
 
 // log2(e) / sqrt(head_dim), for scaled attention through the exp2 the softmax
-// runs on. LQ uniquely identifies the two supported geometries.
+// runs on. Keyed on the head dim, since 256 and 128 share LQ.
 //
 // The scale multiplies s - m, never s, so its bf16 rounding error grows only as
 // s - m goes negative -- exactly where the weight itself is vanishing.
-template <int LQ>
+template <int DH>
 constexpr bf16 exp_scale =
-    (bf16)(1.4426950408889634f * (LQ == 8 ? 0.04419417382415922f : 0.0625f));
+    (bf16)(1.4426950408889634f * (DH == 512   ? 0.04419417382415922f
+                                  : DH == 256 ? 0.0625f
+                                              : 0.08838834764831845f));
 
 // bf16 -inf, the mask fill value.
 constexpr bf16 kNegInf = bf16(-0x1.FEp127f);
@@ -47,7 +49,7 @@ constexpr bf16 kNegInf = bf16(-0x1.FEp127f);
 ///
 /// Each 64-lane step spans 64/LK query rows, so the row maxima arrive as a
 /// broadcast pattern built once per group.
-template <int LQ, int LK>
+template <int LQ, int LK, int DH>
 void apply_softmax(bf16 *__restrict pS, bf16 *__restrict new_m_local) {
   constexpr int kRows = 64 / LK; // query rows covered by one 64-lane vector
   constexpr int kGroups = LQ / kRows;
@@ -65,7 +67,7 @@ void apply_softmax(bf16 *__restrict pS, bf16 *__restrict new_m_local) {
       // The multiply doubles as the widening exp2 needs, so the scale is free
       // here: the bf16 product lands in a float accumulator either way.
       aie::vector<bf16, 64> Vec = aie::sub(s_vec, m_bcast);
-      aie::accum<accfloat, 64> Vec_acc = aie::mul(Vec, exp_scale<LQ>);
+      aie::accum<accfloat, 64> Vec_acc = aie::mul(Vec, exp_scale<DH>);
       aie::store_v(pSg, exp2_bf16(Vec_acc.template to_vector<float>()));
       pSg += kGroups * 64;
     }
@@ -126,11 +128,11 @@ void apply_mask_and_get_max(bf16 *__restrict pS, bf16 *__restrict m,
 /// (aie_api/aie.hpp:8107 admits one only on AIE_MLv2), so this rounding is the
 /// hardware's, not a choice. It is also the benign one -- c rescales y and l
 /// alike, and o = y/l divides most of it back out.
-template <int LQ>
+template <int LQ, int DH>
 void calculate_c(float *c, bf16 *prev_m_local, bf16 *new_m_local) {
   aie::vector<bf16, LQ> prev = aie::load_v<LQ>(prev_m_local);
   aie::vector<bf16, LQ> next = aie::load_v<LQ>(new_m_local);
-  aie::accum<accfloat, LQ> arg = aie::mul(aie::sub(prev, next), exp_scale<LQ>);
+  aie::accum<accfloat, LQ> arg = aie::mul(aie::sub(prev, next), exp_scale<DH>);
   aie::accum<accfloat, LQ> e;
   e.from_vector(exp2_bf16(arg.template to_vector<float>()));
   aie::store_v(c, e.template to_vector<float>());
@@ -389,10 +391,14 @@ struct PrefillGeom<512> {
   }
 };
 
-/// head_dim 256, 2x2 MMUL decomposition.
-template <>
-struct PrefillGeom<256> {
-  static constexpr int DH = 256;
+/// The sliding-window geometry: 16 query rows, 2x2 MMUL decomposition. The head
+/// dim enters only through DH / 8 (QK_colA, FV_colB); the S reorder, row sums
+/// and query grid depend on LQ = LK = 16 and the 128-key block alone.
+template <int DH_>
+struct PrefillGeom16 {
+  static_assert(DH_ % 64 == 0, "attn_qk and attn_fv step DH in 8x8 tiles, two "
+                               "at a time, and the epilogue in 64-wide chunks");
+  static constexpr int DH = DH_;
   static constexpr int LQ = 16;
   static constexpr int LK = 16;
 
@@ -546,6 +552,14 @@ struct PrefillGeom<256> {
   }
 };
 
+/// head_dim 256 (Gemma 4's sliding-window layers).
+template <>
+struct PrefillGeom<256> : PrefillGeom16<256> {};
+
+/// head_dim 128 (Qwen3, Llama 3.2 3B and 3.1 8B, Mistral 7B).
+template <>
+struct PrefillGeom<128> : PrefillGeom16<128> {};
+
 //===----------------------------------------------------------------------===//
 // Round and block bookkeeping, shared across geometries
 //===----------------------------------------------------------------------===//
@@ -603,8 +617,8 @@ block_mid_impl(bf16 *s, bf16 *m, bf16 *new_m, bf16 *prev_m, float *c, float *l,
     bf16 vm = aie::reduce_max(m_vec);
     *(new_m + j) = (bf16)vm;
   }
-  apply_softmax<G::LQ, G::LK>(s, new_m);
-  calculate_c<G::LQ>(c, prev_m, new_m);
+  apply_softmax<G::LQ, G::LK, DH>(s, new_m);
+  calculate_c<G::LQ, DH>(c, prev_m, new_m);
   G::reorder_s(s);
   G::calculate_l(l, c, s);
   calculate_y<G::LQ, DH>(y, c);

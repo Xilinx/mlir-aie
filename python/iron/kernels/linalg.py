@@ -2528,8 +2528,8 @@ def mha_softmax_ref(
 
 
 # head_dim -> (LQ, LK) for flash_attn_prefill.h's PrefillGeom
-# specializations: 512 is global attention, 256 sliding-window.
-_PREFILL_GEOM = {512: (8, 8), 256: (16, 16)}
+# specializations: 512 is global attention, 256 and 128 sliding-window.
+_PREFILL_GEOM = {512: (8, 8), 256: (16, 16), 128: (16, 16)}
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:
@@ -2556,10 +2556,12 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     own symbol prefix.
 
     Args:
-        head_dim: 512 for global attention, 256 for sliding-window.
+        head_dim: 512 for global attention, 256 or 128 for sliding-window.
     """
     if head_dim not in _PREFILL_GEOM:
-        raise ValueError(f"prefill_fv: head_dim must be 512 or 256, got {head_dim}")
+        raise ValueError(
+            f"prefill_fv: head_dim must be 512, 256 or 128, got {head_dim}"
+        )
     lq, lk = _PREFILL_GEOM[head_dim]
     # flash_attn_prefill.h's MMUL is aie::mmul<8, 8, 8, bf16, bf16>, the native
     # bf16 micro-tile, not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.

@@ -90,11 +90,11 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [fused_mm_tile.cc](./fused/fused_mm_tile.cc) | AIE API | Fused GEMM with in-L1 f32 accumulate and activation epilogue (`acc_init` / `k_step` / `epilogue_chunk`, from [mm_fused.h](./fused/mm_fused.h)); tile geometry via `-DMM_FUSED_*`, activation mode and clamp bounds as runtime arguments to `epilogue_chunk` | `bfloat16` |
 
 ### flm_gemma4
-Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kernel code in its prefill, LM-head or decode-layer design, called from that core's Worker body. AIE2P only, and not intended for other models. Several take their core lock ids as `-DFLM_GEMMA4_*_LOCK` flags, and the `decode_*` kernels build for the model geometry in `-DFLM_GEMMA4_DECODE_*` flags.
+Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kernel code in its prefill, LM-head or decode-layer design, called from that core's Worker body. AIE2P only, and not intended for other models, except prefill.cc's head dim 128 build. Several take their core lock ids as `-DFLM_GEMMA4_*_LOCK` flags, and the `decode_*` kernels build for the model geometry in `-DFLM_GEMMA4_DECODE_*` flags.
 
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
-| [prefill.cc](./flm_gemma4/prefill.cc) | AIE API | Flash-attention prefill, head dim 512 (global) or 256 (sliding window), on [flash_attn_prefill.h](./linalg/flash_attn_prefill.h) | `bfloat16` |
+| [prefill.cc](./flm_gemma4/prefill.cc) | AIE API | Flash-attention prefill, head dim 512 (global) or 256 or 128 (sliding window), on [flash_attn_prefill.h](./linalg/flash_attn_prefill.h) | `bfloat16` |
 | [q4nx_lm_head.cc](./flm_gemma4/q4nx_lm_head.cc) | AIE API | LM head over q4nx weights: RMS norm, block accumulation, tanh softcap | `uint8_t`, `bfloat16` |
 | [decode_attn_qk.cc](./flm_gemma4/decode_attn_qk.cc) | AIE API | Decode attention scores q·k with a running max, global or sliding window | `bfloat16` |
 | [decode_attn_qk_kvh2.cc](./flm_gemma4/decode_attn_qk_kvh2.cc) | AIE API | As `decode_attn_qk.cc`, global, two KV heads | `bfloat16` |
@@ -120,7 +120,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
 | [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 8 rows, key blocks of 16, 32 or 64 and a head dimension a multiple of 16; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; on AIE2 (the factory refuses others), the fused entries run a key block on one core (`attend_block`, `attend_head`, `keep_q`; split decode's `take_q`, `open_partial`, `close_partial`, `merge_partials`), `-DMHA_F32_SCORES` keeps scores in float32, `-DMHA_SOFT_CAP=c` and `-DMHA_REL_BAND` add a soft cap and a relative-position band (`relative_rows`), and `-DMHA_PAIR` splits the head over two neighbouring cores (`pair_scores`, `attend_pair`); composes `softmax_aie2p.h` + its architecture's GEMM header (`mm_aie2.h` or `mm_aie2p.h`) | `bfloat16`, running state and O `float32` |
 | [attention_i8.cc](./linalg/attention_i8.cc) | AIE API | One head of int8 attention over a 2-D map (YOLO26n's PSA), a row of queries a call: power-of-two scales, an integer softmax from a 256-entry exp table, rounding half to even | `int8_t`, table `int32_t` |
-| [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
+| [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 or 128 sliding-window | `bfloat16` |
 
 ## moe
 | Name | Coding style | Purpose | Datatypes |

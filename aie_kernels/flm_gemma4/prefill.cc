@@ -7,7 +7,9 @@
 
 // FastFlowLM's Gemma 4 prefill attention on linalg/flash_attn_prefill.h, whose
 // q * k^T, mask, row sums, S reorder and block bookkeeping it uses. The head
-// dim is FLM_GEMMA4_PREFILL_HEAD_DIM, 512 or 256.
+// dim is FLM_GEMMA4_PREFILL_HEAD_DIM: 512 builds the global kernel, 256 or 128
+// the sliding-window one, which a window of at least the sequence length makes
+// plain causal attention.
 //
 // It keeps FastFlowLM's numerics: the softmax scales by log2(e) alone (Gemma
 // 4's attention scale is 1), c and y round as FastFlowLM's kernel does, S * V
@@ -25,7 +27,7 @@
 
 // The sliding-window design's stack size counts on attn_fv and calculate_y
 // keeping their own frames.
-#if FLM_GEMMA4_PREFILL_HEAD_DIM == 256
+#if FLM_GEMMA4_PREFILL_HEAD_DIM != 512
 #define FLM_PREFILL_OUT_OF_LINE __attribute__((noinline))
 #else
 #define FLM_PREFILL_OUT_OF_LINE
@@ -34,10 +36,10 @@
 namespace {
 
 using G = PrefillGeom<FLM_GEMMA4_PREFILL_HEAD_DIM>;
-constexpr int LQ = G::LQ; // query rows per core
-constexpr int LK = G::LK; // key rows per step
-constexpr int DH = G::DH; // head dim
-constexpr bool WINDOWED = DH == 256;
+constexpr int LQ = G::LQ;            // query rows per core
+constexpr int LK = G::LK;            // key rows per step
+constexpr int DH = G::DH;            // head dim
+constexpr bool WINDOWED = DH != 512; // the 16-row geometries
 
 constexpr bfloat16 LOG2_E = (bfloat16)1.4426950408889634f;
 constexpr float NEG_INF = -0x1.FEp127f;
@@ -162,7 +164,7 @@ void attn_rounds(int *L_begin_buffer, int *L_end_buffer, int *n_out) {
   event1();
 }
 
-#if FLM_GEMMA4_PREFILL_HEAD_DIM == 256
+#if FLM_GEMMA4_PREFILL_HEAD_DIM != 512
 void attn_blocks(int *L_begin_buffer, int *window_size_buffer, const int i,
                  int *n_out) {
   event0();

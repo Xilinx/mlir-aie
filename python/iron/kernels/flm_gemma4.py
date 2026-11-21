@@ -63,11 +63,17 @@ class _PrefillKernel(ExternalFunction):
     attn_epilogue: ExternalFunction
 
 
+def _prefill_base(head_dim) -> ExternalFunction:
+    """Return the prefill build for ``head_dim``: global at 512, else sliding-window."""
+    _prefill_lq(head_dim)
+    if head_dim == _ATTN_PREFILL_DH:
+        return flm_gemma4_attn_prefill()
+    return flm_gemma4_swa_prefill(head_dim=head_dim)
+
+
 def _prefill_sibling(symbol, head_dim, contract) -> ExternalFunction:
     """``symbol`` of a prefill build as a kernel of its own, judged by ``contract``."""
-    if head_dim not in (256, 512):
-        raise ValueError(f"head_dim must be 256 or 512, not {head_dim}")
-    base = flm_gemma4_swa_prefill() if head_dim == 256 else flm_gemma4_attn_prefill()
+    base = _prefill_base(head_dim)
     return _on_object(base, symbol, getattr(base, symbol).arg_types(), contract)
 
 
@@ -132,7 +138,7 @@ def _prefill(name, dh, lq, chunk, reference) -> ExternalFunction:
         "attn_round_begin", [row_bf16, row_bf16, row_f32, row_f32, y]
     )
     # The sliding-window build also reads the window size.
-    blocks = [L, L, np.int32, L] if dh == 256 else [L, np.int32, L]
+    blocks = [L, L, np.int32, L] if dh != _ATTN_PREFILL_DH else [L, np.int32, L]
     fn.attn_blocks = bind("attn_blocks", blocks)
     fn.attn_block_begin = bind("attn_block_begin", [m, row_bf16])
     fn.attn_qk_chunk = bind("attn_qk_chunk", [s, q, kv, m, L, L] + [np.int32] * 5)
@@ -183,33 +189,52 @@ def flm_gemma4_attn_prefill() -> ExternalFunction:
     )
 
 
-# The sliding-window geometry, and the output chunk its case writes: the
-# second 8-row group, second 64-column slice, so both halves of the chunk
-# index reach the reference.
-_SWA_PREFILL_LQ, _SWA_PREFILL_DH, _SWA_PREFILL_CHUNK = 16, 256, 33
+# The sliding-window geometry and its head dims: 256 is Gemma 4's, 128 that of
+# Qwen3 and the Llama-shaped models.
+_SWA_PREFILL_LQ, _SWA_PREFILL_DHS = 16, (256, 128)
+_SWA_PREFILL_BUILDS = tuple({"head_dim": dh} for dh in _SWA_PREFILL_DHS)
 
 
-def flm_gemma4_swa_prefill() -> ExternalFunction:
-    """Sliding-window causal flash-attention prefill at a head dim of 256, from ``flm_gemma4/prefill.cc``.
+def _swa_prefill_chunk(head_dim):
+    """Return the output chunk the case writes: rows 8 to 15, columns 64 to 127.
+
+    The second 8-row group and the second 64-column slice, so both halves of
+    the chunk index reach the reference.
+    """
+    return head_dim // 8 + 1
+
+
+DTYPES["flm_gemma4_swa_prefill"] = _SWA_PREFILL_BUILDS[1:]
+
+
+def flm_gemma4_swa_prefill(*, head_dim: int = 256) -> ExternalFunction:
+    """Sliding-window causal flash-attention prefill at a head dim of 256 or 128, from ``flm_gemma4/prefill.cc``.
 
     The sliding-window build of [`flm_gemma4_attn_prefill`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_prefill]:
     one core holds 16 query rows of a 128-row round and folds in, 16 rows at
-    a time, the keys inside the window its ``window_size`` RTP gives. The
+    a time, the keys inside the window its ``window_size`` RTP gives. A
+    window of at least the sequence length gives plain causal attention. The
     entry points are those of ``flm_gemma4_attn_prefill``, with
     ``attn_blocks(L_begin, window_size, i, n_out)`` also reading the window.
-    The returned kernel is ``attn_epilogue``, bound to chunk 33: rows 8 to 15,
-    columns 64 to 127 of the (16, 256) ``y``.
+    The returned kernel is ``attn_epilogue``, bound to chunk
+    ``head_dim / 8 + 1``: rows 8 to 15, columns 64 to 127 of the
+    (16, ``head_dim``) ``y``.
+
+    Args:
+        head_dim: 256 (Gemma 4's sliding-window layers) or 128.
     """
+    if head_dim not in _SWA_PREFILL_DHS:
+        raise ValueError(f"head_dim must be 256 or 128, not {head_dim}")
     return _prefill(
         "flm_gemma4_swa_prefill",
-        _SWA_PREFILL_DH,
+        head_dim,
         _SWA_PREFILL_LQ,
-        _SWA_PREFILL_CHUNK,
-        flm_gemma4_swa_prefill_ref,
+        _swa_prefill_chunk(head_dim),
+        partial(flm_gemma4_swa_prefill_ref, head_dim=head_dim),
     )
 
 
-DTYPES["flm_gemma4_prefill_block_begin"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_begin"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_block_begin(*, head_dim: int = 512) -> ExternalFunction:
@@ -236,7 +261,7 @@ def flm_gemma4_prefill_block_begin_ref(prev_m):
     return np.repeat(prev_m, prev_m.shape[-1], axis=-1)
 
 
-DTYPES["flm_gemma4_prefill_block_end"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_end"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_block_end(*, head_dim: int = 512) -> ExternalFunction:
@@ -285,7 +310,7 @@ def _prefill_rounds_sample(rng, calls):
     return [_rtp_words(rng, begin), _rtp_words(rng, end)]
 
 
-DTYPES["flm_gemma4_prefill_rounds"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_rounds"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_rounds(*, head_dim: int = 512) -> ExternalFunction:
@@ -339,16 +364,16 @@ def _prefill_blocks_sample(rng, calls, *, window):
     return buffers
 
 
-DTYPES["flm_gemma4_prefill_blocks"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_blocks"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_blocks(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_blocks`` of the prefill kernels: the key blocks round ``i`` folds in.
 
-    At a head dim of 256, the sliding-window build, it also reads the window
-    size: ``attn_blocks(L_begin, window_size, i, n_out)``.
+    At a head dim of 256 or 128, the sliding-window build, it also reads the
+    window size: ``attn_blocks(L_begin, window_size, i, n_out)``.
     """
-    window = head_dim == 256
+    window = head_dim != _ATTN_PREFILL_DH
     return _prefill_sibling(
         "attn_blocks",
         head_dim,
@@ -366,15 +391,15 @@ def flm_gemma4_prefill_blocks(*, head_dim: int = 512) -> ExternalFunction:
     )
 
 
-DTYPES["flm_gemma4_prefill_finalize"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_finalize"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_finalize(*, head_dim: int = 512) -> ExternalFunction:
     """``attn_finalize`` of the prefill kernels: ``inv_l = bf16(1 / l)`` per query row.
 
     Args:
-        head_dim: 512 builds the global kernel's 8 rows; 256 builds the
-            sliding-window kernel's 16 rows.
+        head_dim: 512 builds the global kernel's 8 rows; 256 or 128 builds
+            the sliding-window kernel's 16 rows.
     """
     return _prefill_sibling(
         "attn_finalize",
@@ -385,7 +410,7 @@ def flm_gemma4_prefill_finalize(*, head_dim: int = 512) -> ExternalFunction:
             reference=flm_gemma4_prefill_finalize_ref,
             sample=partial(
                 _prefill_finalize_sample,
-                lq=_ATTN_PREFILL_LQ if head_dim == 512 else _SWA_PREFILL_LQ,
+                lq=_prefill_lq(head_dim),
             ),
             # Floor narrowing lands at most one bf16 step from the nearest-even
             # cast of 1 / l if aie::inv errs by less than half a step (2**-9
@@ -431,15 +456,14 @@ _PREFILL_F32_MUL_RTOL = 2.0**-16
 
 
 def _prefill_lq(head_dim):
-    if head_dim not in (256, 512):
-        raise ValueError(f"head_dim must be 256 or 512, not {head_dim}")
-    return _ATTN_PREFILL_LQ if head_dim == 512 else _SWA_PREFILL_LQ
+    if head_dim != _ATTN_PREFILL_DH and head_dim not in _SWA_PREFILL_DHS:
+        raise ValueError(f"head_dim must be 512, 256 or 128, not {head_dim}")
+    return _ATTN_PREFILL_LQ if head_dim == _ATTN_PREFILL_DH else _SWA_PREFILL_LQ
 
 
 def _prefill_core(symbol, head_dim, arg_types, contract) -> ExternalFunction:
     """``symbol`` of ``flm_gemma4/prefill_core.cc``, built with ``head_dim``'s prefill flags."""
-    _prefill_lq(head_dim)
-    base = flm_gemma4_swa_prefill() if head_dim == 256 else flm_gemma4_attn_prefill()
+    base = _prefill_base(head_dim)
     return _wrapper(base, "prefill_core.cc", symbol, arg_types, contract)
 
 
@@ -510,7 +534,7 @@ def flm_gemma4_prefill_round_begin_ref(*, head_dim=512):
     )
 
 
-DTYPES["flm_gemma4_prefill_round_begin"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_round_begin"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_round_begin(*, head_dim: int = 512) -> ExternalFunction:
@@ -586,7 +610,7 @@ def _prefill_qk_sample(rng, calls, *, head_dim):
     ]
 
 
-DTYPES["flm_gemma4_prefill_qk_core"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_qk_core"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_qk_core(*, head_dim: int = 512) -> ExternalFunction:
@@ -657,7 +681,7 @@ def _prefill_fv_sample(rng, calls, *, head_dim):
     return [y, sv.astype(bfloat16)]
 
 
-DTYPES["flm_gemma4_prefill_fv_core"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_fv_core"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_fv_core(*, head_dim: int = 512) -> ExternalFunction:
@@ -800,7 +824,7 @@ def _prefill_block_mid_sample(rng, calls, *, head_dim):
     ]
 
 
-DTYPES["flm_gemma4_prefill_block_mid_core"] = tuple([{"head_dim": 256}])
+DTYPES["flm_gemma4_prefill_block_mid_core"] = _SWA_PREFILL_BUILDS
 
 
 def flm_gemma4_prefill_block_mid_core(*, head_dim: int = 512) -> ExternalFunction:
@@ -2943,15 +2967,19 @@ def flm_gemma4_attn_prefill_ref(l_bf16, y):
     )
 
 
-def flm_gemma4_swa_prefill_ref(l_bf16, y):
-    """Numpy reference for [`flm_gemma4_swa_prefill`][aie.iron.kernels.flm_gemma4.flm_gemma4_swa_prefill]: ``attn_epilogue`` at chunk 33.
+def flm_gemma4_swa_prefill_ref(l_bf16, y, *, head_dim=256):
+    """Numpy reference for [`flm_gemma4_swa_prefill`][aie.iron.kernels.flm_gemma4.flm_gemma4_swa_prefill]: ``attn_epilogue`` at chunk ``head_dim / 8 + 1``.
 
     As [`flm_gemma4_attn_prefill_ref`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_prefill_ref], over a
-    (16, 256) ``y``: rows 8 to 15, columns 64 to 127, each row scaled by its
-    own ``1 / l``.
+    (16, ``head_dim``) ``y``: rows 8 to 15, columns 64 to 127, each row scaled
+    by its own ``1 / l``.
     """
     return _prefill_epilogue(
-        l_bf16, y, lq=_SWA_PREFILL_LQ, dh=_SWA_PREFILL_DH, chunk=_SWA_PREFILL_CHUNK
+        l_bf16,
+        y,
+        lq=_SWA_PREFILL_LQ,
+        dh=head_dim,
+        chunk=_swa_prefill_chunk(head_dim),
     )
 
 
