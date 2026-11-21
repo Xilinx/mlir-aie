@@ -339,6 +339,8 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                        }
                        std::string wrapper =
                            getChessIntrinsicWrapperPath(arch, installDir);
+                       if (!dryRun && reportMissingChessWrapper(wrapper, arch))
+                         return mlir::failure();
                        auto cmd = ShellCommand{linkTool}
                                       .input()
                                       .arg(wrapper)
@@ -655,6 +657,9 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
                 llvm::sys::path::parent_path(incs.items.front().asFile()));
             const std::string &arch = arches.items.front().get();
 
+            if (!dryRun && reportMissingHostRuntimeLibs(rt, /*aiesim=*/false))
+              return mlir::failure();
+
             // Compilation command
             ShellCommand cmd{"clang++"};
             cmd.arg("-std=c++17");
@@ -781,11 +786,10 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                 std::string incDir = std::string(
                     llvm::sys::path::parent_path(incs.items.front().asFile()));
 
-                std::string archTag = hostTarget.getValue();
-                if (auto pos = archTag.find('-'); pos != std::string::npos) {
-                  archTag = archTag.substr(0, pos);
-                }
-                std::string rtl = installDir + "/runtime_lib/" + archTag;
+                HostRuntimeLibs rt = getHostRuntimeLibs(installDir, hostTarget);
+                if (!dryRun &&
+                    reportMissingHostRuntimeLibs(rt, /*aiesim=*/true))
+                  return mlir::failure();
 
                 ShellCommand cmd{"clang++"};
                 cmd.arg("-O2")
@@ -806,18 +810,16 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                     .arg(aieArchDefine(aieTarget))
                     .arg("-I" + incDir)
                     .arg("-I" + aietoolsRoot + "/include")
-                    .arg("-I" + rtl + "/xaiengine/include")
+                    .arg("-I" + rt.xaiengineInclude)
                     .arg("-I" + aietoolsRoot + "/data/osci_systemc/include")
                     .arg("-I" + aietoolsRoot + "/include/xtlm/include")
                     .arg("-I" + aietoolsRoot +
                          "/include/common_cpp/common_cpp_v1_0/include")
-                    .arg("-I" + rtl + "/test_lib/include");
-                std::string memAlloc =
-                    rtl + "/test_lib/lib/libmemory_allocator_sim_aie.a";
-                if (llvm::sys::fs::exists(memAlloc)) {
-                  cmd.arg(memAlloc);
+                    .arg("-I" + rt.testLibInclude);
+                if (llvm::sys::fs::exists(rt.simMemoryAllocator)) {
+                  cmd.arg(rt.simMemoryAllocator);
                 }
-                cmd.arg("-L" + rtl + "/xaiengine/lib")
+                cmd.arg("-L" + rt.xaiengineLib)
                     .arg("-lxaienginecdo")
                     .arg("-L" + aietoolsRoot + "/lib/lnx64.o")
                     .arg("-L" + aietoolsRoot + "/lib/lnx64.o/Ubuntu")
