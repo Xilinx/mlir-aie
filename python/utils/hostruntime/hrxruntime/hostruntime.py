@@ -27,10 +27,13 @@ import atexit
 import logging
 import os
 import time
+import weakref
 from collections import OrderedDict
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from ..tensor_class import TensorRegion
@@ -108,7 +111,14 @@ class HRXKernelHandle(KernelHandle):
     """Handle for a loaded HRX executable (one XADX export)."""
 
     def __init__(
-        self, executable, export_ordinal, kernel_name, xclbin_path, insts_path, ctx=None
+        self,
+        executable,
+        export_ordinal,
+        kernel_name,
+        xclbin_path,
+        insts_path,
+        ctx=None,
+        runtime=None,
     ):
         super().__init__(needs_dispatch_insts=insts_path is None)
         self.executable = executable
@@ -125,22 +135,75 @@ class HRXKernelHandle(KernelHandle):
         self._ctx = ctx
         if ctx is not None and executable:
             ctx.retain_executable(executable)
+        # For empty_dispatch_ns: the runtime that builds the empty
+        # transaction's executable, the header of the last transaction
+        # dispatched (read from insts_path on first use), and the empty
+        # executable when this handle owns it.
+        self._runtime = weakref.ref(runtime) if runtime is not None else None
+        self.txn_header: np.ndarray | None = None
+        self._empty = None
 
     def __del__(self):
         ctx = getattr(self, "_ctx", None)
-        exe = getattr(self, "executable", None)
-        if ctx is not None and exe:
-            try:
-                ctx.release_executable(exe)
-            except Exception:
-                pass
-            self.executable = None
+        empty = getattr(self, "_empty", None)
+        if ctx is None:
+            return
+        for exe in (getattr(self, "executable", None), empty and empty[0]):
+            if exe:
+                try:
+                    ctx.release_executable(exe)
+                except Exception:
+                    pass
+        self.executable = None
+        self._empty = None
 
     def xclbin_image(self) -> bytes:
         """Read and cache the immutable xclbin image for dynamic dispatches."""
         if self._xclbin_bytes is None:
             self._xclbin_bytes = Path(self.xclbin_path).read_bytes()
         return self._xclbin_bytes
+
+    def empty_dispatch_ns(self) -> int | None:
+        """Time one dispatch that does nothing, on this kernel's xclbin.
+
+        It is a transaction with the header of the last one dispatched and
+        no operations, in an executable of its own: libhrx gives each
+        executable its own hardware context, so the context is this kernel's
+        configuration rather than this kernel's context itself. The runtime
+        that loaded this handle builds that executable, so a
+        ``CachedHRXRuntime`` counts it against its hardware-context budget.
+
+        Returns:
+            Nanoseconds from submit to completion, timed as a run is; None
+            before a transaction has been dispatched, or without a runtime.
+
+        Raises:
+            HostRuntimeError: The empty dispatch failed.
+        """
+        runtime = self._runtime() if self._runtime is not None else None
+        if runtime is None:
+            return None
+        if self.txn_header is None and self.insts_path is not None:
+            self.txn_header = _txn_header(Path(self.insts_path).read_bytes())
+        if self.txn_header is None:
+            return None
+        words = self.txn_header.copy()
+        words[2:4] = (0, words.nbytes)
+        exe, ordv = runtime._empty_executable(self, words.tobytes())
+        start = time.perf_counter_ns()
+        try:
+            runtime._ctx.dispatch(exe, ordv, [])
+            runtime._ctx.synchronize()
+        except HRXError as e:
+            raise HostRuntimeError(f"An empty HRX dispatch failed: {e}") from e
+        return time.perf_counter_ns() - start
+
+
+def _txn_header(insts: bytes) -> np.ndarray:
+    """Return the four-word XAie transaction header of ``insts.bin`` words or an ELF."""
+    if insts[:4] == b"\x7fELF":
+        insts = control_code_from_elf(insts).tobytes()
+    return np.frombuffer(insts[:16], dtype=np.uint32).copy()
 
 
 class HRXKernelResult(KernelResult):
@@ -233,6 +296,22 @@ class HRXHostRuntime(HostRuntime):
         insts_data = insts_path.read_bytes()
         return self._create_executable_from_bytes(xclbin_bytes, insts_data, kernel_name)
 
+    def _empty_executable(self, handle, txn: bytes):
+        """Return ``(executable, ordinal)`` for an empty transaction on a handle.
+
+        It runs ``txn`` on ``handle``'s xclbin, is built once per handle, and is
+        released with it.
+        """
+        if handle._empty is None or handle._empty[2] != txn:
+            if handle._empty is not None:
+                self._release_executable(handle._empty[0])
+                handle._empty = None
+            exe, ordv = self._create_executable_from_bytes(
+                handle.xclbin_image(), txn, handle.kernel_name
+            )
+            handle._empty = (exe, ordv, txn)
+        return handle._empty[:2]
+
     def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
         """Build a fresh amdxdna executable for ``npu_kernel``.
 
@@ -255,12 +334,12 @@ class HRXHostRuntime(HostRuntime):
         xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)
         if insts_path is None:
             return HRXKernelHandle(
-                None, None, kernel_name, xclbin_path, None, ctx=self._ctx
+                None, None, kernel_name, xclbin_path, None, ctx=self._ctx, runtime=self
             )
         exe, ordv = self._build_executable(xclbin_path, insts_path, kernel_name)
         self._executables.append(exe)
         return HRXKernelHandle(
-            exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx
+            exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx, runtime=self
         )
 
     def _prepare_bindings(self, args):
@@ -367,6 +446,7 @@ class HRXHostRuntime(HostRuntime):
                 kernel_handle.kernel_name,
             )
             exe = dispatch_exe
+            kernel_handle.txn_header = _txn_header(dispatch_insts.tobytes())
 
         try:
             start = time.perf_counter_ns()
@@ -563,6 +643,23 @@ class CachedHRXRuntime(HRXHostRuntime):
                 _, (old_exe, _) = self._exe_cache.popitem(last=False)
                 self._release_executable(old_exe)
 
+    def _empty_executable(self, handle, txn: bytes):
+        """Cache the empty transaction's executable with the kernels' own.
+
+        It so takes, and is evicted from, the same hardware-context budget.
+        """
+        if self._cache_size <= 0:
+            return super()._empty_executable(handle, txn)
+        xclbin_path = Path(handle.xclbin_path)
+        key = (str(xclbin_path), xclbin_path.stat().st_mtime, txn, handle.kernel_name)
+        if key in self._exe_cache:
+            self._exe_cache.move_to_end(key)
+        else:
+            self._exe_cache[key] = self._create_executable_from_bytes(
+                handle.xclbin_image(), txn, handle.kernel_name
+            )
+        return self._exe_cache[key]
+
     def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
         xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)
 
@@ -574,7 +671,7 @@ class CachedHRXRuntime(HRXHostRuntime):
                 self._dispatch_cache.move_to_end(key)
                 return self._dispatch_cache[key]
             handle = HRXKernelHandle(
-                None, None, kernel_name, xclbin_path, None, ctx=self._ctx
+                None, None, kernel_name, xclbin_path, None, ctx=self._ctx, runtime=self
             )
             if self._cache_size > 0:
                 while len(self._dispatch_cache) >= self._cache_size:
@@ -593,7 +690,13 @@ class CachedHRXRuntime(HRXHostRuntime):
             self._exe_cache.move_to_end(key)
             exe, ordv = self._exe_cache[key]
             return HRXKernelHandle(
-                exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx
+                exe,
+                ordv,
+                kernel_name,
+                xclbin_path,
+                insts_path,
+                ctx=self._ctx,
+                runtime=self,
             )
 
         exe, ordv = self._build_executable(xclbin_path, insts_path, kernel_name)
@@ -604,7 +707,7 @@ class CachedHRXRuntime(HRXHostRuntime):
             self._executables.append(exe)
 
         return HRXKernelHandle(
-            exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx
+            exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx, runtime=self
         )
 
     def cleanup(self) -> None:
