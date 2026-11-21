@@ -37,7 +37,6 @@
   "dispatch_us_per_image_b4",
   "dispatch_us_per_image_b64",
   "dispatch_us_per_image_b8",
-  "elf_bytes",
   "fps_b1",
   "fps_b16",
   "fps_b2",
@@ -1095,6 +1094,40 @@
    "device_raw": "NPU Krackan 1",
    "provenance": {
     "commit": "0f767004a4",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "405fdeb25f49",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 68,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "44876482090",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/44876482090",
+   "date": "2026-11-21T06:38:16+00:00",
+   "commit": {
+    "id": "a1fd967910ff62088b67363314f6cb2ac23c1f5f",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/a1fd967910ff62088b67363314f6cb2ac23c1f5f",
+    "message": " [aiecc] Report a missing Chess intrinsic wrapper or host runtime before using it (#4094)",
+    "timestamp": "2026-11-21T00:52:29Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "a1fd967910",
     "peano": "22.0.0+4f5df13d",
     "kernels": "405fdeb25f49",
     "runtime": "CachedXRTRuntime",
