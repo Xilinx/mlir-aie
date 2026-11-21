@@ -1,0 +1,5 @@
+<map id="xilinx::aievec::AIEVecTargetInfo" name="xilinx::aievec::AIEVecTargetInfo">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,106,231,134"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="71,5,165,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="120,47,121,106,115,104,116,50"/>
+</map>
