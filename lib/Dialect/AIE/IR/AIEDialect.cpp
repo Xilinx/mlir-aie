@@ -5246,18 +5246,54 @@ static bool isBdPacketEnabled(DMABDOp bd) {
   return false;
 }
 
-LogicalResult xilinx::AIE::verifyDMAChannelIndex(Operation *op, TileLike tile,
-                                                 DMAChannelDir dir,
-                                                 int64_t channel) {
-  int64_t channels = dir == DMAChannelDir::MM2S
-                         ? tile.getNumDestConnections(WireBundle::DMA)
-                         : tile.getNumSourceConnections(WireBundle::DMA);
+// `channel` is below the tile's `channels` DMA channels in `dir`.
+static LogicalResult verifyDMAChannelInRange(Operation *op, DMAChannelDir dir,
+                                             int64_t channel,
+                                             int64_t channels) {
   if (channel >= 0 && channel < channels)
     return success();
   return op->emitOpError() << stringifyDMAChannelDir(dir) << " channel "
                            << channel << " is out of range: the tile has "
                            << channels << " " << stringifyDMAChannelDir(dir)
                            << " channels";
+}
+
+LogicalResult xilinx::AIE::verifyDMAChannelIndex(Operation *op, TileLike tile,
+                                                 DMAChannelDir dir,
+                                                 int64_t channel) {
+  int64_t channels = dir == DMAChannelDir::MM2S
+                         ? tile.getNumDestConnections(WireBundle::DMA)
+                         : tile.getNumSourceConnections(WireBundle::DMA);
+  return verifyDMAChannelInRange(op, dir, channel, channels);
+}
+
+// A shim PL tile connects the stream switch to the PL and has no DMA, though
+// the target model gives it the shim's DMA stream ports.
+static LogicalResult emitShimPLTileHasNoDMA(Operation *op,
+                                            std::optional<int> col,
+                                            std::optional<int> row) {
+  if (col && row)
+    return op->emitOpError("tile (")
+           << *col << ", " << *row << ") is a shim PL tile and has no DMA";
+  return op->emitOpError("the tile is a shim PL tile and has no DMA");
+}
+
+LogicalResult xilinx::AIE::verifyDMAChannel(Operation *op, TileLike tile,
+                                            DMAChannelDir dir,
+                                            int64_t channel) {
+  if (tile.isShimPLTile())
+    return emitShimPLTileHasNoDMA(op, tile.tryGetCol(), tile.tryGetRow());
+  return verifyDMAChannelIndex(op, tile, dir, channel);
+}
+
+LogicalResult xilinx::AIE::verifyDMAChannel(Operation *op,
+                                            const AIETargetModel &targetModel,
+                                            int col, int row, DMAChannelDir dir,
+                                            int64_t channel) {
+  if (targetModel.isShimPLTile(col, row))
+    return emitShimPLTileHasNoDMA(op, col, row);
+  return verifyDMAChannelInRange(op, dir, channel,
+                                 targetModel.getNumDMAChannels(col, row, dir));
 }
 
 LogicalResult xilinx::AIE::verifyAssignedPacket(Operation *op,
@@ -5412,6 +5448,12 @@ LogicalResult DMAOp::verify() {
     return emitOpError("DMAOp can only appear in single block region");
   if (!parentOp->getRegion(0).getOps<DMAStartOp>().empty())
     return emitOpError("DMAOp is not compatible with DMAStart ops");
+  if (auto program = dyn_cast<DmaBody>(parentOp);
+      program &&
+      failed(verifyDMAChannelIndex(
+          getOperation(), cast<TileLike>(program.getTile().getDefiningOp()),
+          getChannelDir(), getChannelIndex())))
+    return failure();
   auto bdRegions = getBds();
   for (auto &bdRegion : bdRegions) {
     if (!bdRegion.hasOneBlock())
@@ -7165,7 +7207,13 @@ LogicalResult ShimDMAAllocationOp::verify() {
       return failure();
   }
 
-  return verifyAssignedPacket(*this, getPacketAttr());
+  if (failed(verifyAssignedPacket(*this, getPacketAttr())))
+    return failure();
+  // A PLIO allocation names a stream port, not a DMA channel.
+  if (getPlio())
+    return success();
+  return verifyDMAChannel(getOperation(), tileLike, getChannelDir(),
+                          getChannelIndex());
 }
 
 TileOp ShimDMAAllocationOp::getTileOp() {

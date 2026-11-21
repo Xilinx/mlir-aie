@@ -9,7 +9,7 @@
 
 // CHECK: module @init_join_output {
 // CHECK:   aie.device(xcve2302) {
-// CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(1, 0)
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(2, 0)
 // CHECK-DAG:     %{{.*}}tile_1_1 = aie.tile(1, 1)
 // CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK-DAG:     %{{.*}}tile_2_3 = aie.tile(2, 3)
@@ -29,7 +29,7 @@
 // CHECK-DAG: %[[OF0_CONS_LOCK:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 0 : i32, sym_name = "of0__conslock0"}
 // CHECK-DAG: aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_1, DMA : 0)
 // CHECK-DAG: aie.flow(%{{.*}}tile_2_3, DMA : 0, %{{.*}}tile_1_1, DMA : 1)
-// CHECK-DAG: aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_1_0, DMA : 0)
+// CHECK-DAG: aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_2_0, DMA : 0)
 // CHECK-DAG:     aie.shim_dma_allocation @of2__shim_alloc(%[[VAL_0]], S2MM, 0)
 // CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
@@ -115,7 +115,7 @@
 
 module @init_join_output {
  aie.device(xcve2302) {
-    %tile10 = aie.tile(1, 0)
+    %tile10 = aie.tile(2, 0)
     %tile11 = aie.tile(1, 1)
     %tile12 = aie.tile(1, 2)
     %tile23 = aie.tile(2, 3)

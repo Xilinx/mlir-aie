@@ -8,7 +8,7 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK-DAG:     %[[TILE_1_0:.+]] = aie.tile(1, 0)
+// CHECK-DAG:     %[[TILE_1_0:.+]] = aie.tile(2, 0)
 // CHECK-DAG:     %[[TILE_1_1:.+]] = aie.tile(1, 1)
 // CHECK-DAG:     %[[TILE_1_2:.+]] = aie.tile(1, 2)
 // CHECK-DAG:     %[[TILE_2_2:.+]] = aie.tile(2, 2)
@@ -152,7 +152,7 @@
 // CHECK:           aie.end
 // CHECK:         }
 aie.device(xcve2302) {
-    %tile10 = aie.tile(1, 0)
+    %tile10 = aie.tile(2, 0)
     %tile11 = aie.tile(1, 1)
     %tile12 = aie.tile(1, 2)
     %tile22 = aie.tile(2, 2)

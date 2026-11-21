@@ -9,7 +9,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(2, 0)
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(0, 2)
 // CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC__buf0"} : memref<16x16xi16>
 // CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC__buf1"} : memref<16x16xi16>
@@ -119,7 +119,7 @@
 module @matmul {
   aie.device(xcve2302) {
 
-    %t00 = aie.tile(0, 0)
+    %t00 = aie.tile(2, 0)
     %t02 = aie.tile(0, 2)
 
     aie.objectfifo @inA  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<16x8xi16>>
