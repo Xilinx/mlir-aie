@@ -470,9 +470,6 @@ enum class LinkPoolMisfit {
   // The pool's owner has another object type, and the fifo's objects are not
   // its segment of the pool's (a join's input, a distribute's output).
   ObjectType,
-  // The fifo is a join's input or a distribute's output whose segment starts
-  // past the pool object's first element: a core reaches it as a strided view.
-  SegmentOffset,
   // The fifo has initial objects, but the pool starts with its owner's.
   InitialValues,
   // A merge's inputs take turns filling the pool through one DMA end.

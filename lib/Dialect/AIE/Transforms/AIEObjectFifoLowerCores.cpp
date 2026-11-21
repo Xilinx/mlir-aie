@@ -135,6 +135,9 @@ struct LoweringContext {
   DeviceOp device;
   bool usesSemaphoreLocks;
   DenseMap<Operation *, SmallVector<Value>> poolBuffers{};
+  /// Per pool buffer and element offset, the buffer aliasing its run from
+  /// there, which a core endpoint past the pool object's first element reads.
+  DenseMap<std::pair<Operation *, int64_t>, Value> aliases{};
   /// Per-(core, endpoint) runtime bookkeeping: the rotating object index (which
   /// selects binary locks), the objects in rotation order, starting with the
   /// next one to acquire, and, where locks count, the number of objects
@@ -463,8 +466,36 @@ struct AIEObjectFifoLowerCoresPass
     // An endpoint holding one side of a join or distribute reaches only its
     // own run of each object.
     MemRefType accessType = endpoint.getAccessType();
-    if (accessType != pool.getElemType()) {
-      auto [offset, size] = endpoint.getExtent();
+    auto [offset, size] = endpoint.getExtent();
+    if (accessType != pool.getElemType() && offset != 0) {
+      // A run past the first element is a buffer of its own, at the pool
+      // buffer's address plus the run's, so a kernel's pointer reaches it.
+      buffers.clear();
+      for (BufferLike like : pool.getBufferOps()) {
+        auto base = dyn_cast<BufferOp>(like.getOperation());
+        if (!base || !base.hasName()) {
+          endpoint.emitOpError("reaches its run of a pool buffer that is not "
+                               "a named aie.buffer, so no alias names it");
+          ctx.sawError = true;
+          return;
+        }
+        Value &alias = ctx.aliases[{base.getOperation(), offset}];
+        if (!alias) {
+          OpBuilder after(base);
+          after.setInsertionPointAfter(base);
+          int64_t bytes =
+              offset * accessType.getElementTypeBitWidth() / CHAR_BIT;
+          auto made = BufferOp::create(
+              after, base.getLoc(), accessType, base.getTile(),
+              after.getStringAttr(base.name().getValue() + "__at" +
+                                  std::to_string(offset)));
+          made.setAliasOfAttr(FlatSymbolRefAttr::get(base.name()));
+          made.setAliasOffsetAttr(after.getI32IntegerAttr(bytes));
+          alias = made.getBuffer();
+        }
+        buffers.push_back(alias);
+      }
+    } else if (accessType != pool.getElemType()) {
       for (Value &buffer : buffers) {
         buffer = memref::SubViewOp::create(
             builder, loc, buffer,

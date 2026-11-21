@@ -1271,14 +1271,10 @@ MemRefType ObjectFifoCoreEndpointOp::getAccessType() {
   if (offset == 0 && size == elemType.getNumElements()) {
     return elemType;
   }
-  // A leading run is a plain memref of its own, as the fifo's ends declare it.
-  if (offset == 0) {
-    return MemRefType::get({size}, elemType.getElementType(),
-                           MemRefLayoutAttrInterface{},
-                           elemType.getMemorySpace());
-  }
-  return cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
-      {size}, elemType, {offset}, {size}, {1}));
+  // A run is a plain memref of its own, as the fifo's ends declare it: a
+  // leading one a view of the pool's buffer, any other a buffer aliasing it.
+  return MemRefType::get({size}, elemType.getElementType(),
+                         MemRefLayoutAttrInterface{}, elemType.getMemorySpace());
 }
 
 TileLike ObjectFifoDmaEndpointOp::getTileLike() {
@@ -2230,8 +2226,6 @@ LinkPoolMisfit ObjectFifoCreateOp::linkPoolMisfit() {
                             MemRefLayoutAttrInterface{},
                             pool.getMemorySpace()))
       return LinkPoolMisfit::ObjectType;
-    if (segment->first != 0)
-      return LinkPoolMisfit::SegmentOffset;
   }
   return getInitValues() ? LinkPoolMisfit::InitialValues : LinkPoolMisfit::None;
 }
@@ -2678,11 +2672,6 @@ LogicalResult ObjectFifoAllocateOp::verify() {
                   "segment's";
         break;
       }
-      case LinkPoolMisfit::SegmentOffset:
-        diag << ", but @" << name
-             << "'s segment starts past the pool object's first element, so "
-                "its core would reach it only as a strided view";
-        break;
       case LinkPoolMisfit::InitialValues:
         diag << ", which starts with @" << link.getPoolOwner().name().getValue()
              << "'s initial objects, "
@@ -5086,6 +5075,31 @@ LogicalResult BufferOp::verify() {
       return emitOpError("resident ")
              << resident << "'s type " << global.getType()
              << " does not match this buffer's " << getType();
+  }
+
+  // A view of another buffer's bytes, which it lies within.
+  if (getAliasOfAttr() || getAliasOffsetAttr()) {
+    if (!getAliasOfAttr() || !getAliasOffsetAttr())
+      return emitOpError("alias_of and alias_offset come together");
+    if (getCoreData() || getBankReserved() || getInitialValue())
+      return emitOpError("an alias holds no memory of its own: no core_data, "
+                         "bank_reserved or initial_value");
+    auto base = lookupNamedOp<BufferOp>(
+        (*this)->getParentOfType<DeviceOp>(), getAliasOfAttr().getAttr());
+    if (!base)
+      return emitOpError("alias_of names no buffer ") << getAliasOfAttr();
+    if (base.getAliasOfAttr())
+      return emitOpError("alias_of names ")
+             << getAliasOfAttr() << ", itself an alias";
+    if (base.getTile() != getTile())
+      return emitOpError("alias_of names ")
+             << getAliasOfAttr() << " on another tile";
+    int64_t offset = *getAliasOffset();
+    if (offset < 0 || offset + getAllocationSize() > base.getAllocationSize())
+      return emitOpError("alias of ")
+             << getAllocationSize() << " bytes at byte " << offset << " runs "
+             << "past " << getAliasOfAttr() << "'s "
+             << base.getAllocationSize();
   }
 
   // Each marks space held for a different reservation of the core's sections.

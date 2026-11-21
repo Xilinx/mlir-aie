@@ -1432,9 +1432,15 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
   }
 
   SmallVector<BufferOp> buffers;
+  // An alias takes no memory: it is placed where its buffer is, below.
+  SmallVector<BufferOp> aliases;
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
     if (buffer.getTileOp() != tile)
       return;
+    if (buffer.getAliasOfAttr()) {
+      aliases.push_back(buffer);
+      return;
+    }
     buffers.push_back(buffer);
     problem.buffers.push_back(tileLayoutBuffer(buffer, limits));
   });
@@ -1524,6 +1530,24 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
       !checkAndPrintBufferOverlap(buffers, problem.tileAlignBitWidth,
                                   problem.maxVecAlignBits)) {
     return failure();
+  }
+  for (BufferOp alias : aliases) {
+    auto base = lookupNamedOp<BufferOp>(device, alias.getAliasOfAttr().getAttr());
+    int64_t address = *base.getAddress() + *alias.getAliasOffset();
+    // A core reads the alias as a buffer of its own, at the alignment one
+    // the allocator places would have.
+    uint32_t alignBits = requiredBufferAlignBits(problem.tileAlignBitWidth,
+                                                 problem.maxVecAlignBits,
+                                                 alias.getAllocationSize());
+    if (alias.getAligned() && alignBits >= 8 && address % (alignBits / 8)) {
+      alias.emitOpError("")
+          << bufferLabel(alias) << " at byte " << *alias.getAliasOffset()
+          << " of " << bufferLabel(base) << " lands at address 0x"
+          << llvm::utohexstr(address) << ", not aligned to the required "
+          << alignBits << " bits";
+      return failure();
+    }
+    alias.setAddress(static_cast<int32_t>(address));
   }
   return success();
 }

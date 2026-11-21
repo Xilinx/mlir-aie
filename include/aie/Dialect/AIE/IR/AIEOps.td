@@ -1970,6 +1970,18 @@ def AIE_BufferOp
     `resident` names a module-level `memref.global` whose data this buffer
     stays resident for, across a later configuration that reuses it without a
     resetting reload; its type must match the buffer's.
+
+    `alias_of` makes the buffer a view of another buffer on its tile, at byte
+    `alias_offset` into it: it takes no memory of its own, and
+    `aie-assign-buffer-addresses` gives it the other's address plus the
+    offset. A core reaching a run of a buffer past its first element through
+    such a buffer sees a plain memref, as a kernel's pointer arguments take.
+
+    ```
+      %pool = aie.buffer(%tile) {sym_name = "pool"} : memref<96xbf16>
+      %mid = aie.buffer(%tile) {sym_name = "pool_at_64", alias_of = @pool,
+                                alias_offset = 64 : i32} : memref<32xbf16>
+    ```
   }];
 
   let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
@@ -1977,7 +1989,9 @@ def AIE_BufferOp
       OptionalAttr<ElementsAttr>:$initial_value,
       OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
       UnitAttr:$bank_reserved, DefaultValuedAttr<BoolAttr, "true">:$aligned,
-      OptionalAttr<FlatSymbolRefAttr>:$resident);
+      OptionalAttr<FlatSymbolRefAttr>:$resident,
+      OptionalAttr<FlatSymbolRefAttr>:$alias_of,
+      OptionalAttr<AIEI32Attr>:$alias_offset);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{

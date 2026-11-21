@@ -24,6 +24,13 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
+  // An alias lies within the buffer it names, which the location counter has
+  // passed already: only its symbol.
+  if (buf.getAliasOfAttr()) {
+    output << bufName << " = 0x" << llvm::utohexstr(offset + bufferBaseAddr)
+           << ";\n";
+    return;
+  }
   output << ". = 0x" << llvm::utohexstr(offset + bufferBaseAddr) << ";\n";
   output << bufName << " = .;\n";
   output << ". += 0x" << llvm::utohexstr(numBytes) << ";\n";
