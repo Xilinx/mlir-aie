@@ -1,9 +1,0 @@
-<map id="xilinx::AIE::DMAChannelAnalysis::BDWalkSets" name="xilinx::AIE::DMAChannelAnalysis::BDWalkSets">
-<area shape="rect" id="Node000001" title="walkSetsThatFit&#39;s result; channelShort when the ends do not fit the tile&#39;s channels even taking no BD..." alt="" coords="204,145,437,190"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,209,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="154,56,289,144,285,146,152,61"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="233,14,408,42"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="322,55,323,146,318,144,318,58"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="432,14,481,42"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="437,52,372,123,346,147,344,142,368,119,432,54"/>
-</map>

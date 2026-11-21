@@ -1,9 +1,0 @@
-<map id="xilinx::AIE::LinkPoolPlan" name="xilinx::AIE::LinkPoolPlan">
-<area shape="rect" id="Node000001" title=" " alt="" coords="32,123,209,151"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,14,63,42"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="40,54,49,77,61,97,75,110,92,122,87,123,72,114,57,101,45,79,39,59"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="88,14,154,42"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="123,56,123,123,118,122,119,59"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="178,5,348,50"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="226,59,173,101,140,125,138,120,170,97,221,61"/>
-</map>
