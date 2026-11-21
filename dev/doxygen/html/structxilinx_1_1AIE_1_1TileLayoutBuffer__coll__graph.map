@@ -1,0 +1,13 @@
+<map id="xilinx::AIE::TileLayoutBuffer" name="xilinx::AIE::TileLayoutBuffer">
+<area shape="rect" id="Node000001" title="One buffer of a tile, as assign&#45;buffer&#45;addresses lays it out." alt="" coords="207,151,408,178"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,72,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="38,46,45,89,52,108,65,125,87,137,122,146,209,158,205,160,121,151,85,142,61,129,48,111,39,90,36,51"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="159,5,208,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="191,46,207,87,218,107,232,125,249,138,269,150,264,150,246,142,229,129,214,110,202,89,189,51"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="233,5,382,33"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="310,47,310,151,305,149,306,50"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="406,5,556,33"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="462,43,422,87,373,129,335,153,333,148,370,125,418,83,457,46"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="580,5,742,33"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="641,43,592,89,561,111,528,129,469,149,409,160,408,154,468,143,525,124,558,107,588,85,636,45"/>
+</map>

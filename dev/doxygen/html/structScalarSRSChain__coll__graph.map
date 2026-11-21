@@ -1,0 +1,11 @@
+<map id="ScalarSRSChain" name="ScalarSRSChain">
+<area shape="rect" id="Node000001" title=" " alt="" coords="104,106,228,134"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,63,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="49,44,65,63,82,80,102,93,126,105,121,106,100,98,79,84,61,67,49,49"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="86,5,152,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="134,45,162,106,157,105,130,49"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="176,5,252,33"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="204,46,187,83,175,107,171,103,182,81,199,49"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="276,5,355,33"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="297,44,254,84,206,108,205,103,251,80,292,46"/>
+</map>

@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::ShimTransferSpans::Plan" name="xilinx::AIE::ShimTransferSpans::Plan">
+<area shape="rect" id="Node000001" title="How one shim tile&#39;s unpinned ends in one direction share channels, as objectFIFO allocation shares th..." alt="" coords="362,40,541,85"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="9,5,205,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="221,36,364,52,359,54,221,42"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,75,209,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="224,88,337,78,359,78,364,77,338,83,224,93"/>
+</map>
