@@ -174,7 +174,7 @@ module @selected_segment_locks {
     aie.objectfifo.core_endpoint @lower(%lower) fills @p {segments = [@s0]}
     aie.objectfifo.core_endpoint @upper(%upper) drains @p {segments = [@s1]}
     %core = aie.core(%upper) {
-      %obj = aie.objectfifo.acquire @upper (1) : memref<16xi32, strided<[1], offset: 16>>
+      %obj = aie.objectfifo.acquire @upper (1) : memref<16xi32>
       aie.objectfifo.release @upper (1)
       aie.end
     }

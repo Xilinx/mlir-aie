@@ -202,12 +202,12 @@ pool_handle_drives_a_worker()
 fifo_handle_drives_the_same_body()
 
 # Each handle takes a symbol of its own, and a segment short of the whole
-# object acquires a subview that carries the segment's offset.
+# object acquires a plain memref of its run, wherever the run starts.
 # CHECK: aie.objectfifo.pool @p({{.*}})
 # CHECK-DAG: aie.objectfifo.core_endpoint @p__cons({{.*}}) drains @p {segments = [@p_s0]}
 # CHECK-DAG: aie.objectfifo.core_endpoint @p__cons1({{.*}}) drains @p {segments = [@p_s1]}
-# CHECK-DAG: aie.objectfifo.acquire @p__cons(1) : memref<16xi32, strided<[1]>>
-# CHECK-DAG: aie.objectfifo.acquire @p__cons1(1) : memref<16xi32, strided<[1], offset: 16>>
+# CHECK-DAG: aie.objectfifo.acquire @p__cons(1) : memref<16xi32>
+# CHECK-DAG: aie.objectfifo.acquire @p__cons1(1) : memref<16xi32>
 two_workers_split_one_pool()
 
 # A whole-object acquire keeps the object's own type, so the core indexes a

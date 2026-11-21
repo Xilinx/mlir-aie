@@ -437,9 +437,10 @@ class ObjectFifoPoolHandle(Declared, PerDeviceConfigurationResolvable):
         """Return the type an acquire hands back.
 
         Mirrors ``ObjectFifoCoreEndpointOp::getAccessType()``: the object's own
-        type for the whole object, and the rank-reduced subview of the run this
-        handle's segments span for anything less. The offset has to survive,
-        since the core reads the objects in place.
+        type for the whole object, and a plain memref of the run this handle's
+        segments span for anything less. The core reads the run in place, a
+        view of the pool's buffer where it leads the object and a buffer
+        aliasing it at the run's offset otherwise.
         """
         elem = np_ndarray_type_to_memref_type(self._pool.obj_type)
         chosen = self._pool.segments if self._segments is None else list(self._segments)
@@ -447,9 +448,7 @@ class ObjectFifoPoolHandle(Declared, PerDeviceConfigurationResolvable):
         size = chosen[-1].offset + chosen[-1].size - offset
         if offset == 0 and size == math.prod(elem.shape):
             return elem
-        return ir.MemRefType.get(
-            [size], elem.element_type, ir.StridedLayoutAttr.get(offset, [1])
-        )
+        return ir.MemRefType.get([size], elem.element_type)
 
     def acquire(self, num_elem: int = 1):
         """Acquire ``num_elem`` objects, as an ObjectFifo handle does.

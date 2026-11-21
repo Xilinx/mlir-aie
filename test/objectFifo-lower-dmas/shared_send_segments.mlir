@@ -40,9 +40,9 @@ module @separate_fillers {
     aie.objectfifo.dma_endpoint @send_lo(%tile) drains @p {segments = [@lo], channelIndex = 0 : i32, release_strategy = #aie.release_strategy<push_queue>}
     aie.objectfifo.dma_endpoint @send_hi(%tile) drains @p {segments = [@hi], channelIndex = 1 : i32}
     %core = aie.core(%tile) {
-      %lo = aie.objectfifo.acquire @fill_lo(1) : memref<8xi32, strided<[1]>>
+      %lo = aie.objectfifo.acquire @fill_lo(1) : memref<8xi32>
       aie.objectfifo.release @fill_lo(1)
-      %hi = aie.objectfifo.acquire @fill_hi(1) : memref<8xi32, strided<[1], offset: 8>>
+      %hi = aie.objectfifo.acquire @fill_hi(1) : memref<8xi32>
       aie.objectfifo.release @fill_hi(1)
       aie.end
     }

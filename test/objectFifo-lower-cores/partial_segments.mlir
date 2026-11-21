@@ -5,8 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A core endpoint covering one segment of a shared object reaches it through a
-// memref.subview, which is what lets a core take one side of a join.
+// A core endpoint covering a segment past the shared object's first element
+// reaches it through a buffer aliasing each pool buffer at the segment's offset
+// (alias_of, alias_offset), a plain memref, which is what lets a core take one
+// side of a join.
 
 // RUN: aie-opt --aie-objectfifo-lower-cores %s | FileCheck %s
 
@@ -23,22 +25,22 @@ module {
     }
     aie.objectfifo.core_endpoint @half(%t) fills @p {segments = [@s1]}
     %c = aie.core(%t) {
-      %e = aie.objectfifo.acquire @half (1) : memref<16xi32, strided<[1], offset: 16>>
+      %e = aie.objectfifo.acquire @half (1) : memref<16xi32>
       %i = arith.constant 0 : index
       %v = arith.constant 1 : i32
-      memref.store %v, %e[%i] : memref<16xi32, strided<[1], offset: 16>>
+      memref.store %v, %e[%i] : memref<16xi32>
       aie.objectfifo.release @half (1)
       aie.end
     }
   }
 }
 
+// CHECK:       %[[A0:.*]] = aie.buffer(%{{.*}}) {alias_of = @b0, alias_offset = 64 : i32, sym_name = "b0__at16"} : memref<16xi32>
+// CHECK:       %[[A1:.*]] = aie.buffer(%{{.*}}) {alias_of = @b1, alias_offset = 64 : i32, sym_name = "b1__at16"} : memref<16xi32>
 // CHECK-LABEL: aie.core
-// CHECK:   %[[V0:.*]] = memref.subview %b0[16] [16] [1] : memref<32xi32> to memref<16xi32, strided<[1], offset: 16>>
-// CHECK:   %[[V1:.*]] = memref.subview %b1[16] [16] [1] : memref<32xi32> to memref<16xi32, strided<[1], offset: 16>>
-// CHECK:   %[[FRONT:.*]] = memref.alloca() {aie.objectfifo.object_slot} : memref<memref<16xi32, strided<[1], offset: 16>>>
-// CHECK:   memref.store %[[V0]], %[[FRONT]][]
+// CHECK:   %[[FRONT:.*]] = memref.alloca() {aie.objectfifo.object_slot} : memref<memref<16xi32>>
+// CHECK:   memref.store %[[A0]], %[[FRONT]][]
 // CHECK:   %[[BACK:.*]] = memref.alloca() {aie.objectfifo.object_slot}
-// CHECK:   memref.store %[[V1]], %[[BACK]][]
+// CHECK:   memref.store %[[A1]], %[[BACK]][]
 // CHECK:   %[[OBJ:.*]] = memref.load %[[FRONT]][]
 // CHECK:   memref.store %{{.*}}, %[[OBJ]][%{{.*}}]
