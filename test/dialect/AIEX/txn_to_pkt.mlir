@@ -28,11 +28,11 @@ module {
 // MERGE-LABEL: @adjacent
 // MERGE: address = 2228224 : ui32, data = array<i32: 1, 2, 3, 4>
 // MERGE-NEXT: aiex.control_packet {address = 2228240 : ui32, data = array<i32: 5>
-// MERGE-NEXT: aiex.control_packet_barrier {compiler_only}
+// MERGE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
 // MERGE-NEXT: aiex.control_packet {address = 2301952 : ui32
-// MERGE-NEXT: aiex.control_packet_barrier {compiler_only}
-// MERGE-NEXT: aiex.control_packet {address = 2301956 : ui32
-// MERGE-NEXT: aiex.control_packet_barrier {compiler_only}
+// MERGE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
+// MERGE: aiex.control_packet {address = 2301956 : ui32
+// MERGE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
   aie.device(npu2) @merge {
     aie.runtime_sequence @adjacent() {
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -46,8 +46,8 @@ module {
   aie.device(npu2) @normalize {
     // RAW-ORDER-LABEL: @raw_activation
     // RAW-ORDER: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>
-    // RAW-ORDER-NEXT: aiex.control_packet_barrier {compiler_only}
-    // RAW-ORDER-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
+    // RAW-ORDER-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
+    // RAW-ORDER: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
     // RAW-ORDER-NOT: data = array<i32: 1>
     // RAW-ORDER: {{^ *}}}
     aie.runtime_sequence @raw_activation() {
@@ -56,9 +56,9 @@ module {
     }
     // ORDER-LABEL: @overwritten
     // ORDER: address = 2228224 : ui32, data = array<i32: 1, 7, 8, 4>
-    // ORDER-NEXT: aiex.control_packet_barrier {compiler_only}
+    // ORDER-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
     // ORDER-NEXT: aiex.control_packet {address = 2301952 : ui32
-    // ORDER-NEXT: aiex.control_packet_barrier {compiler_only}
+    // ORDER-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
     // ORDER-NEXT: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 9>
     // DSE-LABEL: @overwritten
     // DSE-NEXT: address = 2228236 : ui32, data = array<i32: 4>
@@ -99,12 +99,11 @@ module {
   aie.device(npu2) @multicast {
     // MULTI-LABEL: @matching
     // MULTI-NEXT: aiex.set_device @cfg
-    // MULTI-NEXT: aiex.control_packet_barrier
     // MULTI-NEXT: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7, 9>, multicast_id = 28 : i32
-    // MULTI-NEXT: aiex.control_packet_barrier
+    // MULTI-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>], memory =
+    // MULTI-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
     // MULTI-NOT: multicast_id
-    // MULTI: aiex.control_packet {address = 2301952 : ui32
-    // MULTI: aiex.control_packet {address = 3350528 : ui32
+    // MULTI: {{^ *}}}
     aie.runtime_sequence @matching() {
       aiex.set_device @cfg
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -128,9 +127,9 @@ module {
     }
     // RAW-MULTI-LABEL: @interleaved_overwrite
     // RAW-MULTI-NEXT: aiex.set_device @cfg
-    // RAW-MULTI-NEXT: address = 3276800 : ui32, data = array<i32: 7>, opcode
+    // RAW-MULTI-NEXT: address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
+    // RAW-MULTI-NEXT: aiex.control_packet_barrier{{$}}
     // RAW-MULTI-NEXT: address = 3276800 : ui32, data = array<i32: 9>, opcode
-    // RAW-MULTI-NEXT: address = 2228224 : ui32, data = array<i32: 7>, opcode
     // RAW-MULTI-NEXT: {{^ *}}}
     aie.runtime_sequence @interleaved_overwrite() {
       aiex.set_device @cfg

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation=parallel-shims=true -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s
+// RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation=parallel-shims=true -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile --aie-dedup-ctrl-packet-multicast=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s
 // RUN: aie-opt %s --split-input-file -aie-schedule-ctrl-packet-activation -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s
 
 // Core (0, 3)'s stream takes arbiter 0 of switchbox (0, 3), which the control
@@ -14,13 +14,14 @@
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK:         aiex.set_device @cfg
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>]}}
 // CHECK-NEXT:      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>]}}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 4>], memory = [#aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<0, 5>]}}
 // CHECK-NEXT:      aiex.control_packet {address = 4399104 : ui32
 // CHECK-NEXT:    aiex.control_packet_barrier{{$}}
 // CHECK-NEXT:      aiex.control_packet {address = 3350528 : ui32
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>]}}
 // CHECK-NEXT:    {{^ *}}}
 module {
   aie.device(npu2) @ov {
@@ -111,13 +112,14 @@ module {
 
 // CHECK-LABEL:     aie.runtime_sequence
 // CHECK:             aiex.set_device @cfg
-// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:          aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:          aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:        aiex.control_packet_barrier{{$}}
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>]}}
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>, #aie.tile<1, 3>], memory =
+// CHECK-NEXT:          aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>, #aie.tile<1, 3>], memory =
+// CHECK-NOT:         aiex.control_packet {
+// CHECK:             aiex.control_packet_barrier{{$}}
 // CHECK-NEXT:          aiex.control_packet {address = 35259956 : ui32
-// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only, packet_effect, scope = {memory = [#aie.tile<1, 1>, #aie.tile<0, 1>, #aie.tile<2, 1>]}}
 // CHECK-NEXT:        {{^ *}}}
 module {
   aie.device(npu2) @ov {
@@ -214,13 +216,14 @@ module {
 
 // CHECK-LABEL:     aie.runtime_sequence
 // CHECK:             aiex.set_device @cfg
-// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only, packet_effect, scope = {memory = [#aie.tile<1, 1>, #aie.tile<0, 1>, #aie.tile<2, 1>]}}
 // CHECK-NEXT:          aiex.control_packet {address = 35259956 : ui32
-// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only, packet_effect, scope = {memory = [#aie.tile<1, 1>, #aie.tile<0, 1>, #aie.tile<2, 1>]}}
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>]}}
 // CHECK-NEXT:          aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode
 // CHECK-NEXT:        aiex.control_packet_barrier{{$}}
 // CHECK-NEXT:          aiex.control_packet {address = 36904960 : ui32
-// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:        aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 3>], memory = [#aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>, #aie.tile<1, 4>]}}
 // CHECK-NEXT:        {{^ *}}}
 module {
   aie.device(npu2) @ov {

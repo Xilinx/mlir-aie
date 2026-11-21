@@ -100,6 +100,9 @@ createAIECheckCtrlPacketDeliveryPass(
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEDedupCtrlPacketMulticastPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEDedupCtrlPacketMulticastPass(
+    const AIEDedupCtrlPacketMulticastOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass(

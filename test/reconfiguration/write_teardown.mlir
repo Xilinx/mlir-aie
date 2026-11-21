@@ -38,6 +38,7 @@
 // RUN: FileCheck %s --check-prefix=SUMMARY < %t/summary.twice.mlir
 // RUN: aie-opt --split-input-file --verify-diagnostics %t/summary-invalid.mlir -o %t/summary-invalid.out
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true" %t/incomplete-ctrlpkt.mlir | FileCheck %s --check-prefix=INCOMPLETE
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" --aie-reorder-ctrl-packets-by-tile %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" --aie-reorder-ctrl-packets-by-tile --aie-ctrl-packet-to-dma="chain-bds=true parallel-shims=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP-DMA
 // RUN: aie-opt --aie-annotate-core-lock-acquires %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE
@@ -640,7 +641,7 @@ module {
 //--- stop-ctrlpkt.mlir
 
 // STOP-LABEL: aie.runtime_sequence()
-// STOP: aiex.set_device @cfg
+// STOP: aiex.set_device @cfg {quiescent}
 // STOP: aiex.npu.sync
 // STOP-NEXT: aiex.control_packet_barrier
 // STOP-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
@@ -701,6 +702,37 @@ module {
       %one = arith.constant 1 : i32
       aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 2 : i32}
       aiex.npu.sync(%zero, %zero, %zero, %zero, %one, %one) : i32, i32, i32, i32, i32, i32
+    }
+  }
+}
+
+//--- incomplete-ctrlpkt.mlir
+
+// INCOMPLETE-LABEL: aie.runtime_sequence()
+// INCOMPLETE: aiex.set_device @cfg{{$}}
+// INCOMPLETE-NOT: quiescent
+// INCOMPLETE: {{^ *}}}
+module {
+  aie.device(npu2_1col) @overlay {
+    %tile = aie.tile(0, 2)
+    aie.switchbox(%tile) {
+      aie.connect<South : 0, TileControl : 0>
+    }
+  }
+  aie.device(npu2_1col) @cfg {
+    %tile = aie.tile(0, 2)
+    %lock = aie.lock(%tile, 5) {init = 0 : i32}
+    aie.core(%tile) {
+      %one = arith.constant 1 : i32
+      %two = arith.constant 2 : i32
+      aie.use_lock(%lock, Acquire, %one)
+      aie.use_lock(%lock, Acquire, %two)
+      aie.end
+    }
+  } {overlay = @overlay}
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence() {
+      aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 2 : i32}
     }
   }
 }

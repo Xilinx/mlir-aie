@@ -103,6 +103,137 @@ PacketClassifier::getRegisters(NpuControlPacketOp op) {
   return &registers.try_emplace(tile, std::move(regs)).first->second;
 }
 
+PacketEffects
+AIEX::packetEffects(NpuControlPacketOp packet,
+                    const llvm::DenseSet<AIE::TileID> *activeCores) {
+  auto data = packet.getData();
+  if (packet.getOpcode() != 0 || !data)
+    return {};
+  const auto &target =
+      packet->getParentOfType<AIE::DeviceOp>().getTargetModel();
+  AIE::TileID tile = packet.getTileFromAddr();
+  auto active = [&](AIE::TileID core) {
+    return !activeCores || activeCores->contains(core);
+  };
+  std::map<StringRef, SmallVector<Attribute>> modules;
+  NamedAttrList direct;
+  auto add = [&](StringRef module, AIE::TileID owner) {
+    Attribute attribute =
+        AIE::TileAttr::get(packet.getContext(), owner.col, owner.row);
+    auto &tiles = modules[module];
+    if (!llvm::is_contained(tiles, attribute))
+      tiles.push_back(attribute);
+  };
+  bool reorderable = true;
+  for (size_t index = 0; index < data->size(); ++index) {
+    auto info =
+        target.getRegisterWriteInfo(tile, packet.getLocalAddress() + 4 * index);
+    if (!info)
+      return {};
+    reorderable &= info->reorderable;
+    add(info->module, tile);
+    direct.set(info->module,
+               ArrayAttr::get(packet.getContext(),
+                              {AIE::TileAttr::get(packet.getContext(), tile.col,
+                                                  tile.row)}));
+    if (info->reorderable)
+      continue;
+    for (int column = 0; column < target.columns(); ++column)
+      for (int row = 0; row < target.rows(); ++row) {
+        AIE::TileID other{column, row};
+        if (info->module == "core" && active(tile) &&
+            target.isCoreTile(column, row) &&
+            target.isLegalMemAffinity(tile.col, tile.row, column, row))
+          add("memory", other);
+        if (info->module == "memory" && active(other) &&
+            target.isCoreTile(column, row) &&
+            target.isLegalMemAffinity(column, row, tile.col, tile.row)) {
+          add("core", other);
+          for (int ownerColumn = 0; ownerColumn < target.columns();
+               ++ownerColumn)
+            for (int ownerRow = 0; ownerRow < target.rows(); ++ownerRow)
+              if (target.isCoreTile(ownerColumn, ownerRow) &&
+                  target.isLegalMemAffinity(column, row, ownerColumn, ownerRow))
+                add("memory", {ownerColumn, ownerRow});
+        }
+        if (info->module == "memory" && target.isMemTile(tile.col, tile.row) &&
+            target.isMemTile(column, row) &&
+            target.isLegalMemAffinity(tile.col, tile.row, column, row))
+          add("memory", other);
+      }
+  }
+  NamedAttrList scope;
+  for (auto &[module, tiles] : modules)
+    scope.set(module, ArrayAttr::get(packet.getContext(), tiles));
+  if (packet.getMulticastId())
+    return {reorderable, {}, {}};
+  return {reorderable, scope.getDictionary(packet.getContext()),
+          direct.getDictionary(packet.getContext())};
+}
+
+FailureOr<llvm::DenseMap<Operation *, PacketEffects>>
+AIEX::packetEffects(Block &block) {
+  llvm::DenseMap<Operation *, PacketEffects> result;
+  PacketClassifier classifier(AIE::getTargetModel(block.getParentOp()));
+  bool quiescent = false;
+  llvm::DenseSet<AIE::TileID> activeCores;
+  for (Operation &operation : block) {
+    if (auto context = dyn_cast<SetDeviceOp>(operation)) {
+      quiescent = context.getQuiescent();
+      activeCores.clear();
+      continue;
+    }
+    if (isa<ControlPacketBarrierOp>(operation))
+      continue;
+    auto packet = dyn_cast<NpuControlPacketOp>(operation);
+    if (!packet) {
+      quiescent = false;
+      continue;
+    }
+    auto write = classifier.classify(packet);
+    if (failed(write))
+      return failure();
+    if (write->kind == WriteKind::CoreEnable)
+      activeCores.insert(packet.getTileFromAddr());
+    PacketEffects effects =
+        packetEffects(packet, quiescent ? &activeCores : nullptr);
+    if (!effects.scope)
+      quiescent = false;
+    result[packet] = effects;
+  }
+  return result;
+}
+
+bool AIEX::scopesOverlap(DictionaryAttr left, DictionaryAttr right) {
+  if (!left || !right)
+    return true;
+  for (NamedAttribute entry : left)
+    if (auto others = right.getAs<ArrayAttr>(entry.getName()))
+      for (Attribute tile : cast<ArrayAttr>(entry.getValue()))
+        if (llvm::is_contained(others, tile))
+          return true;
+  return false;
+}
+
+DictionaryAttr AIEX::unionScopes(MLIRContext *context,
+                                 ArrayRef<DictionaryAttr> scopes) {
+  std::map<StringRef, SmallVector<Attribute>> modules;
+  for (DictionaryAttr scope : scopes) {
+    if (!scope)
+      return {};
+    for (NamedAttribute entry : scope) {
+      auto &tiles = modules[entry.getName().getValue()];
+      for (Attribute tile : cast<ArrayAttr>(entry.getValue()))
+        if (!llvm::is_contained(tiles, tile))
+          tiles.push_back(tile);
+    }
+  }
+  NamedAttrList result;
+  for (auto &[name, tiles] : modules)
+    result.set(name, ArrayAttr::get(context, tiles));
+  return result.getDictionary(context);
+}
+
 SmallVector<unsigned> AIEX::awaitSteps(const PacketRun &run,
                                        bool parallelShims) {
   SmallVector<unsigned> steps;

@@ -7,7 +7,7 @@
 
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast | FileCheck %s
-// RUN: not aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery=parallel-shims=true 2>&1 | FileCheck %s --check-prefix=HAZARD
+// RUN: not aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile --aie-dedup-ctrl-packet-multicast=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true 2>&1 | FileCheck %s --check-prefix=HAZARD
 
 // Core (1, 3)'s stream takes arbiter 0 of switchbox (0, 3), which the control
 // packets to tile (0, 4) take too. Serial delivery awaits column 0's packets
@@ -15,13 +15,15 @@
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK:         aiex.set_device @cfg
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 4>], memory = [#aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<0, 5>]}}
 // CHECK-NEXT:      aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 4>], memory = [#aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<0, 5>]}}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>]}}
 // CHECK-NEXT:      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>]}}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 3>], memory = [#aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>, #aie.tile<1, 4>]}}
 // CHECK-NEXT:      aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 3>], memory = [#aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>, #aie.tile<1, 4>]}}
 // CHECK-NEXT:    {{^ *}}}
 // HAZARD: error: 'aiex.control_packet' op may wait forever: its control packets take arbiter 0 of switchbox (0, 3), which a stream that the enable of core (1, 3) starts may hold, stalled
 // HAZARD: note: the stream is started here

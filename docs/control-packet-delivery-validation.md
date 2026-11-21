@@ -3,6 +3,51 @@
 
 # Control Packet Delivery Validation
 
+## Scoped Prefix Restoration
+
+The November 21, 2026 prefix measurements use the workload and audited
+objects below. The compiler retains the supplied overlay, mandatory delivery
+checks, and allocator-owned BD chains. Scoped compiler barriers permit
+independent writes to move. Matching retains each destination's ordered
+actions, including repeated writes. Explicit fences retain their boundaries.
+
+Reset or complete generated teardown can establish a quiescent setup marker.
+The analysis tracks each core activation and memory affinity. Incomplete
+lock-drain summaries omit the teardown-based assertion. Multicast planning
+inserts completion waits for route and affinity dependencies.
+
+| Decoder | Packet Words | Multicast Packets | Submissions | Chain Links |
+| --- | ---: | ---: | ---: | ---: |
+| Delivery baseline | 1,149,738 | 34,176 | 8,698 | 684 |
+| Review-fixed refactor | 1,680,077 | 0 | 3,408 | 9,288 |
+| Scoped prefix | 1,103,483 | 35,533 | 3,409 | 11,017 |
+
+The scoped decoder sends 4.0% fewer encoded words than delivery and 34.3%
+fewer than the review-fixed refactor. It applies 993,811 destination words,
+the same count as the review-fixed refactor. Prefill contains 177,709
+multicast packets and sends 2,067,523 encoded words. The baseline prefill
+has no completed teardown comparison.
+
+Six generations produce the expected 192 token IDs. Five measured
+generations have a median rate of 18.87 tokens/s, versus the prior
+review-fixed measurement of 18.92. Compile and load takes 82.54 seconds.
+Decode compilation takes 17.01 seconds; prefill takes 56.20 seconds.
+The prior review-fixed profiles were 14.22 and 41.68 seconds. These
+measurements establish restored traffic reduction, not a runtime speedup.
+
+The encoded checks require complete lock summaries, packet completion
+before status polls, one entry PDI load, and no inter-application reset.
+Five payload-dependent hardware cases cover serial and parallel multicast
+and unicast delivery. Focused compiler tests cover explicit scopes, unknown
+effects, selected-copy dependencies, affinity completion, action multiplicity,
+and stream hazards. The full lit suite does not form part of this check.
+
+The result label is `scoped-prefix-final-20261121-ctrlpkt-teardown`.
+The decoder image SHA256 is
+`068d87b0f402498e36a125c5628ff8a437fb0e357460af3f34586fee8337d527`.
+The prefill image SHA256 is
+`dca636a740f52bd1cf938132c2c05bd2488c3af901013ddb1f90752dc82f6ffe`.
+
 ## Initial Measurement
 
 The November 20, 2026 measurements use a Strix NPU, XRT 2.26.0, and

@@ -247,17 +247,49 @@ struct AIEReorderCtrlPacketsByTilePass
   void runOnOperation() override {
     getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
       sequence.walk([&](Block *block) {
+        auto classified = packetEffects(*block);
+        if (failed(classified)) {
+          signalPassFailure();
+          return;
+        }
         SmallVector<NpuControlPacketOp> packets;
         llvm::DenseSet<uint32_t> written;
-        auto finish = [&] {
-          normalize(packets);
+        auto finish = [&](DictionaryAttr scope = {}) {
+          if (!scope) {
+            normalize(packets);
+            written.clear();
+            return;
+          }
+          SmallVector<NpuControlPacketOp> affected;
+          SmallVector<NpuControlPacketOp> independent;
+          for (NpuControlPacketOp packet : packets)
+            (scopesOverlap(classified->lookup(packet).scope, scope)
+                 ? affected
+                 : independent)
+                .push_back(packet);
+          normalize(affected);
+          packets = std::move(independent);
           written.clear();
+          if (!eliminateDeadWrites)
+            for (NpuControlPacketOp packet : packets)
+              for (size_t index = 0; index < packet.getData()->size(); ++index)
+                written.insert(packet.getAddress() + 4 * index);
         };
         for (Operation &operation : llvm::make_early_inc_range(*block)) {
+          if (auto barrier = dyn_cast<ControlPacketBarrierOp>(operation)) {
+            finish(barrier.getCompilerOnly() ? barrier.getScopeAttr()
+                                             : DictionaryAttr{});
+            continue;
+          }
           auto packet = dyn_cast<NpuControlPacketOp>(operation);
           if (!packet || packet.getOpcode() != 0 || !packet.getData() ||
               packet.getMulticastId()) {
             finish();
+            continue;
+          }
+          PacketEffects effects = classified->lookup(packet);
+          if (!effects.reorderable) {
+            finish(effects.scope);
             continue;
           }
           if (!packets.empty() &&

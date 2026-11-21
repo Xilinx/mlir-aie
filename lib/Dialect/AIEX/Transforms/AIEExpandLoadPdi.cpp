@@ -179,7 +179,8 @@ static LogicalResult transformLoadPdi(
     AIEX::ExpandMode defaultMode, bool keepPreload, bool teardown,
     AIEX::BlockwriteData *configData, AIEX::BlockwriteData *teardownData,
     SmallVectorImpl<CtrlPktReload> &ctrlPktReloads, OverlayCopies &copies,
-    SmallVectorImpl<Operation *> &teardownStarts) {
+    SmallVectorImpl<Operation *> &teardownStarts,
+    SmallVectorImpl<SetDeviceOp> &configurations, bool &fullyDrained) {
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -262,7 +263,8 @@ static LogicalResult transformLoadPdi(
   if (failed(verifyOverlayReachesTiles(loadPdiOp, overlay, config)))
     return failure();
   builder.setInsertionPoint(loadPdiOp->getBlock(), config.begin());
-  SetDeviceOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
+  configurations.push_back(
+      SetDeviceOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr));
 
   // Erase the load_pdi before inserting the teardown, so the teardown's masked
   // writes fold onto the configuration's writes instead of stopping at it.
@@ -273,12 +275,14 @@ static LogicalResult transformLoadPdi(
   Block::iterator at = builder.getInsertionPoint();
   Operation *end = at == block->end() ? nullptr : &*at;
   Operation *beforeTeardown = at == block->begin() ? nullptr : &*std::prev(at);
+  bool complete = false;
   if (failed(xilinx::AIE::generateAndInsertTeardownOps(
           builder, referencedDevice, *teardownData, outputType,
-          /*skipCtrlPktOverlay=*/true))) {
+          /*skipCtrlPktOverlay=*/true, &complete))) {
     emitError(loc, "Failed to generate teardown operations");
     return failure();
   }
+  fullyDrained &= complete;
   auto teardownOps = opsBetween(block, beforeTeardown, end);
   if (!teardownOps.empty())
     teardownStarts.push_back(&*teardownOps.begin());
@@ -476,6 +480,11 @@ struct AIEExpandLoadPdiPass
     OverlayCopies copies;
     SmallVector<CtrlPktReload> ctrlPktReloads;
     SmallVector<Operation *> teardownStarts;
+    SmallVector<SetDeviceOp> configurations;
+    bool fullyDrained = clTeardown && llvm::all_of(loadPdiOps, [&](auto load) {
+                          return load.getDeviceRefAttr() &&
+                                 expandMode(load) == AIEX::ExpandMode::ctrlpkt;
+                        });
     llvm::DenseMap<AIE::DeviceOp, AIEX::BlockwriteData> configData,
         teardownData;
     for (auto [idx, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
@@ -490,11 +499,15 @@ struct AIEExpandLoadPdiPass
       }
       if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
                                   keepPreload, clTeardown, config, teardown,
-                                  ctrlPktReloads, copies, teardownStarts))) {
+                                  ctrlPktReloads, copies, teardownStarts,
+                                  configurations, fullyDrained))) {
         signalPassFailure();
         return;
       }
     }
+    if (fullyDrained)
+      for (SetDeviceOp configuration : configurations)
+        configuration.setQuiescent(true);
 
     SmallVector<std::pair<Operation *, AIE::DeviceOp>> ctrlPktSites;
     for (CtrlPktReload &reload : ctrlPktReloads)
@@ -515,7 +528,8 @@ struct AIEExpandLoadPdiPass
       OpBuilder builder(reload.load->getBlock(), config.begin());
       SetDeviceOp::create(
           builder, reload.load.getLoc(),
-          FlatSymbolRefAttr::get(reload.device.getSymNameAttr()));
+          FlatSymbolRefAttr::get(reload.device.getSymNameAttr()),
+          builder.getUnitAttr());
       reload.load.erase();
     }
     for (Operation *start : teardownStarts) {

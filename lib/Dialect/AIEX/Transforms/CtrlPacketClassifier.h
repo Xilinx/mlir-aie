@@ -78,6 +78,21 @@ private:
   llvm::DenseMap<AIE::TileID, TileRegisters> registers;
 };
 
+struct PacketEffects {
+  bool reorderable = false;
+  mlir::DictionaryAttr scope;
+  mlir::DictionaryAttr target;
+};
+
+PacketEffects
+packetEffects(NpuControlPacketOp packet,
+              const llvm::DenseSet<AIE::TileID> *activeCores = nullptr);
+mlir::FailureOr<llvm::DenseMap<mlir::Operation *, PacketEffects>>
+packetEffects(mlir::Block &block);
+bool scopesOverlap(mlir::DictionaryAttr left, mlir::DictionaryAttr right);
+mlir::DictionaryAttr unionScopes(mlir::MLIRContext *context,
+                                 llvm::ArrayRef<mlir::DictionaryAttr> scopes);
+
 } // namespace xilinx::AIEX
 
 #endif // AIEX_TRANSFORMS_CTRLPACKETCLASSIFIER_H

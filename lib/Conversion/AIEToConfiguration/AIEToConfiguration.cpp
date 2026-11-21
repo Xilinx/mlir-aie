@@ -1002,10 +1002,9 @@ struct CoreLockAcquireAnalysis {
   }
 };
 
-static LogicalResult
-insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
-                    AIEX::BlockwriteData &blockwriteData,
-                    AIEToConfigurationOutputType outputType) {
+static LogicalResult insertCoreLockDrain(
+    OpBuilder &builder, DeviceOp device, AIEX::BlockwriteData &blockwriteData,
+    AIEToConfigurationOutputType outputType, bool *fullyDrained) {
   const auto &model = device.getTargetModel();
   if (!model.hasProperty(AIETargetModel::UsesSemaphoreLocks))
     return success();
@@ -1061,6 +1060,9 @@ insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
     return failure();
   for (auto core : cores)
     pollCoreStatus(core, 0x3c0);
+  if (fullyDrained)
+    *fullyDrained = analysis.unsupported.empty() &&
+                    (device.getOps<CoreOp>().empty() || !writes.empty());
   return success();
 }
 
@@ -1085,7 +1087,10 @@ xilinx::AIE::createAIEAnnotateCoreLockAcquiresPass() {
 LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device,
     AIEX::BlockwriteData &blockwriteData,
-    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay) {
+    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay,
+    bool *fullyDrained) {
+  if (fullyDrained)
+    *fullyDrained = false;
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
   if (!targetModel.hasProperty(AIETargetModel::IsNPU))
@@ -1102,7 +1107,8 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
           insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
                                     skipCtrlPktOverlay ? device : DeviceOp{})))
     return failure();
-  return insertCoreLockDrain(builder, device, blockwriteData, outputType);
+  return insertCoreLockDrain(builder, device, blockwriteData, outputType,
+                             fullyDrained);
 }
 
 LogicalResult

@@ -2735,6 +2735,36 @@ LogicalResult AIEX::SetDeviceOp::verify() {
   return success();
 }
 
+LogicalResult AIEX::ControlPacketBarrierOp::verify() {
+  if (getPacketEffect() && !getCompilerOnly())
+    return emitOpError("packet_effect requires compiler_only");
+  DictionaryAttr scope = getScopeAttr();
+  if (!scope)
+    return success();
+  if (!getCompilerOnly())
+    return emitOpError("scope requires compiler_only");
+  if (scope.empty())
+    return emitOpError("scope must contain physical modules");
+  const auto &target = AIE::getTargetModel(*this);
+  for (NamedAttribute entry : scope) {
+    StringRef kind = entry.getName().getValue();
+    if (kind != "core" && kind != "memory" && kind != "switch")
+      return emitOpError("unknown scope module: ") << kind;
+    auto tiles = dyn_cast<ArrayAttr>(entry.getValue());
+    if (!tiles || tiles.empty())
+      return emitOpError("scope modules require nonempty tile arrays");
+    for (Attribute attribute : tiles) {
+      auto tile = dyn_cast<AIE::TileAttr>(attribute);
+      if (!tile || !target.isValidTile(tile.getTileID()))
+        return emitOpError("scope requires valid physical tiles");
+      AIE::TileID id = tile.getTileID();
+      if (kind == "core" && !target.isCoreTile(id.col, id.row))
+        return emitOpError("core scope requires compute tiles");
+    }
+  }
+  return success();
+}
+
 LogicalResult
 AIEX::SetDeviceOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();

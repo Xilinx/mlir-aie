@@ -2063,8 +2063,12 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     normalize.addressOrder = cli::ctrlpktAddressOrder;
     normalize.eliminateDeadWrites = cli::ctrlpktEliminateDeadWrites;
     pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(normalize));
-    if (cli::ctrlpktMulticastSpan)
-      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
+    if (cli::ctrlpktMulticastSpan) {
+      xilinx::AIEX::AIEDedupCtrlPacketMulticastOptions multicast;
+      multicast.parallelShims = cli::ctrlpktParallelShims;
+      pm->addPass(
+          xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass(multicast));
+    }
     if (cli::ctrlpktCoalesce)
       pm->nest<xilinx::AIE::DeviceOp>().addPass(
           xilinx::AIEX::createAIECoalesceControlPacketsPass());

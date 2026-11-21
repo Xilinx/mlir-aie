@@ -750,10 +750,11 @@ def AIEInsertCtrlPacketBarriers
     : Pass<"aie-insert-ctrl-packet-barriers", "AIE::DeviceOp"> {
   let summary = "Isolate ordered register writes with compiler barriers";
   let description = [{
-    Requires quiescent application resources and an intact control overlay.
-    The target model identifies ordinary storage writes. Compiler-only
-    barriers surround every other packet, including reads and unknown
-    effects. These barriers preserve ordering without waiting for hardware.
+    The target model identifies ordinary storage writes and physical module
+    effects. Compiler-only packet-effect barriers surround ordered writes.
+    Their scopes include memory affinity dependencies. A quiescent device
+    marker permits local scopes until each core activates. Reads and unknown
+    effects require global barriers. These barriers emit no hardware wait.
     Run this pass before ordinary-write normalization and coalescing.
   }];
   let constructor = "xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass()";
@@ -765,9 +766,8 @@ def AIECoalesceControlPackets
   let summary = "Merge adjacent control-packet writes";
   let description = [{
     Combines adjacent writes with consecutive addresses and matching
-    destinations and header settings. Compiler barriers must isolate ordered
-    writes before this pass. The merged payload stays within one aligned
-    four-word line.
+    destinations and header settings. The pass excludes ordered writes.
+    The merged payload stays within one aligned four-word line.
   }];
   let constructor = "xilinx::AIEX::createAIECoalesceControlPacketsPass()";
   let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
@@ -787,11 +787,11 @@ def AIEReorderCtrlPacketsByTile
     : Pass<"aie-reorder-ctrl-packets-by-tile", "mlir::ModuleOp"> {
   let summary = "Order ordinary control writes and remove overwritten words";
   let description = [{
-    Requires compiler barriers around action-triggering and unknown writes.
-    Within each uninterrupted sequence of ordinary unicast writes, retains
-    the last value for each word and orders the surviving packets by address.
-    Header changes and other operations end the sequence. Run before multicast
-    selection and adjacent-write coalescing.
+    Retains the last value for each ordinary unicast word and orders surviving
+    packets by address. Scoped barriers and actions end the sequence for
+    affected modules. Independent writes may cross those boundaries. Global
+    barriers, header changes, and other operations end every sequence.
+    Run before multicast selection and adjacent-write coalescing.
 
     `address-order` and `eliminate-dead-writes` select each transformation
     independently. Address ordering without elimination partitions each
@@ -950,16 +950,20 @@ def AIEDedupCtrlPacketMulticast
     : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
   let summary = "Send the control packets a multicast's tiles share once";
   let description = [{
-    Requires quiescent application resources, compiler barriers around ordered
-    writes, and disjoint destination words within each run. The pass retains
-    runs with overlapping writes. The overlay declares disjoint
-    multicast destination groups in `aie.ctrl_pkt_multicast`.
+    Matches each destination's leading write sequence, including ordered
+    writes, on an intact control overlay. Scoped compiler barriers permit
+    movement past independent modules. Explicit fences retain their boundaries.
+    The pass regenerates packet-effect barriers around moved actions.
+    Global compiler barriers, device changes, and delivery barriers bound
+    matching. The overlay declares destination groups in `aie.ctrl_pkt_multicast`.
 
-    Replaces matching leading writes to every tile of a group with packets
-    from its source column carrying `multicast_id`. Delivery barriers surround
-    each selected prefix, so later actions wait for its completion. Runs with
-    different stream IDs remain unchanged. The pass does not inspect routes.
+    Matching preserves the order and multiplicity of each destination's
+    actions. Delivery planning rejects stream hazards and inserts completion
+    waits when multicast and unicast routes do not establish the required
+    order. Runs with different stream IDs remain unchanged.
   }];
+  let options = [Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false", "Plan parallel shim delivery">];
 
   let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",

@@ -7,31 +7,24 @@
 
 // RUN: aie-opt %s --split-input-file --aie-generate-column-control-overlay="configuration=true adaptive=false multicast-span=1" --aie-insert-ctrl-packet-barriers --aie-reorder-ctrl-packets-by-tile --aie-dedup-ctrl-packet-multicast --aie-check-ctrl-packet-delivery | FileCheck %s --check-prefixes=CHECK,SPAN1
 // RUN: aie-opt %s --split-input-file --aie-generate-column-control-overlay="configuration=true adaptive=false multicast-span=2" --aie-insert-ctrl-packet-barriers --aie-reorder-ctrl-packets-by-tile --aie-dedup-ctrl-packet-multicast --aie-check-ctrl-packet-delivery | FileCheck %s --check-prefixes=CHECK,SPAN2
-// RUN: aie-opt %s --split-input-file --aie-generate-column-control-overlay="configuration=true adaptive=false multicast-span=2" --aie-insert-ctrl-packet-barriers --aie-reorder-ctrl-packets-by-tile --aie-dedup-ctrl-packet-multicast --aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefixes=CHECK,SPAN2
+// RUN: aie-opt %s --split-input-file --aie-generate-column-control-overlay="configuration=true adaptive=false multicast-span=2" --aie-insert-ctrl-packet-barriers --aie-reorder-ctrl-packets-by-tile --aie-dedup-ctrl-packet-multicast=parallel-shims=true --aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefixes=CHECK,SPAN2
 
-// Core disables and resets require separate writes. Their compiler-only
-// barriers separate the matching program words into different packet runs.
+// Core disables and resets remain separate actions on every destination.
 
 // CHECK-LABEL: aie.runtime_sequence @seq()
 // CHECK-NEXT:  aiex.set_device @cfg
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 2301952 : ui32, data = array<i32: 0>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 3350528 : ui32, data = array<i32: 0>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier{{$}}
-// CHECK-NEXT:    address = 2301952 : ui32, data = array<i32: 2>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, opcode
-// CHECK-NEXT:    address = 2355204 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 3350528 : ui32, data = array<i32: 2>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 3276800 : ui32, data = array<i32: 7>, opcode
-// CHECK-NEXT:    address = 3403780 : ui32, data = array<i32: 2>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 3350528 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:  {{^ *}}}
+// SPAN1:         address = 2301952 : ui32, data = array<i32: 0>, multicast_id = 28 : i32
+// SPAN2:         address = 2301952 : ui32, data = array<i32: 0>, opcode
+// SPAN2:         address = 3350528 : ui32, data = array<i32: 0>, opcode
+// CHECK:       aiex.control_packet_barrier{{$}}
+// SPAN1:         address = 2301952 : ui32, data = array<i32: 2>, multicast_id = 28 : i32
+// SPAN1-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>], memory =
+// SPAN1-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
+// SPAN2:         address = 2301952 : ui32, data = array<i32: 2>, opcode
+// SPAN2:         address = 2228224 : ui32, data = array<i32: 7>, opcode
+// CHECK:         address = 2355204 : ui32, data = array<i32: 1>, opcode
+// CHECK:         address = 3403780 : ui32, data = array<i32: 2>, opcode
+// CHECK:         address = 3350528 : ui32, data = array<i32: 1>, opcode
 
 module {
   aie.device(npu2) @cfg {
@@ -69,16 +62,10 @@ module {
 // CHECK-LABEL: aie.runtime_sequence @seq()
 // CHECK-NEXT:  aiex.set_device @cfg
 // CHECK-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 2301952 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 3276800 : ui32, data = array<i32: 7>, opcode
-// CHECK-NEXT:    address = 35782656 : ui32, data = array<i32: 7>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 35856384 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
-// CHECK-NEXT:    address = 3276800 : ui32, data = array<i32: 9>, opcode
-// CHECK-NEXT:  {{^ *}}}
+// CHECK:         address = 2301952 : ui32, data = array<i32: 1>, opcode
+// CHECK:         address = 35782656 : ui32, data = array<i32: 7>, opcode
+// CHECK:         address = 35856384 : ui32, data = array<i32: 1>, opcode
+// CHECK:         address = 3276800 : ui32, data = array<i32: 9>, opcode
 
 module {
   aie.device(npu2) @cfg {
@@ -103,19 +90,15 @@ module {
 
     // SPAN1-LABEL: aie.runtime_sequence @ordinary_prefix()
     // SPAN1-NEXT:  aiex.set_device @cfg
-    // SPAN1-NEXT:  aiex.control_packet_barrier{{$}}
     // SPAN1-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
     // SPAN1-NEXT:    address = 2228228 : ui32, data = array<i32: 9>, multicast_id = 28 : i32
-    // SPAN1-NEXT:  aiex.control_packet_barrier{{$}}
     // SPAN1-NEXT:    address = 35782656 : ui32, data = array<i32: 7>, opcode
     // SPAN1-NEXT:    address = 35782660 : ui32, data = array<i32: 9>, opcode
     // SPAN1-NEXT:  {{^ *}}}
     // SPAN2-LABEL: aie.runtime_sequence @ordinary_prefix()
     // SPAN2-NEXT:  aiex.set_device @cfg
-    // SPAN2-NEXT:  aiex.control_packet_barrier{{$}}
     // SPAN2-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
     // SPAN2-NEXT:    address = 2228228 : ui32, data = array<i32: 9>, multicast_id = 28 : i32
-    // SPAN2-NEXT:  aiex.control_packet_barrier{{$}}
     // SPAN2-NEXT:  {{^ *}}}
     aie.runtime_sequence @ordinary_prefix() {
       aiex.set_device @cfg
@@ -136,11 +119,11 @@ module {
 
 // CHECK-LABEL: aie.runtime_sequence @reads()
 // CHECK-NEXT:  aiex.set_device @cfg
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only, packet_effect}
 // CHECK-NEXT:    address = 2301952 : ui32, length = 1 : i32, opcode = 1 : i32
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only, packet_effect}
 // CHECK-NEXT:    address = 3350528 : ui32, length = 1 : i32, opcode = 1 : i32
-// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only}
+// CHECK-NEXT:  aiex.control_packet_barrier {compiler_only, packet_effect}
 // CHECK-NEXT:  {{^ *}}}
 
 module {

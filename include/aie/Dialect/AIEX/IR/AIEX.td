@@ -1338,8 +1338,17 @@ def AIE_SetDeviceOp
     The operation emits no hardware instruction. The sequence must complete
     the outgoing application's use of shared resources before replacing its
     configuration. Explicit synchronization orders configuration delivery.
+
+    `quiescent` asserts that cores and DMA engines have no pending work that
+    accesses the configuration resources. The control overlay may remain
+    active. Reset or completed teardown establishes this assertion. Each core
+    activation ends the assertion for that core. Unknown effects end it for
+    all cores. The marker does not wait for completion.
   }];
-  let arguments = (ins FlatSymbolRefAttr:$device_ref);
+  let arguments = (ins FlatSymbolRefAttr:$device_ref, UnitAttr:$quiescent);
+  let builders = [OpBuilder<(ins "::mlir::FlatSymbolRefAttr":$deviceRef), [{
+    build($_builder, $_state, deviceRef, /*quiescent=*/nullptr);
+  }]>];
   let assemblyFormat = [{ $device_ref attr-dict }];
   let hasVerifier = 1;
 }
@@ -1352,12 +1361,31 @@ def AIE_ControlPacketBarrierOp
     Every control packet before it in its run lands before any after it.
     With `compiler_only`, the barrier only prevents compiler transformations
     across it. DMA lowering removes that form without adding synchronization.
+
+    A compiler-only barrier may specify `scope`, a dictionary of physical
+    modules. Its `core`, `memory`, and `switch` entries contain arrays of
+    `#aie.tile` attributes. Core modules include program storage; memory
+    modules include data storage, locks, and DMA configuration. Operations
+    that can access a scoped module retain their order across the barrier.
+    Other operations may cross it. An absent scope applies to every module.
+
+    `packet_effect` denotes the ordering constraints of adjacent packet
+    actions. A transformation may regenerate these barriers from packet
+    effects after moving the actions. Other barriers retain their boundaries.
   }];
-  let arguments = (ins UnitAttr:$compiler_only);
+  let arguments = (ins UnitAttr:$compiler_only,
+                       OptionalAttr<DictionaryAttr>:$scope,
+                       UnitAttr:$packet_effect);
   let assemblyFormat = [{ attr-dict }];
   let builders = [OpBuilder<(ins), [{
-    build($_builder, $_state, /*compiler_only=*/nullptr);
+    build($_builder, $_state, nullptr, nullptr, nullptr);
+  }]>, OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly), [{
+    build($_builder, $_state, compilerOnly, nullptr, nullptr);
+  }]>, OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly,
+                     "::mlir::DictionaryAttr":$scope), [{
+    build($_builder, $_state, compilerOnly, scope, nullptr);
   }]>];
+  let hasVerifier = 1;
 }
 
 // NPU Bd Write operation

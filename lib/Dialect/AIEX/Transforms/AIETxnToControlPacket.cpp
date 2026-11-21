@@ -9,6 +9,8 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "CtrlPacketClassifier.h"
+
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -166,26 +168,39 @@ struct AIEInsertCtrlPacketBarriersPass
     : xilinx::AIEX::impl::AIEInsertCtrlPacketBarriersBase<
           AIEInsertCtrlPacketBarriersPass> {
   void runOnOperation() override {
-    const auto &target = getOperation().getTargetModel();
-    getOperation().walk([&](AIEX::NpuControlPacketOp packet) {
-      auto data = packet.getData();
-      bool ordinary =
-          packet.getOpcode() == 0 && data && !packet.getMulticastId();
-      if (ordinary)
-        for (size_t index = 0; index < data->size(); ++index)
-          ordinary &= target.isReorderableRegisterWrite(
-              packet.getTileFromAddr(), packet.getLocalAddress() + 4 * index);
-      if (ordinary)
-        return;
-      OpBuilder builder(packet);
-      if (!isa_and_present<AIEX::ControlPacketBarrierOp>(packet->getPrevNode()))
-        AIEX::ControlPacketBarrierOp::create(builder, packet.getLoc(),
-                                             builder.getUnitAttr());
-      builder.setInsertionPointAfter(packet);
-      if (!isa_and_present<AIEX::ControlPacketBarrierOp>(packet->getNextNode()))
-        AIEX::ControlPacketBarrierOp::create(builder, packet.getLoc(),
-                                             builder.getUnitAttr());
+    WalkResult result = getOperation().walk([&](Block *block) {
+      if (!isa<AIE::RuntimeSequenceOp>(block->getParentOp()) &&
+          !block->getParentOp()->getParentOfType<AIE::RuntimeSequenceOp>())
+        return WalkResult::advance();
+      auto classified = AIEX::packetEffects(*block);
+      if (failed(classified))
+        return WalkResult::interrupt();
+      for (auto packet : llvm::make_early_inc_range(
+               block->getOps<AIEX::NpuControlPacketOp>())) {
+        AIEX::PacketEffects effects = classified->lookup(packet);
+        if (effects.reorderable)
+          continue;
+        auto covers = [&](Operation *operation) {
+          auto barrier =
+              dyn_cast_or_null<AIEX::ControlPacketBarrierOp>(operation);
+          return barrier && (!barrier.getScopeAttr() ||
+                             barrier.getScopeAttr() == effects.scope);
+        };
+        OpBuilder builder(packet);
+        if (!covers(packet->getPrevNode()))
+          AIEX::ControlPacketBarrierOp::create(
+              builder, packet.getLoc(), builder.getUnitAttr(), effects.scope,
+              builder.getUnitAttr());
+        builder.setInsertionPointAfter(packet);
+        if (!covers(packet->getNextNode()))
+          AIEX::ControlPacketBarrierOp::create(
+              builder, packet.getLoc(), builder.getUnitAttr(), effects.scope,
+              builder.getUnitAttr());
+      }
+      return WalkResult::advance();
     });
+    if (result.wasInterrupted())
+      signalPassFailure();
   }
 };
 
@@ -199,6 +214,10 @@ struct AIECoalesceControlPacketsPass
         for (Operation &operation : llvm::make_early_inc_range(*block)) {
           auto packet = dyn_cast<AIEX::NpuControlPacketOp>(operation);
           if (!packet || packet.getOpcode() != 0 || !packet.getData()) {
+            previous = {};
+            continue;
+          }
+          if (!AIEX::packetEffects(packet).reorderable) {
             previous = {};
             continue;
           }

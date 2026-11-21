@@ -11,4 +11,4 @@
 // RUN: %run_on_npu2% ./test 2
 //
 // CHECK: aiex.control_packet {address = 2113536 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
-// CHECK-NOT: data = array<i32: 1>, multicast_id
+// CHECK-NOT: address = {{(2113536|4210688)}} : ui32, data = array<i32: 1>, multicast_id

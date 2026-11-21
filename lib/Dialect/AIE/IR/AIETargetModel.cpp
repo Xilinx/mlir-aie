@@ -65,19 +65,20 @@ const RegisterInfo *AIETargetModel::lookupRegister(llvm::StringRef name,
   return db->lookupRegister(name, getModuleForTile(*this, tile, isMem));
 }
 
-bool AIETargetModel::isReorderableRegisterWrite(TileID tile,
-                                                uint32_t offset) const {
+std::optional<AIETargetModel::RegisterWriteInfo>
+AIETargetModel::getRegisterWriteInfo(TileID tile, uint32_t offset) const {
   if ((offset & 3) || !isValidTile(tile) ||
       (getTargetArch() != AIEArch::AIE2 && getTargetArch() != AIEArch::AIE2p))
-    return false;
+    return std::nullopt;
   auto inRange = [offset](uint32_t base, uint32_t bytes) {
     return offset >= base && offset - base < bytes;
   };
-  if ((isCoreTile(tile.col, tile.row) &&
-       (inRange(0, getLocalMemorySize()) ||
-        inRange(0x20000, getProgramMemorySize()))) ||
+  if (isCoreTile(tile.col, tile.row) &&
+      inRange(0x20000, getProgramMemorySize()))
+    return RegisterWriteInfo{"core", true};
+  if ((isCoreTile(tile.col, tile.row) && inRange(0, getLocalMemorySize())) ||
       (isMemTile(tile.col, tile.row) && inRange(0, getMemTileSize())))
-    return true;
+    return RegisterWriteInfo{"memory", true};
   if (isCoreTile(tile.col, tile.row) || isMemTile(tile.col, tile.row) ||
       isShimNOCTile(tile.col, tile.row))
     if (const DmaBdLayout *layout = getDmaBdLayout(tile.col, tile.row))
@@ -86,20 +87,36 @@ bool AIETargetModel::isReorderableRegisterWrite(TileID tile,
         if (inRange(getDmaBdAddress(tile.col, tile.row, descriptor) &
                         ((1u << getRowShift()) - 1),
                     4 * layout->numWords))
-          return true;
+          return RegisterWriteInfo{"memory", true};
   const RegisterDatabase *database = getRegisterDatabase();
   const RegisterInfo *reg =
       database ? database->lookupRegisterByOffset(
                      offset, getModuleForTile(*this, tile, false))
                : nullptr;
+  if (!reg && database)
+    reg = database->lookupRegisterByOffset(offset,
+                                           getModuleForTile(*this, tile, true));
   if (!reg)
-    return false;
+    return std::nullopt;
   llvm::StringRef name = reg->name;
-  return name.starts_with("Stream_Switch_Master_Config_") ||
-         name.starts_with("Stream_Switch_Slave_Config_") ||
-         (name.starts_with("Stream_Switch_Slave_") && name.contains("_Slot")) ||
-         (isShimNOCorPLTile(tile.col, tile.row) &&
-          (name == "Mux_Config" || name == "Demux_Config"));
+  if (name.starts_with("Stream_Switch_Master_Config_") ||
+      name.starts_with("Stream_Switch_Slave_Config_") ||
+      (name.starts_with("Stream_Switch_Slave_") && name.contains("_Slot")) ||
+      (isShimNOCorPLTile(tile.col, tile.row) &&
+       (name == "Mux_Config" || name == "Demux_Config")))
+    return RegisterWriteInfo{"switch", true};
+  if (isCoreTile(tile.col, tile.row) &&
+      (name == "Core_Control" || name == "Core_Status"))
+    return RegisterWriteInfo{"core", false};
+  if (name.starts_with("DMA_") || name.starts_with("Lock"))
+    return RegisterWriteInfo{"memory", false};
+  return std::nullopt;
+}
+
+bool AIETargetModel::isReorderableRegisterWrite(TileID tile,
+                                                uint32_t offset) const {
+  auto info = getRegisterWriteInfo(tile, offset);
+  return info && info->reorderable;
 }
 
 std::optional<uint32_t> AIETargetModel::lookupEvent(llvm::StringRef name,

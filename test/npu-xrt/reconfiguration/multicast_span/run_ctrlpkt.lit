@@ -13,4 +13,4 @@
 //
 // CHECK: aiex.control_packet {address = 2113536 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
 // CHECK: aiex.control_packet {address = 35667968 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
-// CHECK-NOT: data = array<i32: 1>, multicast_id
+// CHECK-NOT: address = {{(2113536|4210688|35667968|37765120)}} : ui32, data = array<i32: 1>, multicast_id
