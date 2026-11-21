@@ -149,6 +149,8 @@ and teardown.
 Under `--load-pdi-to-ctrl-pkt`, `aiex.set_device @device` selects the device
 configuration for subsequent operations. The marker has no region. Control
 packets, barriers, and runtime operations remain in the same block.
+The marker must be a direct child of a single-block runtime sequence.
+Nested operations inherit that context.
 
 - `aie-schedule-ctrl-packet-activation` orders setup and activation. Optional
   gating proofs permit early DMA pushes and core enables.
@@ -174,8 +176,9 @@ packets, barriers, and runtime operations remain in the same block.
   `aie-dedup-ctrl-packet-multicast` sends the packets those tiles share once.
   The pass reads declared multicast groups without route analysis. Delivery
   barriers isolate each multicast prefix.
-- `--ctrlpkt-verify-delivery` runs the standalone ordering and route validator.
-  It is off by default and does not transform the program.
+- `aie-check-ctrl-packet-delivery` validates arrival order, stream deadlocks,
+  and concurrent multicast routes on every compilation. A packet-delivery
+  barrier does not establish application quiescence.
 
 The descriptor allocator reserves the selected device's static BDs before
 allocating its configuration transfers. It retains reservations for the loaded

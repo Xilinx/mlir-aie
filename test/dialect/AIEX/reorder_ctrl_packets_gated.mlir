@@ -105,10 +105,8 @@ module {
 // CONTEXT-NEXT: scf.for
 // CONTEXT-NEXT:   aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>
 // CONTEXT-NEXT:   aiex.control_packet {address = 1769472 : ui32, data = array<i32: 11>
-// CONTEXT-NEXT:   aiex.set_device @other
-// CONTEXT-NEXT:   aiex.control_packet {address = 1769472 : ui32, data = array<i32: 12>
-// CONTEXT-NEXT:   aiex.control_packet_barrier
 // CONTEXT-NEXT:   aiex.control_packet {address = 1705524 : ui32, data = array<i32: 2>
+// CONTEXT-NEXT:   aiex.control_packet {address = 1769472 : ui32, data = array<i32: 12>
 // CONTEXT-NEXT: {{^ *}}}
 // CONTEXT-NEXT: aiex.control_packet {address = 1705524 : ui32, data = array<i32: 3>
 // CONTEXT-NEXT: aiex.control_packet {address = 1769472 : ui32, data = array<i32: 13>
@@ -137,7 +135,6 @@ module {
       scf.for %iteration = %zero to %one step %one {
         aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
         aiex.control_packet {address = 1769472 : ui32, data = array<i32: 11>, opcode = 0 : i32, stream_id = 0 : i32}
-        aiex.set_device @other
         aiex.control_packet {address = 1705524 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
         aiex.control_packet {address = 1769472 : ui32, data = array<i32: 12>, opcode = 0 : i32, stream_id = 0 : i32}
       }

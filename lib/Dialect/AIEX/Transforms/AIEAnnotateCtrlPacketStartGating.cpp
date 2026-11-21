@@ -13,9 +13,9 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
@@ -65,9 +65,6 @@ struct GatingProver {
   // one the device does not declare.
   std::map<std::pair<Operation *, int>, SmallVector<Source>> sources;
 
-  // Tiles whose core sends on a stream or a cascade.
-  DenseSet<Operation *> coreSends;
-
   DenseMap<Value, Verdict> lockMemo;
   DenseSet<Value> lockBusy;
 
@@ -103,9 +100,6 @@ struct GatingProver {
     // The streams into S2MM channels, as the flows ask for them before routing
     // and as the switchboxes route them after.
     auto addStream = [&](const RoutedStream &s) {
-      if (s.src.port.bundle == WireBundle::Core)
-        if (Operation *src = tiles.lookup(s.src.tile))
-          coreSends.insert(src);
       Operation *dst = tiles.lookup(s.dst.tile);
       if (s.dst.port.bundle != WireBundle::DMA || !dst)
         return;
@@ -116,12 +110,6 @@ struct GatingProver {
       addStream(s);
     for (const RoutedStream &s : traceRoutedStreams(device))
       addStream(s);
-    device.walk([&](CascadeFlowOp c) {
-      coreSends.insert(c.getSourceTile().getDefiningOp());
-    });
-    device.walk([&](ConfigureCascadeOp c) {
-      coreSends.insert(c.getTile().getDefiningOp());
-    });
   }
 
   // Whether an acquire cannot succeed on the lock's initial value; nullopt if
@@ -400,29 +388,11 @@ struct GatingProver {
     return walkToGate(*dest, core, gate, known, visited);
   }
 
-  // One op before the gating acquire. Effect-free ops pass; an op that touches
-  // memory passes when every memref it touches is guarded; a call to an
-  // external function passes when every memref it is given is guarded and the
-  // core sends on no stream or cascade, since a kernel reaches the array only
-  // through its arguments, the core's routed ports and lock intrinsics.
   Verdict opBeforeGate(Operation &op, CoreOp core) {
     if (isa<UseLockOp>(op))
       return std::string("a lock op inside a region before the gating acquire");
-    if (auto call = dyn_cast<func::CallOp>(op)) {
-      auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
-          call, call.getCalleeAttr());
-      if (!callee || !callee.isExternal())
-        return std::string(
-            "a call to a function with a body before the gating acquire");
-      if (coreSends.contains(core.getTileOp().getOperation()))
-        return std::string("a call before the gating acquire on a core that "
-                           "sends on a stream or cascade");
-      for (Value v : call.getOperands())
-        if (isa<BaseMemRefType>(v.getType()))
-          if (Verdict r = guardedMemref(v, core))
-            return r;
-      return std::nullopt;
-    }
+    if (isa<CallOpInterface>(op))
+      return std::string("a call before the gating acquire");
     if (op.getNumRegions()) {
       if (!op.hasTrait<OpTrait::HasRecursiveMemoryEffects>())
         return llvm::formatv("a region op before the gating acquire: {0}",

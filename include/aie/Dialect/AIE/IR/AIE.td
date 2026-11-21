@@ -47,6 +47,7 @@ def AIE_Dialect : Dialect {
     and every transitive callee perform no AIE lock acquisitions. Core lock
     analysis uses this contract while collecting explicit lock operations.
     An external declaration without the attribute has unknown lock effects.
+    This contract permits lock releases and other side effects.
 
   }];
   let useDefaultTypePrinterParser = 1;

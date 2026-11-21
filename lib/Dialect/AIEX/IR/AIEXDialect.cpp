@@ -2728,6 +2728,13 @@ AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return diag;
 }
 
+LogicalResult AIEX::SetDeviceOp::verify() {
+  auto sequence = cast<AIE::RuntimeSequenceOp>((*this)->getParentOp());
+  if (!llvm::hasSingleElement(sequence.getBody()))
+    return emitOpError("requires a single-block runtime sequence");
+  return success();
+}
+
 LogicalResult
 AIEX::SetDeviceOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();

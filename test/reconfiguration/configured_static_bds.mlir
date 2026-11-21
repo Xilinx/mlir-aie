@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --split-input-file -aie-substitute-shim-dma-allocations -aie-assign-runtime-sequence-bd-ids="warn-unreleased-transfers=false" -verify-diagnostics | FileCheck %s --implicit-check-not=aiex.set_device
+// RUN: aie-opt %s --split-input-file -aie-substitute-shim-dma-allocations -aie-unroll-runtime-sequence-loops -aie-assign-runtime-sequence-bd-ids="warn-unreleased-transfers=false" -verify-diagnostics | FileCheck %s --implicit-check-not=aiex.set_device --implicit-check-not=scf.for
 
 // @cfg's static DMA takes BD 0, which a running transfer still holds when its
 // control packets start. Once that transfer is awaited, BD 0 stays @cfg's.
@@ -70,6 +70,8 @@ module {
 // CHECK:       aiex.dma_configure_task({{.*}}, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}}) {bd_id = 2 : i32
 // CHECK:       aiex.dma_configure_task({{.*}}, MM2S, 0)
+// CHECK-NEXT:    aie.dma_bd({{.*}}) {bd_id = 2 : i32
+// CHECK:       aiex.dma_configure_task({{.*}}, MM2S, 0)
 // CHECK-NEXT:    aie.dma_bd({{.*}}) {bd_id = 0 : i32
 module {
   aie.device(npu2_1col) @a {
@@ -103,13 +105,18 @@ module {
     %t00 = aie.tile(0, 0)
     aie.shim_dma_allocation @ctrl(%t00, MM2S, 0)
     aie.runtime_sequence @replaced(%buf : memref<16xi32>) {
+      %zero = arith.constant 0 : index
+      %one = arith.constant 1 : index
+      %two = arith.constant 2 : index
       aiex.set_device @a
-      %ca = aiex.dma_configure_task_for @ctrl {
-        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%ca)
-      aiex.dma_await_task(%ca)
+      scf.for %iteration = %zero to %two step %one {
+        %ca = aiex.dma_configure_task_for @ctrl {
+          aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+          aie.end
+        } {issue_token = true}
+        aiex.dma_start_task(%ca)
+        aiex.dma_await_task(%ca)
+      }
       %ta = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end

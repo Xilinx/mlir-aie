@@ -6,9 +6,13 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt %s --split-input-file -aie-check-ctrl-packet-delivery=parallel-shims=true -verify-diagnostics
+// RUN: aie-opt %s --split-input-file -aie-check-ctrl-packet-delivery=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true -verify-diagnostics
 // RUN: not aie-opt %s --split-input-file -aie-check-ctrl-packet-delivery 2>&1 | FileCheck %s --check-prefix=SERIAL
+// RUN: split-file %s %t
+// RUN: not %aiecc -j1 --load-pdi-to-ctrl-pkt --get=npu_expanded.mlir --tmpdir=%t/driver --output-dir=%t/driver %t/cross_barrier.mlir 2>&1 | FileCheck %s --check-prefix=DRIVER
 
 // SERIAL: op may wait forever
+// DRIVER: op may wait forever
 
 // Memory tile (0, 1)'s MM2S channel streams as soon as it is started (lock
 // init 1), through arbiter 0 of switchbox (0, 2), which the control packets to
@@ -271,6 +275,7 @@ module {
 // Core (1, 3)'s stream takes arbiter 0 of switchbox (1, 1), which the control
 // packets to memory tile (1, 1) take too. The teardown after the configuration
 // waits for the enable's transfer, but not for the stream it starts.
+//--- cross_barrier.mlir
 module {
   aie.device(npu2) @ov {
     %t03 = aie.tile(0, 3)
@@ -286,17 +291,17 @@ module {
       %0 = aie.amsel<0> (0)
       %1 = aie.masterset(North : 1, %0)
       aie.packet_rules(South : 7) {
-        aie.rule(31, 29, %0)
+        aie.rule(31, 26, %0)
       }
     }
-    %mem_tile_1_1 = aie.tile(1, 1)
+    %mem_tile_1_1 = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
     %switchbox_1_1 = aie.switchbox(%mem_tile_1_1) {
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<0> (1)
       %2 = aie.masterset(TileControl : 0, %0) {keep_pkt_header = true}
       %3 = aie.masterset(DMA : 0, %1)
       aie.packet_rules(South : 1) {
-        aie.rule(31, 29, %0)
+        aie.rule(31, 26, %0)
       }
       aie.packet_rules(North : 0) {
         aie.rule(31, 3, %1)
@@ -345,6 +350,7 @@ module {
 
 // -----
 
+//--- subsequent.mlir
 // Core (0, 3)'s stream takes arbiter 0 of switchbox (0, 3), which the control
 // packets to tile (0, 4) take too. Sent before it on the same channel, (0, 4)'s
 // enable may still wait at that arbiter when core (0, 3)'s lands.

@@ -888,8 +888,9 @@ def AIEAnnotateCtrlPacketStartGating
     early (blocking, on an own-tile lock, at a value the initial value does not
     reach, released only as above), it releases no lock, runs no loop that may
     not run, touches only its own tile's buffers that only idle descriptors
-    otherwise use, and calls external functions only when it sends on no stream
-    or cascade. A core given as `elf_file` is not proved.
+    otherwise use, and calls no functions. A core given as `elf_file` is not
+    proved. The acquire-only external function contract permits lock releases
+    and cannot establish start gating.
   }];
 
   let constructor =

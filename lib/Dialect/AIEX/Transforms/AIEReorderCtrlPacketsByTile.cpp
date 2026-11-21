@@ -47,7 +47,7 @@ struct AIEScheduleCtrlPacketActivationPass
       PacketClassifier classifier(device.getTargetModel());
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
         for (PacketRun &run : packetRuns(seq))
-          if (failed(reorder(run, classifier, devices)))
+          if (run.front().device && failed(reorder(run, classifier, devices)))
             return signalPassFailure();
     }
   }

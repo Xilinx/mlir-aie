@@ -2068,11 +2068,9 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     if (cli::ctrlpktCoalesce)
       pm->nest<xilinx::AIE::DeviceOp>().addPass(
           xilinx::AIEX::createAIECoalesceControlPacketsPass());
-    if (cli::ctrlpktVerifyDelivery) {
-      xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
-      check.parallelShims = cli::ctrlpktParallelShims;
-      pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));
-    }
+    xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
+    check.parallelShims = cli::ctrlpktParallelShims;
+    pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));
   }
   return pm;
 }

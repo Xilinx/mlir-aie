@@ -13,6 +13,7 @@
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile="eliminate-dead-writes=false" | FileCheck %s --check-prefix=SORT
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile="address-order=false eliminate-dead-writes=false" | FileCheck %s --check-prefix=RETAIN
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=RAW-MULTI
+// RUN: aie-opt %s -aie-expand-load-pdi="ctrl-pkt=true teardown=true" -aie-legalize-ctrl-packet -aie-schedule-ctrl-packet-activation -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-coalesce-control-packets -aie-check-ctrl-packet-delivery | FileCheck %s --check-prefix=RAW-ORDER
 // CHECK: aiex.control_packet {address = 65432 : ui32, data = array<i32: 123, 456, 789, 43981, -2147483648, -1, -2, -3>
 
 module {
@@ -43,6 +44,16 @@ module {
     }
   }
   aie.device(npu2) @normalize {
+    // RAW-ORDER-LABEL: @raw_activation
+    // RAW-ORDER: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>
+    // RAW-ORDER-NEXT: aiex.control_packet_barrier {compiler_only}
+    // RAW-ORDER-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
+    // RAW-ORDER-NOT: data = array<i32: 1>
+    // RAW-ORDER: {{^ *}}}
+    aie.runtime_sequence @raw_activation() {
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
     // ORDER-LABEL: @overwritten
     // ORDER: address = 2228224 : ui32, data = array<i32: 1, 7, 8, 4>
     // ORDER-NEXT: aiex.control_packet_barrier {compiler_only}

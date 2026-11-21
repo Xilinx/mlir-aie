@@ -19,6 +19,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <tuple>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIECHECKCTRLPACKETDELIVERY
@@ -153,20 +154,35 @@ struct AIECheckCtrlPacketDeliveryPass
       for (AIE::TileID t : order.tilesOf(i))
         byTile[t].push_back(i);
     }
-    for (auto &[tile, indices] : byTile)
-      for (size_t j = 1; j < indices.size(); ++j)
-        for (size_t i = 0; i < j; ++i) {
-          size_t a = indices[i], b = indices[j];
-          if (order.landsBeforeOn(a, b, tile) ||
-              writes[a].commutesWith(writes[b]))
-            continue;
-          InFlightDiagnostic d =
-              run[b].packet.emitOpError("may land on tile ")
-              << tileName(tile)
-              << " before an earlier control packet it does not commute with";
-          d.attachNote(run[a].packet.getLoc()) << "the earlier packet";
-          return failure();
+    for (auto &[tile, indices] : byTile) {
+      std::map<std::tuple<unsigned, int, bool>, SmallVector<size_t>> streams;
+      for (size_t index : indices)
+        streams[{order.phaseOf(index), run[index].packet.getColumnFromAddr(),
+                 run[index].packet.getMulticastId().has_value()}]
+            .push_back(index);
+      for (auto first = streams.begin(); first != streams.end(); ++first)
+        for (auto second = std::next(first); second != streams.end();
+             ++second) {
+          if (std::get<0>(first->first) != std::get<0>(second->first))
+            break;
+          for (size_t left : first->second)
+            for (size_t right : second->second) {
+              size_t earlier = std::min(left, right);
+              size_t later = std::max(left, right);
+              if (order.landsBeforeOn(earlier, later, tile) ||
+                  writes[earlier].commutesWith(writes[later]))
+                continue;
+              InFlightDiagnostic diagnostic =
+                  run[later].packet.emitOpError("may land on tile ")
+                  << tileName(tile)
+                  << " before an earlier control packet it does not commute "
+                     "with";
+              diagnostic.attachNote(run[earlier].packet.getLoc())
+                  << "the earlier packet";
+              return failure();
+            }
         }
+    }
     return success();
   }
 

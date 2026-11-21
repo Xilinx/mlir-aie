@@ -1323,14 +1323,14 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
 
 def AIE_SetDeviceOp
     : AIEX_Op<"set_device",
-              [HasAncestor<"AIE::RuntimeSequenceOp">,
+        [HasParent<"AIE::RuntimeSequenceOp">,
                DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Select the device configuration for subsequent operations";
   let description = [{
-    Selects `device_ref` as the configuration context for subsequent operations
-    in the block, including nested operations. A nested marker applies within
-    its block. A real PDI load clears the context. The descriptor allocator
-    reserves that device's static BD
+    Selects `device_ref` as the configuration context for subsequent operations,
+    including nested operations. The marker must be a direct child of a
+    single-block runtime sequence. A real PDI load clears the context.
+    The descriptor allocator reserves that device's static BD
     IDs from this point, including during transfers that install its
     configuration. Other loaded resources and live runtime tasks retain their
     reservations.
@@ -1341,6 +1341,7 @@ def AIE_SetDeviceOp
   }];
   let arguments = (ins FlatSymbolRefAttr:$device_ref);
   let assemblyFormat = [{ $device_ref attr-dict }];
+  let hasVerifier = 1;
 }
 
 def AIE_ControlPacketBarrierOp

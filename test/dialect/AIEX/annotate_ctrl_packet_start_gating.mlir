@@ -7,6 +7,98 @@
 
 // RUN: aie-opt %s -aie-annotate-ctrl-packet-start-gating --split-input-file -verify-diagnostics | FileCheck %s
 
+// CHECK-LABEL: @opaque_side_effects
+// CHECK-NOT: aiex.started_by
+module {
+  aie.device(npu2) @opaque_side_effects {
+    %tile_opaque = aie.tile(0, 2)
+    %tile_release = aie.tile(0, 3)
+    %tile_rounding = aie.tile(0, 4)
+    %tile_indirect = aie.tile(0, 5)
+    %tile_llvm = aie.tile(1, 2)
+    %tile_body = aie.tile(1, 3)
+    %gate_opaque = aie.lock(%tile_opaque, 0) {init = 0 : i32}
+    %gate_release = aie.lock(%tile_release, 0) {init = 0 : i32}
+    %gate_rounding = aie.lock(%tile_rounding, 0) {init = 0 : i32}
+    %gate_indirect = aie.lock(%tile_indirect, 0) {init = 0 : i32}
+    %gate_llvm = aie.lock(%tile_llvm, 0) {init = 0 : i32}
+    %gate_body = aie.lock(%tile_body, 0) {init = 0 : i32}
+    func.func private @opaque()
+    func.func private @release_gate() attributes {aie.no_lock_acquires}
+    func.func private @set_rounding(i32)
+    llvm.func @llvm_opaque()
+    func.func private @release_lock(%lock : index) {
+      %one = arith.constant 1 : i32
+      aie.use_lock(%lock, Release, %one)
+      return
+    }
+    // expected-remark @+1 {{core (0, 2) not proved gated: a call before the gating acquire}}
+    aie.core(%tile_opaque) {
+      func.call @opaque() : () -> ()
+      %one = arith.constant 1 : i32
+      aie.use_lock(%gate_opaque, AcquireGreaterEqual, %one)
+      aie.end
+    } {aiex.started_by = []}
+    // expected-remark @+1 {{core (0, 3) not proved gated: a call before the gating acquire}}
+    aie.core(%tile_release) {
+      func.call @release_gate() : () -> ()
+      %one = arith.constant 1 : i32
+      aie.use_lock(%gate_release, AcquireGreaterEqual, %one)
+      aie.end
+    }
+    // expected-remark @+1 {{core (0, 4) not proved gated: a call before the gating acquire}}
+    aie.core(%tile_rounding) {
+      %one = arith.constant 1 : i32
+      func.call @set_rounding(%one) : (i32) -> ()
+      aie.use_lock(%gate_rounding, AcquireGreaterEqual, %one)
+      aie.end
+    }
+    // expected-remark @+1 {{core (0, 5) not proved gated: a call before the gating acquire}}
+    aie.core(%tile_indirect) {
+      %callee = func.constant @opaque : () -> ()
+      func.call_indirect %callee() : () -> ()
+      %one = arith.constant 1 : i32
+      aie.use_lock(%gate_indirect, AcquireGreaterEqual, %one)
+      aie.end
+    }
+    // expected-remark @+1 {{core (1, 2) not proved gated: a call before the gating acquire}}
+    aie.core(%tile_llvm) {
+      llvm.call @llvm_opaque() : () -> ()
+      %one = arith.constant 1 : i32
+      aie.use_lock(%gate_llvm, AcquireGreaterEqual, %one)
+      aie.end
+    }
+    // expected-remark @+1 {{core (1, 3) not proved gated: a call before the gating acquire}}
+    aie.core(%tile_body) {
+      %lock_id = arith.constant 0 : index
+      func.call @release_lock(%lock_id) : (index) -> ()
+      %one = arith.constant 1 : i32
+      aie.use_lock(%gate_body, AcquireGreaterEqual, %one)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// CHECK-LABEL: @call_after_gate
+// CHECK: } {aiex.started_by = []}
+module {
+  aie.device(npu2) @call_after_gate {
+    %tile = aie.tile(0, 2)
+    %gate = aie.lock(%tile, 0) {init = 0 : i32}
+    func.func private @opaque()
+    aie.core(%tile) {
+      %one = arith.constant 1 : i32
+      aie.use_lock(%gate, AcquireGreaterEqual, %one)
+      func.call @opaque() : () -> ()
+      aie.end
+    }
+  }
+}
+
+// -----
+
 // A memory tile relay of host data. The MM2S channel waits on a lock only the
 // S2MM descriptor releases, and only the host's shim channel feeds that one.
 
@@ -371,7 +463,7 @@ module {
 
     %b12 = aie.buffer(%t12) : memref<16xi32>
     %l12 = aie.lock(%t12, 0)
-    // expected-remark @+1 {{core (1, 2) not proved gated: a call before the gating acquire on a core that sends on a stream or cascade}}
+    // expected-remark @+1 {{core (1, 2) not proved gated: a call before the gating acquire}}
     %core12 = aie.core(%t12) {
       func.call @kernel(%b12) : (memref<16xi32>) -> ()
       %v1 = arith.constant 1 : i32
