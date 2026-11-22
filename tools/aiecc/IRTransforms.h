@@ -2066,6 +2066,7 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     if (cli::ctrlpktMulticastSpan) {
       xilinx::AIEX::AIEDedupCtrlPacketMulticastOptions multicast;
       multicast.parallelShims = cli::ctrlpktParallelShims;
+      multicast.substrings = cli::ctrlpktMulticastSubstrings;
       pm->addPass(
           xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass(multicast));
     }

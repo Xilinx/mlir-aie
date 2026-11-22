@@ -7,6 +7,9 @@
 // RUN: aie-opt %t/effects.mlir -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-coalesce-control-packets | FileCheck %s --check-prefix=EFFECTS
 // RUN: aie-opt %t/multicast.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=MULTICAST
 // RUN: aie-opt %t/multicast.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast -aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=MULTICAST
+// RUN: aie-opt %t/substrings.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=PREFIX
+// RUN: aie-opt %t/substrings.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast=substrings=true -aie-check-ctrl-packet-delivery | FileCheck %s --check-prefix=SUBSTRING
+// RUN: aie-opt %t/substrings.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast="substrings=true parallel-shims=true" -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefix=PARALLEL
 
 // CHECK: aiex.control_packet_barrier {compiler_only, scope = {core = [#aie.tile<0, 2>], memory = [#aie.tile<1, 2>]}}
 module {
@@ -239,6 +242,120 @@ module {
       aiex.control_packet {address = 2097152 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3145728 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+  }
+}
+
+// -----
+//--- substrings.mlir
+
+// PREFIX-NOT: multicast_id
+module {
+  aie.device(npu2) @span {
+  } {aie.ctrl_pkt_multicast = [{column = 0 : i32, id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<1, 2>]}], aie.is_ctrl_pkt_overlay}
+  aie.device(npu2) @span_cfg {
+  } {overlay = @span}
+  aie.device(npu2) @overlay {
+  } {aie.ctrl_pkt_multicast = [{column = 0 : i32, id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>]}], aie.is_ctrl_pkt_overlay}
+  aie.device(npu2) @cfg {
+  } {overlay = @overlay}
+  aie.device(npu2) @main {
+    // SUBSTRING-LABEL: @internal
+    // SUBSTRING: data = array<i32: 10>, opcode
+    // SUBSTRING: aiex.control_packet_barrier{{$}}
+    // SUBSTRING-NEXT: address = 2228228 : ui32, data = array<i32: 7, 8>, multicast_id = 28
+    // SUBSTRING-NEXT: aiex.control_packet_barrier{{$}}
+    // SUBSTRING: data = array<i32: 20>, opcode
+    // SUBSTRING-NOT: multicast_id
+    // SUBSTRING: {{^ *}}}
+    aie.runtime_sequence @internal() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 10>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 7, 8>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 20>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276804 : ui32, data = array<i32: 7, 8>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // SUBSTRING-LABEL: @weighted
+    // SUBSTRING: address = 2228228 : ui32, data = array<i32: 1>, opcode
+    // SUBSTRING: address = 2228240 : ui32, data = array<i32: 7, 8, 9, 10>, multicast_id = 28
+    // SUBSTRING-NOT: multicast_id
+    // SUBSTRING: {{^ *}}}
+    aie.runtime_sequence @weighted() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 10>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228232 : ui32, data = array<i32: 10>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228240 : ui32, data = array<i32: 7, 8, 9, 10>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 20>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276804 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276808 : ui32, data = array<i32: 20>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276816 : ui32, data = array<i32: 7, 8, 9, 10>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // SUBSTRING-LABEL: @ordered
+    // SUBSTRING: address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28
+    // SUBSTRING: address = 2219540 : ui32, data = array<i32: 1>, multicast_id = 28
+    // SUBSTRING: address = 2219540 : ui32, data = array<i32: 1>, multicast_id = 28
+    // SUBSTRING-NOT: multicast_id
+    // SUBSTRING: {{^ *}}}
+    aie.runtime_sequence @ordered() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2355204 : ui32, data = array<i32: 10>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3403780 : ui32, data = array<i32: 20>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3268116 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3268116 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // SUBSTRING-LABEL: @fenced
+    // SUBSTRING-NOT: multicast_id
+    // SUBSTRING: {{^ *}}}
+    aie.runtime_sequence @fenced() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 10>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier {compiler_only, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>]}}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 20>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276804 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // SUBSTRING-LABEL: @serial_columns
+    // SUBSTRING-NOT: multicast_id
+    // SUBSTRING: {{^ *}}}
+    // PARALLEL-LABEL: @serial_columns
+    // PARALLEL: address = 2228228 : ui32, data = array<i32: 7>, multicast_id = 28
+    aie.runtime_sequence @serial_columns() {
+      aiex.set_device @span_cfg {quiescent}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 10>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 20>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35782660 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // SUBSTRING-LABEL: @sink
+    // SUBSTRING: address = 2301952 : ui32, data = array<i32: 0>, opcode
+    // SUBSTRING: address = 3350528 : ui32, data = array<i32: 2>, opcode
+    // SUBSTRING: aiex.control_packet_barrier{{$}}
+    // SUBSTRING-NEXT: address = 2228224 : ui32, data = array<i32: 7, 8>, multicast_id = 28
+    // SUBSTRING-NEXT: aiex.control_packet_barrier{{$}}
+    // SUBSTRING-NOT: multicast_id
+    // SUBSTRING: {{^ *}}}
+    aie.runtime_sequence @sink() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7, 8>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7, 8>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // SUBSTRING-LABEL: @overwritten_tail
+    // SUBSTRING-NOT: multicast_id
+    // SUBSTRING: {{^ *}}}
+    aie.runtime_sequence @overwritten_tail() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7, 8>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7, 8>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }

@@ -48,6 +48,52 @@ The decoder image SHA256 is
 The prefill image SHA256 is
 `dca636a740f52bd1cf938132c2c05bd2488c3af901013ddb1f90752dc82f6ffe`.
 
+## Optional Substrings
+
+`--ctrlpkt-multicast-substrings=true` enables additional internal matches.
+The pass option is `aie-dedup-ctrl-packet-multicast="substrings=true"`.
+Both options default to false. The heuristic retains prefix matches, examines
+at most 64 unique anchors per destination group, and selects the legal
+candidate with the largest encoded-word saving in each remaining run.
+The score counts payload words and both packet headers for every removed
+copy. Repeated writes may occur within a candidate. Dependency checks permit
+insertion at the earliest candidate start or latest candidate end.
+
+Completion barriers surround each additional match. The heuristic restricts
+serial delivery to single-column runs because a column change can establish
+a required completion boundary. Explicit scoped fences remain effective.
+The same effect and route checks constrain both matching modes.
+
+| Phase and Mode | Packet Words | Multicast Packets | Submissions |
+| --- | ---: | ---: | ---: |
+| Decode, prefix | 1,103,483 | 35,533 | 3,409 |
+| Decode, substrings | 1,101,577 | 35,809 | 4,157 |
+| Prefill, prefix | 2,067,523 | 177,709 | 5,665 |
+| Prefill, substrings | 2,065,121 | 178,033 | 6,829 |
+
+Substring mode reduces decoder packet words by 0.17% and prefill packet words
+by 0.12%. Destination-word counts remain unchanged. The extra completion
+boundaries add 748 decoder submissions and 1,164 prefill submissions.
+
+The fresh substring run produces the expected 192 token IDs and measures
+18.39 tokens/s. Compile and load takes 97.86 seconds. Decode compilation
+takes 20.97 seconds; prefill takes 67.53 seconds. Saved-image repeats reject
+changed image hashes and compiler invocations. They measure 18.34 tokens/s
+for substrings and 18.86 for prefix-only mode. Each repeat checks six
+32-token generations and excludes one warmup. The 2.7% throughput reduction
+supports prefix-only mode as the default for this workload.
+
+The protocol checks require complete lock summaries, packet completion
+before status polls, and no inter-application PDI resets. The substring
+regressions cover differing heads, weighted selection, repeated actions,
+both insertion points, overwrites, explicit fences, and serial column waits.
+
+The result label is `scoped-substrings-20261121-ctrlpkt-teardown`.
+The decoder image SHA256 is
+`af243c37a4559bd76d92664fb806a1153b731b31fcbe56e044bb6984603142a7`.
+The prefill image SHA256 is
+`3a23ccf0272ed47b8a208c792a0dd7eeb8b3647a8c1a306f38d649e748fdcd78`.
+
 ## Initial Measurement
 
 The November 20, 2026 measurements use a Strix NPU, XRT 2.26.0, and

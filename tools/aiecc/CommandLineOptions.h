@@ -258,6 +258,9 @@ inline cl::opt<unsigned> ctrlpktMulticastSpan(
     cl::desc("Send the control packets the core tiles of each <w> columns "
              "share once, on a control multicast; 0 turns it off (default: "
              "1)"));
+inline cl::opt<bool> ctrlpktMulticastSubstrings(
+    "ctrlpkt-multicast-substrings", cl::init(false),
+    cl::desc("Select additional multicast substrings by packet words saved"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "

@@ -54,12 +54,14 @@ struct AIEDedupCtrlPacketMulticastPass
     SmallVector<SmallVector<NpuControlPacketOp>> copies;
     const OverlayMulticasts::Multicast *multicast;
     bool wait = false;
+    bool atEnd = false;
   };
 
   llvm::DenseMap<Operation *, PacketEffects> effects;
   llvm::DenseMap<Operation *, Classified> writes;
 
-  static SmallVector<PacketRun> matchingRuns(AIE::RuntimeSequenceOp sequence) {
+  static SmallVector<PacketRun> matchingRuns(AIE::RuntimeSequenceOp sequence,
+                                             bool internal = false) {
     SmallVector<PacketRun> runs;
     sequence.walk([&](Block *block) {
       PacketRun run;
@@ -74,7 +76,10 @@ struct AIEDedupCtrlPacketMulticastPass
             barrier && barrier.getCompilerOnly() && barrier.getScopeAttr())
           continue;
         if (auto packet = dyn_cast<NpuControlPacketOp>(operation)) {
-          run.push_back({packet, device, 0});
+          if (internal && packet.getMulticastId())
+            finish();
+          else
+            run.push_back({packet, device, 0});
           continue;
         }
         finish();
@@ -120,11 +125,39 @@ struct AIEDedupCtrlPacketMulticastPass
     return prefix;
   }
 
-  bool preservesDependencies(const PacketRun &run, const Prefix &prefix) {
+  static Operation *endpoint(const Prefix &prefix, bool last) {
+    NpuControlPacketOp base =
+        last ? prefix.copies.front().back() : prefix.copies.front().front();
+    Operation *result = base;
+    for (const auto &copies : prefix.copies) {
+      NpuControlPacketOp packet = last ? copies.back() : copies.front();
+      if (last ? result->isBeforeInBlock(packet)
+               : packet->isBeforeInBlock(result))
+        result = packet;
+    }
+    return result;
+  }
+
+  bool preservesDependencies(const PacketRun &run, const Prefix &prefix,
+                             bool internal = false) {
     llvm::DenseMap<Operation *, int> selected;
+    llvm::DenseSet<uint32_t> selectedWords;
+    SmallVector<DictionaryAttr> actions;
+    int length = prefix.copies.front().size();
     for (const auto &copies : prefix.copies)
-      for (auto [index, packet] : llvm::enumerate(copies))
-        selected[packet] = index;
+      for (auto [index, selectedPacket] : llvm::enumerate(copies)) {
+        NpuControlPacketOp packet = selectedPacket;
+        selected[packet] = prefix.atEnd ? length - 1 - index : index;
+        if (internal) {
+          if (!effects.lookup(packet).reorderable)
+            actions.push_back(effects.lookup(packet).scope);
+          for (size_t word = 0; word < packet.getData()->size(); ++word)
+            selectedWords.insert(packet.getAddress() + 4 * word);
+        }
+      }
+    DictionaryAttr actionScope = actions.empty()
+                                     ? DictionaryAttr{}
+                                     : unionScopes(&getContext(), actions);
     using Module = std::pair<StringRef, AIE::TileID>;
     using Ranks = std::map<Module, int>;
     Ranks targets, accesses, fences;
@@ -152,8 +185,12 @@ struct AIEDedupCtrlPacketMulticastPass
     };
     size_t remaining = selected.size();
     int unselected = prefix.copies.front().size();
-    for (Operation *operation = run.front().packet; operation;
-         operation = operation->getNextNode()) {
+    NpuControlPacketOp first = run.front().packet;
+    Operation *start =
+        internal ? endpoint(prefix, prefix.atEnd) : first.getOperation();
+    for (Operation *operation = start; operation;
+         operation = prefix.atEnd ? operation->getPrevNode()
+                                  : operation->getNextNode()) {
       if (auto barrier = dyn_cast<ControlPacketBarrierOp>(operation)) {
         if (!barrier.getCompilerOnly() || !barrier.getScopeAttr())
           return false;
@@ -168,6 +205,14 @@ struct AIEDedupCtrlPacketMulticastPass
       if (!effect.scope || !effect.target)
         return false;
       auto chosen = selected.find(packet);
+      if (internal && chosen == selected.end() && effect.reorderable &&
+          (!actionScope || !scopesOverlap(actionScope, effect.scope))) {
+        bool overlaps = false;
+        for (size_t word = 0; word < packet.getData()->size(); ++word)
+          overlaps |= selectedWords.contains(packet.getAddress() + 4 * word);
+        if (!overlaps)
+          continue;
+      }
       int rank = chosen == selected.end() ? unselected : chosen->second;
       if (chosen != selected.end()) {
         if (maximum(targets, effect.scope) >= rank ||
@@ -181,6 +226,87 @@ struct AIEDedupCtrlPacketMulticastPass
       record(accesses, effect.scope, rank);
     }
     return false;
+  }
+
+  std::optional<Prefix>
+  matchSubstring(const PacketRun &run,
+                 const OverlayMulticasts::Multicast &multicast,
+                 const OverlayMulticasts::Info &info,
+                 ConfiguredDevices &devices, const std::set<Arbiter> &earlier) {
+    SmallVector<SmallVector<NpuControlPacketOp>> lists;
+    SmallVector<std::map<Write, int>> positions;
+    for (AIE::TileID tile : multicast.tiles) {
+      auto &packets = lists.emplace_back();
+      auto &index = positions.emplace_back();
+      for (ContextualPacket entry : run)
+        if (entry.packet.getTileFromAddr() == tile) {
+          NpuControlPacketOp packet = entry.packet;
+          if (packet.getOpcode() == 0 && packet.getData() &&
+              effects.lookup(packet).scope) {
+            auto [found, inserted] =
+                index.try_emplace(appliedWrite(packet), packets.size());
+            if (!inserted)
+              found->second = -1;
+          }
+          packets.push_back(packet);
+        }
+      if (packets.empty())
+        return std::nullopt;
+    }
+    std::optional<Prefix> best;
+    uint64_t bestScore = 0;
+    unsigned examined = 0;
+    for (size_t base = 0; base < lists.front().size() && examined < 64;
+         ++base) {
+      Write key = appliedWrite(lists.front()[base]);
+      SmallVector<int> offsets;
+      for (const auto &index : positions) {
+        auto found = index.find(key);
+        if (found == index.end() || found->second < 0)
+          break;
+        offsets.push_back(found->second);
+      }
+      if (offsets.size() != lists.size())
+        continue;
+      ++examined;
+      Prefix candidate{{}, &multicast};
+      candidate.copies.resize(lists.size());
+      uint64_t score = 0;
+      for (size_t length = 0;; ++length) {
+        bool common = true;
+        for (auto [member, packets] : llvm::enumerate(lists)) {
+          size_t position = offsets[member] + length;
+          if (position >= packets.size() ||
+              !effects.lookup(packets[position]).scope ||
+              appliedWrite(packets[position]) != key) {
+            common = false;
+            break;
+          }
+        }
+        if (!common)
+          break;
+        for (auto [member, packets] : llvm::enumerate(lists))
+          candidate.copies[member].push_back(packets[offsets[member] + length]);
+        score += (2 + std::get<4>(key).size()) * (lists.size() - 1);
+        if (base + length + 1 == lists.front().size())
+          break;
+        key = appliedWrite(lists.front()[base + length + 1]);
+      }
+      base += candidate.copies.front().size() - 1;
+      if (score <= bestScore)
+        continue;
+      if (!preservesDependencies(run, candidate, true)) {
+        candidate.atEnd = true;
+        if (!preservesDependencies(run, candidate, true))
+          continue;
+      }
+      candidate.wait = true;
+      if (!planDelivery(run, candidate, info, devices, earlier))
+        continue;
+      bestScore = score;
+      best = std::move(candidate);
+    }
+    return best;
   }
 
   bool planDelivery(const PacketRun &run, Prefix &prefix,
@@ -219,6 +345,8 @@ struct AIEDedupCtrlPacketMulticastPass
             devices.controlArbiterIn(entry.device,
                                      entry.packet.getTileFromAddr(), started))
           return false;
+    if (prefix.wait)
+      return true;
     for (const auto &copies : prefix.copies) {
       NpuControlPacketOp first = copies.front();
       AIE::TileID tile = first.getTileFromAddr();
@@ -267,122 +395,161 @@ struct AIEDedupCtrlPacketMulticastPass
     for (auto device : module.getOps<AIE::DeviceOp>()) {
       PacketClassifier classifier(device.getTargetModel());
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>()) {
-        effects.clear();
-        WalkResult classified = seq.walk([&](Block *block) {
-          auto result = packetEffects(*block);
-          if (failed(result))
-            return WalkResult::interrupt();
-          effects.insert(result->begin(), result->end());
-          return WalkResult::advance();
-        });
-        if (classified.wasInterrupted())
-          return signalPassFailure();
-        auto runs = matchingRuns(seq);
-        llvm::DenseSet<Operation *> starts;
-        for (const PacketRun &run : runs)
-          starts.insert(run.front().packet);
-        llvm::DenseMap<Operation *, std::set<Arbiter>> earlierAt;
-        for (PacketRun &run : packetRuns(seq, true)) {
-          std::set<Arbiter> held;
-          for (ContextualPacket entry : run) {
-            if (starts.contains(entry.packet))
-              earlierAt[entry.packet] = held;
-            auto write = classifier.classify(entry.packet);
-            if (failed(write))
-              return signalPassFailure();
-            for (AIE::TileID tile :
-                 tilesReached(entry.packet, multicasts.of(entry.device))) {
-              auto started =
-                  devices.startedArbiters(entry.device, tile, *write);
-              held.insert(started.begin(), started.end());
-            }
-          }
-        }
-        for (PacketRun &run : runs) {
-          const OverlayMulticasts::Info *info =
-              multicasts.of(run.front().device);
-          if (!info || llvm::any_of(run, [&](ContextualPacket entry) {
-                return entry.packet.getStreamId() !=
-                       run.front().packet.getStreamId();
-              }))
+        for (bool internal : {false, true}) {
+          if (internal && !substrings)
             continue;
-          writes.clear();
-          for (ContextualPacket entry : run) {
-            auto write = classifier.classify(entry.packet);
-            if (failed(write))
-              return signalPassFailure();
-            writes[entry.packet] = *write;
-          }
-          SmallVector<Prefix> prefixes;
-          for (const auto &[column, multicast] : info->multicasts) {
-            if (multicast.tiles.size() < 2)
-              continue;
-            auto prefix = matchPrefix(run, multicast);
-            if (!prefix)
-              continue;
-            size_t fullLength = prefix->copies.front().size();
-            size_t low = 0, high = fullLength;
-            Prefix trial = *prefix;
-            while (low < high) {
-              size_t length = (low + high + 1) / 2;
-              trial = *prefix;
-              for (auto &copies : trial.copies)
-                copies.resize(length);
-              if (preservesDependencies(run, trial))
-                low = length;
-              else
-                high = length - 1;
-            }
-            if (!low)
-              continue;
-            for (auto &copies : prefix->copies)
-              copies.resize(low);
-            if (!planDelivery(run, *prefix, *info, devices,
-                              earlierAt.lookup(run.front().packet)))
-              continue;
-            if (parallelShims)
-              for (Prefix &previous : prefixes) {
-                auto left = info->trees.find(previous.multicast->column);
-                auto right = info->trees.find(column);
-                if (left != info->trees.end() && right != info->trees.end() &&
-                    llvm::any_of(left->second, [&](const Arbiter &arbiter) {
-                      return right->second.count(arbiter);
-                    }))
-                  previous.wait = true;
+          effects.clear();
+          WalkResult classified = seq.walk([&](Block *block) {
+            auto result = packetEffects(*block);
+            if (failed(result))
+              return WalkResult::interrupt();
+            effects.insert(result->begin(), result->end());
+            return WalkResult::advance();
+          });
+          if (classified.wasInterrupted())
+            return signalPassFailure();
+          auto runs = matchingRuns(seq, internal);
+          llvm::DenseSet<Operation *> starts;
+          for (const PacketRun &run : runs)
+            starts.insert(run.front().packet);
+          llvm::DenseMap<Operation *, std::set<Arbiter>> earlierAt;
+          for (PacketRun &run : packetRuns(seq, true)) {
+            std::set<Arbiter> held;
+            for (ContextualPacket entry : run) {
+              if (starts.contains(entry.packet))
+                earlierAt[entry.packet] = held;
+              auto write = classifier.classify(entry.packet);
+              if (failed(write))
+                return signalPassFailure();
+              for (AIE::TileID tile :
+                   tilesReached(entry.packet, multicasts.of(entry.device))) {
+                auto started =
+                    devices.startedArbiters(entry.device, tile, *write);
+                held.insert(started.begin(), started.end());
               }
-            prefixes.push_back(std::move(*prefix));
-          }
-          OpBuilder start(run.front().packet);
-          auto insertion = ControlPacketBarrierOp::create(
-              start, run.front().packet.getLoc(), start.getUnitAttr());
-          for (Prefix &prefix : prefixes) {
-            auto &base = prefix.copies.front();
-            for (auto [index, packet] : llvm::enumerate(base)) {
-              SmallVector<DictionaryAttr> scopes;
-              for (const auto &copies : prefix.copies)
-                scopes.push_back(effects.lookup(copies[index]).scope);
-              DictionaryAttr scope = unionScopes(packet.getContext(), scopes);
-              OpBuilder builder(insertion);
-              if (!effects.lookup(packet).reorderable)
-                ControlPacketBarrierOp::create(builder, packet.getLoc(),
-                                               builder.getUnitAttr(), scope,
-                                               builder.getUnitAttr());
-              packet.setMulticastId(prefix.multicast->id);
-              packet->moveBefore(insertion);
-              if (!effects.lookup(packet).reorderable)
-                ControlPacketBarrierOp::create(builder, packet.getLoc(),
-                                               builder.getUnitAttr(), scope,
-                                               builder.getUnitAttr());
             }
-            if (prefix.wait) {
-              OpBuilder builder(insertion);
-              ControlPacketBarrierOp::create(builder, base.back().getLoc());
-            }
-            for (auto &copies : llvm::drop_begin(prefix.copies))
-              for (NpuControlPacketOp packet : copies)
-                packet.erase();
           }
-          insertion.erase();
+          for (PacketRun &run : runs) {
+            if (internal && !parallelShims &&
+                llvm::any_of(run, [&](ContextualPacket entry) {
+                  return entry.packet.getColumnFromAddr() !=
+                         run.front().packet.getColumnFromAddr();
+                }))
+              continue;
+            const OverlayMulticasts::Info *info =
+                multicasts.of(run.front().device);
+            if (!info || llvm::any_of(run, [&](ContextualPacket entry) {
+                  return entry.packet.getStreamId() !=
+                         run.front().packet.getStreamId();
+                }))
+              continue;
+            writes.clear();
+            for (ContextualPacket entry : run) {
+              auto write = classifier.classify(entry.packet);
+              if (failed(write))
+                return signalPassFailure();
+              writes[entry.packet] = *write;
+            }
+            SmallVector<Prefix> prefixes;
+            uint64_t bestScore = 0;
+            for (const auto &[column, multicast] : info->multicasts) {
+              if (multicast.tiles.size() < 2)
+                continue;
+              if (internal) {
+                auto candidate =
+                    matchSubstring(run, multicast, *info, devices,
+                                   earlierAt.lookup(run.front().packet));
+                if (!candidate)
+                  continue;
+                uint64_t score = 0;
+                for (NpuControlPacketOp packet : candidate->copies.front())
+                  score += (2 + packet.getData()->size()) *
+                           (candidate->copies.size() - 1);
+                if (score > bestScore) {
+                  bestScore = score;
+                  prefixes.clear();
+                  prefixes.push_back(std::move(*candidate));
+                }
+                continue;
+              }
+              auto prefix = matchPrefix(run, multicast);
+              if (!prefix)
+                continue;
+              size_t fullLength = prefix->copies.front().size();
+              size_t low = 0, high = fullLength;
+              Prefix trial = *prefix;
+              while (low < high) {
+                size_t length = (low + high + 1) / 2;
+                trial = *prefix;
+                for (auto &copies : trial.copies)
+                  copies.resize(length);
+                if (preservesDependencies(run, trial))
+                  low = length;
+                else
+                  high = length - 1;
+              }
+              if (!low)
+                continue;
+              for (auto &copies : prefix->copies)
+                copies.resize(low);
+              if (!planDelivery(run, *prefix, *info, devices,
+                                earlierAt.lookup(run.front().packet)))
+                continue;
+              if (parallelShims)
+                for (Prefix &previous : prefixes) {
+                  auto left = info->trees.find(previous.multicast->column);
+                  auto right = info->trees.find(column);
+                  if (left != info->trees.end() && right != info->trees.end() &&
+                      llvm::any_of(left->second, [&](const Arbiter &arbiter) {
+                        return right->second.count(arbiter);
+                      }))
+                    previous.wait = true;
+                }
+              prefixes.push_back(std::move(*prefix));
+            }
+            if (prefixes.empty())
+              continue;
+            Operation *anchor =
+                internal ? endpoint(prefixes.front(), prefixes.front().atEnd)
+                         : run.front().packet.getOperation();
+            OpBuilder start(anchor);
+            if (internal && prefixes.front().atEnd)
+              start.setInsertionPointAfter(anchor);
+            auto insertion = ControlPacketBarrierOp::create(
+                start, run.front().packet.getLoc(), start.getUnitAttr());
+            for (Prefix &prefix : prefixes) {
+              if (internal) {
+                OpBuilder builder(insertion);
+                ControlPacketBarrierOp::create(builder, insertion.getLoc());
+              }
+              auto &base = prefix.copies.front();
+              for (auto [index, packet] : llvm::enumerate(base)) {
+                SmallVector<DictionaryAttr> scopes;
+                for (const auto &copies : prefix.copies)
+                  scopes.push_back(effects.lookup(copies[index]).scope);
+                DictionaryAttr scope = unionScopes(packet.getContext(), scopes);
+                OpBuilder builder(insertion);
+                if (!effects.lookup(packet).reorderable)
+                  ControlPacketBarrierOp::create(builder, packet.getLoc(),
+                                                 builder.getUnitAttr(), scope,
+                                                 builder.getUnitAttr());
+                packet.setMulticastId(prefix.multicast->id);
+                packet->moveBefore(insertion);
+                if (!effects.lookup(packet).reorderable)
+                  ControlPacketBarrierOp::create(builder, packet.getLoc(),
+                                                 builder.getUnitAttr(), scope,
+                                                 builder.getUnitAttr());
+              }
+              if (prefix.wait) {
+                OpBuilder builder(insertion);
+                ControlPacketBarrierOp::create(builder, base.back().getLoc());
+              }
+              for (auto &copies : llvm::drop_begin(prefix.copies))
+                for (NpuControlPacketOp packet : copies)
+                  packet.erase();
+            }
+            insertion.erase();
+          }
         }
       }
     }

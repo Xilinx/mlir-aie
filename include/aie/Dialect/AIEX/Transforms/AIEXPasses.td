@@ -961,9 +961,18 @@ def AIEDedupCtrlPacketMulticast
     actions. Delivery planning rejects stream hazards and inserts completion
     waits when multicast and unicast routes do not establish the required
     order. Runs with different stream IDs remain unchanged.
+
+        `substrings` retains prefix matches and selects one additional internal
+        match per remaining run. It examines at most 64 unique write anchors per
+        destination group and maximizes encoded words saved among legal candidates.
+        Completion barriers surround each additional match.
+        Serial delivery restricts additional matches to single-column runs to
+        retain completion boundaries between columns.
   }];
   let options = [Option<"parallelShims", "parallel-shims", "bool",
-                        /*default=*/"false", "Plan parallel shim delivery">];
+             /*default=*/"false", "Plan parallel shim delivery">,
+           Option<"substrings", "substrings", "bool",
+             /*default=*/"false", "Match internal write sequences">];
 
   let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
