@@ -2083,15 +2083,15 @@
    "critical": {
     "buildAndTestRyzenAI.yml": {
      "main": 0.929,
-     "pull_requests": 0.774,
-     "flaky": 0.076,
+     "pull_requests": 0.779,
+     "flaky": 0.075,
      "minutes_median": 78.6,
      "queued_median": 3.7
     },
     "buildAndTestRyzenAIWindows.yml": {
      "main": 0.929,
-     "pull_requests": 0.695,
-     "flaky": 0.047,
+     "pull_requests": 0.701,
+     "flaky": 0.046,
      "minutes_median": 59.1,
      "queued_median": 0.4
     },
