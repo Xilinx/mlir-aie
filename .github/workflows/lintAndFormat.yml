@@ -51,7 +51,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build clang libelf-dev
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -345,7 +345,7 @@ jobs:
           submodules: "recursive"
 
       - name: Setup Python env
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -401,7 +401,7 @@ jobs:
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@ac5ce6d94e35c00530447dc63c271e38e4fd36c6  # v1.26.3
+        uses: reviewdog/action-suggester@fd22a83b1ebc13fd8aee5d57b06793fce6f20fb9  # v1.27.1
         with:
           tool_name: clang-format
           level: error
@@ -424,7 +424,7 @@ jobs:
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@ac5ce6d94e35c00530447dc63c271e38e4fd36c6  # v1.26.3
+        uses: reviewdog/action-suggester@fd22a83b1ebc13fd8aee5d57b06793fce6f20fb9  # v1.27.1
         with:
           tool_name: black
           level: error
@@ -450,7 +450,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: '3.12'
 
@@ -485,7 +485,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup Python env
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: '3.12'
 
@@ -519,7 +519,7 @@ jobs:
       - name: Link aiecc docs into docs tree
         run: ln -s ../tools/aiecc docs/aiecc
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: '3.12'
           cache: 'pip'

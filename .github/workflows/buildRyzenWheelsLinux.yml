@@ -213,7 +213,7 @@ jobs:
           python -m twine check --strict wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Set up Python (host) for smoke test
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: ${{ env.BUILD_PYTHON_VERSION }}
           allow-prereleases: true
@@ -432,7 +432,7 @@ jobs:
           python -m twine check --strict wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Set up Python (host) for smoke test
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true

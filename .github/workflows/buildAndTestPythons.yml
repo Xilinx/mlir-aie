@@ -59,7 +59,7 @@ jobs:
           fetch-depth: 2
           submodules: "recursive"
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: ${{ matrix.python_version }}
 
@@ -95,7 +95,7 @@ jobs:
           unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation
-        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        uses: hendrikmuhs/ccache-action@e91f31892a1d1b8c44424b1a94c0b7f52d337168  # v1.2.26
         with:
           # Since there are now several compilation jobs running in parallel,
           # use a different key per job to avoid a ccache writing race condition.
