@@ -2736,6 +2736,8 @@ LogicalResult AIEX::SetDeviceOp::verify() {
 }
 
 LogicalResult AIEX::ControlPacketBarrierOp::verify() {
+  if (getDrainsAttr() && getCompilerOnly())
+    return emitOpError("drains requires a hardware barrier");
   if (getPacketEffect() && !getCompilerOnly())
     return emitOpError("packet_effect requires compiler_only");
   DictionaryAttr scope = getScopeAttr();
@@ -2762,6 +2764,17 @@ LogicalResult AIEX::ControlPacketBarrierOp::verify() {
         return emitOpError("core scope requires compute tiles");
     }
   }
+  return success();
+}
+
+LogicalResult
+AIEX::ControlPacketBarrierOp::verifySymbolUses(SymbolTableCollection &symbols) {
+  if (!getDrainsAttr())
+    return success();
+  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
+  if (!isa_and_present<AIE::DeviceOp>(
+          symbols.lookupSymbolIn(scope, getDrainsAttr())))
+    return emitOpError() << getDrainsAttr() << " is not a device";
   return success();
 }
 

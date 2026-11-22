@@ -283,6 +283,9 @@ static LogicalResult transformLoadPdi(
     return failure();
   }
   fullyDrained &= complete;
+  if (complete)
+    ControlPacketBarrierOp::create(builder, loc, UnitAttr{}, DictionaryAttr{},
+                                   UnitAttr{}, deviceRefAttr);
   auto teardownOps = opsBetween(block, beforeTeardown, end);
   if (!teardownOps.empty())
     teardownStarts.push_back(&*teardownOps.begin());

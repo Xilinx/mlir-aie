@@ -36,6 +36,28 @@ module {
 // -----
 
 module {
+  aie.device(npu2) @cfg {
+    aie.runtime_sequence() {
+      // expected-error @+1 {{drains requires a hardware barrier}}
+      aiex.control_packet_barrier {compiler_only, drains = @cfg}
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence() {
+      // expected-error @+1 {{@missing is not a device}}
+      aiex.control_packet_barrier {drains = @missing}
+    }
+  }
+}
+
+// -----
+
+module {
   aie.device(npu2) {
     aie.runtime_sequence() {
       // expected-error @+1 {{scope requires compiler_only}}

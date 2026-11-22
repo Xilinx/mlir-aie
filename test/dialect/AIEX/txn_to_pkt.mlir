@@ -54,6 +54,34 @@ module {
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
     }
+    // RAW-ORDER-LABEL: @after_application
+    // RAW-ORDER: aiex.npu.write32
+    // RAW-ORDER: address = 2301952 : ui32, data = array<i32: 1>
+    // RAW-ORDER: address = 2301952 : ui32, data = array<i32: 0>
+    // RAW-ORDER-NOT: data = array<i32: 1>
+    // RAW-ORDER: {{^ *}}}
+    aie.runtime_sequence @after_application() {
+      %address = arith.constant 2228224 : i32
+      %zero = arith.constant 0 : i32
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.npu.write32(%address, %zero) : i32, i32
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // RAW-ORDER-LABEL: @after_barrier
+    // RAW-ORDER: aiex.control_packet_barrier{{$}}
+    // RAW-ORDER: address = 2301952 : ui32, data = array<i32: 1>
+    // RAW-ORDER: address = 2301952 : ui32, data = array<i32: 0>
+    // RAW-ORDER-NOT: data = array<i32: 1>
+    // RAW-ORDER: {{^ *}}}
+    aie.runtime_sequence @after_barrier() {
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
     // ORDER-LABEL: @overwritten
     // ORDER: address = 2228224 : ui32, data = array<i32: 1, 7, 8, 4>
     // ORDER-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =

@@ -16,6 +16,8 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
 
+#include "mlir/Interfaces/SideEffectInterfaces.h"
+
 #include <string>
 
 using namespace mlir;
@@ -308,6 +310,160 @@ SmallVector<PacketRun> AIEX::packetRuns(AIE::RuntimeSequenceOp seq,
   return runs;
 }
 
+FailureOr<SmallVector<PacketRun>>
+AIEX::deliveryAnalysisRuns(AIE::RuntimeSequenceOp sequence) {
+  SmallVector<PacketRun> runs;
+  if (sequence->getRegion(0).empty())
+    return runs;
+  WalkResult nested = sequence.walk([&](Operation *operation) {
+    if (!isa<NpuControlPacketOp, NpuLoadPdiOp, NpuWriteConfigOp,
+             NpuWriteTeardownOp>(operation) ||
+        operation->getParentOp() == sequence.getOperation())
+      return WalkResult::advance();
+    operation->emitOpError(
+        "requires flat control-packet execution for delivery analysis");
+    return WalkResult::interrupt();
+  });
+  if (nested.wasInterrupted())
+    return failure();
+  if (!llvm::hasSingleElement(sequence->getRegion(0))) {
+    sequence.emitOpError("requires a single block for delivery analysis");
+    return failure();
+  }
+  PacketRun run;
+  PacketClassifier classifier(AIE::getTargetModel(sequence));
+  ModuleOp module = sequence->getParentOfType<ModuleOp>();
+  ConfiguredDevices devices(module);
+  OverlayMulticasts multicasts(module, false);
+  DenseMap<Attribute, SmallVector<size_t>> live;
+  FlatSymbolRefAttr device;
+  NpuLoadPdiOp lastLoad;
+  unsigned phase = 0;
+  bool hostEffects = false;
+  bool gatesInitialized = false;
+  DenseMap<uint32_t, int32_t> initializers;
+  DenseSet<uint32_t> initialized;
+  auto resetGateProof = [&] {
+    gatesInitialized = false;
+    initializers.clear();
+    initialized.clear();
+    auto configured =
+        device ? module.lookupSymbol<AIE::DeviceOp>(device) : AIE::DeviceOp{};
+    if (!configured)
+      return;
+    const auto &target = configured.getTargetModel();
+    for (AIE::LockOp lock : configured.getOps<AIE::LockOp>()) {
+      AIE::TileID tile = lock.getTileOp().getTileID();
+      if (!lock.getLockID()) {
+        initializers.clear();
+        return;
+      }
+      auto address = target.getLocalLockAddress(*lock.getLockID(), tile);
+      if (!address || (!lock.getInit() && !lock.getTileOp().getCoreOp())) {
+        initializers.clear();
+        return;
+      }
+      initializers[*address |
+                   (static_cast<uint32_t>(tile.col)
+                    << target.getColumnShift()) |
+                   (static_cast<uint32_t>(tile.row) << target.getRowShift())] =
+          lock.getInit().value_or(0);
+    }
+  };
+  auto finish = [&] {
+    if (!run.empty())
+      runs.push_back(std::move(run));
+    run.clear();
+    live.clear();
+    phase = 0;
+  };
+  for (Operation &operation : sequence->getRegion(0).front()) {
+    if (auto packet = dyn_cast<NpuControlPacketOp>(operation)) {
+      auto write = classifier.classify(packet);
+      if (failed(write))
+        return failure();
+      if (hostEffects && !initializers.empty() && packet.getOpcode() == 0 &&
+          packet.getData()) {
+        for (auto [offset, value] : llvm::enumerate(*packet.getData())) {
+          auto found = initializers.find(packet.getAddress() + 4 * offset);
+          if (found == initializers.end())
+            continue;
+          if (found->second == value)
+            initialized.insert(found->first);
+          else
+            initialized.erase(found->first);
+        }
+        gatesInitialized = initialized.size() == initializers.size();
+      }
+      if (write->kind != WriteKind::Other)
+        live[device].push_back(run.size());
+      run.push_back({packet, device, phase});
+      if (hostEffects && !gatesInitialized)
+        run.back().hostPhase = phase;
+      continue;
+    }
+    if (auto barrier = dyn_cast<ControlPacketBarrierOp>(operation);
+        barrier && barrier.getCompilerOnly())
+      continue;
+    ++phase;
+    if (auto context = dyn_cast<SetDeviceOp>(operation)) {
+      device = context.getDeviceRefAttr();
+      resetGateProof();
+    } else if (auto load = dyn_cast<NpuLoadPdiOp>(operation)) {
+      if (lastLoad) {
+        bool distinctSymbols =
+            lastLoad.getDeviceRefAttr() && load.getDeviceRefAttr() &&
+            lastLoad.getDeviceRefAttr() != load.getDeviceRefAttr();
+        bool distinctAddresses = !lastLoad.getDeviceRefAttr() &&
+                                 !load.getDeviceRefAttr() &&
+                                 lastLoad.getAddress() && load.getAddress() &&
+                                 lastLoad.getAddress() != load.getAddress();
+        if (distinctSymbols || distinctAddresses) {
+          finish();
+          hostEffects = false;
+        }
+      }
+      lastLoad = load;
+      device = {};
+      resetGateProof();
+    } else if (auto barrier = dyn_cast<ControlPacketBarrierOp>(operation)) {
+      if (auto drained = barrier.getDrainsAttr()) {
+        if (auto found = live.find(drained); found != live.end()) {
+          llvm::erase_if(found->second, [&](size_t index) {
+            ContextualPacket &entry = run[index];
+            auto write = classifier.classify(entry.packet);
+            assert(succeeded(write));
+            int channel =
+                write->kind == WriteKind::ChannelStart ? write->channel : -1;
+            for (AIE::TileID tile :
+                 tilesReached(entry.packet, multicasts.of(entry.device)))
+              if (!devices.teardownStops(drained, {tile, channel}))
+                return false;
+            entry.streamEndPhase = phase;
+            return true;
+          });
+          if (found->second.empty())
+            live.erase(found);
+        }
+        if (live.empty())
+          finish();
+      }
+    } else {
+      if (operation.getNumRegions())
+        lastLoad = {};
+      if (!isMemoryEffectFree(&operation) && !isa<NpuMaskPollOp>(operation)) {
+        hostEffects = true;
+        resetGateProof();
+        for (const auto &entry : live)
+          for (size_t index : entry.second)
+            run[index].hostPhase = std::min(run[index].hostPhase, phase);
+      }
+    }
+  }
+  finish();
+  return runs;
+}
+
 std::optional<Arbiter>
 ConfiguredDevices::controlArbiterIn(FlatSymbolRefAttr device, AIE::TileID tile,
                                     const std::set<Arbiter> &held) {
@@ -328,6 +484,14 @@ ConfiguredDevices::Info &ConfiguredDevices::infoOf(FlatSymbolRefAttr device) {
   auto d = module.lookupSymbol<AIE::DeviceOp>(device);
   if (!d)
     return info;
+  for (auto core : d.getOps<AIE::CoreOp>())
+    info.teardownSources.insert({core.getTileOp().getTileID(), -1});
+  for (const AIE::DmaChannelProgram &program : AIE::collectDmaPrograms(d))
+    if (program.dma.dir == AIE::DMAChannelDir::MM2S &&
+        !program.op->getParentOfType<AIE::RuntimeSequenceOp>() &&
+        !d.getTargetModel().isShimNOCorPLTile(program.dma.tile.col,
+                                              program.dma.tile.row))
+      info.teardownSources.insert({program.dma.tile, program.dma.channel});
   AIEXDialect::StartedByAttrHelper startedBy(module.getContext());
   d.walk([&](Operation *op) {
     ArrayAttr cores = startedBy.getAttr(op);
@@ -502,10 +666,12 @@ OverlayMulticasts::of(FlatSymbolRefAttr configured) {
 
 std::set<Arbiter> ConfiguredDevices::startedArbiters(FlatSymbolRefAttr device,
                                                      AIE::TileID tile,
-                                                     const Classified &write) {
+                                                     const Classified &write,
+                                                     bool useGating) {
   std::set<Arbiter> held;
   int channel = write.kind == WriteKind::ChannelStart ? write.channel : -1;
-  if (write.kind == WriteKind::Other || startGated(device, {tile, channel}))
+  if (write.kind == WriteKind::Other ||
+      (useGating && startGated(device, {tile, channel})))
     return held;
   Info &info = infoOf(device);
   SmallVector<StreamSource> started{{tile, channel}};

@@ -7,6 +7,7 @@
 
 // RUN: aie-opt %s --split-input-file -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s --check-prefixes=CHECK,SHARED
 // RUN: aie-opt %s --split-input-file -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile --aie-dedup-ctrl-packet-multicast=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefixes=CHECK,SHARED,PARALLEL
+// RUN: aie-opt %s --split-input-file -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile --aie-dedup-ctrl-packet-multicast="parallel-shims=true substrings=true" -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefix=HISTORY
 
 // Memory tile (0, 1)'s MM2S 0 stream (push 1705524) takes arbiter 1 of
 // switchbox (0, 1), which the multicast of (0, 2) and (0, 3) on id 28 takes too,
@@ -358,6 +359,23 @@ module {
       aiex.set_device @cfg
       aiex.control_packet {address = 2219540 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.set_device @cfg
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // CHECK-LABEL: aie.runtime_sequence @after_write
+    // CHECK: aiex.npu.write32
+    // CHECK-NOT: multicast_id
+    // CHECK: {{^ *}}}
+    // HISTORY-LABEL: aie.runtime_sequence @after_write
+    // HISTORY: aiex.npu.write32
+    // HISTORY-NOT: multicast_id
+    // HISTORY: {{^ *}}}
+    aie.runtime_sequence @after_write() {
+      %address = arith.constant 2228224 : i32
+      %zero = arith.constant 0 : i32
+      aiex.set_device @cfg
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.npu.write32(%address, %zero) : i32, i32
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }

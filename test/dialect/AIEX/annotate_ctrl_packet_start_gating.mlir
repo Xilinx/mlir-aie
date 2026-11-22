@@ -82,7 +82,7 @@ module {
 // -----
 
 // CHECK-LABEL: @call_after_gate
-// CHECK: } {aiex.started_by = []}
+// CHECK: } {aiex.started_by = [#aie.tile<0, 2>]}
 module {
   aie.device(npu2) @call_after_gate {
     %tile = aie.tile(0, 2)
@@ -92,6 +92,48 @@ module {
       %one = arith.constant 1 : i32
       aie.use_lock(%gate, AcquireGreaterEqual, %one)
       func.call @opaque() : () -> ()
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// CHECK-LABEL: @opaque_releasers
+// CHECK: aie.dma_start(MM2S, 0, ^{{.*}}, ^{{.*}}) {aiex.started_by = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<1, 2>]}
+module {
+  aie.device(npu2) @opaque_releasers {
+    %owner = aie.tile(0, 2)
+    %neighbor = aie.tile(0, 3)
+    %west_accessor = aie.tile(1, 2)
+    %buffer = aie.buffer(%owner) : memref<16xi32>
+    %gate = aie.lock(%owner, 0) {init = 0 : i32}
+    func.func private @release_gate() attributes {aie.no_lock_acquires}
+    llvm.func @release_llvm()
+    // expected-remark @+1 {{core (0, 2) not proved gated: a call before the gating acquire}}
+    aie.core(%owner) {
+      %callee = func.constant @release_gate : () -> ()
+      func.call_indirect %callee() : () -> ()
+      aie.end
+    }
+    // expected-remark @+1 {{core (0, 3) not proved gated: a call before the gating acquire}}
+    aie.core(%neighbor) {
+      func.call @release_gate() : () -> ()
+      aie.end
+    }
+    // expected-remark @+1 {{core (1, 2) not proved gated: a call before the gating acquire}}
+    aie.core(%west_accessor) {
+      llvm.call @release_llvm() : () -> ()
+      aie.end
+    }
+    aie.mem(%owner) {
+      aie.dma_start(MM2S, 0, ^send, ^end)
+    ^send:
+      %one = arith.constant 1 : i32
+      aie.use_lock(%gate, AcquireGreaterEqual, %one)
+      aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 16)
+      aie.next_bd ^end
+    ^end:
       aie.end
     }
   }
@@ -366,15 +408,15 @@ module {
 
 // -----
 
-// (0, 2) writes its own scratch buffer, then waits on a lock only an S2MM
-// descriptor fed by the host's shim channel releases, so it is proved. (0, 3)
+// (0, 2) writes its scratch buffer, then waits on a lock an S2MM descriptor
+// and core (1, 2)'s opaque kernel may release. (0, 3)
 // writes (0, 2)'s buffer before its gate. (0, 4) waits on a lock fed from a
 // self-starting memory tile channel. (0, 5) is given as an ELF. (1, 2) calls a
 // kernel before its gate and sends on a stream.
 
 // CHECK-LABEL: @cores
 // CHECK:       aie.core(%{{.*}}) {
-// CHECK:       } {aiex.started_by = []}
+// CHECK:       } {aiex.started_by = [#aie.tile<1, 2>]}
 // CHECK-NOT:   aiex.started_by
 module {
   aie.device(npu2) @cores {

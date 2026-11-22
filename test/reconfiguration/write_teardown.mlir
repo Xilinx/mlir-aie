@@ -655,6 +655,7 @@ module {
 // STOP-NEXT: aiex.control_packet {address = 2224208 : ui32, data = array<i32: 1>
 // STOP: %[[STALL:.*]] = arith.constant 960 : i32
 // STOP-NEXT: aiex.npu.maskpoll(%{{.*}}, %{{.*}}, %[[STALL]])
+// STOP-NEXT: aiex.control_packet_barrier {drains = @cfg}
 
 // STOP-DMA-LABEL: aie.runtime_sequence(
 // STOP-DMA: aiex.set_device @cfg
@@ -711,6 +712,7 @@ module {
 // INCOMPLETE-LABEL: aie.runtime_sequence()
 // INCOMPLETE: aiex.set_device @cfg{{$}}
 // INCOMPLETE-NOT: quiescent
+// INCOMPLETE-NOT: drains
 // INCOMPLETE: {{^ *}}}
 module {
   aie.device(npu2_1col) @overlay {

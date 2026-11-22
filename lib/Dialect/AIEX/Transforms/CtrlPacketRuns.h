@@ -17,12 +17,16 @@
 
 #include "llvm/ADT/SmallVector.h"
 
+#include <limits>
+
 namespace xilinx::AIEX {
 
 struct ContextualPacket {
   NpuControlPacketOp packet;
   mlir::FlatSymbolRefAttr device;
   unsigned phase = 0;
+  unsigned streamEndPhase = std::numeric_limits<unsigned>::max();
+  unsigned hostPhase = std::numeric_limits<unsigned>::max();
 };
 
 using PacketRun = llvm::SmallVector<ContextualPacket>;
@@ -31,6 +35,8 @@ llvm::SmallVector<PacketRun> packetRuns(mlir::Block &block,
                                         bool includePhases = false);
 llvm::SmallVector<PacketRun> packetRuns(AIE::RuntimeSequenceOp seq,
                                         bool includePhases = false);
+mlir::FailureOr<llvm::SmallVector<PacketRun>>
+deliveryAnalysisRuns(AIE::RuntimeSequenceOp sequence);
 llvm::SmallVector<unsigned> awaitSteps(const PacketRun &run,
                                        bool parallelShims);
 

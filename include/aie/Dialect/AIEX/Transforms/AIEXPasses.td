@@ -809,8 +809,10 @@ def AIEScheduleCtrlPacketActivation
     : Pass<"aie-schedule-ctrl-packet-activation", "mlir::ModuleOp"> {
   let summary = "Schedule configuration and activation delivery";
   let description = [{
-    Reorders adjacent control packets by tile for DMA batching. Device
-    markers, explicit barriers, and other operations end each run.
+    Reorders the adjacent control packets immediately after a device marker
+    by tile for DMA batching. Explicit barriers and other operations end
+    that configuration run. Later packets retain device context but require
+    another marker to permit activation scheduling.
 
     A run splits into the configuration and the enable phase, each stably sorted
     by tile (column, then row), with an `aiex.control_packet_barrier` between
@@ -875,6 +877,9 @@ def AIEAnnotateCtrlPacketStartGating
     attribute lists the tiles of the cores whose enables may let it act: those
     that release a lock its proof waits on, or stream into an S2MM channel whose
     descriptors release one. An empty list leaves it to the host's transfers.
+    A core with calls, inline assembly, or an external ELF may release every
+    lock within its memory affinity. Its tile contributes to the starter list
+    of each affected lock. An acquire-only summary does not restrict releases.
 
     An MM2S channel is proved gated when its first buffer descriptor waits (a
     blocking acquire, on a lock of its own tile, at a value the lock's initial
@@ -906,9 +911,10 @@ def AIECheckCtrlPacketDelivery
   let description = [{
     Checks flat control packets against the delivery order of
     `aie-ctrl-packet-to-dma`, serially or with `parallel-shims`. Device markers
-    and barriers separate delivery phases. Other runtime operations separate
-    runs. A phase boundary completes packet delivery but does not stop streams
-    that earlier packets started.
+    and hardware barriers separate delivery phases. Other runtime operations
+    complete preceding packet delivery but retain application-stream history.
+    The pass requires a single block and rejects nested configuration operations
+    and control packets.
 
     It checks three rules. First, the packets that reach a tile (its own and
     those on a control multicast, listed in `aie.ctrl_pkt_multicast` by its
@@ -924,9 +930,13 @@ def AIECheckCtrlPacketDelivery
     nothing has started yet, holding the switch arbiters on its way until its
     last word, so no control packet of the run that is not awaited before it
     may take one of those arbiters: a tile's own packets on its controller id's
-    route, a multicast's on its tree. The ops after a run, such as the
-    application's transfers, are taken to drain the streams it starts, so
-    later runs are not checked against them.
+    route, a multicast's on its tree. Host-side effects can release armed gates
+    and invalidate initial-lock gating for later starts. Packet writes that
+    restore all declared lock initializers can establish that gating again.
+    A `drains` barrier expires only the named configuration's static cores and
+    non-shim DMA channels. Local quiescence does not expire stream history.
+    A known change of PDI symbol or nonzero PDI address ends outgoing history;
+    different IDs or sizes alone do not prove a reset.
 
     Third, with `parallel-shims`, the multicasts of two shim channels sent in
     one phase take no common arbiter, since each holds its arbiters until its

@@ -13,6 +13,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Interfaces/CallInterfaces.h"
@@ -51,6 +52,7 @@ struct GatingProver {
   DeviceOp device;
   // Every release of a lock, keyed on the aie.lock.
   DenseMap<Value, SmallVector<UseLockOp>> releases;
+  SmallVector<CoreOp> opaqueReleasers;
   // (tile, MM2S?, channel) -> the channel's aie.dma_start.
   std::map<std::tuple<Operation *, bool, int>, DMAStartOp> starts;
   // BD block -> (tile, MM2S?, channel) of the chain it is on.
@@ -84,6 +86,18 @@ struct GatingProver {
       if (u.release())
         releases[u.getLock()].push_back(u);
     });
+    for (CoreOp core : device.getOps<CoreOp>()) {
+      bool opaque = core.getElfFile().has_value();
+      core.walk([&](Operation *operation) {
+        opaque |=
+            isa<CallOpInterface, LLVM::CallIntrinsicOp, LLVM::InlineAsmOp>(
+                operation);
+        if (auto use = dyn_cast<UseLockOp>(operation))
+          opaque |= use.release() && !lockOf(use.getLock());
+      });
+      if (opaque)
+        opaqueReleasers.push_back(core);
+    }
     DenseMap<TileID, Operation *> tiles;
     device.walk([&](TileOp t) { tiles[{t.colIndex(), t.rowIndex()}] = t; });
     for (const DmaChannelProgram &p : collectDmaPrograms(device)) {
@@ -188,6 +202,14 @@ struct GatingProver {
   // configuration. A core releases nothing early, since it is enabled after the
   // configuration or proved by coreGated to wait until then.
   Verdict lockQuietImpl(Value lock) {
+    TileOp owner = lockOf(lock).getTileOp();
+    for (CoreOp core : opaqueReleasers) {
+      TileOp tile = core.getTileOp();
+      if (starters &&
+          device.getTargetModel().isLegalMemAffinity(
+              tile.getCol(), tile.getRow(), owner.getCol(), owner.getRow()))
+        starters->insert(tile);
+    }
     for (UseLockOp r : releases.lookup(lock)) {
       if (auto core = r->getParentOfType<CoreOp>()) {
         if (starters)

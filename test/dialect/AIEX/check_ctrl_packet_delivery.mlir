@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt %s --split-input-file -aie-check-ctrl-packet-delivery=parallel-shims=true -verify-diagnostics
+// RUN: aie-opt %s --split-input-file -aie-check-ctrl-packet-delivery -verify-diagnostics
 // RUN: aie-opt %s --split-input-file -aie-check-ctrl-packet-delivery=parallel-shims=true -aie-check-ctrl-packet-delivery=parallel-shims=true -verify-diagnostics
 // RUN: not aie-opt %s --split-input-file -aie-check-ctrl-packet-delivery 2>&1 | FileCheck %s --check-prefix=SERIAL
 // RUN: split-file %s %t
@@ -41,6 +42,9 @@ module {
         aie.rule(31, 29, %1)
       }
       aie.packet_rules(DMA : 0) {
+        aie.rule(31, 3, %0)
+      }
+      aie.packet_rules(DMA : 1) {
         aie.rule(31, 3, %0)
       }
     }
@@ -91,12 +95,105 @@ module {
     aie.wire(%switchbox_0_2 : North, %switchbox_0_3 : South)
   }
   aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @copy(%shim, MM2S, 0)
     aie.runtime_sequence() {
       aiex.set_device @cfg
       // expected-note @+1 {{the stream is started here}}
       aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 2), which a stream that the push to MM2S channel 0 of tile (0, 1) starts may hold, stalled}}
       aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @across_write() {
+      %address = arith.constant 2228224 : i32
+      %zero = arith.constant 0 : i32
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.npu.write32(%address, %zero) : i32, i32
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @across_dma_setup(%buffer : memref<16xi32>) {
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      %task = aiex.dma_configure_task_for @copy {
+        aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      }
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @completed_before_start() {
+      %address = arith.constant 2228224 : i32
+      %zero = arith.constant 0 : i32
+      aiex.set_device @cfg
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.npu.write32(%address, %zero) : i32, i32
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @quiescent_boundary() {
+      aiex.set_device @cfg
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier {drains = @cfg}
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @local_quiescence() {
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.set_device @cfg {quiescent}
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @uncovered_channel() {
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 1705532 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier {drains = @cfg}
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @repeated_pdi_metadata() {
+      aiex.npu.load_pdi {device_ref = @cfg, id = 1 : i32}
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.npu.load_pdi {device_ref = @cfg, id = 2 : i32}
+      aiex.set_device @cfg
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @repeated_pdi_address() {
+      aiex.npu.load_pdi {address = 4096 : ui64, size = 64 : i32}
+      aiex.set_device @cfg
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.npu.load_pdi {address = 4096 : ui64, size = 128 : i32}
+      aiex.set_device @cfg
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @distinct_pdi_address() {
+      aiex.npu.load_pdi {address = 4096 : ui64}
+      aiex.set_device @cfg
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.npu.load_pdi {address = 8192 : ui64}
+      aiex.set_device @cfg
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @nested_packet() {
+      %begin = arith.constant 0 : index
+      %end = arith.constant 2 : index
+      %step = arith.constant 1 : index
+      aiex.set_device @cfg
+      aiex.control_packet {address = 1705524 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      scf.for %iteration = %begin to %end step %step {
+        // expected-error @+1 {{requires flat control-packet execution for delivery analysis}}
+        aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      }
     }
   }
 }
@@ -161,6 +258,9 @@ module {
     ^bb2:
       aie.end
     }
+    aie.core(%tile_0_2) {
+      aie.end
+    } {aiex.started_by = []}
     aie.wire(%shim_mux_0_0 : North, %switchbox_0_0 : South)
     aie.wire(%shim_noc_tile_0_0 : DMA, %shim_mux_0_0 : DMA)
     aie.wire(%mem_tile_0_1 : Core, %switchbox_0_1 : Core)
@@ -176,9 +276,61 @@ module {
   aie.device(npu2) {
     aie.runtime_sequence() {
       aiex.set_device @cfg
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @host_release_after_enable() {
+      %address = arith.constant 2224128 : i32
+      %one = arith.constant 1 : i32
+      aiex.set_device @cfg
       // expected-note @+1 {{the stream is started here}}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      // expected-error @+1 {{may wait forever: its control packets take arbiter 0 of switchbox (0, 2), which a stream that the enable of core (0, 2) starts may hold, stalled}}
+      aiex.npu.write32(%address, %one) : i32, i32
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @host_release_before_enable() {
+      %address = arith.constant 2224128 : i32
+      %one = arith.constant 1 : i32
+      aiex.set_device @cfg
+      aiex.npu.write32(%address, %one) : i32, i32
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @host_release_before_drain() {
+      %address = arith.constant 2224128 : i32
+      %one = arith.constant 1 : i32
+      aiex.set_device @cfg
+      aiex.npu.write32(%address, %one) : i32, i32
+      aiex.control_packet_barrier {drains = @cfg}
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-error @+1 {{may wait forever}}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @gate_reinitialized() {
+      %address = arith.constant 2224128 : i32
+      %one = arith.constant 1 : i32
+      aiex.set_device @cfg
+      aiex.npu.write32(%address, %one) : i32, i32
+      aiex.control_packet_barrier {drains = @cfg}
+      aiex.control_packet {address = 2224128 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    aie.runtime_sequence @gate_overwritten() {
+      %address = arith.constant 2224128 : i32
+      %one = arith.constant 1 : i32
+      aiex.set_device @cfg
+      aiex.npu.write32(%address, %one) : i32, i32
+      aiex.control_packet_barrier {drains = @cfg}
+      aiex.control_packet {address = 2224128 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2224128 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-note @+1 {{the stream is started here}}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      // expected-error @+1 {{may wait forever}}
       aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }

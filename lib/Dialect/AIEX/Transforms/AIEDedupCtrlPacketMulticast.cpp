@@ -59,6 +59,7 @@ struct AIEDedupCtrlPacketMulticastPass
 
   llvm::DenseMap<Operation *, PacketEffects> effects;
   llvm::DenseMap<Operation *, Classified> writes;
+  llvm::DenseSet<Operation *> hostActivated;
 
   static SmallVector<PacketRun> matchingRuns(AIE::RuntimeSequenceOp sequence,
                                              bool internal = false) {
@@ -325,8 +326,9 @@ struct AIEDedupCtrlPacketMulticastPass
         return false;
       for (ContextualPacket entry : run)
         for (AIE::TileID tile : tilesReached(entry.packet, &info))
-          if (conflicts(devices.startedArbiters(entry.device, tile,
-                                                writes.lookup(entry.packet))))
+          if (conflicts(devices.startedArbiters(
+                  entry.device, tile, writes.lookup(entry.packet),
+                  !hostActivated.contains(entry.packet))))
             return false;
     }
     llvm::DenseSet<Operation *> selected;
@@ -334,9 +336,9 @@ struct AIEDedupCtrlPacketMulticastPass
     for (const auto &copies : prefix.copies)
       for (NpuControlPacketOp packet : copies) {
         selected.insert(packet);
-        auto held = devices.startedArbiters(run.front().device,
-                                            packet.getTileFromAddr(),
-                                            writes.lookup(packet));
+        auto held = devices.startedArbiters(
+            run.front().device, packet.getTileFromAddr(), writes.lookup(packet),
+            !hostActivated.contains(packet));
         started.insert(held.begin(), held.end());
       }
     if (!started.empty())
@@ -413,11 +415,30 @@ struct AIEDedupCtrlPacketMulticastPass
           for (const PacketRun &run : runs)
             starts.insert(run.front().packet);
           llvm::DenseMap<Operation *, std::set<Arbiter>> earlierAt;
-          for (PacketRun &run : packetRuns(seq, true)) {
-            std::set<Arbiter> held;
+          auto history = deliveryAnalysisRuns(seq);
+          if (failed(history))
+            return signalPassFailure();
+          hostActivated.clear();
+          for (PacketRun &run : *history) {
+            struct Active {
+              unsigned end, host;
+              std::set<Arbiter> initial, afterHost;
+            };
+            SmallVector<Active> active;
             for (ContextualPacket entry : run) {
-              if (starts.contains(entry.packet))
-                earlierAt[entry.packet] = held;
+              if (entry.hostPhase <= entry.phase)
+                hostActivated.insert(entry.packet);
+              if (starts.contains(entry.packet)) {
+                auto &held = earlierAt[entry.packet];
+                for (const Active &prior : active) {
+                  if (entry.phase >= prior.end)
+                    continue;
+                  const auto &arbiters = entry.phase >= prior.host
+                                             ? prior.afterHost
+                                             : prior.initial;
+                  held.insert(arbiters.begin(), arbiters.end());
+                }
+              }
               auto write = classifier.classify(entry.packet);
               if (failed(write))
                 return signalPassFailure();
@@ -425,7 +446,14 @@ struct AIEDedupCtrlPacketMulticastPass
                    tilesReached(entry.packet, multicasts.of(entry.device))) {
                 auto started =
                     devices.startedArbiters(entry.device, tile, *write);
-                held.insert(started.begin(), started.end());
+                auto afterHost =
+                    entry.hostPhase != std::numeric_limits<unsigned>::max()
+                        ? devices.startedArbiters(entry.device, tile, *write,
+                                                  false)
+                        : std::set<Arbiter>{};
+                if (!started.empty() || !afterHost.empty())
+                  active.push_back({entry.streamEndPhase, entry.hostPhase,
+                                    std::move(started), std::move(afterHost)});
               }
             }
           }

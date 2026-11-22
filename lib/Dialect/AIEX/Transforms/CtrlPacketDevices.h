@@ -47,12 +47,17 @@ public:
     return infoOf(device).gated.contains(source);
   }
 
+  bool teardownStops(mlir::FlatSymbolRefAttr device, StreamSource source) {
+    return infoOf(device).teardownSources.contains(source);
+  }
+
   // The arbiters the streams `write`, to `tile`, may start take: a push to
   // an MM2S channel not proved gated starts the channel; a core enable not
   // proved gated starts the core, what aiex.started_by lists it for, and what
   // that lists the gated cores among those for.
   std::set<Arbiter> startedArbiters(mlir::FlatSymbolRefAttr device,
-                                    AIE::TileID tile, const Classified &write);
+                                    AIE::TileID tile, const Classified &write,
+                                    bool useGating = true);
 
   // The first arbiter of `held` the control packets to `tile` on its
   // controller id take, if any.
@@ -63,6 +68,7 @@ public:
 private:
   struct Info {
     llvm::DenseSet<StreamSource> gated;
+    llvm::DenseSet<StreamSource> teardownSources;
     // The gated sources each core's enable may start.
     llvm::DenseMap<AIE::TileID, llvm::SmallVector<StreamSource>> startedBy;
     llvm::DenseMap<StreamSource, std::set<Arbiter>> sent;

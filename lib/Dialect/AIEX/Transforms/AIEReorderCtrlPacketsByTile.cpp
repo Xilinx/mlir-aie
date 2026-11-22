@@ -46,9 +46,12 @@ struct AIEScheduleCtrlPacketActivationPass
     for (auto device : module.getOps<AIE::DeviceOp>()) {
       PacketClassifier classifier(device.getTargetModel());
       for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
-        for (PacketRun &run : packetRuns(seq))
-          if (run.front().device && failed(reorder(run, classifier, devices)))
+        for (PacketRun &run : packetRuns(seq)) {
+          NpuControlPacketOp first = run.front().packet;
+          if (isa_and_present<SetDeviceOp>(first->getPrevNode()) &&
+              failed(reorder(run, classifier, devices)))
             return signalPassFailure();
+        }
     }
   }
 

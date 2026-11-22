@@ -1355,7 +1355,8 @@ def AIE_SetDeviceOp
 
 def AIE_ControlPacketBarrierOp
     : AIEX_Op<
-          "control_packet_barrier", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
+      "control_packet_barrier", [HasAncestor<"AIE::RuntimeSequenceOp">,
+        DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Order the control packets around it";
   let description = [{
     Every control packet before it in its run lands before any after it.
@@ -1372,18 +1373,29 @@ def AIE_ControlPacketBarrierOp
     `packet_effect` denotes the ordering constraints of adjacent packet
     actions. A transformation may regenerate these barriers from packet
     effects after moving the actions. Other barriers retain their boundaries.
+
+    `drains` asserts that streams from the named configuration's static cores
+    and non-shim DMA channels completed before this barrier. It applies only
+    to a hardware barrier. Other configurations, shim channels, and runtime-only
+    channels retain their stream lifetimes. Complete teardown may emit this
+    assertion after its completion checks. A drain does not initialize locks.
   }];
   let arguments = (ins UnitAttr:$compiler_only,
                        OptionalAttr<DictionaryAttr>:$scope,
-                       UnitAttr:$packet_effect);
+                       UnitAttr:$packet_effect,
+                       OptionalAttr<FlatSymbolRefAttr>:$drains);
   let assemblyFormat = [{ attr-dict }];
   let builders = [OpBuilder<(ins), [{
-    build($_builder, $_state, nullptr, nullptr, nullptr);
+    build($_builder, $_state, nullptr, nullptr, nullptr, nullptr);
   }]>, OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly), [{
-    build($_builder, $_state, compilerOnly, nullptr, nullptr);
+    build($_builder, $_state, compilerOnly, nullptr, nullptr, nullptr);
   }]>, OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly,
                      "::mlir::DictionaryAttr":$scope), [{
-    build($_builder, $_state, compilerOnly, scope, nullptr);
+    build($_builder, $_state, compilerOnly, scope, nullptr, nullptr);
+  }]>, OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly,
+                     "::mlir::DictionaryAttr":$scope,
+                     "::mlir::UnitAttr":$packetEffect), [{
+    build($_builder, $_state, compilerOnly, scope, packetEffect, nullptr);
   }]>];
   let hasVerifier = 1;
 }

@@ -3,6 +3,58 @@
 
 # Control Packet Delivery Validation
 
+## Review Follow-up
+
+The review compared `4f17842e3ac` with delivery. Findings 1, 2, and 3 also
+applied to `c1d71b45f13`. Commit `eb5ba1cec78` already addressed finding 4
+by checking multicast candidates against active streams before replacement.
+
+- Activation scheduling applies only to the initial packet run immediately
+	after a device marker. Later packets retain device context without gaining
+	permission to reorder activation. Tests retain enable/disable order after
+	an application write and after an explicit barrier.
+- The gating proof includes cores with opaque calls, inline assembly, or
+	external ELF programs as possible lock releasers within their memory
+	affinity. An acquire-only contract does not restrict those releases.
+	Tests cover direct, indirect, and LLVM calls and transitive starter lists.
+- Delivery analysis and multicast planning retain stream history across
+	ordinary runtime operations. Host effects can release armed gates and
+	invalidate initial-lock proofs for subsequent starts. Tests cover writes,
+	DMA setup, releases before and after enable, and overwritten initializers.
+- Complete generated teardown emits a configuration-specific `drains`
+	assertion after its completion polls. The assertion expires only declared
+	static cores and non-shim DMA channels. Other configurations and uncovered
+	channels remain live. Quiescence alone does not expire streams. Different
+	PDI IDs or sizes do not prove a reset. Tests cover these boundaries and
+	reject nested configuration or packet execution before analysis.
+- Multicast fallback retains unicast when an earlier stream can block only
+	the multicast tree. Tests include a non-wait write between the stream start
+	and candidate packets, with prefix and substring matching.
+
+The fresh result `review-findings-final-20261121-ctrlpkt-teardown` checks
+six 32-token generations against the reference. Five measured generations
+have a median rate of 18.80 tokens/s. Compile and load takes 91.08 seconds.
+Decode compilation takes 17.62 seconds; prefill takes 63.88 seconds.
+
+The decoder contains 35,826 multicast packets, 1,101,377 encoded packet
+words, and 3,409 submissions. Prefill contains 178,769 multicast packets,
+2,057,534 encoded packet words, and 5,537 submissions. Destination-word
+counts remain 993,811 and 3,028,167. The instruction checks find no
+inter-application PDI resets and require complete lock summaries and packet
+completion before status polls. Six hardware cases cover multicast, unicast,
+and teardown of a dropped core with a pending lock acquire.
+
+The decoder image SHA256 is
+`4e951ee2c8bdb1085f5b7d4dee2b5128953b6262f51ee0183f525ce66d77f8e3`.
+The prefill image SHA256 is
+`8f1d8b577fbecf9867a3993b8249553534f0040d0a68c9970ea0bbec8147fb02`.
+
+The stream checker analyzes control-packet starts in materialized runtime
+sequences. It does not simulate arbitrary application code or infer stream
+activation from full-application PDI contents. Drain assertions require the
+stated completion guarantee. These measurements cover the pinned workload,
+not every prompt or external kernel.
+
 ## Scoped Prefix Restoration
 
 The November 21, 2026 prefix measurements use the workload and audited
@@ -267,7 +319,8 @@ including 0.698 seconds in that conversion. The comparison to delivery's
 completed decoder concerns the whole conversion implementation; it does
 not isolate one source-level loop.
 
-The checker retains its contract that intervening application operations
-drain their streams. The measurements do not prove arbitrary external
+The checker at that checkpoint assumed that intervening application
+operations drain their streams. The follow-up above removes that assumption
+for control-packet starts. The measurements do not prove arbitrary external
 kernels, alternate prompts, or every configuration protocol. The external
 kernel annotations apply only to the audited artifacts in this experiment.

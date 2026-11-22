@@ -103,10 +103,16 @@ struct AIECheckCtrlPacketDeliveryPass
     bool failedAny = false;
     for (auto device : module.getOps<AIE::DeviceOp>()) {
       PacketClassifier classifier(device.getTargetModel());
-      for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
-        for (PacketRun &run : packetRuns(seq, true))
+      for (auto seq : device.getOps<AIE::RuntimeSequenceOp>()) {
+        auto runs = deliveryAnalysisRuns(seq);
+        if (failed(runs)) {
+          failedAny = true;
+          continue;
+        }
+        for (PacketRun &run : *runs)
           if (failed(checkRun(run, classifier, devices, multicasts)))
             failedAny = true;
+      }
     }
     if (failedAny)
       signalPassFailure();
@@ -197,13 +203,18 @@ struct AIECheckCtrlPacketDeliveryPass
       for (AIE::TileID tile : order.tilesOf(i)) {
         std::set<Arbiter> held =
             devices.startedArbiters(device, tile, writes[i]);
-        if (held.empty())
+        std::set<Arbiter> afterHost;
+        if (p.hostPhase != std::numeric_limits<unsigned>::max())
+          afterHost = devices.startedArbiters(device, tile, writes[i], false);
+        if (held.empty() && afterHost.empty())
           continue;
         for (size_t j = 0; j < run.size(); ++j) {
-          if (j == i || order.awaitedBefore(j, i))
+          if (j == i || order.awaitedBefore(j, i) ||
+              order.phaseOf(j) >= p.streamEndPhase)
             continue;
-          if (std::optional<Arbiter> hold =
-                  order.arbiterTaken(j, devices, held)) {
+          if (std::optional<Arbiter> hold = order.arbiterTaken(
+                  j, devices,
+                  order.phaseOf(j) >= p.hostPhase ? afterHost : held)) {
             InFlightDiagnostic d =
                 run[j].packet.emitOpError("may wait forever: its control "
                                           "packets take arbiter ")

@@ -9,7 +9,7 @@
 // RUN: aie-opt %s -aie-schedule-ctrl-packet-activation=by-tile=false | FileCheck %s --check-prefix=NOSORT
 // RUN: aie-opt %s -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile | FileCheck %s --check-prefix=NORMALIZE
 
-// The pass sorts each packet run by tile (column, then row).
+// The pass sorts the configuration run by tile (column, then row).
 // It retains each tile's packet order. MM2S queue pushes
 // (core tile 0x1DE14, memory tile 0xA0634) follow every other packet of the
 // run, and core enables (Core_Control 0x32000 with bit 0 set) come last; both
@@ -37,10 +37,10 @@
 // CHECK-NEXT: address = 2301952 : ui32, data = array<i32: 1>
 // CHECK-NEXT: address = 35856384 : ui32, data = array<i32: 1>
 // CHECK-NEXT: aiex.control_packet_barrier
-// CHECK-NEXT: address = 2355204 : ui32, data = array<i32: 0>
-// CHECK-NEXT: address = 2355204 : ui32, data = array<i32: 7>
 // CHECK-NEXT: address = 35909636 : ui32, data = array<i32: 0>
+// CHECK-NEXT: address = 2355204 : ui32, data = array<i32: 0>
 // CHECK-NEXT: address = 35909636 : ui32, data = array<i32: 7>
+// CHECK-NEXT: address = 2355204 : ui32, data = array<i32: 7>
 // CHECK-NOT:  aiex.control_packet
 
 // NOSORT-LABEL: aie.runtime_sequence
