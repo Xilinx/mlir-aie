@@ -107,13 +107,14 @@ PacketClassifier::getRegisters(NpuControlPacketOp op) {
 
 PacketEffects
 AIEX::packetEffects(NpuControlPacketOp packet,
-                    const llvm::DenseSet<AIE::TileID> *activeCores) {
+                    const llvm::DenseSet<AIE::TileID> *activeCores,
+                    std::optional<AIE::TileID> destination) {
   auto data = packet.getData();
   if (packet.getOpcode() != 0 || !data)
     return {};
   const auto &target =
       packet->getParentOfType<AIE::DeviceOp>().getTargetModel();
-  AIE::TileID tile = packet.getTileFromAddr();
+  AIE::TileID tile = destination.value_or(packet.getTileFromAddr());
   auto active = [&](AIE::TileID core) {
     return !activeCores || activeCores->contains(core);
   };
@@ -167,7 +168,7 @@ AIEX::packetEffects(NpuControlPacketOp packet,
   NamedAttrList scope;
   for (auto &[module, tiles] : modules)
     scope.set(module, ArrayAttr::get(packet.getContext(), tiles));
-  if (packet.getMulticastId())
+  if (packet.getMulticastId() && !destination)
     return {reorderable, {}, {}};
   return {reorderable, scope.getDictionary(packet.getContext()),
           direct.getDictionary(packet.getContext())};
@@ -176,13 +177,31 @@ AIEX::packetEffects(NpuControlPacketOp packet,
 FailureOr<llvm::DenseMap<Operation *, PacketEffects>>
 AIEX::packetEffects(Block &block) {
   llvm::DenseMap<Operation *, PacketEffects> result;
-  PacketClassifier classifier(AIE::getTargetModel(block.getParentOp()));
+  const auto &target = AIE::getTargetModel(block.getParentOp());
+  PacketClassifier classifier(target);
+  SmallVector<Attribute> switches;
+  for (int column = 0; column < target.columns(); ++column)
+    for (int row = 0; row < target.rows(); ++row)
+      switches.push_back(
+          AIE::TileAttr::get(block.getParentOp()->getContext(), column, row));
+  NamedAttrList switchScope;
+  switchScope.set("switch",
+                  ArrayAttr::get(block.getParentOp()->getContext(), switches));
+  DictionaryAttr switchEffects =
+      switchScope.getDictionary(block.getParentOp()->getContext());
+  OverlayMulticasts multicasts(block.getParentOp()->getParentOfType<ModuleOp>(),
+                               false);
+  FlatSymbolRefAttr device;
   bool quiescent = false;
   llvm::DenseSet<AIE::TileID> activeCores;
+  DictionaryAttr activeModules =
+      DictionaryAttr::get(block.getParentOp()->getContext());
   for (Operation &operation : block) {
     if (auto context = dyn_cast<SetDeviceOp>(operation)) {
+      device = context.getDeviceRefAttr();
       quiescent = context.getQuiescent();
       activeCores.clear();
+      activeModules = DictionaryAttr::get(operation.getContext());
       continue;
     }
     if (isa<ControlPacketBarrierOp>(operation))
@@ -195,12 +214,38 @@ AIEX::packetEffects(Block &block) {
     auto write = classifier.classify(packet);
     if (failed(write))
       return failure();
+    const auto *info = multicasts.of(device);
+    auto destinations = tilesReached(packet, info);
     if (write->kind == WriteKind::CoreEnable)
-      activeCores.insert(packet.getTileFromAddr());
-    PacketEffects effects =
-        packetEffects(packet, quiescent ? &activeCores : nullptr);
+      activeCores.insert(destinations.begin(), destinations.end());
+    SmallVector<DictionaryAttr> scopes, targets;
+    bool storage = true;
+    for (AIE::TileID tile : destinations) {
+      PacketEffects effects =
+          packetEffects(packet, quiescent ? &activeCores : nullptr, tile);
+      storage &= effects.reorderable;
+      scopes.push_back(effects.scope);
+      targets.push_back(effects.target);
+    }
+    PacketEffects effects{storage, unionScopes(packet.getContext(), scopes),
+                          unionScopes(packet.getContext(), targets)};
+    if (packet.getMulticastId() && (!info || !info->multicastOf(packet)))
+      effects = {};
     if (!effects.scope)
       quiescent = false;
+    if (write->startsSomething) {
+      effects.scope =
+          unionScopes(packet.getContext(), {effects.scope, switchEffects});
+      activeModules =
+          unionScopes(packet.getContext(), {activeModules, effects.scope});
+    }
+    if (storage && !quiescent)
+      effects = {};
+    else if (storage && scopesOverlap(activeModules, effects.scope)) {
+      effects.reorderable = false;
+      effects.scope =
+          unionScopes(packet.getContext(), {effects.scope, activeModules});
+    }
     result[packet] = effects;
   }
   return result;

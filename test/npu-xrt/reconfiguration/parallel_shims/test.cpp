@@ -21,6 +21,7 @@ constexpr int32_t POISON = -1;
 
 int main(int argc, char **argv) {
   int add = argc > 1 ? std::atoi(argv[1]) : 0;
+  int feedbackAdd = argc > 2 ? std::atoi(argv[2]) : 0;
   auto device = xrt::device(0);
   xrt::elf elf{"aie.elf"};
   xrt::hw_context context(device, elf);
@@ -43,9 +44,15 @@ int main(int argc, char **argv) {
     run.start();
     run.wait2();
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    if (argc > 2)
+      bo_in.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     int wrong = 0;
-    for (int i = 0; i < COUNT; i++)
-      wrong += out[i] != in[i] + add;
+    for (int i = 0; i < COUNT; i++) {
+      int32_t expected = 3 * i + 1 + pass + add;
+      wrong += out[i] != expected;
+      if (argc > 2)
+        wrong += in[i] != expected + feedbackAdd;
+    }
     if (wrong) {
       std::cout << "pass " << pass << ": " << wrong << " wrong" << std::endl;
       failures++;

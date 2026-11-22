@@ -8,7 +8,13 @@
 // RUN: %aiecc -j1 --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-teardown=true --get=npu_expanded.mlir %S/aie.mlir
 // RUN: FileCheck %s < npu_expanded.mlir
 // RUN: %host_clang -o test %S/../parallel_shims/test.cpp -std=c++17 %host_link_flags %xrt_flags
-// RUN: %run_on_npu2% ./test 2
+// RUN: %run_on_npu2% ./test 2 4
 //
-// CHECK: aiex.control_packet {address = 2113536 : ui32, data = array<i32: 1>, multicast_id = 28 : i32
-// CHECK-NOT: address = {{(2113536|4210688)}} : ui32, data = array<i32: 1>, multicast_id
+// CHECK: address = 2228224 : ui32, data = {{.*}}multicast_id = 28 : i32
+// CHECK: address = 2113536 : ui32, data = array<i32: 1>, opcode
+// CHECK: address = 4210688 : ui32, data = array<i32: 1>, opcode
+// CHECK: aiex.dma_await_task
+// CHECK: address = 2113536 : ui32, data = array<i32: 2>, opcode
+// CHECK: address = 4210688 : ui32, data = array<i32: 2>, opcode
+// CHECK: aiex.control_packet_barrier
+// CHECK: aiex.dma_start_task

@@ -752,9 +752,10 @@ def AIEInsertCtrlPacketBarriers
   let description = [{
     The target model identifies ordinary storage writes and physical module
     effects. Compiler-only packet-effect barriers surround ordered writes.
-    Their scopes include memory affinity dependencies. A quiescent device
-    marker permits local scopes until each core activates. Reads and unknown
-    effects require global barriers. These barriers emit no hardware wait.
+    Their scopes include memory affinity and activation-dependent switch
+    resources. Ordinary storage writes require a quiescent device marker and
+    inactive affected resources to permit reordering. Unknown activity and
+    unknown effects require global barriers. These barriers emit no hardware wait.
     Run this pass before ordinary-write normalization and coalescing.
   }];
   let constructor = "xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass()";
@@ -766,7 +767,8 @@ def AIECoalesceControlPackets
   let summary = "Merge adjacent control-packet writes";
   let description = [{
     Combines adjacent writes with consecutive addresses and matching
-    destinations and header settings. The pass excludes ordered writes.
+    destinations and header settings. The pass excludes ordered writes and
+    ordinary writes without an inactivity proof.
     The merged payload stays within one aligned four-word line.
   }];
   let constructor = "xilinx::AIEX::createAIECoalesceControlPacketsPass()";
@@ -788,7 +790,8 @@ def AIEReorderCtrlPacketsByTile
   let summary = "Order ordinary control writes and remove overwritten words";
   let description = [{
     Retains the last value for each ordinary unicast word and orders surviving
-    packets by address. Scoped barriers and actions end the sequence for
+    packets by address when affected resources are inactive. Authored and
+    generated packets obey the same rule. Scoped barriers and actions end the sequence for
     affected modules. Independent writes may cross those boundaries. Global
     barriers, header changes, and other operations end every sequence.
     Run before multicast selection and adjacent-write coalescing.
@@ -970,7 +973,8 @@ def AIEDedupCtrlPacketMulticast
     Matching preserves the order and multiplicity of each destination's
     actions. Delivery planning rejects stream hazards and inserts completion
     waits when multicast and unicast routes do not establish the required
-    order. Runs with different stream IDs remain unchanged.
+    order. A hazardous trailing activation shortens the candidate prefix.
+    Runs with different stream IDs remain unchanged.
 
         `substrings` retains prefix matches and selects one additional internal
         match per remaining run. It examines at most 64 unique write anchors per

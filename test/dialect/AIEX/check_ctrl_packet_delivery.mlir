@@ -11,6 +11,7 @@
 // RUN: not aie-opt %s --split-input-file -aie-check-ctrl-packet-delivery 2>&1 | FileCheck %s --check-prefix=SERIAL
 // RUN: split-file %s %t
 // RUN: not %aiecc -j1 --load-pdi-to-ctrl-pkt --get=npu_expanded.mlir --tmpdir=%t/driver --output-dir=%t/driver %t/cross_barrier.mlir 2>&1 | FileCheck %s --check-prefix=DRIVER
+// RUN: not %aiecc -j1 --load-pdi-to-ctrl-pkt --ctrlpkt-optimize=false --get=npu_expanded.mlir --tmpdir=%t/driver_no_opt --output-dir=%t/driver_no_opt %t/cross_barrier.mlir 2>&1 | FileCheck %s --check-prefix=DRIVER
 
 // SERIAL: op may wait forever
 // DRIVER: op may wait forever

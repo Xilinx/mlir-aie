@@ -210,6 +210,11 @@ struct AIECoalesceControlPacketsPass
   void runOnOperation() override {
     getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
       sequence.walk([&](Block *block) {
+        auto classified = AIEX::packetEffects(*block);
+        if (failed(classified)) {
+          signalPassFailure();
+          return;
+        }
         AIEX::NpuControlPacketOp previous;
         for (Operation &operation : llvm::make_early_inc_range(*block)) {
           auto packet = dyn_cast<AIEX::NpuControlPacketOp>(operation);
@@ -217,7 +222,7 @@ struct AIECoalesceControlPacketsPass
             previous = {};
             continue;
           }
-          if (!AIEX::packetEffects(packet).reorderable) {
+          if (!classified->lookup(packet).reorderable) {
             previous = {};
             continue;
           }

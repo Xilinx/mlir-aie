@@ -18,7 +18,7 @@
 // SPAN2:         address = 3350528 : ui32, data = array<i32: 0>, opcode
 // CHECK:       aiex.control_packet_barrier{{$}}
 // SPAN1:         address = 2301952 : ui32, data = array<i32: 2>, multicast_id = 28 : i32
-// SPAN1-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>], memory =
+// SPAN1-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>]}}
 // SPAN1-NEXT:    address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32
 // SPAN2:         address = 2301952 : ui32, data = array<i32: 2>, opcode
 // SPAN2:         address = 2228224 : ui32, data = array<i32: 7>, opcode
@@ -40,7 +40,7 @@ module {
   }
   aie.device(npu2) @main {
     aie.runtime_sequence @seq() {
-      aiex.set_device @cfg
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3350528 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier
@@ -79,7 +79,7 @@ module {
   }
   aie.device(npu2) @main {
     aie.runtime_sequence @seq() {
-      aiex.set_device @cfg
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -101,7 +101,7 @@ module {
     // SPAN2-NEXT:    address = 2228228 : ui32, data = array<i32: 9>, multicast_id = 28 : i32
     // SPAN2-NEXT:  {{^ *}}}
     aie.runtime_sequence @ordinary_prefix() {
-      aiex.set_device @cfg
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 3276804 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35782660 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228228 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}

@@ -313,7 +313,10 @@ struct AIEDedupCtrlPacketMulticastPass
   bool planDelivery(const PacketRun &run, Prefix &prefix,
                     const OverlayMulticasts::Info &info,
                     ConfiguredDevices &devices,
-                    const std::set<Arbiter> &earlier) {
+                    const std::set<Arbiter> &earlier,
+                    size_t *shorter = nullptr) {
+    if (shorter)
+      *shorter = 0;
     const auto &multicast = *prefix.multicast;
     auto tree = info.trees.find(multicast.column);
     if (tree != info.trees.end()) {
@@ -324,29 +327,45 @@ struct AIEDedupCtrlPacketMulticastPass
       };
       if (conflicts(earlier))
         return false;
-      for (ContextualPacket entry : run)
+      for (ContextualPacket entry : run) {
+        if (parallelShims)
+          if (const auto *existing = info.multicastOf(entry.packet);
+              existing && existing->column != multicast.column) {
+            auto other = info.trees.find(existing->column);
+            if (other != info.trees.end() && conflicts(other->second))
+              prefix.wait = true;
+          }
         for (AIE::TileID tile : tilesReached(entry.packet, &info))
           if (conflicts(devices.startedArbiters(
                   entry.device, tile, writes.lookup(entry.packet),
                   !hostActivated.contains(entry.packet))))
             return false;
+      }
     }
     llvm::DenseSet<Operation *> selected;
-    std::set<Arbiter> started;
     for (const auto &copies : prefix.copies)
-      for (NpuControlPacketOp packet : copies) {
+      for (NpuControlPacketOp packet : copies)
         selected.insert(packet);
+    for (size_t index = 0; index < prefix.copies.front().size(); ++index) {
+      std::set<Arbiter> started;
+      for (const auto &copies : prefix.copies) {
+        NpuControlPacketOp packet = copies[index];
         auto held = devices.startedArbiters(
             run.front().device, packet.getTileFromAddr(), writes.lookup(packet),
             !hostActivated.contains(packet));
         started.insert(held.begin(), held.end());
       }
-    if (!started.empty())
+      if (started.empty())
+        continue;
       for (ContextualPacket entry : run)
         if (!selected.contains(entry.packet) &&
             devices.controlArbiterIn(entry.device,
-                                     entry.packet.getTileFromAddr(), started))
+                                     entry.packet.getTileFromAddr(), started)) {
+          if (shorter)
+            *shorter = index;
           return false;
+        }
+    }
     if (prefix.wait)
       return true;
     for (const auto &copies : prefix.copies) {
@@ -520,8 +539,18 @@ struct AIEDedupCtrlPacketMulticastPass
                 continue;
               for (auto &copies : prefix->copies)
                 copies.resize(low);
-              if (!planDelivery(run, *prefix, *info, devices,
-                                earlierAt.lookup(run.front().packet)))
+              size_t shorter = low;
+              bool planned =
+                  planDelivery(run, *prefix, *info, devices,
+                               earlierAt.lookup(run.front().packet), &shorter);
+              while (!planned && shorter) {
+                for (auto &copies : prefix->copies)
+                  copies.resize(shorter);
+                planned = planDelivery(run, *prefix, *info, devices,
+                                       earlierAt.lookup(run.front().packet),
+                                       &shorter);
+              }
+              if (!planned)
                 continue;
               if (parallelShims)
                 for (Prefix &previous : prefixes) {

@@ -3,6 +3,60 @@
 
 # Control Packet Delivery Validation
 
+## Resource-State Review
+
+The six-finding review used `c1d71b45f13`. Commit `13a9979208a` addressed
+findings 1 and 3. Nested packet execution already produced an explicit
+diagnostic rather than silently losing context. The added loop-unrolling
+regression checks nested parameter writes and their sync boundaries.
+Findings 2, 4, and 5 required further changes.
+
+Authored and generated packets use one resource-state analysis. Ordinary
+writes retain their order and multiplicity when activity is unknown. An
+explicit quiescence assertion permits ordinary-write optimization until
+activation affects those resources. The analysis includes multicast
+destinations, memory affinity, and switch dependencies. A sync remains a
+boundary but does not assert array-wide inactivity. A hardware regression
+executes one run, awaits completion, updates two core parameters, and executes
+a second run. The host checks both results.
+
+The multicast planner retains the legal prefix before an activation that
+would block remaining control traffic. It also separates prefixes from
+existing multicast packets whose routes share an arbiter.
+The descriptor allocator warns about
+unfinished runtime transfers at device markers, using its existing completion
+records. It does not infer completion from distinct descriptor IDs. Llama
+emits these warnings for transfers whose completion the allocator cannot
+prove. Matching output does not establish completion for arbitrary overlap.
+
+`--ctrlpkt-optimize=false` disables optional packet transformations, chaining,
+and parallel delivery. It retains packet legalization, synchronization,
+allocation checks, and mandatory delivery validation. The same two-run
+parameter regression also executes with this option.
+
+The fresh result `review2-verified-20261121-ctrlpkt-teardown` produces the
+expected 192 token IDs across six generations. Five measured generations
+have a median rate of 18.47 tokens/s, versus 18.80 in the preceding review
+run. Compile and load takes 95.07 seconds. Decode compilation takes
+18.04 seconds; prefill takes 66.46 seconds.
+
+| Image | Multicast Packets | Packet Words | Destination Words | Submissions |
+| --- | ---: | ---: | ---: | ---: |
+| Decode | 33,718 | 1,162,150 | 994,207 | 3,960 |
+| Prefill | 167,462 | 2,294,526 | 3,036,003 | 7,384 |
+
+The inactivity checks retain more writes and add completion waits. This
+measurement does not establish optimization parity with every delivery
+baseline opportunity. The instruction checks require complete lock summaries,
+packet completion before status polls, and no inter-application PDI reset.
+Five hardware cases cover program multicast, unicast, and runtime parameter
+updates. The full lit suite does not form part of this check.
+
+The decoder image SHA256 is
+`8bad5a3324eb9990ebf367d3b85ebafa18575cb3f881d42b72bd40bf3cd194ac`.
+The prefill image SHA256 is
+`29091c0d6c416b8a1e3951366c2f97c4ee0fe767b9587b3ab7a7cc883f493851`.
+
 ## Review Follow-up
 
 The review compared `4f17842e3ac` with delivery. Findings 1, 2, and 3 also

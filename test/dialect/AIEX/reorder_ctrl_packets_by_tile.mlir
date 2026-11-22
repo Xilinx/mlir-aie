@@ -55,9 +55,9 @@
 
 // NORMALIZE-LABEL: aie.runtime_sequence
 // NORMALIZE-NEXT: aiex.set_device @cfg
-// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<1, 2>, #aie.tile<1, 3>]}}
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<1, 2>, #aie.tile<1, 3>], switch = [
 // NORMALIZE-NEXT: address = 35856384 : ui32, data = array<i32: 1>, opcode
-// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<1, 2>, #aie.tile<1, 3>]}}
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<1, 2>, #aie.tile<1, 3>], switch = [
 // NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>]}}
 // NORMALIZE-NEXT: address = 2301952 : ui32, data = array<i32: 0>, opcode
 // NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>]}}
@@ -66,23 +66,34 @@
 // NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<1, 2>, #aie.tile<1, 3>]}}
 // NORMALIZE-NEXT: address = 2219536 : ui32, data = array<i32: 2>, opcode
 // NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<1, 2>, #aie.tile<1, 3>]}}
-// NORMALIZE-NEXT: address = 1769472 : ui32, data = array<i32: 11>, opcode
-// NORMALIZE-NEXT: address = 2355204 : ui32, data = array<i32: 21>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
 // NORMALIZE-NEXT: address = 35909636 : ui32, data = array<i32: 31>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
+// NORMALIZE-NEXT: address = 1769472 : ui32, data = array<i32: 11>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
+// NORMALIZE-NEXT: address = 2355204 : ui32, data = array<i32: 21>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
 // NORMALIZE-NEXT: address = 2215936 : ui32, data = array<i32: 22>, opcode
-// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<1, 2>, #aie.tile<1, 3>]}}
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
 // NORMALIZE-NEXT: address = 2219540 : ui32, data = array<i32: 1>, opcode
-// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<1, 2>, #aie.tile<1, 3>]}}
-// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {memory = [#aie.tile<0, 1>, #aie.tile<1, 1>]}}
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<1, 2>, #aie.tile<1, 3>], switch = [
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {memory = [#aie.tile<0, 1>, #aie.tile<1, 1>], switch = [
 // NORMALIZE-NEXT: address = 1705524 : ui32, data = array<i32: 1>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {memory = [#aie.tile<0, 1>, #aie.tile<1, 1>], switch = [
 // NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {memory = [#aie.tile<0, 1>, #aie.tile<1, 1>]}}
 // NORMALIZE-NEXT: address = 1835008 : ui32, data = array<i32: 12>, opcode
 // NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {memory = [#aie.tile<0, 1>, #aie.tile<1, 1>]}}
-// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>]}}
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 2>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>], switch = [
 // NORMALIZE-NEXT: address = 2301952 : ui32, data = array<i32: 1>, opcode
 // NORMALIZE-NEXT: aiex.control_packet_barrier{{$}}
-// NORMALIZE-NEXT: address = 2355204 : ui32, data = array<i32: 7>, opcode
+// NORMALIZE-NEXT: address = 35909636 : ui32, data = array<i32: 0>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
+// NORMALIZE-NEXT: address = 2355204 : ui32, data = array<i32: 0>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
 // NORMALIZE-NEXT: address = 35909636 : ui32, data = array<i32: 7>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
+// NORMALIZE-NEXT: address = 2355204 : ui32, data = array<i32: 7>, opcode
+// NORMALIZE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect}
 // NORMALIZE-NEXT: {{^ *}}}
 
 aie.device(npu2) @cfg {

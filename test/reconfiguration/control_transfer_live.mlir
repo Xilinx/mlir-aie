@@ -17,7 +17,9 @@ module {
     aie.runtime_sequence @live(%buf : memref<16xi32>) {
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
+      // expected-note @+1 {{unfinished transfer}}
       aiex.npu.dma_memcpy_nd(%buf[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @data, id = 0 : i64, issue_token = true} : memref<16xi32>
+      // expected-warning @+1 {{configures a device while runtime DMA transfers may still be in flight}}
       aiex.set_device @cfg
       %t = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
@@ -48,7 +50,9 @@ module {
     aie.runtime_sequence @twice(%buf : memref<16xi32>) {
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
+      // expected-note @+1 {{unfinished transfer}}
       aiex.npu.dma_memcpy_nd(%buf[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @data, id = 0 : i64, issue_token = true} : memref<16xi32>
+      // expected-warning @+1 {{configures a device while runtime DMA transfers may still be in flight}}
       aiex.set_device @cfg
       %t = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
@@ -92,6 +96,19 @@ module {
       } {issue_token = true}
       aiex.dma_start_task(%t)
       aiex.dma_await_task(%t)
+    }
+    aie.runtime_sequence @task_live(%buf : memref<16xi32>) {
+      aiex.set_device @cfg
+      // expected-note @+1 {{unfinished transfer}}
+      %task = aiex.dma_configure_task_for @data {
+        aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%task)
+      // expected-warning @+1 {{configures a device while runtime DMA transfers may still be in flight}}
+      aiex.set_device @cfg
+      aiex.dma_await_task(%task)
+      aiex.set_device @cfg
     }
   }
 }

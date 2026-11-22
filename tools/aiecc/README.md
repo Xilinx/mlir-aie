@@ -150,15 +150,36 @@ Under `--load-pdi-to-ctrl-pkt`, `aiex.set_device @device` selects the device
 configuration for subsequent operations. The marker has no region. Control
 packets, barriers, and runtime operations remain in the same block.
 The marker must be a direct child of a single-block runtime sequence.
-Nested operations inherit that context.
+Loop unrolling places nested control packets in that sequence before delivery
+analysis. Delivery analysis rejects remaining nested control packets.
+
+Authored and generated control packets use the same resource-state rules.
+An explicit sync, await, or other runtime operation ends the packet interval.
+Parameter writes after that boundary remain after it. A channel sync does not
+prove that every core or DMA engine is inactive. Ordinary writes retain their
+order and multiplicity when the compiler cannot establish inactivity.
+`aiex.set_device @device {quiescent}` asserts inactivity of the configuration
+resources. Generated reset and complete teardown paths establish that
+assertion. Core and DMA starts end it for affected resources. The compiler
+may sort, combine, or remove overwritten ordinary writes to inactive resources.
+The marker does not wait for completion.
+
+`--ctrlpkt-optimize=false` disables optional activation scheduling, address
+sorting, dead-write elimination, coalescing, multicast, BD chaining, and
+parallel shim delivery. It overrides the individual optimization flags.
+Packet legalization, required synchronization, resource allocation, and
+mandatory delivery validation remain enabled. The option does not change
+the control overlay or the teardown protocol.
 
 - `aie-schedule-ctrl-packet-activation` orders setup and activation. Optional
-  gating proofs permit early DMA pushes and core enables.
+  gating proofs permit early DMA pushes and core enables. The pass applies
+  only to the packet run immediately after a device marker.
 - `aie-insert-ctrl-packet-barriers` isolates ordered writes with compiler-only
   barriers. The target model classifies ordinary memory and configuration
   registers; unknown effects remain ordered.
 - `aie-reorder-ctrl-packets-by-tile` sorts ordinary writes by address and
-  removes overwritten words between barriers.
+  removes overwritten words between barriers when affected resources are
+  inactive.
 - `aie-coalesce-control-packets` merges adjacent writes into packets of up to
   four words within each aligned 16-byte address block.
 - `aie-ctrl-packet-to-dma` emits DMA tasks and marks internal awaits with
@@ -174,8 +195,9 @@ Nested operations inherit that context.
 - `--ctrlpkt-multicast-span=<w>` (default: 1; 0 off): the overlay gets a control
   multicast for the core tiles of each group of w columns, and
   `aie-dedup-ctrl-packet-multicast` sends the packets those tiles share once.
-  The pass reads declared multicast groups without route analysis. Delivery
-  barriers isolate each multicast prefix.
+  The pass checks effects and routes before choosing a prefix. A hazardous
+  activation can shorten a prefix without discarding preceding legal writes.
+  Delivery barriers establish completion where route order is insufficient.
 - `aie-check-ctrl-packet-delivery` validates arrival order, stream deadlocks,
   and concurrent multicast routes on every compilation. A packet-delivery
   barrier does not establish application quiescence.
@@ -183,12 +205,14 @@ Nested operations inherit that context.
 The descriptor allocator reserves the selected device's static BDs before
 allocating its configuration transfers. It retains reservations for the loaded
 overlay and live runtime tasks. The application must complete its use of shared
-resources before the next configuration.
+resources before the next configuration. The allocator warns at a device
+marker when runtime transfers lack a completion proof. Distinct descriptor IDs
+do not establish completion. An await, channel sync, or other supported
+completion proof removes the warning for the transfers it covers.
 
-Ordinary-write optimization assumes quiescent application resources and an
-intact control overlay. The application must leave no outstanding accesses or
-traffic that can block configuration. A compiler-only barrier prevents compiler
-movement; a delivery barrier additionally requires prior packets to complete.
+A compiler-only barrier prevents compiler movement. A delivery barrier also
+requires prior packets to complete. Neither barrier proves that application
+streams stopped. The control overlay must remain intact during packet delivery.
 
 ### Parameterized C++ transaction builders
 

@@ -35,6 +35,7 @@ module {
 // MERGE-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
   aie.device(npu2) @merge {
     aie.runtime_sequence @adjacent() {
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228228 : ui32, data = array<i32: 2, 3>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228236 : ui32, data = array<i32: 4>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -87,20 +88,24 @@ module {
     // ORDER-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
     // ORDER-NEXT: aiex.control_packet {address = 2301952 : ui32
     // ORDER-NEXT: aiex.control_packet_barrier {compiler_only, packet_effect, scope =
-    // ORDER-NEXT: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 9>
+    // ORDER: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 9>
     // DSE-LABEL: @overwritten
+    // DSE-NEXT: aiex.set_device @cfg {quiescent}
     // DSE-NEXT: address = 2228236 : ui32, data = array<i32: 4>
     // DSE-NEXT: address = 2228224 : ui32, data = array<i32: 1>
     // DSE-NEXT: address = 2228228 : ui32, data = array<i32: 7, 8>
     // SORT-LABEL: @overwritten
+    // SORT-NEXT: aiex.set_device @cfg {quiescent}
     // SORT-NEXT: address = 2228224 : ui32, data = array<i32: 1, 2, 3>
     // SORT-NEXT: address = 2228236 : ui32, data = array<i32: 4>
     // SORT-NEXT: address = 2228228 : ui32, data = array<i32: 7, 8>
     // RETAIN-LABEL: @overwritten
+    // RETAIN-NEXT: aiex.set_device @cfg {quiescent}
     // RETAIN-NEXT: address = 2228236 : ui32, data = array<i32: 4>
     // RETAIN-NEXT: address = 2228224 : ui32, data = array<i32: 1, 2, 3>
     // RETAIN-NEXT: address = 2228228 : ui32, data = array<i32: 7, 8>
     aie.runtime_sequence @overwritten() {
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 2228236 : ui32, data = array<i32: 4>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1, 2, 3>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228228 : ui32, data = array<i32: 7, 8>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -108,14 +113,17 @@ module {
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
     }
     // DSE-LABEL: @reverse_overlap
+    // DSE-NEXT: aiex.set_device @cfg {quiescent}
     // DSE-NEXT: address = 2228232 : ui32, data = array<i32: 2>
     // DSE-NEXT: address = 2228224 : ui32, data = array<i32: 3, 4>
     // DSE-NEXT: {{^ *}}}
     // SORT-LABEL: @reverse_overlap
+    // SORT-NEXT: aiex.set_device @cfg {quiescent}
     // SORT-NEXT: address = 2228228 : ui32, data = array<i32: 1, 2>
     // SORT-NEXT: address = 2228224 : ui32, data = array<i32: 3, 4>
     // SORT-NEXT: {{^ *}}}
     aie.runtime_sequence @reverse_overlap() {
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 2228228 : ui32, data = array<i32: 1, 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 3, 4>, opcode = 0 : i32, stream_id = 0 : i32}
     }
@@ -133,7 +141,7 @@ module {
     // MULTI-NOT: multicast_id
     // MULTI: {{^ *}}}
     aie.runtime_sequence @matching() {
-      aiex.set_device @cfg
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228228 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -148,7 +156,7 @@ module {
     // MULTI-NEXT: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>
     // MULTI-NEXT: {{^ *}}}
     aie.runtime_sequence @mixed_headers() {
-      aiex.set_device @cfg
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 1 : i32}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -160,7 +168,7 @@ module {
     // RAW-MULTI-NEXT: address = 3276800 : ui32, data = array<i32: 9>, opcode
     // RAW-MULTI-NEXT: {{^ *}}}
     aie.runtime_sequence @interleaved_overwrite() {
-      aiex.set_device @cfg
+      aiex.set_device @cfg {quiescent}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}

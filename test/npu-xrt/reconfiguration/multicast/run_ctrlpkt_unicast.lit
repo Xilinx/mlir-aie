@@ -5,9 +5,9 @@
 //
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: cd %t.d
-// RUN: %aiecc -j1 --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-teardown=true --ctrlpkt-multicast-span=0 --get=npu_expanded.mlir %S/aie.mlir
+// RUN: %aiecc -j1 --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-teardown=true --ctrlpkt-optimize=false --get=npu_expanded.mlir %S/aie.mlir
 // RUN: FileCheck %s < npu_expanded.mlir
 // RUN: %host_clang -o test %S/../parallel_shims/test.cpp -std=c++17 %host_link_flags %xrt_flags
-// RUN: %run_on_npu2% ./test 2
+// RUN: %run_on_npu2% ./test 2 4
 //
 // CHECK-NOT: multicast_id

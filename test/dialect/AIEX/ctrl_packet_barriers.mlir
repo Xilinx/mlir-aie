@@ -5,11 +5,15 @@
 // RUN: split-file %s %t
 // RUN: aie-opt %t/normalize.mlir -aie-reorder-ctrl-packets-by-tile | FileCheck %s --check-prefix=NORMALIZE
 // RUN: aie-opt %t/effects.mlir -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-coalesce-control-packets | FileCheck %s --check-prefix=EFFECTS
+// RUN: aie-opt %t/runtime_parameters.mlir -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-coalesce-control-packets | FileCheck %s --check-prefix=PARAMETER
+// RUN: %aiecc -j1 --load-pdi-to-ctrl-pkt --ctrlpkt-optimize=false --get=npu_expanded.mlir --tmpdir=%t/no_opt --output-dir=%t/no_opt %t/runtime_parameters.mlir
+// RUN: FileCheck %s --check-prefix=NOOPT < %t/no_opt/npu_expanded.mlir
 // RUN: aie-opt %t/multicast.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=MULTICAST
 // RUN: aie-opt %t/multicast.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast -aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=MULTICAST
 // RUN: aie-opt %t/substrings.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast | FileCheck %s --check-prefix=PREFIX
 // RUN: aie-opt %t/substrings.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast=substrings=true -aie-check-ctrl-packet-delivery | FileCheck %s --check-prefix=SUBSTRING
 // RUN: aie-opt %t/substrings.mlir -aie-insert-ctrl-packet-barriers -aie-dedup-ctrl-packet-multicast="substrings=true parallel-shims=true" -aie-check-ctrl-packet-delivery=parallel-shims=true | FileCheck %s --check-prefix=PARALLEL
+// RUN: aie-opt %t/nested.mlir -aie-unroll-runtime-sequence-loops -aie-insert-ctrl-packet-barriers -aie-reorder-ctrl-packets-by-tile -aie-dedup-ctrl-packet-multicast -aie-check-ctrl-packet-delivery | FileCheck %s --check-prefix=NESTED
 
 // CHECK: aiex.control_packet_barrier {compiler_only, scope = {core = [#aie.tile<0, 2>], memory = [#aie.tile<1, 2>]}}
 module {
@@ -125,21 +129,25 @@ module {
 //--- normalize.mlir
 
 // NORMALIZE-LABEL: @independent
+// NORMALIZE-NEXT: aiex.set_device @normalization {quiescent}
 // NORMALIZE-NEXT: aiex.control_packet_barrier
 // NORMALIZE-NEXT: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>
 // NORMALIZE-NEXT: aiex.control_packet {address = 2228228 : ui32, data = array<i32: 2>
 // NORMALIZE-LABEL: @dependent
+// NORMALIZE-NEXT: aiex.set_device @normalization {quiescent}
 // NORMALIZE-NEXT: aiex.control_packet {address = 2097152 : ui32, data = array<i32: 1>
 // NORMALIZE-NEXT: aiex.control_packet_barrier
 // NORMALIZE-NEXT: aiex.control_packet {address = 2097152 : ui32, data = array<i32: 2>
 module {
-  aie.device(npu2) {
+  aie.device(npu2) @normalization {
     aie.runtime_sequence @independent() {
+      aiex.set_device @normalization {quiescent}
       aiex.control_packet {address = 2228228 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier {compiler_only, scope = {memory = [#aie.tile<0, 2>]}}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
     aie.runtime_sequence @dependent() {
+      aiex.set_device @normalization {quiescent}
       aiex.control_packet {address = 2097152 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier {compiler_only, scope = {memory = [#aie.tile<0, 2>]}}
       aiex.control_packet {address = 2097152 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -152,8 +160,8 @@ module {
 
 // EFFECTS-LABEL: @neighbor_acquire
 // EFFECTS: data = array<i32: 3>
-// EFFECTS: scope = {core = [#aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<1, 2>, #aie.tile<1, 3>]}
 // EFFECTS: address = 35856384 : ui32, data = array<i32: 1>
+// EFFECTS: scope = {core = [#aie.tile<1, 2>], memory = [#aie.tile<0, 2>, #aie.tile<1, 2>, #aie.tile<1, 3>], switch =
 // EFFECTS: data = array<i32: 4>
 // EFFECTS-LABEL: @independent_program
 // EFFECTS: address = 2301952 : ui32, data = array<i32: 0>
@@ -170,13 +178,14 @@ module {
 // EFFECTS: address = 3272704 : ui32, data = array<i32: 1>
 // EFFECTS: address = 2097156 : ui32, data = array<i32: 9>
 module {
-  aie.device(npu2) {
+  aie.device(npu2) @effects {
     aie.runtime_sequence @neighbor_acquire() {
       aiex.control_packet {address = 2097152 : ui32, data = array<i32: 3>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2097152 : ui32, data = array<i32: 4>, opcode = 0 : i32, stream_id = 0 : i32}
     }
     aie.runtime_sequence @independent_program() {
+      aiex.set_device @effects {quiescent}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -194,6 +203,92 @@ module {
       aiex.control_packet {address = 2097152 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3272704 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2097156 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+  }
+}
+
+// -----
+//--- runtime_parameters.mlir
+
+module {
+  aie.device(npu2) @cfg {
+  }
+  aie.device(npu2) @main {
+    // PARAMETER-LABEL: @after_sync
+    // PARAMETER: aiex.npu.sync
+    // PARAMETER: address = 2097156 : ui32, data = array<i32: 7>
+    // PARAMETER: address = 2097152 : ui32, data = array<i32: 1>
+    // PARAMETER: address = 2097152 : ui32, data = array<i32: 2>
+    // PARAMETER: {{^ *}}}
+    aie.runtime_sequence @after_sync() {
+      %zero = arith.constant 0 : i32
+      %one = arith.constant 1 : i32
+      aiex.npu.sync(%zero, %zero, %zero, %zero, %one, %one) : i32, i32, i32, i32, i32, i32
+      aiex.control_packet {address = 2097156 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2097152 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2097152 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // PARAMETER-LABEL: @inactive
+    // PARAMETER: aiex.set_device @cfg {quiescent}
+    // PARAMETER-NEXT: address = 2097152 : ui32, data = array<i32: 2, 7>
+    // PARAMETER-NEXT: {{^ *}}}
+    // NOOPT-LABEL: @inactive
+    // NOOPT: address = 2097156 : ui32, data = array<i32: 7>
+    // NOOPT: address = 2097152 : ui32, data = array<i32: 1>
+    // NOOPT: address = 2097152 : ui32, data = array<i32: 2>
+    // NOOPT-NOT: multicast_id
+    // NOOPT: {{^ *}}}
+    aie.runtime_sequence @inactive() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2097156 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2097152 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2097152 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // PARAMETER-LABEL: @switch_before_start
+    // PARAMETER: address = 2355204 : ui32, data = array<i32: 7>
+    // PARAMETER: address = 2219540 : ui32, data = array<i32: 1>
+    // PARAMETER: address = 2228224 : ui32, data = array<i32: 9>
+    aie.runtime_sequence @switch_before_start() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet_barrier
+      aiex.control_packet {address = 2355204 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+  }
+}
+
+// -----
+//--- nested.mlir
+
+// NESTED-LABEL: aie.runtime_sequence @nested_parameters
+// NESTED: aiex.set_device @cfg
+// NESTED-NOT: scf.for
+// NESTED: aiex.npu.sync
+// NESTED-NOT: multicast_id
+// NESTED: address = 2097152 : ui32, data = array<i32: 7>
+// NESTED: address = 3145728 : ui32, data = array<i32: 7>
+// NESTED: aiex.npu.sync
+// NESTED: address = 2097152 : ui32, data = array<i32: 7>
+// NESTED: address = 3145728 : ui32, data = array<i32: 7>
+// NESTED-NOT: scf.for
+// NESTED: {{^ *}}}
+module {
+  aie.device(npu2) @cfg {
+  }
+  aie.device(npu2) @main {
+    aie.runtime_sequence @nested_parameters() {
+      %begin = arith.constant 0 : index
+      %end = arith.constant 2 : index
+      %step = arith.constant 1 : index
+      %zero = arith.constant 0 : i32
+      %one = arith.constant 1 : i32
+      aiex.set_device @cfg
+      scf.for %iteration = %begin to %end step %step {
+        aiex.npu.sync(%zero, %zero, %zero, %zero, %one, %one) : i32, i32, i32, i32, i32, i32
+        aiex.control_packet {address = 2097152 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+        aiex.control_packet {address = 3145728 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      }
     }
   }
 }
@@ -222,6 +317,19 @@ module {
       aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3350528 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3268112 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // MULTICAST-LABEL: @independent_program_after_start
+    // MULTICAST: address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28
+    // MULTICAST: address = 2219540 : ui32, data = array<i32: 1>, opcode
+    // MULTICAST: address = 2097152 : ui32, data = array<i32: 8>, opcode
+    // MULTICAST: address = 2097152 : ui32, data = array<i32: 9>, opcode
+    aie.runtime_sequence @independent_program_after_start() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2097152 : ui32, data = array<i32: 8>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2097152 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
     }
     // MULTICAST-LABEL: @active
@@ -321,11 +429,11 @@ module {
     // SUBSTRING: {{^ *}}}
     aie.runtime_sequence @ordered() {
       aiex.set_device @cfg {quiescent}
-      aiex.control_packet {address = 2355204 : ui32, data = array<i32: 10>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228240 : ui32, data = array<i32: 10>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
-      aiex.control_packet {address = 3403780 : ui32, data = array<i32: 20>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276816 : ui32, data = array<i32: 20>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3268116 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3268116 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}

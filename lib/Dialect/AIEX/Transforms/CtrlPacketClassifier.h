@@ -86,7 +86,8 @@ struct PacketEffects {
 
 PacketEffects
 packetEffects(NpuControlPacketOp packet,
-              const llvm::DenseSet<AIE::TileID> *activeCores = nullptr);
+              const llvm::DenseSet<AIE::TileID> *activeCores = nullptr,
+              std::optional<AIE::TileID> destination = std::nullopt);
 mlir::FailureOr<llvm::DenseMap<mlir::Operation *, PacketEffects>>
 packetEffects(mlir::Block &block);
 bool scopesOverlap(mlir::DictionaryAttr left, mlir::DictionaryAttr right);

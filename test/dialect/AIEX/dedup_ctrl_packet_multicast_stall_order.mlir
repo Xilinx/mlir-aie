@@ -15,15 +15,15 @@
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK:         aiex.set_device @cfg
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 4>], memory = [#aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<0, 5>]}}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 4>], memory = [#aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<0, 5>], switch = [
 // CHECK-NEXT:      aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 4>], memory = [#aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<0, 5>]}}
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>]}}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 4>], memory = [#aie.tile<0, 3>, #aie.tile<0, 4>, #aie.tile<0, 5>], switch = [
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>], switch = [
 // CHECK-NEXT:      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>]}}
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 3>], memory = [#aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>, #aie.tile<1, 4>]}}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<0, 3>], memory = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 4>], switch = [
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 3>], memory = [#aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>, #aie.tile<1, 4>], switch = [
 // CHECK-NEXT:      aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode
-// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 3>], memory = [#aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>, #aie.tile<1, 4>]}}
+// CHECK-NEXT:    aiex.control_packet_barrier {compiler_only, packet_effect, scope = {core = [#aie.tile<1, 3>], memory = [#aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>, #aie.tile<1, 4>], switch = [
 // CHECK-NEXT:    {{^ *}}}
 // HAZARD: error: 'aiex.control_packet' op may wait forever: its control packets take arbiter 0 of switchbox (0, 3), which a stream that the enable of core (1, 3) starts may hold, stalled
 // HAZARD: note: the stream is started here
@@ -110,6 +110,22 @@ module {
   aie.device(npu2) {
     aie.runtime_sequence() {
       aiex.set_device @cfg
+      aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+    // CHECK-LABEL: aie.runtime_sequence @shorter_prefix()
+    // CHECK: address = 3276800 : ui32, data = array<i32: 7>, multicast_id = 28
+    // CHECK-NEXT: aiex.control_packet_barrier{{$}}
+    // CHECK: address = 4399104 : ui32, data = array<i32: 1>, opcode
+    // CHECK: address = 3350528 : ui32, data = array<i32: 1>, opcode
+    // CHECK: address = 36904960 : ui32, data = array<i32: 1>, opcode
+    // CHECK-NOT: multicast_id
+    // CHECK: {{^ *}}}
+    aie.runtime_sequence @shorter_prefix() {
+      aiex.set_device @cfg {quiescent}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 36831232 : ui32, data = array<i32: 7>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 4399104 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3350528 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 36904960 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}

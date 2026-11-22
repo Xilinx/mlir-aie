@@ -74,16 +74,34 @@ module {
       %t_in = aiex.dma_configure_task_for @in {
         aie.dma_bd(%a : memref<256xi32> offset = 0 len = 256)
         aie.end
-      }
+      } {issue_token = true}
       %t_out = aiex.dma_configure_task_for @out {
         aie.dma_bd(%b : memref<256xi32> offset = 0 len = 256)
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t_in)
       aiex.dma_start_task(%t_out)
+      aiex.dma_await_task(%t_in)
       aiex.dma_await_task(%t_out)
       aiex.dma_free_task(%t_in)
       aiex.dma_free_task(%t_out)
+      aiex.control_packet {address = 2113536 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 4210688 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier
+      %feedback_in = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%b : memref<256xi32> offset = 0 len = 256)
+        aie.end
+      } {issue_token = true}
+      %feedback_out = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%a : memref<256xi32> offset = 0 len = 256)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%feedback_in)
+      aiex.dma_start_task(%feedback_out)
+      aiex.dma_await_task(%feedback_in)
+      aiex.dma_await_task(%feedback_out)
+      aiex.dma_free_task(%feedback_in)
+      aiex.dma_free_task(%feedback_out)
     }
   }
 }

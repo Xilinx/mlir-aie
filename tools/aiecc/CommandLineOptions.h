@@ -241,6 +241,10 @@ inline cl::opt<bool> ctrlpktParallelShims(
 inline cl::opt<bool> ctrlpktEarlyActivation(
     "ctrlpkt-early-activation", cl::init(true),
     cl::desc("Advance DMA pushes and core enables with a gating proof"));
+inline cl::opt<bool>
+    ctrlpktOptimize("ctrlpkt-optimize", cl::init(true),
+                    cl::desc("Enable optional control-packet transformations "
+                             "and parallel delivery"));
 inline cl::opt<bool> ctrlpktAddressOrder(
     "ctrlpkt-address-order", cl::init(true),
     cl::desc("Sort ordinary control-packet writes by address"));
@@ -795,6 +799,16 @@ inline bool resolveOptions(bool resuming = false) {
     ctrlpktParallelShims = loadPdiToCtrlPkt;
   if (!ctrlpktMulticastSpan.getNumOccurrences())
     ctrlpktMulticastSpan = loadPdiToCtrlPkt ? 1 : 0;
+  if (!ctrlpktOptimize) {
+    ctrlpktParallelShims = false;
+    ctrlpktEarlyActivation = false;
+    ctrlpktAddressOrder = false;
+    ctrlpktEliminateDeadWrites = false;
+    ctrlpktCoalesce = false;
+    ctrlpktChainBds = false;
+    ctrlpktMulticastSpan = 0;
+    ctrlpktMulticastSubstrings = false;
+  }
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -813,6 +827,8 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(ctrlpktParallelShims, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktEarlyActivation, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktOptimize, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktAddressOrder, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&

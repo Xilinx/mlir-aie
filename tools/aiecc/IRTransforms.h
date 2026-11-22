@@ -2055,8 +2055,9 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
     reorder.useGating = cli::ctrlpktEarlyActivation;
     reorder.gatedEnable = cli::ctrlpktEarlyActivation;
     reorder.parallelShims = cli::ctrlpktParallelShims;
-    pm->addPass(
-        xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass(reorder));
+    if (cli::ctrlpktOptimize)
+      pm->addPass(
+          xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass(reorder));
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass());
     xilinx::AIEX::AIEReorderCtrlPacketsByTileOptions normalize;

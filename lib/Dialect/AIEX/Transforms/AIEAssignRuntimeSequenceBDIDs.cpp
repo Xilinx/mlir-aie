@@ -154,6 +154,26 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   void noteConfigured(SetDeviceOp context) {
+    llvm::SmallPtrSet<Operation *, 16> pending;
+    for (const auto &entry : liveByTile)
+      for (DMAConfigureTaskOp task : entry.second)
+        if (pushCounts.lookup(task).running)
+          pending.insert(task);
+    for (const auto &entry : loadState.holdsOn)
+      for (const auto &hold : entry.second)
+        pending.insert(hold.second.copy);
+    if (!pending.empty()) {
+      SmallVector<Operation *> transfers(pending.begin(), pending.end());
+      llvm::sort(transfers, [](Operation *left, Operation *right) {
+        return left->isBeforeInBlock(right);
+      });
+      auto diagnostic =
+          mlir::emitWarning(context.getLoc())
+          << "configures a device while runtime DMA transfers may still be in "
+             "flight; await their completion before reconfiguration";
+      diagnostic.attachNote(transfers.front()->getLoc())
+          << "unfinished transfer (" << transfers.size() << " pending)";
+    }
     FlatSymbolRefAttr ref = context.getDeviceRefAttr();
     auto device = SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(
         getOperation()->getParentOp(), ref);
