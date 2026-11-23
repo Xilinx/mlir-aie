@@ -1044,6 +1044,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "45105698297",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45105698297",
+   "date": "2026-11-23T03:23:29+00:00",
+   "commit": {
+    "id": "a1fd967910ff62088b67363314f6cb2ac23c1f5f",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/a1fd967910ff62088b67363314f6cb2ac23c1f5f",
+    "message": " [aiecc] Report a missing Chess intrinsic wrapper or host runtime before using it (#4094)",
+    "timestamp": "2026-11-21T00:52:29Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "a1fd967910",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 27,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
