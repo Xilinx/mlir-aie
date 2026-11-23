@@ -57,9 +57,12 @@ def AIE_Dialect : Dialect {
     multicast routes. Each dictionary contains `column`, the source shim
     column; `id`, the stream packet ID; and `tiles`, an array of destination
     coordinates written as `#aie.tile<column, row>`. The source column selects
-    the overlay's MM2S shim DMA allocation. The dictionary does not contain
-    a channel number or a route symbol. Packet optimization uses the
-    destination list to match multicast writes and check overlapping writes.
+    the first overlay-marked MM2S shim DMA allocation in that column. Generated
+    control overlays provide one such allocation per source column. Packet
+    lowering uses that allocation's symbol in `dma_configure_task_for`; shim
+    allocation substitution supplies its channel number. The dictionary does
+    not contain a channel number or a route symbol. Packet optimization uses
+    the destination list to match multicast writes and check overlapping writes.
 
   }];
   let useDefaultTypePrinterParser = 1;

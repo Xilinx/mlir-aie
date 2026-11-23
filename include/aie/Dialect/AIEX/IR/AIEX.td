@@ -1362,10 +1362,11 @@ def AIE_ControlPacketBarrierOp
     packet optimization intervals without requesting an unconditional hardware
     wait. DMA lowering still inserts waits required by packet dependencies.
 
-    `unobserved` and `independent` assert properties of the following packets.
-    They do not describe the barrier's execution. Each assertion covers every
-    destination touched by its interval. The operation has no tile or
-    address-range selector.
+    `unobserved` and `independent` grant permissions for control packets
+    following this barrier in operation order. They grant no permission for
+    packets before this barrier. Each assertion covers every destination
+    touched by its interval. The operation has no tile or address-range
+    selector.
 
     `unobserved` permits ordinary-write optimization. The producer guarantees
     that execution cannot observe intermediate values or concurrently modify
@@ -1387,6 +1388,18 @@ def AIE_ControlPacketBarrierOp
     The producer must supply a control overlay that permits delivery within
     each hardware-barrier interval. Packet optimizers do not infer stream
     activity or repair the supplied routes.
+
+    Configuration generation emits hardware barriers before setup, between
+    setup and activation, and after activation. The first two barriers carry
+    `independent` for the following phase. Within setup, generation inserts a
+    `compiler_only, unobserved` barrier before each run of ordinary writes.
+    Ordered reset and enable writes end those runs.
+
+    Teardown generation emits an `independent` hardware barrier before its
+    writes. It emits another before lock-drain writes, after the core-disable
+    status polls. Status polls and the final teardown barrier require
+    completion of preceding packet delivery. The producer must establish
+    application quiescence separately.
   }];
   let arguments = (ins UnitAttr:$compiler_only,
                        UnitAttr:$unobserved,
@@ -1827,9 +1840,11 @@ def AIE_DMAAwaitTaskOp
     chaining enabled, it may replace compatible same-channel tasks with one
     BD chain, one start, and one await.
 
-    The transfers must be independent across channels. No observer may require
+    The producer asserts that transfers in the deferred group are independent
+    across channels. The allocator checks descriptor and queue constraints;
+    it does not infer application dependencies. No observer may require
     intermediate completion tokens. An unmarked await or an intervening
-    operation ends the interval. Ineligible tasks retain their start and await.
+    operation ends the group. Ineligible tasks retain their start and await.
   }];
 
   let arguments = (ins Index:$task, UnitAttr:$defer_completion);
