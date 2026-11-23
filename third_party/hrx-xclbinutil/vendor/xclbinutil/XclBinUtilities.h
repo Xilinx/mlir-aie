@@ -168,7 +168,6 @@ void write_htonl(std::ostream & _buf, uint32_t _word32);
 
 void createMemoryBankGrouping(XclBin & xclbin);
 
-// temporary for 2024.1, https://jira.xilinx.com/browse/SDXFLO-6890
 void transformAiePartitionPDIs(XclBin & xclbin);
 };
 
