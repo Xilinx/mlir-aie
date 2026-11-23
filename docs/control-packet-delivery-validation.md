@@ -3,6 +3,99 @@
 
 # Control Packet Delivery Validation
 
+## Explicit Interval Contract
+
+The November 22, 2026 implementation replaces activation recovery, start-gating
+proofs, resource-activity tracking, and stream-history checking with producer
+assertions. AIERT emits control-packet setup before activation. Hardware
+barriers complete each phase. The direct transaction path retains its per-tile
+write32/blockwrite order.
+
+All packet optimizers use the shared packet interval iterator. `unobserved`
+permits ordinary-storage optimization until an action, barrier, or other
+operation. `independent` permits different destinations to execute in any order
+until the next hardware barrier or other runtime operation. Each destination
+retains its actions and their multiplicity. The producer supplies quiescence
+between configurations and a control overlay that permits concurrent delivery.
+Packet passes do not analyze arbitrary application behavior or repair routes.
+
+The compiler retains dead-write elimination, address ordering, coalescing,
+prefix multicast, parallel delivery, and allocator-owned BD chaining. It removes
+substring multicast and the separate authored-packet transport path. The
+allocator still checks BD ownership, queue capacity, and completion tokens.
+Teardown still drains pending lock acquisitions.
+
+The source comparison against `c789eec4c90` removes 2,896 net implementation
+and declaration lines. It removes 4,019 net test lines. The implementation
+contains 1,826 fewer lines than the rebased delivery implementation at
+`6caec84da77`. Interval-contract tests replace tests for the deleted analyses.
+Tests for packet encoding, DMA capacity, masked writes, source locations, and
+pending-lock teardown remain.
+
+### Llama Measurements
+
+The fresh run `simplify-verified-20261122-ctrlpkt-teardown` uses the pinned
+frontend and audited kernel objects described below. The compiler regenerates
+decode and prefill images. All six 32-token generations match the saved reference.
+The run measures 18.46 tokens/s. Compile and load takes 69.53 seconds, compared
+with 95.07 seconds at the preceding resource-state checkpoint. Decode and prefill
+compiler times are 15.53 and 46.52 seconds.
+
+Nine-round saved-image repeats execute the candidate and reference consecutively.
+They verify unchanged image hashes and reject any compiler invocation. The
+candidate images come from `simplify-destinations-20261122-ctrlpkt-teardown`.
+The final fresh build produces byte-identical images.
+
+| Image Pair | Tokens/s | First-Token Time (ms) |
+| --- | ---: | ---: |
+| Resource-state reference `c789eec4c90` | 18.468 | 140.630 |
+| Explicit intervals | 18.417 | 137.772 |
+
+The candidate measures 0.27% lower decode throughput and 2.0% lower first-token
+time. These measurements do not establish exact throughput equality.
+
+| Image | Multicast Packets | Packet Words | Destination Words | Submissions |
+| --- | ---: | ---: | ---: | ---: |
+| Decode | 37,784 | 1,105,270 | 993,815 | 4,324 |
+| Prefill | 182,696 | 2,064,756 | 3,031,723 | 8,340 |
+
+The instruction verifier finds no protocol violations. Both images retain one
+entry PDI load and no inter-application PDI reset. It checks complete lock
+summaries and packet completion before core-status and lock-stall polls.
+This verifier does not simulate stream routing or application execution.
+
+The final build completes 20 focused compiler tests and five hardware cases.
+The hardware cases cover parameter updates between two runs, the master
+optimization opt-out, two-column multicast with serial and parallel delivery,
+and a pending core lock acquisition at teardown. Two driver tests also cover
+standalone control-packet output and full-ELF scalar arguments. This validation
+does not run the full lit suite.
+
+The decoder SHA256 is
+`102438e016a4bd13540f0076fbae488cadaf8a748e68201bf11d52a41db34fcf`.
+The prefill SHA256 is
+`7c21dddc1fe029836630c16ba5d659d1e381514e208578d34a40fe1776520d0a`.
+
+### Direct Transactions
+
+Direct configuration output matches byte for byte for all 17 devices in each
+saved Llama shape. Both compilers receive the same static device input without
+runtime sequences or multicast declarations. Those declarations are outside
+the direct writer's contract. The reference compiler uses the same AIERT direct
+generator as `c789eec4c90`. The comparison includes payloads and source locations.
+The ELF-loading fixture separately produces identical transaction output.
+
+| Input | Output SHA256 |
+| --- | --- |
+| Llama decode static devices | `89083f77d5a51de74725a1f48b983e7d84b9d05a1489527aa86df92231d4fb5e` |
+| Llama prefill static devices | `119dee753a36d9617bc65254144c9e32ab7c9c4fcb3fd4c221a4ae5344503d36` |
+| ELF-loading fixture | `4954797a3db24204a815c821926cb01584d25098c3e706551445157c6ff12d11` |
+
+The implementation does not change direct-write ordering. This comparison does
+not measure a reordered direct-write variant.
+
+The following sections record historical implementations and measurements.
+
 ## Resource-State Review
 
 The six-finding review used `c1d71b45f13`. Commit `13a9979208a` addressed

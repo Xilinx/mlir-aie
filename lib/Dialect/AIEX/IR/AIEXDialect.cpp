@@ -2175,6 +2175,26 @@ uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
   return colInt;
 }
 
+bool AIEX::NpuControlPacketOp::isOrdinaryWrite() {
+  return isOrdinaryWrite(AIE::getTargetModel(*this));
+}
+
+bool AIEX::NpuControlPacketOp::isOrdinaryWrite(
+    const AIE::AIETargetModel &target) {
+  if (getOpcode() != 0 || !getData())
+    return false;
+  AIE::TileID tile{
+      static_cast<int>(getAddress() >> target.getColumnShift()),
+      static_cast<int>(
+          (getAddress() >> target.getRowShift()) &
+          ((1u << (target.getColumnShift() - target.getRowShift())) - 1))};
+  uint32_t offset = getAddress() & ((1u << target.getRowShift()) - 1);
+  for (size_t index = 0; index < getData()->size(); ++index)
+    if (!target.isReorderableRegisterWrite(tile, offset + 4 * index))
+      return false;
+  return true;
+}
+
 LogicalResult AIEX::NpuControlPacketOp::verify() {
   // The 2-bit operation field: 0 write, 1 read, 2 write with response, 3
   // reserved. A wider value would also spill into the stream ID.
@@ -2732,49 +2752,6 @@ LogicalResult AIEX::SetDeviceOp::verify() {
   auto sequence = cast<AIE::RuntimeSequenceOp>((*this)->getParentOp());
   if (!llvm::hasSingleElement(sequence.getBody()))
     return emitOpError("requires a single-block runtime sequence");
-  return success();
-}
-
-LogicalResult AIEX::ControlPacketBarrierOp::verify() {
-  if (getDrainsAttr() && getCompilerOnly())
-    return emitOpError("drains requires a hardware barrier");
-  if (getPacketEffect() && !getCompilerOnly())
-    return emitOpError("packet_effect requires compiler_only");
-  DictionaryAttr scope = getScopeAttr();
-  if (!scope)
-    return success();
-  if (!getCompilerOnly())
-    return emitOpError("scope requires compiler_only");
-  if (scope.empty())
-    return emitOpError("scope must contain physical modules");
-  const auto &target = AIE::getTargetModel(*this);
-  for (NamedAttribute entry : scope) {
-    StringRef kind = entry.getName().getValue();
-    if (kind != "core" && kind != "memory" && kind != "switch")
-      return emitOpError("unknown scope module: ") << kind;
-    auto tiles = dyn_cast<ArrayAttr>(entry.getValue());
-    if (!tiles || tiles.empty())
-      return emitOpError("scope modules require nonempty tile arrays");
-    for (Attribute attribute : tiles) {
-      auto tile = dyn_cast<AIE::TileAttr>(attribute);
-      if (!tile || !target.isValidTile(tile.getTileID()))
-        return emitOpError("scope requires valid physical tiles");
-      AIE::TileID id = tile.getTileID();
-      if (kind == "core" && !target.isCoreTile(id.col, id.row))
-        return emitOpError("core scope requires compute tiles");
-    }
-  }
-  return success();
-}
-
-LogicalResult
-AIEX::ControlPacketBarrierOp::verifySymbolUses(SymbolTableCollection &symbols) {
-  if (!getDrainsAttr())
-    return success();
-  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
-  if (!isa_and_present<AIE::DeviceOp>(
-          symbols.lookupSymbolIn(scope, getDrainsAttr())))
-    return emitOpError() << getDrainsAttr() << " is not a device";
   return success();
 }
 

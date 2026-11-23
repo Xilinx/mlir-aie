@@ -419,16 +419,17 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
   return num_cols;
 }
 
-static LogicalResult generateTransactions(AIERTControl &ctl,
-                                          const StringRef workDirPath,
-                                          DeviceOp &targetOp, bool aieSim,
-                                          bool enableElfs, bool enableInit,
-                                          bool enableCores,
-                                          bool skipCtrlPktOverlay = false) {
+static LogicalResult generateTransactions(
+    AIERTControl &ctl, const StringRef workDirPath, DeviceOp &targetOp,
+    bool aieSim, bool enableElfs, bool enableInit, bool enableCores,
+    bool skipCtrlPktOverlay = false,
+    llvm::function_ref<LogicalResult()> beforeActivation = {}) {
   if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
-      failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
+      failed(ctl.addAieElfs(targetOp, workDirPath, aieSim,
+                            static_cast<bool>(beforeActivation))))
     return failure();
-  if (enableInit && failed(ctl.addInitConfig(targetOp, skipCtrlPktOverlay)))
+  if (enableInit &&
+      failed(ctl.addInitConfig(targetOp, skipCtrlPktOverlay, beforeActivation)))
     return failure();
   if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addCoreEnable(targetOp)))
@@ -828,13 +829,54 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   // start collecting transactions
   ctl.startTransaction();
 
-  bool generateElfs = true;
-  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
-                                  true, true, skipCtrlPktOverlay)))
+  DeviceOp configured = skipCtrlPktOverlay ? device : DeviceOp{};
+  bool controlPackets =
+      outputType == AIEToConfigurationOutputType::ControlPacket;
+  if (controlPackets) {
+    auto boundary =
+        AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+    boundary.setIndependent(true);
+  }
+  auto beforeActivation = [&]() -> LogicalResult {
+    Block *block = builder.getInsertionBlock();
+    auto insertion = builder.getInsertionPoint();
+    Operation *previous =
+        insertion == block->begin() ? nullptr : &*std::prev(insertion);
+    if (failed(insertRecordedTransaction(ctl, builder, outputType,
+                                         blockwriteData, configured)))
+      return failure();
+    bool unobserved = false;
+    auto begin = previous ? std::next(previous->getIterator()) : block->begin();
+    for (Operation &operation : llvm::make_early_inc_range(
+             llvm::make_range(begin, builder.getInsertionPoint()))) {
+      auto packet = dyn_cast<AIEX::NpuControlPacketOp>(operation);
+      bool ordinary = packet && packet.isOrdinaryWrite(targetModel);
+      if (ordinary && !unobserved) {
+        OpBuilder markerBuilder(&operation);
+        auto marker = AIEX::ControlPacketBarrierOp::create(
+            markerBuilder, packet.getLoc(), markerBuilder.getUnitAttr());
+        marker.setUnobserved(true);
+      }
+      unobserved = ordinary;
+    }
+    auto boundary =
+        AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+    boundary.setIndependent(true);
+    ctl.clearTransaction();
+    ctl.startTransaction();
+    return success();
+  };
+  if (failed(generateTransactions(
+          ctl, clElfDir, device, aieSim, true, true, true, skipCtrlPktOverlay,
+          controlPackets ? llvm::function_ref<LogicalResult()>(beforeActivation)
+                         : llvm::function_ref<LogicalResult()>{})))
     return failure();
-
-  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
-                                   skipCtrlPktOverlay ? device : DeviceOp{});
+  if (failed(insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
+                                       configured)))
+    return failure();
+  if (controlPackets)
+    AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+  return success();
 }
 
 namespace {
@@ -1002,9 +1044,10 @@ struct CoreLockAcquireAnalysis {
   }
 };
 
-static LogicalResult insertCoreLockDrain(
-    OpBuilder &builder, DeviceOp device, AIEX::BlockwriteData &blockwriteData,
-    AIEToConfigurationOutputType outputType, bool *fullyDrained) {
+static LogicalResult
+insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
+                    AIEX::BlockwriteData &blockwriteData,
+                    AIEToConfigurationOutputType outputType) {
   const auto &model = device.getTargetModel();
   if (!model.hasProperty(AIETargetModel::UsesSemaphoreLocks))
     return success();
@@ -1055,14 +1098,17 @@ static LogicalResult insertCoreLockDrain(
   if (!writes.empty())
     for (auto core : device.getOps<CoreOp>())
       pollCoreStatus(core, 0x1);
+  if (!writes.empty() &&
+      outputType == AIEToConfigurationOutputType::ControlPacket) {
+    auto boundary =
+        AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+    boundary.setIndependent(true);
+  }
   if (failed(convertTransactionOpsToMLIR(builder, outputType, writes,
                                          blockwriteData, {})))
     return failure();
   for (auto core : cores)
     pollCoreStatus(core, 0x3c0);
-  if (fullyDrained)
-    *fullyDrained = analysis.unsupported.empty() &&
-                    (device.getOps<CoreOp>().empty() || !writes.empty());
   return success();
 }
 
@@ -1087,10 +1133,7 @@ xilinx::AIE::createAIEAnnotateCoreLockAcquiresPass() {
 LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device,
     AIEX::BlockwriteData &blockwriteData,
-    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay,
-    bool *fullyDrained) {
-  if (fullyDrained)
-    *fullyDrained = false;
+    AIE::AIEToConfigurationOutputType outputType, bool skipCtrlPktOverlay) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
   if (!targetModel.hasProperty(AIETargetModel::IsNPU))
@@ -1103,12 +1146,16 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (failed(ctl.teardownSwitches(device, skipCtrlPktOverlay)) ||
       failed(ctl.disableCores(device)) || failed(ctl.resetDmaChannels(device)))
     return failure();
+  if (outputType == AIEToConfigurationOutputType::ControlPacket) {
+    auto boundary =
+        AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+    boundary.setIndependent(true);
+  }
   if (failed(
           insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
                                     skipCtrlPktOverlay ? device : DeviceOp{})))
     return failure();
-  return insertCoreLockDrain(builder, device, blockwriteData, outputType,
-                             fullyDrained);
+  return insertCoreLockDrain(builder, device, blockwriteData, outputType);
 }
 
 LogicalResult

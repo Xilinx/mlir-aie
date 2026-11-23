@@ -76,6 +76,7 @@ module {
     aie.runtime_sequence @one_run() {
       %zero = arith.constant 0 : i32
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301956 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 3>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -145,6 +146,7 @@ module {
     aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.runtime_sequence @long_run() {
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -264,6 +266,7 @@ module {
     }
     aie.runtime_sequence @static_bds() {
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -351,6 +354,7 @@ module {
     aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.runtime_sequence @configured_static_bds() {
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -441,6 +445,7 @@ module {
     aie.runtime_sequence @loaded_static_bds() {
       aiex.npu.load_pdi {device_ref = @ld}
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -479,6 +484,7 @@ module {
     aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.shim_dma_allocation @data (%tile_0_0, S2MM, 0)
     aie.runtime_sequence @in_flight(%arg0: memref<16xi32>) {
+      aiex.set_device @cfg
       %t = aiex.dma_configure_task_for @data {
         aie.dma_bd(%arg0 : memref<16xi32> offset = 0 len = 16)
         aie.next_bd ^b1
@@ -511,7 +517,7 @@ module {
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)
-      aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -526,14 +532,13 @@ module {
 
 // -----
 
-// Each raw packet batch uses a transfer and a sync.
-
 // CHECK-LABEL: @user
-// CHECK-NOT:   aiex.dma_configure_task
-// CHECK:       aiex.npu.dma_memcpy_nd
-// CHECK:       aiex.npu.sync
-// CHECK:       aiex.npu.dma_memcpy_nd
-// CHECK:       aiex.npu.sync
+// CHECK:       aiex.dma_configure_task
+// CHECK:       aie.dma_bd({{.*}} offset = 0 len = 3)
+// CHECK-NEXT:  aie.next_bd
+// CHECK:       aie.dma_bd({{.*}} offset = 3 len = 3)
+// CHECK:       aiex.dma_start_task
+// CHECK-NEXT:  aiex.dma_await_task
 // CHECK-NOT:   aiex.dma_configure_task
 module {
   aie.device(npu2_1col) {
@@ -542,6 +547,7 @@ module {
     %tile_0_2 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
     aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.runtime_sequence @user() {
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }

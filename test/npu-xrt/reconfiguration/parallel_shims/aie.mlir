@@ -5,13 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A control packet reconfiguration of a memory tile relay. Column 0's shim
-// feeds the memory tile (0, 1), whose MM2S channel sends the data on to column
-// 1's shim. The channel waits on a lock only its S2MM descriptor releases, so
-// aie-annotate-ctrl-packet-start-gating proves it gated and its queue push stays
-// with the memory tile's other writes, while column 1's switches are configured
-// beside it. Every word must make the round trip.
-
 module {
   aie.device(npu2) @main {
     %tile_0_0 = aie.tile(0, 0)

@@ -238,9 +238,6 @@ inline cl::opt<bool> ctrlpktAdaptiveOverlay(
 inline cl::opt<bool> ctrlpktParallelShims(
     "ctrlpkt-parallel-shims",
     cl::desc("Send every column's control packets at once (default: on)"));
-inline cl::opt<bool> ctrlpktEarlyActivation(
-    "ctrlpkt-early-activation", cl::init(true),
-    cl::desc("Advance DMA pushes and core enables with a gating proof"));
 inline cl::opt<bool>
     ctrlpktOptimize("ctrlpkt-optimize", cl::init(true),
                     cl::desc("Enable optional control-packet transformations "
@@ -262,9 +259,6 @@ inline cl::opt<unsigned> ctrlpktMulticastSpan(
     cl::desc("Send the control packets the core tiles of each <w> columns "
              "share once, on a control multicast; 0 turns it off (default: "
              "1)"));
-inline cl::opt<bool> ctrlpktMulticastSubstrings(
-    "ctrlpkt-multicast-substrings", cl::init(false),
-    cl::desc("Select additional multicast substrings by packet words saved"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -801,13 +795,11 @@ inline bool resolveOptions(bool resuming = false) {
     ctrlpktMulticastSpan = loadPdiToCtrlPkt ? 1 : 0;
   if (!ctrlpktOptimize) {
     ctrlpktParallelShims = false;
-    ctrlpktEarlyActivation = false;
     ctrlpktAddressOrder = false;
     ctrlpktEliminateDeadWrites = false;
     ctrlpktCoalesce = false;
     ctrlpktChainBds = false;
     ctrlpktMulticastSpan = 0;
-    ctrlpktMulticastSubstrings = false;
   }
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
@@ -825,8 +817,6 @@ inline bool resolveOptions(bool resuming = false) {
              ctrlpktAdaptiveOverlay, ctrlPktOverlay || loadPdiToCtrlPkt,
              "--generate-ctrl-pkt-overlay or --load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktParallelShims, loadPdiToCtrlPkt,
-                                "--load-pdi-to-ctrl-pkt") &&
-         resolveDependentOption(ctrlpktEarlyActivation, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktOptimize, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&

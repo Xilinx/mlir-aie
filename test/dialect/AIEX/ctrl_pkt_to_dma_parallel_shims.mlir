@@ -81,10 +81,11 @@ module {
     aie.runtime_sequence @two_columns() {
       %zero = arith.constant 0 : i32
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301956 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35856388 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 3>, opcode = 0 : i32, stream_id = 0 : i32}
-      aiex.control_packet_barrier
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2219540 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -125,6 +126,7 @@ module {
     aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0 (%tile_1_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.runtime_sequence @queue_window() {
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301956 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301956 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -168,6 +170,7 @@ module {
     aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0 (%tile_1_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.runtime_sequence @long_phase() {
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301956 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 1048576 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301956 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -222,10 +225,12 @@ module {
     aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0 (%tile_1_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.runtime_sequence @drain() {
       aiex.set_device @cfg
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2355204 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35909636 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier
       aiex.set_device @next
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2355204 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35909636 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }

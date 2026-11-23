@@ -575,7 +575,7 @@ def AIESubstituteShimDMAAllocations
 }
 
 def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
-  let summary = "Lowers npu.control_packet op to npu.dma_memcpy_nd op";
+  let summary = "Deliver control packets with DMA tasks";
   let description = [{
     Streams each runtime sequence's control packets through their column's
     control channel. Consecutive packets to one tile go in one transfer where
@@ -583,18 +583,22 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     a descriptor ends its stream packet and the switches route each to its
     tile.
 
-    `aiex.set_device` selects the configured device. Transfers in that context
-    use one configure/start/await triple per batch. `chain-bds` marks internal
-    awaits on one channel as deferrable. `parallel-shims` also permits deferral
-    across channels within a delivery phase. The descriptor allocator selects
-    the schedule and forms chains with its `chain-tasks` option.
+    Each batch uses one configure/start/await triple. `chain-bds` permits
+    chains on one channel for the same destination or independent writes.
+    `parallel-shims` permits independent
+    destinations to share completion. The descriptor allocator owns queue
+    capacity, descriptor IDs, scheduling, and chain formation.
 
-    A device marker or another runtime operation ends the preceding delivery
-    run. A delivery barrier ends the phase with an unmarked await.
-    Compiler-only barriers require no DMA synchronization.
+    The shared packet interval contract supplies independence and delivery
+    boundaries. Hardware barriers and other runtime operations complete every
+    preceding transfer. Compiler-only barriers retain packet order but permit
+    consecutive packets with the same destination to share a transfer.
 
-    Packets without a device context use an `aiex.npu.dma_memcpy_nd` and an
-    `aiex.npu.sync` per transfer. A real PDI load clears the context.
+    Independent multicast prefixes may share completion. A multicast and unicast
+    require separate completion unless their destination words are disjoint
+    within an unobserved interval.
+    The control overlay must deliver these transfers without application
+    interference. This pass does not analyze application execution or routes.
   }];
 
   let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
@@ -746,29 +750,12 @@ def AIETxnToControlPacket : Pass<"aie-txn-to-ctrl-packet", "AIE::DeviceOp"> {
   ];
 }
 
-def AIEInsertCtrlPacketBarriers
-    : Pass<"aie-insert-ctrl-packet-barriers", "AIE::DeviceOp"> {
-  let summary = "Isolate ordered register writes with compiler barriers";
-  let description = [{
-    The target model identifies ordinary storage writes and physical module
-    effects. Compiler-only packet-effect barriers surround ordered writes.
-    Their scopes include memory affinity and activation-dependent switch
-    resources. Ordinary storage writes require a quiescent device marker and
-    inactive affected resources to permit reordering. Unknown activity and
-    unknown effects require global barriers. These barriers emit no hardware wait.
-    Run this pass before ordinary-write normalization and coalescing.
-  }];
-  let constructor = "xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass()";
-  let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
-}
-
 def AIECoalesceControlPackets
     : Pass<"aie-coalesce-control-packets", "AIE::DeviceOp"> {
   let summary = "Merge adjacent control-packet writes";
   let description = [{
     Combines adjacent writes with consecutive addresses and matching
-    destinations and header settings. The pass excludes ordered writes and
-    ordinary writes without an inactivity proof.
+    destinations and header settings inside unobserved packet intervals.
     The merged payload stays within one aligned four-word line.
   }];
   let constructor = "xilinx::AIEX::createAIECoalesceControlPacketsPass()";
@@ -789,11 +776,11 @@ def AIEReorderCtrlPacketsByTile
     : Pass<"aie-reorder-ctrl-packets-by-tile", "mlir::ModuleOp"> {
   let summary = "Order ordinary control writes and remove overwritten words";
   let description = [{
+    Groups independent packets by destination while retaining each
+    destination's action order and multiplicity.
     Retains the last value for each ordinary unicast word and orders surviving
-    packets by address when affected resources are inactive. Authored and
-    generated packets obey the same rule. Scoped barriers and actions end the sequence for
-    affected modules. Independent writes may cross those boundaries. Global
-    barriers, header changes, and other operations end every sequence.
+    packets by address inside unobserved packet intervals. Barriers, ordered
+    actions, header changes, and other operations end each interval.
     Run before multicast selection and adjacent-write coalescing.
 
     `address-order` and `eliminate-dead-writes` select each transformation
@@ -808,185 +795,15 @@ def AIEReorderCtrlPacketsByTile
   let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
 }
 
-def AIEScheduleCtrlPacketActivation
-    : Pass<"aie-schedule-ctrl-packet-activation", "mlir::ModuleOp"> {
-  let summary = "Schedule configuration and activation delivery";
-  let description = [{
-    Reorders the adjacent control packets immediately after a device marker
-    by tile for DMA batching. Explicit barriers and other operations end
-    that configuration run. Later packets retain device context but require
-    another marker to permit activation scheduling.
-
-    A run splits into the configuration and the enable phase, each stably sorted
-    by tile (column, then row), with an `aiex.control_packet_barrier` between
-    them. The enable phase holds the pushes to an MM2S channel's start (task)
-    queue and then the core enables (writes setting `Core_Control`'s enable
-    bit). A push starts its channel, which streams at once if its lock allows,
-    so its route has to be configured first; cores start last. A channel's
-    control register (its reset and enable) stays in place, and the push,
-    written before the enable, still starts the channel.
-
-    A push stays in the configuration when its channel's `aie.dma_start`, in the
-    device selected by `aiex.set_device`, carries `aiex.started_by` (see
-    `aie-annotate-ctrl-packet-start-gating`). With `gated-enable`, so does the
-    enable of a core whose `aie.core` carries it, last among its column's
-    packets. With `by-tile=false` the enable phase still moves behind the
-    configuration, but nothing is sorted by tile. The pass needs the target's
-    register database.
-
-    A push not proved gated starts its MM2S channel's streams, and a core
-    enable not proved gated starts its core's and those of the channels and
-    cores whose `aiex.started_by` lists it or a gated core it starts. Such a
-    stream may stall at a receiver nothing has started yet, holding the switch
-    arbiters on its way until its last word. So a packet that starts streams
-    goes after every packet of the enable phase whose control packets take one
-    of their arbiters, after a barrier: a packet sent earlier on the same shim
-    channel may still wait on its way where the two routes part. Serially
-    another column's packets are awaited first anyway. The pass fails on a
-    cycle of such packets.
-  }];
-
-  let options = [Option<"byTile", "by-tile", "bool", /*default=*/"true",
-                        "Sort each part of a run by tile">,
-         Option<"useGating", "use-gating", "bool", /*default=*/"true",
-           "Use gating annotations to advance activation writes">,
-                 Option<"gatedEnable", "gated-enable", "bool",
-                        /*default=*/"false",
-                        "Send the enables of proved cores with their column's "
-                        "configuration">,
-                 Option<"parallelShims", "parallel-shims", "bool",
-                        /*default=*/"false",
-                        "Order for aie-ctrl-packet-to-dma's parallel-shims "
-                        "delivery">,
-  ];
-
-  let constructor = "xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect",
-                           "xilinx::AIEX::AIEXDialect",
-  ];
-}
-
-def AIEAnnotateCtrlPacketStartGating
-    : Pass<"aie-annotate-ctrl-packet-start-gating", "mlir::ModuleOp"> {
-  let summary = "Prove which DMA channels cannot start moving data during "
-                "their configuration";
-  let description = [{
-    `aie-ctrl-packet-to-dma` with `parallel-shims` sends every column's
-    configuration at once, so an MM2S channel that streams as soon as its queue
-    push lands could send data before another column's switches are configured.
-    This pass marks with `aiex.started_by` the `aie.dma_start` of each channel
-    that cannot, and each core that cannot act before the rest of its
-    configuration lands, and remarks on the others with the reason. The
-    attribute lists the tiles of the cores whose enables may let it act: those
-    that release a lock its proof waits on, or stream into an S2MM channel whose
-    descriptors release one. An empty list leaves it to the host's transfers.
-    A core with calls, inline assembly, or an external ELF may release every
-    lock within its memory affinity. Its tile contributes to the starter list
-    of each affected lock. An acquire-only summary does not restrict releases.
-
-    An MM2S channel is proved gated when its first buffer descriptor waits (a
-    blocking acquire, on a lock of its own tile, at a value the lock's initial
-    value does not reach) and every buffer descriptor that releases that lock is
-    an MM2S descriptor of a proved channel, or a stream-to-memory descriptor (of
-    known nonzero length) fed only by proved channels, cores, or shim channels
-    only the runtime sequence starts. Neither cores nor the host run during a
-    configuration; cores are enabled after it and the host's writes follow it.
-
-    A core is proved gated when, until it passes an acquire that cannot succeed
-    early (blocking, on an own-tile lock, at a value the initial value does not
-    reach, released only as above), it releases no lock, runs no loop that may
-    not run, touches only its own tile's buffers that only idle descriptors
-    otherwise use, and calls no functions. A core given as `elf_file` is not
-    proved. The acquire-only external function contract permits lock releases
-    and cannot establish start gating.
-  }];
-
-  let constructor =
-      "xilinx::AIEX::createAIEAnnotateCtrlPacketStartGatingPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect",
-                           "xilinx::AIEX::AIEXDialect",
-  ];
-}
-
-def AIECheckCtrlPacketDelivery
-    : Pass<"aie-check-ctrl-packet-delivery", "mlir::ModuleOp"> {
-  let summary = "Check the order control packets land in";
-  let description = [{
-    Checks flat control packets against the delivery order of
-    `aie-ctrl-packet-to-dma`, serially or with `parallel-shims`. Device markers
-    and hardware barriers separate delivery phases. Other runtime operations
-    complete preceding packet delivery but retain application-stream history.
-    The pass requires a single block and rejects nested configuration operations
-    and control packets.
-
-    It checks three rules. First, the packets that reach a tile (its own and
-    those on a control multicast, listed in `aie.ctrl_pkt_multicast` by its
-    device's overlay, that reaches it) land in program order, except that two
-    packets commute, and may swap, when they share no address and neither starts
-    a DMA channel or enables the core. Packets on one shim channel keep their
-    order along one trail; a multicast's packet and a tile's own share one only
-    where they pass the same switch input ports. A packet on a multicast must be
-    addressed to its lowest tile.
-
-    Second, a packet that starts streams (see
-    `aie-reorder-ctrl-packets-by-tile`) may start one that stalls at a receiver
-    nothing has started yet, holding the switch arbiters on its way until its
-    last word, so no control packet of the run that is not awaited before it
-    may take one of those arbiters: a tile's own packets on its controller id's
-    route, a multicast's on its tree. Host-side effects can release armed gates
-    and invalidate initial-lock gating for later starts. Packet writes that
-    restore all declared lock initializers can establish that gating again.
-    A `drains` barrier expires only the named configuration's static cores and
-    non-shim DMA channels. Local quiescence does not expire stream history.
-    A known change of PDI symbol or nonzero PDI address ends outgoing history;
-    different IDs or sizes alone do not prove a reset.
-
-    Third, with `parallel-shims`, the multicasts of two shim channels sent in
-    one phase take no common arbiter, since each holds its arbiters until its
-    last word.
-
-    An error names the packet that breaks a rule.
-  }];
-
-  let options = [Option<"parallelShims", "parallel-shims", "bool",
-                        /*default=*/"false",
-                        "Check against parallel-shims delivery">,
-  ];
-
-  let constructor = "xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect",
-                           "xilinx::AIEX::AIEXDialect",
-  ];
-}
-
 def AIEDedupCtrlPacketMulticast
     : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
   let summary = "Send the control packets a multicast's tiles share once";
   let description = [{
-    Matches each destination's leading write sequence, including ordered
-    writes, on an intact control overlay. Scoped compiler barriers permit
-    movement past independent modules. Explicit fences retain their boundaries.
-    The pass regenerates packet-effect barriers around moved actions.
-    Global compiler barriers, device changes, and delivery barriers bound
-    matching. The overlay declares destination groups in `aie.ctrl_pkt_multicast`.
-
-    Matching preserves the order and multiplicity of each destination's
-    actions. Delivery planning rejects stream hazards and inserts completion
-    waits when multicast and unicast routes do not establish the required
-    order. A hazardous trailing activation shortens the candidate prefix.
-    Runs with different stream IDs remain unchanged.
-
-        `substrings` retains prefix matches and selects one additional internal
-        match per remaining run. It examines at most 64 unique write anchors per
-        destination group and maximizes encoded words saved among legal candidates.
-        Completion barriers surround each additional match.
-        Serial delivery restricts additional matches to single-column runs to
-        retain completion boundaries between columns.
+    Replaces equal per-destination prefixes inside unobserved or independent
+    packet intervals. Each destination retains its action order and multiplicity.
+    The overlay declares destination groups in `aie.ctrl_pkt_multicast`.
+    DMA lowering owns delivery ordering and completion.
   }];
-  let options = [Option<"parallelShims", "parallel-shims", "bool",
-             /*default=*/"false", "Plan parallel shim delivery">,
-           Option<"substrings", "substrings", "bool",
-             /*default=*/"false", "Match internal write sequences">];
 
   let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",

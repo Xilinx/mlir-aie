@@ -7,12 +7,11 @@
 
 // RUN: aie-opt %s -aie-ctrl-packet-to-dma --split-input-file | FileCheck %s
 
-// transforms control packet ops to dma memcpy ops and sync ops.
-
 // CHECK-LABEL: aie.device(npu1_1col) {
 // CHECK: aie.runtime_sequence(%[[ARG0:.*]]: memref<?xi32>) {
-// CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0]][0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan0} : memref<?xi32>
-// CHECK: aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
+// CHECK: aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
+// CHECK: aie.dma_bd(%[[ARG0]] : memref<?xi32> offset = 0 len = 3)
+// CHECK: aiex.dma_await_task
 
 aie.device(npu1_1col) {
   %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
@@ -26,8 +25,9 @@ aie.device(npu1_1col) {
 
 // CHECK-LABEL: aie.device(npu1_1col) {
 // CHECK: aie.runtime_sequence(%[[ARG0:.*]]: memref<?xi32>) {
-// CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0]][0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan0} : memref<?xi32>
-// CHECK: aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
+// CHECK: aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
+// CHECK: aie.dma_bd(%[[ARG0]] : memref<?xi32> offset = 0 len = 3)
+// CHECK: aiex.dma_await_task
 
 aie.device(npu1_1col) {
   %tile_0_0 = aie.tile(0, 0)
@@ -43,11 +43,11 @@ aie.device(npu1_1col) {
 // Check that control packets writes are not combined on npu1
 
 // CHECK-LABEL: aie.device(npu1) {
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 3][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 6][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 9][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 12][1, 1, 1, 3][0, 0, 0, 1])
+// CHECK: aie.dma_bd(%arg0 : memref<?xi32> offset = 0 len = 3)
+// CHECK: aie.dma_bd(%arg0 : memref<?xi32> offset = 3 len = 3)
+// CHECK: aie.dma_bd(%arg0 : memref<?xi32> offset = 6 len = 3)
+// CHECK: aie.dma_bd(%arg0 : memref<?xi32> offset = 9 len = 3)
+// CHECK: aie.dma_bd(%arg0 : memref<?xi32> offset = 12 len = 3)
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence() {
@@ -65,7 +65,7 @@ aie.device(npu1) {
 // Check that control packets writes are combined on npu2
 
 // CHECK-LABEL: aie.device(npu2) {
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 15][0, 0, 0, 1])
+// CHECK: aie.dma_bd(%arg0 : memref<?xi32> offset = 0 len = 15)
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence() {
@@ -83,11 +83,11 @@ aie.device(npu2) {
 // Check that control packets writes are not combined across other operations
 
 // CHECK-LABEL: aie.device(npu2) {
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 0][1, 1, 1, 6][0, 0, 0, 1])
-// CHECK: aiex.npu.sync
+// CHECK: aie.dma_bd({{.*}} offset = 0 len = 6)
+// CHECK: aiex.dma_await_task
 // CHECK: aiex.npu.maskwrite32
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 6][1, 1, 1, 9][0, 0, 0, 1])
-// CHECK: aiex.npu.sync
+// CHECK: aie.dma_bd({{.*}} offset = 6 len = 9)
+// CHECK: aiex.dma_await_task
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence() {
@@ -109,12 +109,10 @@ aie.device(npu2) {
 // allocation, whatever the row they address.
 
 // CHECK-LABEL: aie.device(npu2) {
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan1}
-// CHECK: %[[ROW:.*]] = arith.constant 0 : i32
-// CHECK: %[[COL:.*]] = arith.constant 0 : i32
-// CHECK: %[[DIR:.*]] = arith.constant 1 : i32
-// CHECK: %[[CHAN:.*]] = arith.constant 1 : i32
-// CHECK: aiex.npu.sync(%[[COL]], %[[ROW]], %[[DIR]], %[[CHAN]], %{{.*}}, %{{.*}})
+// CHECK: %[[TASK:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan1
+// CHECK: aie.dma_bd({{.*}} offset = 0 len = 3)
+// CHECK: aiex.dma_start_task(%[[TASK]])
+// CHECK-NEXT: aiex.dma_await_task(%[[TASK]])
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   %tile_0_2 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
@@ -128,14 +126,14 @@ aie.device(npu2) {
 
 // Read requests send only headers and require separate DMA transfers.
 // CHECK-LABEL: aie.device(npu2_1col) {
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 0][1, 1, 1, 2][0, 0, 0, 1])
-// CHECK: aiex.npu.sync
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 2][1, 1, 1, 2][0, 0, 0, 1])
-// CHECK: aiex.npu.sync
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 4][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.sync
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 7][1, 1, 1, 2][0, 0, 0, 1])
-// CHECK: aiex.npu.sync
+// CHECK: aie.dma_bd({{.*}} offset = 0 len = 2)
+// CHECK: aiex.dma_await_task
+// CHECK: aie.dma_bd({{.*}} offset = 2 len = 2)
+// CHECK: aiex.dma_await_task
+// CHECK: aie.dma_bd({{.*}} offset = 4 len = 3)
+// CHECK: aiex.dma_await_task
+// CHECK: aie.dma_bd({{.*}} offset = 7 len = 2)
+// CHECK: aiex.dma_await_task
 aie.device(npu2_1col) {
   %shim = aie.tile(0, 0)
   %core = aie.tile(0, 2)

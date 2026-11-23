@@ -9,10 +9,10 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
+#include "CtrlPacketRuns.h"
+
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/DenseSet.h"
 
 #include <optional>
 
@@ -70,18 +70,17 @@ struct AIECtrlPacketToDmaPass
     : xilinx::AIEX::impl::AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
   using Base::Base;
 
-  // A transfer of control packets to one tile.
   struct BatchInfo {
     TileID tileId;
     int64_t startOffset;
     int64_t totalSize;
     std::string shimDmaAllocName;
-    int shimChan;
     Operation *first;
-    int run;   // batches of one run have no other op between them
-    int phase; // the barriers before it in its run
-    FlatSymbolRefAttr configures;
-    // The multicast the packets go on.
+    unsigned delivery;
+    unsigned interval;
+    bool unobserved;
+    bool independent;
+    bool disjointMulticast;
     std::optional<int32_t> multicast;
   };
 
@@ -107,14 +106,9 @@ struct AIECtrlPacketToDmaPass
     auto *ctx = device->getContext();
     auto loc = device->getLoc();
 
-    device.walk([](ControlPacketBarrierOp barrier) {
-      if (barrier.getCompilerOnly())
-        barrier.erase();
-    });
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       return; // Disable this pass for AIE1; AIE1 support NYI.
 
-    SmallVector<Operation *> erased;
     auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
       if (f.getBody().empty())
@@ -124,171 +118,128 @@ struct AIECtrlPacketToDmaPass
       if (controlPacketOps.empty())
         continue;
 
-      OpBuilder builder(f);
-
-      IRMapping mapping;
-
-      auto newSeq = AIE::RuntimeSequenceOp::create(
-          builder, loc, f.getSymNameAttr(), BoolAttr{}, f.getTraceBufferAttr(),
-          f.getTraceSlicesAttr(), f.getScratchpadParametersAttr());
-      newSeq.getBody().push_back(new Block);
-
-      // Copy the arguments from the old sequence to the new one.
-      for (auto arg : f.getBody().getArguments()) {
-        // Add the argument to the new sequence.
-        auto newArg = newSeq.getBody().addArgument(arg.getType(), arg.getLoc());
-        // Replace all uses of the old argument with the new one.
-        arg.replaceAllUsesWith(newArg);
-        // Add the mapping for the argument.
-        mapping.map(arg, newArg);
-      }
-
-      // Using dynamic shape for ctrl pkt stream.
       auto ctrlPktMemrefType = MemRefType::get(
           ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, nullptr);
-      auto newBlockArg = newSeq.getBody().addArgument(ctrlPktMemrefType, loc);
-
-      builder.setInsertionPointToStart(&newSeq.getBody().front());
-
-      // Collect all npu.control_packet ops, grouped by location in 'batches'
+      auto packetData = entry.addArgument(ctrlPktMemrefType, loc);
       std::vector<BatchInfo> batches;
 
       int64_t ddrOffset = 0;
 
-      bool new_batch = true, inRun = false;
-      int run = 0, phase = 0;
-      FlatSymbolRefAttr configured;
-      for (Operation &o : entry) {
-        if (auto context = dyn_cast<SetDeviceOp>(o))
-          configured = context.getDeviceRefAttr();
-        else if (isa<NpuLoadPdiOp>(o))
-          configured = {};
-        auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
-
-        // A barrier ends the current batch and phase
-        if (isa<ControlPacketBarrierOp>(o)) {
-          new_batch = true;
-          ++phase;
-          continue;
-        }
-        if (!ctrlPktOp) {
-          if (inRun)
-            ++run;
-          new_batch = true;
-          inRun = false;
-          phase = 0;
-          continue;
-        }
-        inRun = true;
-        int col = ctrlPktOp.getColumnFromAddr();
-        int row = ctrlPktOp.getRowFromAddr();
-
-        // A read's length describes its response, not an outgoing payload.
-        int64_t ctrlPktSize = 2; // ctrl info word + packet header
-        if (auto data = ctrlPktOp.getData())
-          ctrlPktSize += data->size();
-
-        // Read requests must end their DMA transfer. A batch is one stream
-        // packet, routed by its first header, so its packets share their
-        // destination.
-        bool batchable = ctrlPktOp.getOpcode() == 0;
-        std::optional<int32_t> multicast;
-        if (auto id = ctrlPktOp.getMulticastId())
-          multicast = *id;
-        if (targetModel.getTargetArch() == AIEArch::AIE2p && batchable &&
-            !new_batch && batches.back().tileId == TileID{col, row} &&
-            batches.back().multicast == multicast) {
-          // Add to existing batch
-          batches.back().totalSize += ctrlPktSize;
-        } else {
-          // Start new batch
-          ShimDMAAllocationOp alloc = getCtrlPktShimAlloc(device, col);
-          if (!alloc) {
-            ctrlPktOp.emitOpError("column ")
-                << col
-                << " has no control packet shim DMA allocation; run "
-                   "-aie-generate-column-control-overlay with "
-                   "configuration=true, then -aie-import-overlay first";
-            return signalPassFailure();
+      NpuControlPacketOp previous;
+      for (auto [index, interval] : llvm::enumerate(packetIntervals(entry))) {
+        llvm::DenseSet<uint32_t> multicastWords;
+        bool disjointMulticast = interval.unobserved;
+        ArrayAttr groups = controlPacketMulticasts(
+            device->getParentOfType<ModuleOp>(), interval.device);
+        for (NpuControlPacketOp packet : interval.packets)
+          if (packet.getMulticastId() && packet.getData()) {
+            ArrayAttr destinations;
+            if (groups)
+              for (Attribute attribute : groups) {
+                auto group = cast<DictionaryAttr>(attribute);
+                if (group.getAs<IntegerAttr>("column").getInt() ==
+                        packet.getColumnFromAddr() &&
+                    group.getAs<IntegerAttr>("id").getInt() ==
+                        *packet.getMulticastId())
+                  destinations = group.getAs<ArrayAttr>("tiles");
+              }
+            if (!destinations) {
+              disjointMulticast = false;
+              continue;
+            }
+            for (auto tile : destinations.getAsRange<AIE::TileAttr>()) {
+              auto destination = tile.getTileID();
+              uint32_t address =
+                  (destination.col << targetModel.getColumnShift()) |
+                  (destination.row << targetModel.getRowShift()) |
+                  packet.getLocalAddress();
+              for (size_t word = 0; word < packet.getData()->size(); ++word)
+                multicastWords.insert(address + 4 * word);
+            }
           }
-          batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
-                             alloc.getSymName().str(),
-                             static_cast<int>(alloc.getChannelIndex()), &o, run,
-                             phase, configured, multicast});
+        for (NpuControlPacketOp packet : interval.packets)
+          if (!packet.getMulticastId() && packet.getData())
+            for (size_t word = 0; word < packet.getData()->size(); ++word)
+              disjointMulticast &=
+                  !multicastWords.contains(packet.getAddress() + 4 * word);
+        bool new_batch = !previous || previous.getOpcode() != 0 ||
+                         batches.back().delivery != interval.delivery;
+        for (NpuControlPacketOp ctrlPktOp : interval.packets) {
+          int col = ctrlPktOp.getColumnFromAddr();
+          int row = ctrlPktOp.getRowFromAddr();
+
+          // A read's length describes its response, not an outgoing payload.
+          int64_t ctrlPktSize = 2; // ctrl info word + packet header
+          if (auto data = ctrlPktOp.getData())
+            ctrlPktSize += data->size();
+
+          // Read requests must end their DMA transfer. A batch is one stream
+          // packet, routed by its first header, so its packets share their
+          // destination.
+          bool batchable = ctrlPktOp.getOpcode() == 0;
+          std::optional<int32_t> multicast;
+          if (auto id = ctrlPktOp.getMulticastId())
+            multicast = *id;
+          if (targetModel.getTargetArch() == AIEArch::AIE2p && batchable &&
+              !new_batch && batches.back().tileId == TileID{col, row} &&
+              batches.back().multicast == multicast) {
+            batches.back().totalSize += ctrlPktSize;
+            batches.back().interval = index;
+            batches.back().unobserved &= interval.unobserved;
+            batches.back().independent &= interval.independent;
+            batches.back().disjointMulticast &= disjointMulticast;
+          } else {
+            ShimDMAAllocationOp alloc = getCtrlPktShimAlloc(device, col);
+            if (!alloc) {
+              ctrlPktOp.emitOpError("column ")
+                  << col
+                  << " has no control packet shim DMA allocation; run "
+                     "-aie-generate-column-control-overlay with "
+                     "configuration=true, then -aie-import-overlay first";
+              return signalPassFailure();
+            }
+            batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
+                               alloc.getSymName().str(), ctrlPktOp,
+                               interval.delivery, static_cast<unsigned>(index),
+                               interval.unobserved, interval.independent,
+                               disjointMulticast, multicast});
+          }
+          new_batch = !batchable;
+          ddrOffset += ctrlPktSize;
+          previous = ctrlPktOp;
         }
-        new_batch = !batchable;
-        ddrOffset += ctrlPktSize;
       }
 
-      // Second pass: emit batched operations in original order
       auto batchIt = batches.begin();
-
-      for (Operation &o : entry) {
-        auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
-        if (!ctrlPktOp) {
-          if (!isa<ControlPacketBarrierOp>(o))
-            builder.clone(o, mapping);
-          continue;
-        }
-
-        // There are no more control packet batches to emit
-        if (batchIt == batches.end())
-          continue;
-
-        // Check if this is the first packet of a new batch, otherwise skip it.
-        if (batchIt->first != &o)
-          continue;
-
-        int col = ctrlPktOp.getColumnFromAddr();
-
-        if (batchIt->configures) {
-          DMAConfigureTaskForOp task = emitTask(
-              builder, batchIt->first->getLoc(), newBlockArg, *batchIt);
-          DMAStartTaskOp::create(builder, loc, task);
-          auto next = std::next(batchIt);
-          bool defer =
-              next != batches.end() && next->run == batchIt->run &&
-              next->phase == batchIt->phase &&
-              (parallelShims || (chainBds && next->shimDmaAllocName ==
-                                                 batchIt->shimDmaAllocName));
-          DMAAwaitTaskOp::create(builder, loc, task,
-                                 defer ? builder.getUnitAttr() : UnitAttr{});
-          ++batchIt;
-          continue;
-        }
-
-        // Emit the batched DMA operation for this (col, row) pair
-        const std::vector<int64_t> staticOffsets = {0, 0, 0,
-                                                    batchIt->startOffset};
-        const std::vector<int64_t> staticSizes = {1, 1, 1, batchIt->totalSize};
-        const std::vector<int64_t> staticStrides = {0, 0, 0, 1};
-
-        SymbolRefAttr metadata =
-            SymbolRefAttr::get(builder.getContext(), batchIt->shimDmaAllocName);
-        // The batch's own first control packet, not the device line: a BD-id
-        // diagnostic on this copy should point at the control packet that
-        // caused it, not merge every batch of every device into one location.
-        NpuDmaMemcpyNdOp::create(builder, batchIt->first->getLoc(), newBlockArg,
-                                 staticOffsets, staticSizes, staticStrides,
-                                 metadata, /*id=*/0,
-                                 /*issue_token=*/true);
-
-        Value shimRow = AIEX::createConstantI32(builder, loc, 0);
-        Value shimCol = AIEX::createConstantI32(builder, loc, col);
-        Value dir = AIEX::createConstantI32(builder, loc, 1); // MM2S
-        Value chan = AIEX::createConstantI32(builder, loc, batchIt->shimChan);
-        Value col_num = AIEX::createConstantI32(builder, loc, 1);
-        Value row_num = AIEX::createConstantI32(builder, loc, 1);
-        AIEX::NpuSyncOp::create(builder, loc, shimCol, shimRow, dir, chan,
-                                col_num, row_num);
-        ++batchIt;
+      for (; batchIt != batches.end(); ++batchIt) {
+        OpBuilder builder(batchIt->first);
+        DMAConfigureTaskForOp task =
+            emitTask(builder, batchIt->first->getLoc(), packetData, *batchIt);
+        DMAStartTaskOp::create(builder, loc, task);
+        auto next = std::next(batchIt);
+        bool independent = next != batches.end() &&
+                           ((batchIt->independent && next->independent) ||
+                            (batchIt->unobserved && next->unobserved &&
+                             next->interval == batchIt->interval));
+        bool defer =
+            next != batches.end() && next->delivery == batchIt->delivery &&
+            ((!batchIt->multicast && !next->multicast) ||
+             (((batchIt->independent && next->independent) ||
+               (batchIt->unobserved && next->unobserved)) &&
+              next->interval == batchIt->interval &&
+              ((batchIt->multicast && next->multicast) ||
+               (!next->multicast && batchIt->disjointMulticast)))) &&
+            ((chainBds && next->shimDmaAllocName == batchIt->shimDmaAllocName &&
+              (independent || next->tileId == batchIt->tileId)) ||
+             (parallelShims && independent));
+        DMAAwaitTaskOp::create(builder, loc, task,
+                               defer ? builder.getUnitAttr() : UnitAttr{});
       }
-
-      erased.push_back(f);
+      for (NpuControlPacketOp packet :
+           llvm::make_early_inc_range(controlPacketOps))
+        packet.erase();
     }
-
-    for (auto *e : erased)
-      e->erase();
+    device.walk([](ControlPacketBarrierOp barrier) { barrier.erase(); });
   }
 };
 

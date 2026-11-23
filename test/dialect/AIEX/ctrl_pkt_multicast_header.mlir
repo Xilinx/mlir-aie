@@ -13,9 +13,11 @@
 // transfer is routed by its first header, so the multicast packets and the
 // tile's own go in separate transfers.
 
-// CHECK:       aiex.npu.dma_memcpy_nd({{.*}}[0, 0, 0, 0][1, 1, 1, 6]
-// CHECK:       aiex.npu.dma_memcpy_nd({{.*}}[0, 0, 0, 6][1, 1, 1, 3]
-// CHECK-NOT:   aiex.npu.dma_memcpy_nd
+// CHECK:       aie.dma_bd({{.*}} offset = 0 len = 6)
+// CHECK:       aiex.dma_await_task
+// CHECK:       aie.dma_bd({{.*}} offset = 6 len = 3)
+// CHECK:       aiex.dma_await_task
+// CHECK-NOT:   aiex.dma_configure_task_for
 
 // BIN:      0000001C
 // BIN-NEXT: 0002C000

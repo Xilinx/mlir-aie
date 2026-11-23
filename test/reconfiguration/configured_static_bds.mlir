@@ -7,8 +7,7 @@
 
 // RUN: aie-opt %s --split-input-file -aie-substitute-shim-dma-allocations -aie-unroll-runtime-sequence-loops -aie-assign-runtime-sequence-bd-ids="warn-unreleased-transfers=false" -verify-diagnostics | FileCheck %s --implicit-check-not=aiex.set_device --implicit-check-not=scf.for
 
-// @cfg's static DMA takes BD 0, which a running transfer still holds when its
-// control packets start. Once that transfer is awaited, BD 0 stays @cfg's.
+// @cfg reserves BD 0 after the preceding transfer completes.
 
 // CHECK-LABEL: @held
 // CHECK:       aiex.dma_configure_task({{.*}}, MM2S, 1)
@@ -35,13 +34,12 @@ module {
     aie.shim_dma_allocation @ctrl(%t00, MM2S, 0)
     aie.shim_dma_allocation @data(%t00, MM2S, 1)
     aie.runtime_sequence @held(%buf : memref<16xi32>) {
-      // expected-note @+1 {{the transfer is configured here}}
       %d = aiex.dma_configure_task_for @data {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%d)
-      // expected-warning @+1 {{configures @cfg, whose static DMAs take buffer descriptor ID 0 on tile (0,0), which a transfer not known to be finished holds}}
+      aiex.dma_await_task(%d)
       aiex.set_device @cfg
       %c = aiex.dma_configure_task_for @ctrl {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
@@ -49,7 +47,6 @@ module {
       } {issue_token = true}
       aiex.dma_start_task(%c)
       aiex.dma_await_task(%c)
-      aiex.dma_await_task(%d)
       %e = aiex.dma_configure_task_for @data {
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end

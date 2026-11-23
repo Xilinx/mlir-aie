@@ -525,7 +525,7 @@ def TileAttr : AttrDef<AIE_Dialect, "Tile", []> {
 
     Example:
     ```
-      aiex.started_by = [#aie.tile<0, 2>]
+      #aie.tile<0, 2>
     ```
   }];
 

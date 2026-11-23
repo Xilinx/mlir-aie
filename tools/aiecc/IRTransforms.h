@@ -2051,32 +2051,15 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   if (ctrlPkt) {
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIELegalizeControlPacketPass());
-    xilinx::AIEX::AIEScheduleCtrlPacketActivationOptions reorder;
-    reorder.useGating = cli::ctrlpktEarlyActivation;
-    reorder.gatedEnable = cli::ctrlpktEarlyActivation;
-    reorder.parallelShims = cli::ctrlpktParallelShims;
-    if (cli::ctrlpktOptimize)
-      pm->addPass(
-          xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass(reorder));
-    pm->nest<xilinx::AIE::DeviceOp>().addPass(
-        xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass());
     xilinx::AIEX::AIEReorderCtrlPacketsByTileOptions normalize;
     normalize.addressOrder = cli::ctrlpktAddressOrder;
     normalize.eliminateDeadWrites = cli::ctrlpktEliminateDeadWrites;
     pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(normalize));
-    if (cli::ctrlpktMulticastSpan) {
-      xilinx::AIEX::AIEDedupCtrlPacketMulticastOptions multicast;
-      multicast.parallelShims = cli::ctrlpktParallelShims;
-      multicast.substrings = cli::ctrlpktMulticastSubstrings;
-      pm->addPass(
-          xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass(multicast));
-    }
+    if (cli::ctrlpktMulticastSpan)
+      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
     if (cli::ctrlpktCoalesce)
       pm->nest<xilinx::AIE::DeviceOp>().addPass(
           xilinx::AIEX::createAIECoalesceControlPacketsPass());
-    xilinx::AIEX::AIECheckCtrlPacketDeliveryOptions check;
-    check.parallelShims = cli::ctrlpktParallelShims;
-    pm->addPass(xilinx::AIEX::createAIECheckCtrlPacketDeliveryPass(check));
   }
   return pm;
 }
@@ -2093,10 +2076,13 @@ getMaterializeRuntimeSeqPipeline(mlir::MLIRContext *ctx) {
 // Per-device DMA→NPU lowering, for both user DMA ops and the DMA ops lowered
 // from control packets.
 inline std::unique_ptr<mlir::PassManager>
-getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
+getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx,
+                                bool lowerControlPackets = false) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  if (lowerControlPackets)
+    dpm.addPass(X::createAIECtrlPacketToDmaPass());
   dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
@@ -2175,22 +2161,9 @@ getControlPacketPipeline(mlir::MLIRContext *ctx, llvm::StringRef elfDir,
   return pm;
 }
 
-// Lower legalized control packets into a DMA sequence the host streams in:
-// `aie-ctrl-packet-to-dma` → `aie-dma-to-npu`.
 inline std::unique_ptr<mlir::PassManager>
 getControlPacketDmaPipeline(mlir::MLIRContext *ctx) {
-  auto pm = std::make_unique<mlir::PassManager>(ctx);
-  auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-  dpm.addPass(xilinx::AIEX::createAIECtrlPacketToDmaPass());
-  // Not the user's queue-depth setting: this sequence is generated one push and
-  // one sync at a time, so the queue never fills. If that ever regresses, a
-  // warning against compiler-generated IR is the right diagnostic for a
-  // compiler bug -- a poll would paper over it, and a build failure would blame
-  // the user for IR they cannot edit.
-  xilinx::AIEX::AIEDmaToNpuOptions ctrlPktOpts;
-  ctrlPktOpts.enforceQueueDepth = false;
-  dpm.addPass(xilinx::AIEX::createAIEDmaToNpuPass(ctrlPktOpts));
-  return pm;
+  return getPerDeviceDmaLoweringPipeline(ctx, true);
 }
 
 } // namespace xilinx::aiecc

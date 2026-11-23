@@ -641,7 +641,7 @@ module {
 //--- stop-ctrlpkt.mlir
 
 // STOP-LABEL: aie.runtime_sequence()
-// STOP: aiex.set_device @cfg {quiescent}
+// STOP: aiex.set_device @cfg
 // STOP: aiex.npu.sync
 // STOP-NEXT: aiex.control_packet_barrier
 // STOP-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
@@ -652,10 +652,11 @@ module {
 // STOP-NEXT: aiex.npu.maskpoll(%[[FIRST_STATUS]], %[[ZERO]], %[[ENABLE]])
 // STOP: %[[SECOND_STATUS:.*]] = arith.constant 3350532 : i32
 // STOP: aiex.npu.maskpoll(%[[SECOND_STATUS]], %{{.*}}, %{{.*}})
+// STOP-NEXT: aiex.control_packet_barrier {independent}
 // STOP-NEXT: aiex.control_packet {address = 2224208 : ui32, data = array<i32: 1>
 // STOP: %[[STALL:.*]] = arith.constant 960 : i32
 // STOP-NEXT: aiex.npu.maskpoll(%{{.*}}, %{{.*}}, %[[STALL]])
-// STOP-NEXT: aiex.control_packet_barrier {drains = @cfg}
+// STOP-NEXT: aiex.control_packet_barrier
 
 // STOP-DMA-LABEL: aie.runtime_sequence(
 // STOP-DMA: aiex.set_device @cfg

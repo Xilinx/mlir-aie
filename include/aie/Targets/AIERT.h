@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include "mlir/IR/Location.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <map>
@@ -61,18 +62,22 @@ struct AIERTControl {
   mlir::LogicalResult initBuffers(DeviceOp &targetOp);
   mlir::LogicalResult configureSwitches(DeviceOp &targetOp,
                                         bool skipCtrlPktOverlay = false);
-  mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
-                                    bool skipCtrlPktOverlay = false);
+  mlir::LogicalResult addInitConfig(
+      DeviceOp &targetOp, bool skipCtrlPktOverlay = false,
+      llvm::function_ref<mlir::LogicalResult()> beforeActivation = {});
   mlir::LogicalResult teardownSwitches(DeviceOp &targetOp,
                                        bool skipCtrlPktOverlay = false);
   mlir::LogicalResult disableCores(DeviceOp &targetOp);
   mlir::LogicalResult resetDmaChannels(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
   mlir::LogicalResult addAieElf(uint8_t col, uint8_t row,
-                                const mlir::StringRef elfPath, bool aieSim);
+                                const mlir::StringRef elfPath, bool aieSim,
+                                bool resetDma = true);
   mlir::LogicalResult addAieElfs(DeviceOp &targetOp,
-                                 const mlir::StringRef elfPath, bool aieSim);
+                                 const mlir::StringRef elfPath, bool aieSim,
+                                 bool stageResets = false);
   void startTransaction();
+  void clearTransaction();
   void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId);
   std::vector<uint8_t> exportSerializedTransaction();
 

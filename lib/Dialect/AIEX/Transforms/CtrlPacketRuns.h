@@ -4,10 +4,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// The runs of adjacent control packets and their delivery boundaries.
-//
-//===----------------------------------------------------------------------===//
 
 #ifndef AIEX_TRANSFORMS_CTRLPACKETRUNS_H
 #define AIEX_TRANSFORMS_CTRLPACKETRUNS_H
@@ -17,28 +13,19 @@
 
 #include "llvm/ADT/SmallVector.h"
 
-#include <limits>
-
 namespace xilinx::AIEX {
 
-struct ContextualPacket {
-  NpuControlPacketOp packet;
+struct PacketInterval {
+  llvm::SmallVector<NpuControlPacketOp> packets;
   mlir::FlatSymbolRefAttr device;
-  unsigned phase = 0;
-  unsigned streamEndPhase = std::numeric_limits<unsigned>::max();
-  unsigned hostPhase = std::numeric_limits<unsigned>::max();
+  unsigned delivery = 0;
+  bool unobserved = false;
+  bool independent = false;
 };
 
-using PacketRun = llvm::SmallVector<ContextualPacket>;
-
-llvm::SmallVector<PacketRun> packetRuns(mlir::Block &block,
-                                        bool includePhases = false);
-llvm::SmallVector<PacketRun> packetRuns(AIE::RuntimeSequenceOp seq,
-                                        bool includePhases = false);
-mlir::FailureOr<llvm::SmallVector<PacketRun>>
-deliveryAnalysisRuns(AIE::RuntimeSequenceOp sequence);
-llvm::SmallVector<unsigned> awaitSteps(const PacketRun &run,
-                                       bool parallelShims);
+llvm::SmallVector<PacketInterval> packetIntervals(mlir::Block &block);
+mlir::ArrayAttr controlPacketMulticasts(mlir::ModuleOp module,
+                                        mlir::FlatSymbolRefAttr device);
 
 } // namespace xilinx::AIEX
 

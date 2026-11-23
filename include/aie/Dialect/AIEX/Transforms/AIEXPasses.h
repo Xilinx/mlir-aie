@@ -85,33 +85,16 @@ createAIETxnToControlPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELegalizeControlPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
-createAIEInsertCtrlPacketBarriersPass();
-std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIECoalesceControlPacketsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEAnnotateCtrlPacketStartGatingPass();
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIECheckCtrlPacketDeliveryPass();
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIECheckCtrlPacketDeliveryPass(
-    const AIECheckCtrlPacketDeliveryOptions &options);
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEDedupCtrlPacketMulticastPass();
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEDedupCtrlPacketMulticastPass(
-    const AIEDedupCtrlPacketMulticastOptions &options);
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEReorderCtrlPacketsByTilePass(
     const AIEReorderCtrlPacketsByTileOptions &options);
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEScheduleCtrlPacketActivationPass();
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEScheduleCtrlPacketActivationPass(
-    const AIEScheduleCtrlPacketActivationOptions &options);
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEXInlineTraceConfigPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

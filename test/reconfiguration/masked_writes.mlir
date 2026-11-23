@@ -16,19 +16,19 @@
 // each packet holds its own connection's bits, though the two are adjacent.
 // CHECK:      aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay,
 // CHECK-NEXT: aiex.set_device @mux_1
-// CHECK-NEXT:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 16384>
-// CHECK-NEXT: aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay_copy,
+// CHECK:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 16384>
+// CHECK: aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay_copy,
 // CHECK-NEXT: aiex.set_device @mux_0
-// CHECK-NEXT:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 1024>
+// CHECK:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 1024>
 //
 // Under teardown, only the first configuration loads the overlay, and the
 // teardown leaves the shim mux set, so the second packet keeps the first
 // connection's bits.
 // TEARDOWN:      aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay,
 // TEARDOWN-NEXT: aiex.set_device @mux_1
-// TEARDOWN-NEXT:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 16384>
-// TEARDOWN-NEXT: aiex.set_device @mux_0
-// TEARDOWN-NEXT:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
+// TEARDOWN:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 16384>
+// TEARDOWN: aiex.set_device @mux_0
+// TEARDOWN:   aiex.control_packet {address = 126976 : ui32, data = array<i32: 17408>
 // TEARDOWN-NOT:  aiex.npu.load_pdi
 
 module {

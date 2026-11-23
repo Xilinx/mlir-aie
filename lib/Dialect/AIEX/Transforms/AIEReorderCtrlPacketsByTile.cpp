@@ -5,27 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CtrlPacketRuns.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-
-#include "CtrlPacketClassifier.h"
-#include "CtrlPacketDevices.h"
-#include "CtrlPacketRuns.h"
-
 #include "mlir/Pass/Pass.h"
-
-#include "llvm/ADT/SetVector.h"
-
-#include <algorithm>
-#include <limits>
-#include <optional>
-#include <set>
-#include <tuple>
+#include "llvm/ADT/DenseSet.h"
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEREORDERCTRLPACKETSBYTILE
-#define GEN_PASS_DEF_AIESCHEDULECTRLPACKETACTIVATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
@@ -34,161 +22,6 @@ using namespace xilinx;
 using namespace xilinx::AIEX;
 
 namespace {
-
-struct AIEScheduleCtrlPacketActivationPass
-    : xilinx::AIEX::impl::AIEScheduleCtrlPacketActivationBase<
-          AIEScheduleCtrlPacketActivationPass> {
-  using Base::Base;
-
-  void runOnOperation() override {
-    ModuleOp module = getOperation();
-    ConfiguredDevices devices(module);
-    for (auto device : module.getOps<AIE::DeviceOp>()) {
-      PacketClassifier classifier(device.getTargetModel());
-      for (auto seq : device.getOps<AIE::RuntimeSequenceOp>())
-        for (PacketRun &run : packetRuns(seq)) {
-          NpuControlPacketOp first = run.front().packet;
-          if (isa_and_present<SetDeviceOp>(first->getPrevNode()) &&
-              failed(reorder(run, classifier, devices)))
-            return signalPassFailure();
-        }
-    }
-  }
-
-  // A packet of the run with its sort key and, once ordered, its phase (0 for
-  // the configuration) and place.
-  struct Placed {
-    std::tuple<WriteKind, uint32_t, uint32_t> key;
-    ContextualPacket entry;
-    Classified write;
-    unsigned phase = 0;
-    size_t rank = 0;
-  };
-
-  // Puts the run's packets in the order the pass description gives.
-  LogicalResult reorder(PacketRun &run, PacketClassifier &classifier,
-                        ConfiguredDevices &devices) {
-    SmallVector<Placed> placed;
-    for (ContextualPacket entry : run) {
-      FailureOr<Classified> c = classifier.classify(entry.packet);
-      if (failed(c))
-        return failure();
-      AIE::TileID tile = entry.packet.getTileFromAddr();
-      WriteKind part = c->kind;
-      // With gated-enable, a proved core's enable goes last among its
-      // column's other writes.
-      uint32_t row = tile.row;
-      FlatSymbolRefAttr device = entry.device;
-      if (useGating && part == WriteKind::ChannelStart &&
-          devices.startGated(device, {tile, c->channel})) {
-        part = WriteKind::Other;
-      } else if (useGating && part == WriteKind::CoreEnable && gatedEnable &&
-                 devices.startGated(device, {tile, -1})) {
-        part = WriteKind::Other;
-        row = std::numeric_limits<uint32_t>::max();
-      }
-      std::tuple<WriteKind, uint32_t, uint32_t> key{part, 0, 0};
-      if (byTile)
-        key = {part, static_cast<uint32_t>(tile.col), row};
-      placed.push_back({key, entry, *c});
-    }
-    std::stable_sort(
-        placed.begin(), placed.end(),
-        [](const Placed &a, const Placed &b) { return a.key < b.key; });
-    if (failed(orderEnablePhase(placed, devices)))
-      return failure();
-    std::stable_sort(
-        placed.begin(), placed.end(), [](const Placed &a, const Placed &b) {
-          return std::tie(a.phase, a.rank) < std::tie(b.phase, b.rank);
-        });
-
-    Block *block = run.back().packet->getBlock();
-    auto end = std::next(run.back().packet->getIterator());
-    OpBuilder builder(block, end);
-    std::optional<unsigned> phase;
-    for (Placed &p : placed) {
-      ContextualPacket entry = p.entry;
-      if (phase && *phase != p.phase)
-        ControlPacketBarrierOp::create(builder, entry.packet.getLoc());
-      phase = p.phase;
-      entry.packet->moveBefore(block, end);
-    }
-    return success();
-  }
-
-  // Places the enable phase of `placed`, sorted by key, keeping key order
-  // except that each packet that starts streams goes after every packet there
-  // whose control packets take an arbiter those may hold, stalled, in an
-  // earlier phase: one sent before it on the same channel may still wait on
-  // its way. Serially another column's packets are awaited first anyway.
-  LogicalResult orderEnablePhase(MutableArrayRef<Placed> placed,
-                                 ConfiguredDevices &devices) {
-    size_t n = placed.size();
-    auto enable = llvm::find_if(placed, [](const Placed &p) {
-      return std::get<0>(p.key) != WriteKind::Other;
-    });
-    size_t start = enable - placed.begin();
-    for (size_t i = 0; i < start; ++i)
-      placed[i].rank = i;
-    if (start == n)
-      return success();
-    FlatSymbolRefAttr device = placed[start].entry.device;
-    // For each packet, the packets that wait for it and whether in a later
-    // phase.
-    SmallVector<SmallVector<std::pair<size_t, bool>>> waiters(n);
-    SmallVector<SmallVector<size_t>> waitsFor(n);
-    for (size_t m = start; m < n; ++m) {
-      AIE::TileID tile = placed[m].entry.packet.getTileFromAddr();
-      std::set<Arbiter> held =
-          devices.startedArbiters(device, tile, placed[m].write);
-      if (held.empty())
-        continue;
-      for (size_t p = start; p < n; ++p) {
-        AIE::TileID dst = placed[p].entry.packet.getTileFromAddr();
-        if (p == m || !devices.controlArbiterIn(device, dst, held))
-          continue;
-        waiters[p].push_back({m, parallelShims || dst.col == tile.col});
-        waitsFor[m].push_back(p);
-      }
-    }
-    // Each step places the first packet in key order that waits for none.
-    SmallVector<size_t> left(n);
-    std::set<size_t> ready;
-    for (size_t i = start; i < n; ++i) {
-      left[i] = waitsFor[i].size();
-      if (!left[i])
-        ready.insert(i);
-    }
-    size_t rank = start;
-    while (!ready.empty()) {
-      size_t p = *ready.begin();
-      ready.erase(ready.begin());
-      placed[p].rank = rank++;
-      for (auto [m, later] : waiters[p]) {
-        placed[m].phase = std::max(placed[m].phase, placed[p].phase + later);
-        if (!--left[m])
-          ready.insert(m);
-      }
-    }
-    if (rank < n) {
-      // Stepping back from an unplaced packet n times ends in a cycle.
-      size_t m = start;
-      while (!left[m])
-        ++m;
-      for (size_t i = start; i < n; ++i)
-        m = *llvm::find_if(waitsFor[m], [&](size_t p) { return left[p]; });
-      return placed[m].entry.packet.emitOpError("is ")
-             << describeStart(placed[m].entry.packet.getTileFromAddr(),
-                              placed[m].write)
-             << ", in a cycle of packets that start streams, each of which "
-                "may hold, stalled, an arbiter the next one's control packets "
-                "take";
-    }
-    for (size_t i = start; i < n; ++i)
-      placed[i].phase += 1;
-    return success();
-  }
-};
 
 struct AIEReorderCtrlPacketsByTilePass
     : xilinx::AIEX::impl::AIEReorderCtrlPacketsByTileBase<
@@ -226,12 +59,11 @@ struct AIEReorderCtrlPacketsByTilePass
         size_t limit = begin + 1;
         while (limit < data.size() && live[limit])
           ++limit;
-        auto fragment = NpuControlPacketOp::create(
+        surviving.push_back(NpuControlPacketOp::create(
             builder, packet.getLoc(),
             builder.getUI32IntegerAttr(packet.getAddress() + 4 * begin),
             IntegerAttr{}, packet.getOpcodeAttr(), packet.getStreamIdAttr(),
-            builder.getDenseI32ArrayAttr(data.slice(begin, limit - begin)));
-        surviving.push_back(fragment);
+            builder.getDenseI32ArrayAttr(data.slice(begin, limit - begin))));
         begin = limit;
       }
       packet.erase();
@@ -250,67 +82,48 @@ struct AIEReorderCtrlPacketsByTilePass
   void runOnOperation() override {
     getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
       sequence.walk([&](Block *block) {
-        auto classified = packetEffects(*block);
-        if (failed(classified)) {
-          signalPassFailure();
-          return;
-        }
-        SmallVector<NpuControlPacketOp> packets;
-        llvm::DenseSet<uint32_t> written;
-        auto finish = [&](DictionaryAttr scope = {}) {
-          if (!scope) {
+        for (PacketInterval interval : packetIntervals(*block)) {
+          if (addressOrder && interval.independent &&
+              llvm::none_of(interval.packets, [](NpuControlPacketOp packet) {
+                return packet.getMulticastId().has_value();
+              })) {
+            auto end = std::next(interval.packets.back()->getIterator());
+            llvm::stable_sort(interval.packets, [](NpuControlPacketOp left,
+                                                   NpuControlPacketOp right) {
+              return left.getTileFromAddr() < right.getTileFromAddr();
+            });
+            for (NpuControlPacketOp packet : interval.packets)
+              packet->moveBefore(block, end);
+          }
+          if (!interval.unobserved)
+            continue;
+          SmallVector<NpuControlPacketOp> packets;
+          llvm::DenseSet<uint32_t> written;
+          auto finish = [&] {
             normalize(packets);
             written.clear();
-            return;
-          }
-          SmallVector<NpuControlPacketOp> affected;
-          SmallVector<NpuControlPacketOp> independent;
-          for (NpuControlPacketOp packet : packets)
-            (scopesOverlap(classified->lookup(packet).scope, scope)
-                 ? affected
-                 : independent)
-                .push_back(packet);
-          normalize(affected);
-          packets = std::move(independent);
-          written.clear();
-          if (!eliminateDeadWrites)
-            for (NpuControlPacketOp packet : packets)
+          };
+          for (NpuControlPacketOp packet : interval.packets) {
+            if (packet.getMulticastId()) {
+              finish();
+              continue;
+            }
+            if (!packets.empty() &&
+                packets.back().getStreamId() != packet.getStreamId())
+              finish();
+            if (addressOrder && !eliminateDeadWrites) {
+              for (size_t index = 0; index < packet.getData()->size(); ++index)
+                if (written.contains(packet.getAddress() + 4 * index)) {
+                  finish();
+                  break;
+                }
               for (size_t index = 0; index < packet.getData()->size(); ++index)
                 written.insert(packet.getAddress() + 4 * index);
-        };
-        for (Operation &operation : llvm::make_early_inc_range(*block)) {
-          if (auto barrier = dyn_cast<ControlPacketBarrierOp>(operation)) {
-            finish(barrier.getCompilerOnly() ? barrier.getScopeAttr()
-                                             : DictionaryAttr{});
-            continue;
+            }
+            packets.push_back(packet);
           }
-          auto packet = dyn_cast<NpuControlPacketOp>(operation);
-          if (!packet || packet.getOpcode() != 0 || !packet.getData() ||
-              packet.getMulticastId()) {
-            finish();
-            continue;
-          }
-          PacketEffects effects = classified->lookup(packet);
-          if (!effects.reorderable) {
-            finish(effects.scope);
-            continue;
-          }
-          if (!packets.empty() &&
-              packets.back().getStreamId() != packet.getStreamId())
-            finish();
-          if (addressOrder && !eliminateDeadWrites) {
-            size_t words = packet.getData()->size();
-            for (size_t index = 0; index < words; ++index)
-              if (written.contains(packet.getAddress() + 4 * index)) {
-                finish();
-                break;
-              }
-            for (size_t index = 0; index < words; ++index)
-              written.insert(packet.getAddress() + 4 * index);
-          }
-          packets.push_back(packet);
+          finish();
         }
-        finish();
       });
     });
   }
@@ -319,23 +132,12 @@ struct AIEReorderCtrlPacketsByTilePass
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass() {
+AIEX::createAIEReorderCtrlPacketsByTilePass() {
   return std::make_unique<AIEReorderCtrlPacketsByTilePass>();
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(
+AIEX::createAIEReorderCtrlPacketsByTilePass(
     const AIEReorderCtrlPacketsByTileOptions &options) {
   return std::make_unique<AIEReorderCtrlPacketsByTilePass>(options);
-}
-
-std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass() {
-  return std::make_unique<AIEScheduleCtrlPacketActivationPass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIEX::createAIEScheduleCtrlPacketActivationPass(
-    const AIEScheduleCtrlPacketActivationOptions &options) {
-  return std::make_unique<AIEScheduleCtrlPacketActivationPass>(options);
 }

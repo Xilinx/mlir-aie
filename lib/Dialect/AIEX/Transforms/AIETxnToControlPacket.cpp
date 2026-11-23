@@ -9,7 +9,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "CtrlPacketClassifier.h"
+#include "CtrlPacketRuns.h"
 
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -19,7 +19,6 @@
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIELEGALIZECONTROLPACKET
-#define GEN_PASS_DEF_AIEINSERTCTRLPACKETBARRIERS
 #define GEN_PASS_DEF_AIECOALESCECONTROLPACKETS
 #define GEN_PASS_DEF_AIETXNTOCONTROLPACKET
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -164,84 +163,35 @@ struct AIELegalizeControlPacketPass
   }
 };
 
-struct AIEInsertCtrlPacketBarriersPass
-    : xilinx::AIEX::impl::AIEInsertCtrlPacketBarriersBase<
-          AIEInsertCtrlPacketBarriersPass> {
-  void runOnOperation() override {
-    WalkResult result = getOperation().walk([&](Block *block) {
-      if (!isa<AIE::RuntimeSequenceOp>(block->getParentOp()) &&
-          !block->getParentOp()->getParentOfType<AIE::RuntimeSequenceOp>())
-        return WalkResult::advance();
-      auto classified = AIEX::packetEffects(*block);
-      if (failed(classified))
-        return WalkResult::interrupt();
-      for (auto packet : llvm::make_early_inc_range(
-               block->getOps<AIEX::NpuControlPacketOp>())) {
-        AIEX::PacketEffects effects = classified->lookup(packet);
-        if (effects.reorderable)
-          continue;
-        auto covers = [&](Operation *operation) {
-          auto barrier =
-              dyn_cast_or_null<AIEX::ControlPacketBarrierOp>(operation);
-          return barrier && (!barrier.getScopeAttr() ||
-                             barrier.getScopeAttr() == effects.scope);
-        };
-        OpBuilder builder(packet);
-        if (!covers(packet->getPrevNode()))
-          AIEX::ControlPacketBarrierOp::create(
-              builder, packet.getLoc(), builder.getUnitAttr(), effects.scope,
-              builder.getUnitAttr());
-        builder.setInsertionPointAfter(packet);
-        if (!covers(packet->getNextNode()))
-          AIEX::ControlPacketBarrierOp::create(
-              builder, packet.getLoc(), builder.getUnitAttr(), effects.scope,
-              builder.getUnitAttr());
-      }
-      return WalkResult::advance();
-    });
-    if (result.wasInterrupted())
-      signalPassFailure();
-  }
-};
-
 struct AIECoalesceControlPacketsPass
     : xilinx::AIEX::impl::AIECoalesceControlPacketsBase<
           AIECoalesceControlPacketsPass> {
   void runOnOperation() override {
     getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
       sequence.walk([&](Block *block) {
-        auto classified = AIEX::packetEffects(*block);
-        if (failed(classified)) {
-          signalPassFailure();
-          return;
-        }
-        AIEX::NpuControlPacketOp previous;
-        for (Operation &operation : llvm::make_early_inc_range(*block)) {
-          auto packet = dyn_cast<AIEX::NpuControlPacketOp>(operation);
-          if (!packet || packet.getOpcode() != 0 || !packet.getData()) {
-            previous = {};
+        for (AIEX::PacketInterval interval : AIEX::packetIntervals(*block)) {
+          if (!interval.unobserved)
             continue;
-          }
-          if (!classified->lookup(packet).reorderable) {
-            previous = {};
-            continue;
-          }
-          auto data = packet.getData().value();
-          if (previous && previous.getStreamId() == packet.getStreamId() &&
-              previous.getMulticastId() == packet.getMulticastId() &&
-              previous.getTileFromAddr() == packet.getTileFromAddr() &&
-              previous.getAddress() + 4 * previous.getData()->size() ==
-                  packet.getAddress() &&
-              previous.getAddress() / 16 ==
-                  (packet.getAddress() + 4 * data.size() - 1) / 16) {
-            SmallVector<int32_t, 4> merged(previous.getData()->begin(),
-                                           previous.getData()->end());
-            llvm::append_range(merged, data);
-            previous.setDataAttr(DenseI32ArrayAttr::get(&getContext(), merged));
-            previous.removeLengthAttr();
-            packet.erase();
-          } else {
-            previous = packet;
+          AIEX::NpuControlPacketOp previous;
+          for (auto packet : interval.packets) {
+            auto data = packet.getData().value();
+            if (previous && previous.getStreamId() == packet.getStreamId() &&
+                previous.getMulticastId() == packet.getMulticastId() &&
+                previous.getTileFromAddr() == packet.getTileFromAddr() &&
+                previous.getAddress() + 4 * previous.getData()->size() ==
+                    packet.getAddress() &&
+                previous.getAddress() / 16 ==
+                    (packet.getAddress() + 4 * data.size() - 1) / 16) {
+              SmallVector<int32_t, 4> merged(previous.getData()->begin(),
+                                             previous.getData()->end());
+              llvm::append_range(merged, data);
+              previous.setDataAttr(
+                  DenseI32ArrayAttr::get(&getContext(), merged));
+              previous.removeLengthAttr();
+              packet.erase();
+            } else {
+              previous = packet;
+            }
           }
         }
       });
@@ -259,11 +209,6 @@ xilinx::AIEX::createAIETxnToControlPacketPass() {
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 xilinx::AIEX::createAIELegalizeControlPacketPass() {
   return std::make_unique<AIELegalizeControlPacketPass>();
-}
-
-std::unique_ptr<OperationPass<AIE::DeviceOp>>
-xilinx::AIEX::createAIEInsertCtrlPacketBarriersPass() {
-  return std::make_unique<AIEInsertCtrlPacketBarriersPass>();
 }
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
