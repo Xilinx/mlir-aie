@@ -31,6 +31,7 @@ class DMATask(RuntimeTask):
         length_unit: int | None = None,
         repeat_parameter: str | None = None,
         out_of_order_id: int | None = None,
+        burst_length: int = 0,
     ):
         """Construct a RuntimeTask that will resolve to a DMA Operation.
 
@@ -66,6 +67,9 @@ class DMATask(RuntimeTask):
                 receiving out-of-order channel takes this transfer with. The
                 header carries it, which is how that channel tells apart the
                 fifos sharing it. Defaults to None.
+            burst_length (int, optional): The shim DMA's burst length in
+                bytes, one the target model lists
+                (``get_shim_burst_lengths``); 0 for the longest. Defaults to 0.
         """
         self._alloc = alloc
         self._rt_data = rt_data
@@ -77,6 +81,7 @@ class DMATask(RuntimeTask):
         self._out_of_order_id = out_of_order_id
         self._repeat_parameter = repeat_parameter
         self._packet = packet
+        self._burst_length = burst_length
         self._task = None
         RuntimeTask.__init__(self, task_group)
 
@@ -116,6 +121,7 @@ class DMATask(RuntimeTask):
             length_unit=self._length_unit,
             packet=self._packet,  # pyright: ignore[reportArgumentType]
             out_of_order_id=self._out_of_order_id,
+            burst_length=self._burst_length,
         )
         dma_start_task(self._task, repeat_parameter=self._repeat_parameter)
         # Named after the buffer and the channel it moves through
@@ -142,6 +148,7 @@ def emit_shim_transfer(
     length_unit: int | None = None,
     repeat_parameter: ScratchpadParameter | str | None = None,
     out_of_order_id: int | None = None,
+    burst_length: int = 0,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
 
@@ -162,7 +169,8 @@ def emit_shim_transfer(
     ``offset_parameter``, ``length_parameter`` and ``repeat_parameter`` take a
     ScratchpadParameter (or its name). A ``length_parameter`` n makes the
     transfer move exactly n passes of ``tap`` (per iteration), and a
-    ``repeat_parameter`` n runs it n + 1 times; see DMATask.
+    ``repeat_parameter`` n runs it n + 1 times; see DMATask, which also
+    takes ``burst_length``.
 
     Returns:
         Task: A handle to the transfer.
@@ -198,6 +206,7 @@ def emit_shim_transfer(
         length_unit=length_unit,
         repeat_parameter=rt.register_parameter(repeat_parameter),
         out_of_order_id=out_of_order_id,
+        burst_length=burst_length,
     )
     if managed:
         active.emit_transfer(task, group)
