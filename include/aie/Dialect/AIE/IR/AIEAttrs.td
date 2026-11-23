@@ -521,7 +521,10 @@ def TileAttr : AttrDef<AIE_Dialect, "Tile", []> {
   let mnemonic = "tile";
   let summary = "A tile, by column and row";
   let description = [{
-    Names a tile in an attribute, where an `aie.tile` value cannot go.
+    Stores physical tile coordinates in attribute metadata. The
+    `aie.ctrl_pkt_multicast` attribute on an overlay device uses these
+    coordinates to list destination tiles. Attribute metadata cannot contain
+    references to `aie.tile` SSA values.
 
     Example:
     ```

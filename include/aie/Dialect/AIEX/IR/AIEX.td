@@ -1286,10 +1286,16 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
     `length` gives the number of words to read, at most 4. A write payload may
     be longer than 4 words: `aie-legalize-control-packet` splits it.
 
-    With `multicast_id`, the packet goes on that control multicast of the
-    overlay (see `aie.ctrl_pkt_multicast`), and every tile of the multicast
-    applies the write at the address's offset in its own tile. The address
-    names the multicast's lowest tile, which picks the shim channel.
+    With `multicast_id`, the packet uses a control multicast route from the
+    overlay. The `aie.ctrl_pkt_multicast` attribute belongs to the overlay's
+    `aie.device` operation. Its dictionaries contain the source shim `column`,
+    packet `id`, and destination `tiles`. The address's column and
+    `multicast_id` select an entry. Each destination applies the write at the
+    address's tile-local offset.
+
+    The address encodes the first destination in column-then-row order. Its
+    column selects the overlay's MM2S shim DMA allocation. `multicast_id`
+    supplies the stream packet ID; it does not name a channel or an IR symbol.
   }];
   let hasVerifier = 1;
   let builders = [OpBuilder<
@@ -1323,15 +1329,19 @@ def AIE_SetDeviceOp
     : AIEX_Op<"set_device",
         [HasParent<"AIE::RuntimeSequenceOp">,
                DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
-  let summary = "Select the device configuration for subsequent operations";
+  let summary = "Identify static BD reservations for a device configuration";
   let description = [{
-    Selects `device_ref` as the configuration context for subsequent operations,
-    including nested operations. The marker must be a direct child of a
-    single-block runtime sequence. A real PDI load clears the context.
-    The descriptor allocator reserves that device's static BD
-    IDs from this point, including during transfers that install its
-    configuration. Other loaded resources and live runtime tasks retain their
-    reservations.
+    Identifies the device configuration whose static BD IDs the allocator
+    must reserve for subsequent operations, including nested operations.
+    Reservations begin before the transfers that install the configuration.
+    Other loaded resources and live runtime tasks retain their reservations.
+    Packet optimizers also use `device_ref` to resolve the overlay's multicast
+    destination declarations.
+
+    The marker must be a direct child of a single-block runtime sequence.
+    The allocator handles a retained `aiex.npu.load_pdi` directly: that load
+    changes the loaded-device state and clears this marker's context. A PDI
+    load needs no companion `set_device` operation.
 
     The operation emits no hardware instruction. The sequence must complete
     the outgoing application's use of shared resources before replacing its
@@ -1347,21 +1357,30 @@ def AIE_ControlPacketBarrierOp
       "control_packet_barrier", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Order the control packets around it";
   let description = [{
-    Every control packet before it in its run lands before any after it.
-    With `compiler_only`, the barrier only prevents compiler transformations
-    across it. DMA lowering removes that form without adding synchronization.
+    A hardware barrier completes preceding control-packet delivery before
+    subsequent packets start. With `compiler_only`, the operation separates
+    packet optimization intervals without requesting an unconditional hardware
+    wait. DMA lowering still inserts waits required by packet dependencies.
 
-    `unobserved` asserts that execution cannot observe intermediate values or
-    modify the storage written by the following ordinary writes. Optimizers
-    preserve the final value of each word. An ordered action, barrier, or
-    other operation ends this permission. The producer must exclude resources
-    that the active control transport uses.
+    `unobserved` and `independent` assert properties of the following packets.
+    They do not describe the barrier's execution. Each assertion covers every
+    destination touched by its interval. The operation has no tile or
+    address-range selector.
 
-    `independent` permits writes to different tiles in any order until the
-    next hardware barrier or non-packet runtime operation. Each destination
-    retains its ordered actions and their multiplicity. Compiler-only barriers
-    retain this delivery permission. The producer guarantees that application
-    traffic cannot prevent the remaining control packets from arriving.
+    `unobserved` permits ordinary-write optimization. The producer guarantees
+    that execution cannot observe intermediate values or concurrently modify
+    the written storage. Optimizers may remove overwritten writes and reorder
+    ordinary writes while preserving each word's final value. The permission
+    ends at the next ordered action, barrier, or other operation. The producer
+    must exclude resources that the active control transport uses.
+
+    `independent` permits delivery to different tiles in any order. Each
+    destination retains its ordered actions and their multiplicity. The
+    permission ends at the next hardware barrier or non-packet runtime
+    operation. Compiler-only barriers retain this permission. `independent`
+    alone does not permit dead-write elimination. The producer guarantees
+    that application traffic cannot prevent the remaining packets from
+    arriving.
 
     Without these assertions, transformations preserve write order and
     multiplicity. A barrier completes packet delivery, not application execution.
@@ -1801,10 +1820,16 @@ def AIE_DMAAwaitTaskOp
     dominate the await; an await after an `scf.if` on a task configured inside a
     branch is rejected (move the await inside the branch that configures it).
 
-    `defer_completion` permits allocation to combine this task with subsequent
-    configure/start/await triples. The transfers must be independent across
-    channels, and no observer may require intermediate completion tokens.
-    An unmarked await or an intervening operation ends the interval.
+    `defer_completion` permits the allocator to combine consecutive
+    configure/start/await triples. The producer emits all three operations
+    before allocation. The attribute creates no start or await operation.
+    The allocator may move independent starts before waits. With task
+    chaining enabled, it may replace compatible same-channel tasks with one
+    BD chain, one start, and one await.
+
+    The transfers must be independent across channels. No observer may require
+    intermediate completion tokens. An unmarked await or an intervening
+    operation ends the interval. Ineligible tasks retain their start and await.
   }];
 
   let arguments = (ins Index:$task, UnitAttr:$defer_completion);

@@ -935,13 +935,17 @@ def AIEGenerateColumnControlOverlay
     Adaptive placement avoids application reservations; fixed placement uses
     shim MM2S channel zero. Supplied overlays must be explicitly referenced.
 
-    With configuration and `multicast-span=w`, the core tiles of every `w`
-    columns, from the first column with a core, that number two or more also
-    get a control multicast: one packet flow from the control channel of the
-    lowest such tile's column to all their TileControl ports. All of them go
-    on one packet id, the highest that no application device and no
-    controller uses. The overlay device lists them in
-    `aie.ctrl_pkt_multicast`.
+    With configuration and `multicast-span=w` for `w > 0`, the pass groups core
+    tiles into spans of `w` consecutive columns. The first span begins at the
+    lowest column containing a core. The pass creates a multicast route for
+    each span containing at least two core tiles. The route starts at the
+    overlay's control shim DMA channel in the span's lowest occupied column.
+    It reaches the TileControl ports of all core tiles in that span.
+
+    All routes use the same packet ID. The pass selects the highest ID unused
+    by application devices and tile controllers. It records each route's
+    source column, packet ID, and destination tiles in `aie.ctrl_pkt_multicast`
+    on the overlay's `aie.device` operation.
   }];
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",

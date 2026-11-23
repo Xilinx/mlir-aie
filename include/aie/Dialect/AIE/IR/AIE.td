@@ -48,6 +48,18 @@ def AIE_Dialect : Dialect {
     analysis uses this contract while collecting explicit lock operations.
     An external declaration without the attribute has unknown lock effects.
     This contract permits lock releases and other side effects.
+    Analysis traverses the bodies of defined functions without requiring this
+    attribute. Teardown generation warns and skips device lock draining if
+    any core has an incomplete lock summary. It still emits core disables
+    and DMA resets.
+
+    On an overlay `aie.device`, `aie.ctrl_pkt_multicast` describes control
+    multicast routes. Each dictionary contains `column`, the source shim
+    column; `id`, the stream packet ID; and `tiles`, an array of destination
+    coordinates written as `#aie.tile<column, row>`. The source column selects
+    the overlay's MM2S shim DMA allocation. The dictionary does not contain
+    a channel number or a route symbol. Packet optimization uses the
+    destination list to match multicast writes and check overlapping writes.
 
   }];
   let useDefaultTypePrinterParser = 1;
@@ -59,9 +71,6 @@ def AIE_Dialect : Dialect {
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
   // Overlay-owned settings survive application configuration and teardown.
-  // On a control overlay's device, ctrl_pkt_multicast lists its control
-  // multicasts, each a dictionary of its packet `id`, the `column` whose
-  // control channel it leaves by, and its `tiles` (#aie.tile).
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_pkt_overlay,
       "::mlir::UnitAttr":$priority_route, "::mlir::ArrayAttr":$shareable_with,
       "::mlir::UnitAttr":$reserve_controller_packet_ids,
