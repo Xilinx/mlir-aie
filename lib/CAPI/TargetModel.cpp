@@ -168,6 +168,15 @@ uint32_t aieTargetModelGetDmaTaskQueueDepth(AieTargetModel targetModel) {
   return unwrap(targetModel).getDmaTaskQueueDepth();
 }
 
+uint32_t aieTargetModelGetNumShimBurstLengths(AieTargetModel targetModel) {
+  return unwrap(targetModel).getShimBurstEncodingsAndLengths().size();
+}
+
+uint32_t aieTargetModelGetShimBurstLength(AieTargetModel targetModel,
+                                          uint32_t index) {
+  return unwrap(targetModel).getShimBurstEncodingsAndLengths().at(index).second;
+}
+
 uint32_t aieTargetModelGetDmaBdWrapBits(AieTargetModel targetModel, int col,
                                         int row) {
   return unwrap(targetModel).getDmaBdWrapBits(col, row);

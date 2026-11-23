@@ -347,6 +347,16 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self) {
              return aieTargetModelGetDmaTaskQueueDepth(self.get());
            })
+      .def("get_shim_burst_lengths",
+           [](PyAieTargetModel &self) {
+             std::vector<uint32_t> lengths;
+             for (uint32_t i = 0,
+                           n = aieTargetModelGetNumShimBurstLengths(self.get());
+                  i < n; ++i)
+               lengths.push_back(
+                   aieTargetModelGetShimBurstLength(self.get(), i));
+             return lengths;
+           })
       .def("get_dma_bd_wrap_bits",
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetDmaBdWrapBits(self.get(), col, row);

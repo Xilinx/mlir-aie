@@ -465,3 +465,16 @@ def test_target_model_dma_limits():
 
 
 test_target_model_dma_limits()
+
+
+# CHECK-LABEL: test_target_model_shim_burst_lengths
+# CHECK: xcvc1902 [64, 128, 256]
+# CHECK: npu1 [64, 128, 256]
+# CHECK: npu2 [64, 128, 256, 512]
+def test_target_model_shim_burst_lengths():
+    print("test_target_model_shim_burst_lengths")
+    for d in [AIEDevice.xcvc1902, AIEDevice.npu1, AIEDevice.npu2]:
+        print(f"{d} {get_target_model(d).get_shim_burst_lengths()}")
+
+
+test_target_model_shim_burst_lengths()

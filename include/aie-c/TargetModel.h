@@ -152,6 +152,15 @@ aieTargetModelGetMaxRepeatCount(AieTargetModel targetModel);
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetDmaTaskQueueDepth(AieTargetModel targetModel);
 
+/// How many burst lengths a shim DMA's buffer descriptor selects among.
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetNumShimBurstLengths(AieTargetModel targetModel);
+
+/// The `index`th burst length a shim DMA's buffer descriptor selects, in bytes,
+/// shortest first.
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetShimBurstLength(AieTargetModel targetModel, uint32_t index);
+
 /// Field widths of a DMA buffer descriptor, which differ by tile type. The step
 /// field counts address granules, not elements -- see
 /// aieGetTargetModelAddressGenGranularity.
