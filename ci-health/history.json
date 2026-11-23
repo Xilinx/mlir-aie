@@ -2129,36 +2129,36 @@
    "critical": {
     "buildAndTestRyzenAI.yml": {
      "main": 1.0,
-     "pull_requests": 0.778,
-     "flaky": 0.072,
-     "minutes_median": 78.6,
-     "queued_median": 5.6
+     "pull_requests": 0.776,
+     "flaky": 0.069,
+     "minutes_median": 77.3,
+     "queued_median": 3.7
     },
     "buildAndTestRyzenAIWindows.yml": {
-     "main": 0.923,
-     "pull_requests": 0.699,
-     "flaky": 0.043,
-     "minutes_median": 59.1,
+     "main": 0.929,
+     "pull_requests": 0.695,
+     "flaky": 0.04,
+     "minutes_median": 59.2,
      "queued_median": 0.4
     },
     "buildAndTestMulti.yml": {
      "main": 1.0,
-     "pull_requests": 0.84,
-     "flaky": 0.047,
+     "pull_requests": 0.838,
+     "flaky": 0.043,
      "minutes_median": 28.3,
      "queued_median": 0.2
     },
     "buildAndTestPythons.yml": {
      "main": 1.0,
-     "pull_requests": 0.83,
-     "flaky": 0.047,
+     "pull_requests": 0.828,
+     "flaky": 0.044,
      "minutes_median": 25.1,
      "queued_median": 0.2
     },
     "lintAndFormat.yml": {
      "main": 1.0,
-     "pull_requests": 0.86,
-     "flaky": 0.047,
+     "pull_requests": 0.859,
+     "flaky": 0.043,
      "minutes_median": 2.5,
      "queued_median": 0.2
     }
