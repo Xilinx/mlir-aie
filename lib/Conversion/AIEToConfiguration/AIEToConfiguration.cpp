@@ -419,24 +419,6 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
   return num_cols;
 }
 
-static LogicalResult generateTransactions(
-    AIERTControl &ctl, const StringRef workDirPath, DeviceOp &targetOp,
-    bool aieSim, bool enableElfs, bool enableInit, bool enableCores,
-    bool skipCtrlPktOverlay = false,
-    llvm::function_ref<LogicalResult()> beforeActivation = {}) {
-  if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
-      failed(ctl.addAieElfs(targetOp, workDirPath, aieSim,
-                            static_cast<bool>(beforeActivation))))
-    return failure();
-  if (enableInit &&
-      failed(ctl.addInitConfig(targetOp, skipCtrlPktOverlay, beforeActivation)))
-    return failure();
-  if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
-      failed(ctl.addCoreEnable(targetOp)))
-    return failure();
-  return success();
-}
-
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
 // ops (npu.write32, npu.maskwrite32, npu.maskpoll, npu.blockwrite). Each
 // emitted op gets the per-op `sourceLoc` from AIERT's instruction-range
@@ -837,7 +819,11 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
         AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
     boundary.setIndependent(true);
   }
-  auto beforeActivation = [&]() -> LogicalResult {
+  if ((!device.getOps<CoreOp>().empty() &&
+       failed(ctl.addAieElfs(device, clElfDir, aieSim))) ||
+      failed(ctl.addInitConfig(device, skipCtrlPktOverlay)))
+    return failure();
+  if (controlPackets) {
     if (failed(insertRecordedTransaction(ctl, builder, outputType,
                                          blockwriteData, configured)))
       return failure();
@@ -846,12 +832,9 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     boundary.setIndependent(true);
     ctl.clearTransaction();
     ctl.startTransaction();
-    return success();
-  };
-  if (failed(generateTransactions(
-          ctl, clElfDir, device, aieSim, true, true, true, skipCtrlPktOverlay,
-          controlPackets ? llvm::function_ref<LogicalResult()>(beforeActivation)
-                         : llvm::function_ref<LogicalResult()>{})))
+  }
+  if (failed(ctl.addDmaActivation(device)) ||
+      (!device.getOps<CoreOp>().empty() && failed(ctl.addCoreEnable(device))))
     return failure();
   if (failed(insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
                                        configured)))
