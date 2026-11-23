@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::DMAChannelAnalysis::BDGroup" name="xilinx::AIE::DMAChannelAnalysis::BDGroup">
-<area shape="rect" id="Node000001" title="Channels among 0..numChannels&#45;1 at (col, row), grouped by whichever BD ids any two in a group share,..." alt="" coords="5,106,239,151"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="14,5,94,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="72,44,111,105,106,106,69,48"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="118,5,264,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="177,45,138,107,134,104,172,47"/>
-</map>

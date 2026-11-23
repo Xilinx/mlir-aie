@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::LockPlan::Placed" name="xilinx::AIE::LockPlan::Placed">
-<area shape="rect" id="Node000001" title=" " alt="" coords="76,128,228,173"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,169,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="102,45,144,128,139,128,99,49"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="193,5,242,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="207,46,165,130,161,126,202,48"/>
-</map>
