@@ -1286,6 +1286,18 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
     `length` gives the number of words to read, at most 4. A write payload may
     be longer than 4 words: `aie-legalize-control-packet` splits it.
 
+    Ordinary storage writes have final-value semantics within each consecutive
+    run. Optimizers may remove overwritten writes, reorder disjoint writes,
+    and coalesce adjacent writes. Programs must not depend on intermediate
+    values or concurrently modify the storage during the run. An action
+    register write, read, write with response, unknown register write, barrier,
+    or other operation ends the run. Action writes retain their multiplicity
+    and per-destination order.
+
+    `aiecc --ctrlpkt-optimize=false` disables optional packet transformations
+    and parallel delivery for programs that require the original writes.
+    Packet legalization and required synchronization remain enabled.
+
     With `multicast_id`, the packet uses a control multicast route from the
     overlay. The `aie.ctrl_pkt_multicast` attribute belongs to the overlay's
     `aie.device` operation. Its dictionaries contain the source shim `column`,
@@ -1362,38 +1374,30 @@ def AIE_ControlPacketBarrierOp
     packet optimization intervals without requesting an unconditional hardware
     wait. DMA lowering still inserts waits required by packet dependencies.
 
-    `unobserved` and `independent` grant permissions for control packets
-    following this barrier in operation order. They grant no permission for
-    packets before this barrier. Each assertion covers every destination
-    touched by its interval. The operation has no tile or address-range
-    selector.
+    `independent` permits delivery of following control packets to different
+    tiles in any order. It grants no permission for packets before this
+    barrier. Each destination retains its action order and multiplicity.
+    The permission ends at the next hardware barrier or non-packet runtime
+    operation. Compiler-only barriers retain this permission. The producer
+    guarantees that application traffic cannot prevent the remaining packets
+    from arriving. The operation has no tile or address-range selector.
 
-    `unobserved` permits ordinary-write optimization. The producer guarantees
-    that execution cannot observe intermediate values or concurrently modify
-    the written storage. Optimizers may remove overwritten writes and reorder
-    ordinary writes while preserving each word's final value. The permission
-    ends at the next ordered action, barrier, or other operation. The producer
-    must exclude resources that the active control transport uses.
+    Ordinary writes use the final-value semantics of `aiex.control_packet`
+    without an annotation. Action writes end ordinary-write optimization runs.
+    They do not implicitly require array-wide delivery completion. A hardware
+    barrier supplies that requirement. `independent` permits cross-tile
+    delivery, including actions, within the phase; it does not permit removing
+    actions or reversing their order at one destination.
 
-    `independent` permits delivery to different tiles in any order. Each
-    destination retains its ordered actions and their multiplicity. The
-    permission ends at the next hardware barrier or non-packet runtime
-    operation. Compiler-only barriers retain this permission. `independent`
-    alone does not permit dead-write elimination. The producer guarantees
-    that application traffic cannot prevent the remaining packets from
-    arriving.
-
-    Without these assertions, transformations preserve write order and
-    multiplicity. A barrier completes packet delivery, not application execution.
+    A barrier completes packet delivery, not application execution.
     The producer must supply a control overlay that permits delivery within
     each hardware-barrier interval. Packet optimizers do not infer stream
     activity or repair the supplied routes.
 
     Configuration generation emits hardware barriers before setup, between
     setup and activation, and after activation. The first two barriers carry
-    `independent` for the following phase. Within setup, generation inserts a
-    `compiler_only, unobserved` barrier before each run of ordinary writes.
-    Ordered reset and enable writes end those runs.
+    `independent` for the following phase. Register classification separates
+    ordinary-write runs from reset, enable, and other action writes.
 
     Teardown generation emits an `independent` hardware barrier before its
     writes. It emits another before lock-drain writes, after the core-disable
@@ -1401,14 +1405,12 @@ def AIE_ControlPacketBarrierOp
     completion of preceding packet delivery. The producer must establish
     application quiescence separately.
   }];
-  let arguments = (ins UnitAttr:$compiler_only,
-                       UnitAttr:$unobserved,
-                       UnitAttr:$independent);
+  let arguments = (ins UnitAttr:$compiler_only, UnitAttr:$independent);
   let assemblyFormat = [{ attr-dict }];
   let builders = [OpBuilder<(ins), [{
-    build($_builder, $_state, ::mlir::UnitAttr{}, nullptr, nullptr);
+    build($_builder, $_state, ::mlir::UnitAttr{}, nullptr);
   }]>, OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly), [{
-    build($_builder, $_state, compilerOnly, nullptr, nullptr);
+    build($_builder, $_state, compilerOnly, nullptr);
   }]>];
 }
 

@@ -95,7 +95,7 @@ struct AIEReorderCtrlPacketsByTilePass
             for (NpuControlPacketOp packet : interval.packets)
               packet->moveBefore(block, end);
           }
-          if (!interval.unobserved)
+          if (!interval.ordinary)
             continue;
           SmallVector<NpuControlPacketOp> packets;
           llvm::DenseSet<uint32_t> written;

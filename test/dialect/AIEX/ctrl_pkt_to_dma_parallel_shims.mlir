@@ -275,10 +275,10 @@ module {
     // CHAIN-NEXT: aiex.dma_await_task(%[[WRITE]])
     aie.runtime_sequence @multicast_interval() {
       aiex.set_device @cfg
-      aiex.control_packet_barrier {independent, unobserved}
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
-      aiex.control_packet_barrier {compiler_only, unobserved}
+      aiex.control_packet_barrier {compiler_only}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier
     }
@@ -311,9 +311,9 @@ module {
     // CHAIN-NEXT: aiex.dma_await_task(%[[WRITE]])
     aie.runtime_sequence @multicast_batch_interval() {
       aiex.set_device @cfg
-      aiex.control_packet_barrier {independent, unobserved}
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
-      aiex.control_packet_barrier {compiler_only, unobserved}
+      aiex.control_packet_barrier {compiler_only}
       aiex.control_packet {address = 2228228 : ui32, data = array<i32: 3>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier
@@ -341,10 +341,10 @@ module {
     // CHAIN-NEXT: aiex.dma_await_task(%[[WRITE]])
     aie.runtime_sequence @multicast_unicast_batch_interval() {
       aiex.set_device @cfg
-      aiex.control_packet_barrier {independent, unobserved}
+      aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35782660 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
-      aiex.control_packet_barrier {compiler_only, unobserved}
+      aiex.control_packet_barrier {compiler_only}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier
     }

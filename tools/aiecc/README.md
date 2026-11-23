@@ -156,11 +156,12 @@ runtime loops before static instruction lowering.
 Authored and generated control packets use the same interval contract.
 An explicit sync, await, or other runtime operation ends the packet interval.
 Parameter writes after that boundary remain after it. A channel sync does not
-assert array-wide inactivity. The producer opens an unobserved packet interval
-with `aiex.control_packet_barrier {compiler_only, unobserved}`. Execution must
-neither observe intermediate storage values nor modify that storage. An ordered
-action, barrier, or other runtime operation ends the interval. Every packet
-optimizer uses this contract and the same target predicate for ordinary writes.
+assert array-wide inactivity. Ordinary storage writes have final-value semantics
+within each consecutive run. Programs must not depend on intermediate values
+or concurrently modify the storage during that run. Action writes, reads,
+writes with responses, unknown register writes, barriers, and other runtime
+operations end each run. Every packet optimizer uses this contract and the same
+target predicate for ordinary writes. No permission attribute is required.
 
 `aiex.control_packet_barrier {independent}` permits delivery to different tiles
 in any order until the next hardware barrier or other runtime operation.
@@ -176,17 +177,18 @@ Direct write32/blockwrite output retains its per-tile emission order.
 
 `--ctrlpkt-optimize=false` disables optional destination grouping, address
 sorting, dead-write elimination, coalescing, multicast, BD chaining, and
-parallel shim delivery. It overrides the individual optimization flags.
+parallel shim delivery. Programs that require intermediate ordinary writes can
+use this option. It overrides the individual optimization flags.
 Packet legalization, required synchronization, and resource allocation
 remain enabled. The option does not change the control overlay or teardown.
 
 - `aie-reorder-ctrl-packets-by-tile` groups independent writes by destination.
-  It sorts ordinary writes and removes overwritten words in unobserved intervals.
+  It sorts ordinary writes and removes overwritten words in ordinary-write runs.
 - `aie-coalesce-control-packets` merges adjacent writes into packets of up to
   four words within each aligned 16-byte address block.
 - `aie-dedup-ctrl-packet-multicast` replaces matching destination prefixes in
-  unobserved or independent intervals. It retains each destination's action
-  order and multiplicity. It uses the supplied overlay's destination declarations.
+  ordinary-write or independent action intervals. It retains each destination's
+  action order and multiplicity. It uses the overlay's destination declarations.
 - `aie-ctrl-packet-to-dma` owns packet delivery ordering. It emits DMA tasks
   and marks eligible awaits with `defer_completion`.
 - `aie-assign-runtime-sequence-bd-ids{chain-tasks}` schedules independent task

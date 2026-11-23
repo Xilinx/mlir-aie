@@ -15,7 +15,6 @@
 // CHECK:      aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay
 // CHECK-NEXT: aiex.set_device @design
 // CHECK-NEXT: aiex.control_packet_barrier {independent}
-// CHECK-NEXT: aiex.control_packet_barrier {compiler_only, unobserved}
 // CHECK-NEXT:   aiex.control_packet {address = 2355204 : ui32
 // CHECK-NEXT:   aiex.control_packet {address = 2355812 : ui32
 // CHECK-NEXT: aiex.control_packet_barrier {independent}

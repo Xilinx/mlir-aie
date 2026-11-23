@@ -23,16 +23,17 @@ SmallVector<PacketInterval> AIEX::packetIntervals(Block &block) {
   };
   for (Operation &operation : block) {
     if (auto packet = dyn_cast<NpuControlPacketOp>(operation)) {
-      if (!packet.isOrdinaryWrite() && current.unobserved) {
+      bool ordinary = packet.isOrdinaryWrite();
+      if (ordinary != current.ordinary) {
         finish();
-        current.unobserved = false;
+        current.ordinary = ordinary;
       }
       current.packets.push_back(packet);
       continue;
     }
     finish();
     auto barrier = dyn_cast<ControlPacketBarrierOp>(operation);
-    current.unobserved = barrier && barrier.getUnobserved();
+    current.ordinary = false;
     current.independent =
         barrier && (barrier.getIndependent() ||
                     (barrier.getCompilerOnly() && current.independent));

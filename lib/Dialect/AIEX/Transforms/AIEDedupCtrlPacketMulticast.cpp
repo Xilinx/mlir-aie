@@ -32,7 +32,7 @@ struct AIEDedupCtrlPacketMulticastPass
     module.walk([&](AIE::RuntimeSequenceOp sequence) {
       sequence.walk([&](Block *block) {
         for (PacketInterval interval : packetIntervals(*block)) {
-          if ((!interval.unobserved && !interval.independent) ||
+          if ((!interval.ordinary && !interval.independent) ||
               !interval.device ||
               llvm::any_of(interval.packets, [](NpuControlPacketOp packet) {
                 return packet.getMulticastId().has_value();

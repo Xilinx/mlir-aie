@@ -170,7 +170,7 @@ struct AIECoalesceControlPacketsPass
     getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
       sequence.walk([&](Block *block) {
         for (AIEX::PacketInterval interval : AIEX::packetIntervals(*block)) {
-          if (!interval.unobserved)
+          if (!interval.ordinary)
             continue;
           AIEX::NpuControlPacketOp previous;
           for (auto packet : interval.packets) {

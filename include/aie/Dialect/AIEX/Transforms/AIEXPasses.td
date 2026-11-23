@@ -596,7 +596,7 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
 
     Independent multicast prefixes may share completion. A multicast and unicast
     require separate completion unless their destination words are disjoint
-    within an unobserved interval.
+    within an ordinary-write interval.
     The control overlay must deliver these transfers without application
     interference. This pass does not analyze application execution or routes.
   }];
@@ -755,7 +755,7 @@ def AIECoalesceControlPackets
   let summary = "Merge adjacent control-packet writes";
   let description = [{
     Combines adjacent writes with consecutive addresses and matching
-    destinations and header settings inside unobserved packet intervals.
+    destinations and header settings inside ordinary-write intervals.
     The merged payload stays within one aligned four-word line.
   }];
   let constructor = "xilinx::AIEX::createAIECoalesceControlPacketsPass()";
@@ -779,7 +779,7 @@ def AIEReorderCtrlPacketsByTile
     Groups independent packets by destination while retaining each
     destination's action order and multiplicity.
     Retains the last value for each ordinary unicast word and orders surviving
-    packets by address inside unobserved packet intervals. Barriers, ordered
+    packets by address inside ordinary-write intervals. Barriers, ordered
     actions, header changes, and other operations end each interval.
     Run before multicast selection and adjacent-write coalescing.
 
@@ -799,8 +799,8 @@ def AIEDedupCtrlPacketMulticast
     : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
   let summary = "Send the control packets a multicast's tiles share once";
   let description = [{
-    Replaces equal per-destination prefixes inside unobserved or independent
-    packet intervals. Each destination retains its action order and multiplicity.
+    Replaces equal per-destination prefixes inside ordinary-write or independent
+    action intervals. Each destination retains its action order and multiplicity.
     The overlay declares destination groups in `aie.ctrl_pkt_multicast`.
     DMA lowering owns delivery ordering and completion.
   }];

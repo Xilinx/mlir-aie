@@ -19,7 +19,7 @@ struct PacketInterval {
   llvm::SmallVector<NpuControlPacketOp> packets;
   mlir::FlatSymbolRefAttr device;
   unsigned delivery = 0;
-  bool unobserved = false;
+  bool ordinary = false;
   bool independent = false;
 };
 

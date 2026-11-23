@@ -78,7 +78,7 @@ struct AIECtrlPacketToDmaPass
     Operation *first;
     unsigned delivery;
     unsigned interval;
-    bool unobserved;
+    bool ordinary;
     bool independent;
     bool disjointMulticast;
     std::optional<int32_t> multicast;
@@ -129,7 +129,7 @@ struct AIECtrlPacketToDmaPass
       bool previousIntervalMulticast = false;
       for (auto [index, interval] : llvm::enumerate(packetIntervals(entry))) {
         llvm::DenseSet<uint32_t> multicastWords;
-        bool disjointMulticast = interval.unobserved;
+        bool disjointMulticast = interval.ordinary;
         ArrayAttr groups = controlPacketMulticasts(
             device->getParentOfType<ModuleOp>(), interval.device);
         for (NpuControlPacketOp packet : interval.packets)
@@ -187,7 +187,7 @@ struct AIECtrlPacketToDmaPass
               batches.back().multicast == multicast) {
             batches.back().totalSize += ctrlPktSize;
             batches.back().interval = index;
-            batches.back().unobserved &= interval.unobserved;
+            batches.back().ordinary &= interval.ordinary;
             batches.back().independent &= interval.independent;
             batches.back().disjointMulticast &= disjointMulticast;
           } else {
@@ -203,7 +203,7 @@ struct AIECtrlPacketToDmaPass
             batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                                alloc.getSymName().str(), ctrlPktOp,
                                interval.delivery, static_cast<unsigned>(index),
-                               interval.unobserved, interval.independent,
+                               interval.ordinary, interval.independent,
                                disjointMulticast, multicast});
           }
           new_batch = !batchable;
@@ -226,7 +226,7 @@ struct AIECtrlPacketToDmaPass
         auto next = std::next(batchIt);
         bool independent = next != batches.end() &&
                            ((batchIt->independent && next->independent) ||
-                            (batchIt->unobserved && next->unobserved &&
+                            (batchIt->ordinary && next->ordinary &&
                              next->interval == batchIt->interval));
         pendingMulticast |= batchIt->multicast.has_value();
         bool defer =
@@ -234,7 +234,7 @@ struct AIECtrlPacketToDmaPass
             (!pendingMulticast || next->interval == batchIt->interval) &&
             ((!batchIt->multicast && !next->multicast) ||
              (((batchIt->independent && next->independent) ||
-               (batchIt->unobserved && next->unobserved)) &&
+               (batchIt->ordinary && next->ordinary)) &&
               next->interval == batchIt->interval &&
               ((batchIt->multicast && next->multicast) ||
                (!next->multicast && batchIt->disjointMulticast)))) &&

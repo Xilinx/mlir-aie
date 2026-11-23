@@ -838,27 +838,9 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     boundary.setIndependent(true);
   }
   auto beforeActivation = [&]() -> LogicalResult {
-    Block *block = builder.getInsertionBlock();
-    auto insertion = builder.getInsertionPoint();
-    Operation *previous =
-        insertion == block->begin() ? nullptr : &*std::prev(insertion);
     if (failed(insertRecordedTransaction(ctl, builder, outputType,
                                          blockwriteData, configured)))
       return failure();
-    bool unobserved = false;
-    auto begin = previous ? std::next(previous->getIterator()) : block->begin();
-    for (Operation &operation : llvm::make_early_inc_range(
-             llvm::make_range(begin, builder.getInsertionPoint()))) {
-      auto packet = dyn_cast<AIEX::NpuControlPacketOp>(operation);
-      bool ordinary = packet && packet.isOrdinaryWrite(targetModel);
-      if (ordinary && !unobserved) {
-        OpBuilder markerBuilder(&operation);
-        auto marker = AIEX::ControlPacketBarrierOp::create(
-            markerBuilder, packet.getLoc(), markerBuilder.getUnitAttr());
-        marker.setUnobserved(true);
-      }
-      unobserved = ordinary;
-    }
     auto boundary =
         AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
     boundary.setIndependent(true);
