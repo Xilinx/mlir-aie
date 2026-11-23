@@ -126,6 +126,7 @@ struct AIECtrlPacketToDmaPass
       int64_t ddrOffset = 0;
 
       NpuControlPacketOp previous;
+      bool previousIntervalMulticast = false;
       for (auto [index, interval] : llvm::enumerate(packetIntervals(entry))) {
         llvm::DenseSet<uint32_t> multicastWords;
         bool disjointMulticast = interval.unobserved;
@@ -163,7 +164,8 @@ struct AIECtrlPacketToDmaPass
               disjointMulticast &=
                   !multicastWords.contains(packet.getAddress() + 4 * word);
         bool new_batch = !previous || previous.getOpcode() != 0 ||
-                         batches.back().delivery != interval.delivery;
+                         batches.back().delivery != interval.delivery ||
+                         previousIntervalMulticast;
         for (NpuControlPacketOp ctrlPktOp : interval.packets) {
           int col = ctrlPktOp.getColumnFromAddr();
           int row = ctrlPktOp.getRowFromAddr();
@@ -208,9 +210,14 @@ struct AIECtrlPacketToDmaPass
           ddrOffset += ctrlPktSize;
           previous = ctrlPktOp;
         }
+        previousIntervalMulticast =
+            llvm::any_of(interval.packets, [](NpuControlPacketOp packet) {
+              return packet.getMulticastId().has_value();
+            });
       }
 
       auto batchIt = batches.begin();
+      bool pendingMulticast = false;
       for (; batchIt != batches.end(); ++batchIt) {
         OpBuilder builder(batchIt->first);
         DMAConfigureTaskForOp task =
@@ -221,8 +228,10 @@ struct AIECtrlPacketToDmaPass
                            ((batchIt->independent && next->independent) ||
                             (batchIt->unobserved && next->unobserved &&
                              next->interval == batchIt->interval));
+        pendingMulticast |= batchIt->multicast.has_value();
         bool defer =
             next != batches.end() && next->delivery == batchIt->delivery &&
+            (!pendingMulticast || next->interval == batchIt->interval) &&
             ((!batchIt->multicast && !next->multicast) ||
              (((batchIt->independent && next->independent) ||
                (batchIt->unobserved && next->unobserved)) &&
@@ -234,6 +243,7 @@ struct AIECtrlPacketToDmaPass
              (parallelShims && independent));
         DMAAwaitTaskOp::create(builder, loc, task,
                                defer ? builder.getUnitAttr() : UnitAttr{});
+        pendingMulticast &= defer;
       }
       for (NpuControlPacketOp packet :
            llvm::make_early_inc_range(controlPacketOps))

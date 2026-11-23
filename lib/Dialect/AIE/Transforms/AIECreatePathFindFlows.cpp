@@ -1629,6 +1629,25 @@ const SwitchSettings &PacketFlowRouting::settingsOf(const PathEndPoint &src,
   return it == routing.settings.end() ? noSettings : it->second;
 }
 
+static AMSelOp findExclusiveAMSel(MasterSetOp master) {
+  for (Value selection : master.getAmsels()) {
+    auto candidate = cast<AMSelOp>(selection.getDefiningOp());
+    if (llvm::all_of(
+            master->getBlock()->getOps<MasterSetOp>(),
+            [&](MasterSetOp otherMaster) {
+              return otherMaster.destPort() == master.destPort() ||
+                     llvm::none_of(otherMaster.getAmsels(), [&](Value other) {
+                       auto amsel = cast<AMSelOp>(other.getDefiningOp());
+                       return amsel.arbiterIndex() ==
+                                  candidate.arbiterIndex() &&
+                              amsel.getMselValue() == candidate.getMselValue();
+                     });
+            }))
+      return candidate;
+  }
+  return {};
+}
+
 void PacketFlowRouting::findCircuitHops() {
   // Seed the reserved set from the packet-switch configuration the switchboxes
   // already carry, so this run allocates around it instead of over it.
@@ -1637,11 +1656,10 @@ void PacketFlowRouting::findCircuitHops() {
   for (auto swbox : device.getOps<SwitchboxOp>())
     for (auto master : swbox.getConnections().getOps<MasterSetOp>())
       if (master.getDestBundle() == WireBundle::TileControl &&
-          overlay.isAttrPresent(master) && !master.getAmsels().empty()) {
-        auto amsel = cast<AMSelOp>(master.getAmsels().front().getDefiningOp());
-        joinedAmsels[swbox.getTileOp().getTileID()][master.destPort()] =
-            amsel.arbiterIndex() + amsel.getMselValue() * numArbiters;
-      }
+          overlay.isAttrPresent(master))
+        if (auto amsel = findExclusiveAMSel(master))
+          joinedAmsels[swbox.getTileOp().getTileID()][master.destPort()] =
+              amsel.arbiterIndex() + amsel.getMselValue() * numArbiters;
 
   // Ports the input's own aie.switchbox ops already drive, circuit or packet.
   std::set<PhysPort> claimedSlaves, claimedMasters;
@@ -3133,8 +3151,16 @@ static LogicalResult checkFixedFlowEndpoints(DeviceOp device) {
       return success();
     // Packets join the overlay's TileControl master set (see joinedAmsels).
     if (packet && !source && port.bundle == WireBundle::TileControl &&
-        isa<MasterSetOp>(reserved) && overlay.isAttrPresent(reserved))
-      return success();
+        isa<MasterSetOp>(reserved) && overlay.isAttrPresent(reserved)) {
+      if (findExclusiveAMSel(cast<MasterSetOp>(reserved)))
+        return success();
+      auto diag = emitError(flow->getLoc());
+      diag << "control packet overlay has no TileControl-only amsel at "
+           << describeTilePort(tile.getTileID(), port);
+      diag.attachNote(reserved->getLoc())
+          << "TileControl master set declared here";
+      return failure();
+    }
     bool fromOverlay = overlay.isAttrPresent(reserved);
     if (auto rules = dyn_cast<PacketRulesOp>(reserved))
       fromOverlay |= llvm::any_of(

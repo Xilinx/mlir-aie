@@ -236,3 +236,117 @@ module {
     }
   }
 }
+
+// -----
+
+module {
+  aie.device(npu2) @overlay {
+  } {aie.ctrl_pkt_multicast = [{column = 0 : i32, id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<1, 2>]}], aie.is_ctrl_pkt_overlay}
+  aie.device(npu2) @cfg {
+  } {overlay = @overlay}
+  aie.device(npu2) @main {
+    %shim0 = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    aie.shim_dma_allocation @ctrl0(%shim0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.shim_dma_allocation @ctrl1(%shim1, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+
+    // CHECK-LABEL: @multicast_interval
+    // CHECK: %[[MC:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHECK: aie.dma_bd({{.*}} offset = 0 len = 3)
+    // CHECK: aiex.dma_start_task(%[[MC]])
+    // CHECK: %[[OTHER:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHECK: aie.dma_bd({{.*}} offset = 3 len = 3)
+    // CHECK: aiex.dma_start_task(%[[OTHER]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[MC]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[OTHER]])
+    // CHECK-NEXT: %[[WRITE:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0)
+    // CHECK: aie.dma_bd({{.*}} offset = 6 len = 3)
+    // CHECK: aiex.dma_start_task(%[[WRITE]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[WRITE]])
+    // CHAIN-LABEL: @multicast_interval
+    // CHAIN: %[[MC:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHAIN: aie.dma_bd({{.*}} offset = 0 len = 3)
+    // CHAIN: aie.dma_bd({{.*}} offset = 3 len = 3)
+    // CHAIN: aiex.dma_start_task(%[[MC]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[MC]])
+    // CHAIN-NEXT: %[[WRITE:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0)
+    // CHAIN: aie.dma_bd({{.*}} offset = 6 len = 3)
+    // CHAIN: aiex.dma_start_task(%[[WRITE]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[WRITE]])
+    aie.runtime_sequence @multicast_interval() {
+      aiex.set_device @cfg
+      aiex.control_packet_barrier {independent, unobserved}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier {compiler_only, unobserved}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier
+    }
+
+    // CHECK-LABEL: @multicast_batch_interval
+    // CHECK: %[[MC:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHECK: aie.dma_bd({{.*}} offset = 0 len = 3)
+    // CHECK: aiex.dma_start_task(%[[MC]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[MC]])
+    // CHECK-NEXT: %[[LATER:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHECK: aie.dma_bd({{.*}} offset = 3 len = 3)
+    // CHECK: aiex.dma_start_task(%[[LATER]])
+    // CHECK-NEXT: %[[WRITE:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0)
+    // CHECK: aie.dma_bd({{.*}} offset = 6 len = 3)
+    // CHECK: aiex.dma_start_task(%[[WRITE]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[LATER]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[WRITE]])
+    // CHAIN-LABEL: @multicast_batch_interval
+    // CHAIN: %[[MC:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHAIN: aie.dma_bd({{.*}} offset = 0 len = 3)
+    // CHAIN: aiex.dma_start_task(%[[MC]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[MC]])
+    // CHAIN-NEXT: %[[LATER:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHAIN: aie.dma_bd({{.*}} offset = 3 len = 3)
+    // CHAIN: aiex.dma_start_task(%[[LATER]])
+    // CHAIN-NEXT: %[[WRITE:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0)
+    // CHAIN: aie.dma_bd({{.*}} offset = 6 len = 3)
+    // CHAIN: aiex.dma_start_task(%[[WRITE]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[LATER]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[WRITE]])
+    aie.runtime_sequence @multicast_batch_interval() {
+      aiex.set_device @cfg
+      aiex.control_packet_barrier {independent, unobserved}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier {compiler_only, unobserved}
+      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 3>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier
+    }
+
+    // CHECK-LABEL: @multicast_unicast_batch_interval
+    // CHECK: %[[MC:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHECK: aie.dma_bd({{.*}} offset = 0 len = 3)
+    // CHECK: aiex.dma_start_task(%[[MC]])
+    // CHECK: aie.dma_bd({{.*}} offset = 3 len = 3)
+    // CHECK: aiex.dma_await_task(%[[MC]])
+    // CHECK: %[[WRITE:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0)
+    // CHECK: aie.dma_bd({{.*}} offset = 6 len = 3)
+    // CHECK: aiex.dma_start_task(%[[WRITE]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[WRITE]])
+    // CHAIN-LABEL: @multicast_unicast_batch_interval
+    // CHAIN: %[[MC:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHAIN: aie.dma_bd({{.*}} offset = 0 len = 3)
+    // CHAIN: aiex.dma_start_task(%[[MC]])
+    // CHAIN: aie.dma_bd({{.*}} offset = 3 len = 3)
+    // CHAIN: aiex.dma_await_task(%[[MC]])
+    // CHAIN: %[[WRITE:.*]] = aiex.dma_configure_task(%shim_noc_tile_1_0, MM2S, 0)
+    // CHAIN: aie.dma_bd({{.*}} offset = 6 len = 3)
+    // CHAIN: aiex.dma_start_task(%[[WRITE]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[WRITE]])
+    aie.runtime_sequence @multicast_unicast_batch_interval() {
+      aiex.set_device @cfg
+      aiex.control_packet_barrier {independent, unobserved}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35782660 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier {compiler_only, unobserved}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier
+    }
+  }
+}

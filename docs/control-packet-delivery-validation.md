@@ -3,6 +3,43 @@
 
 # Control Packet Delivery Validation
 
+## Multicast Review Fixes
+
+The November 23, 2026 review identifies two defects at `394672662f5`.
+DMA lowering completes pending multicast before leaving the interval covered
+by its conflict check. It prevents batches from crossing that interval's end.
+Unicast-only intervals retain cross-interval batching and deferred completion.
+The router selects a TileControl amsel only when its hardware selection has
+no other outputs. It checks every amsel, including SSA aliases of the same
+arbiter and msel. It rejects a requested TileControl flow when the fixed
+overlay has no compatible amsel. It leaves the overlay unchanged.
+
+Twelve focused compiler tests cover the two reported cases, cross-interval
+multicast and unicast batches, chaining, compatible amsel selection, and
+incompatible-overlay diagnostics. Five serial hardware tests cover parallel
+and serial cross-column multicast, parameter updates, unicast delivery, and
+pending-lock teardown. The validation does not run the full lit suite.
+
+The fresh run `review-fixes-20261123-ctrlpkt-teardown` produces all 192 expected
+token IDs across six generations. It measures 18.436 tokens/s. Compile and load
+takes 69.15 seconds. Both images retain one entry PDI and no inter-application
+PDI reset. The instruction verifier confirms complete lock summaries and
+packet completion before core-status and lock-stall polls.
+
+Consecutive saved-image runs use nine measured generations each. The benchmark
+checks token IDs and image hashes. It rejects any compiler invocation.
+
+| Image Pair | Tokens/s | First-Token Time (ms) |
+| --- | ---: | ---: |
+| Reference `394672662f5` | 18.401 | 141.282 |
+| Multicast review fixes | 18.441 | 139.905 |
+
+The benchmark measures 0.22% higher throughput with the fixes.
+The decoder SHA256 is
+`c627900effeef52b48fb04ab817197ed35ed77b0f31c047ae502519d6b24bef8`.
+The prefill SHA256 is
+`4bfc37e44590ce496bbfb7e4ed48318860278aa0fd45998556f7c9b66535291e`.
+
 ## Explicit Interval Contract
 
 The November 22, 2026 implementation replaces activation recovery, start-gating
