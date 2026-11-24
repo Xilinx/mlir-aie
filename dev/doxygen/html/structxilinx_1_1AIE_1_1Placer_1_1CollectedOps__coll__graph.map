@@ -1,0 +1,21 @@
+<map id="xilinx::AIE::Placer::CollectedOps" name="xilinx::AIE::Placer::CollectedOps">
+<area shape="rect" id="Node000001" title=" " alt="" coords="452,244,586,288"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="30,28,247,56"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="262,27,306,29,349,36,391,49,429,70,450,88,467,109,492,157,508,204,517,244,512,242,503,206,488,159,462,112,446,92,426,75,389,54,348,41,305,34,264,31"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="10,84,267,112"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="281,99,368,108,404,116,429,126,459,151,483,183,500,215,512,244,507,243,496,217,478,185,455,155,426,131,402,121,368,114,283,104"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="18,140,259,168"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="274,153,352,165,391,175,429,189,468,213,500,243,494,243,465,217,426,194,390,180,351,170,275,158"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="5,196,272,224"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="287,217,428,237,454,244,449,245,427,242,288,222"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="22,252,255,280"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="270,263,453,264,449,267,271,268"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="49,308,228,336"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="243,316,333,308,427,294,458,288,453,290,428,299,334,314,244,321"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="28,364,249,392"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="264,377,346,366,387,356,426,342,466,316,496,290,501,287,469,321,429,347,389,361,347,372,265,382"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="46,420,231,448"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="246,443,291,442,338,436,384,424,426,405,456,380,479,348,496,316,508,290,512,287,501,318,484,351,460,383,429,409,386,429,339,442,292,447,247,448"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="37,472,240,516"/>
+<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="256,510,300,510,344,505,387,493,426,473,447,454,465,432,490,381,505,330,514,291,517,287,511,331,495,383,469,435,451,458,429,477,389,498,345,511,300,516,256,516"/>
+</map>

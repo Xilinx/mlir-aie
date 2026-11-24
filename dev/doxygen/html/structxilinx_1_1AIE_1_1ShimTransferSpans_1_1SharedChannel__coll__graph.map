@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::ShimTransferSpans::SharedChannel" name="xilinx::AIE::ShimTransferSpans::SharedChannel">
+<area shape="rect" id="Node000001" title="A shim allocation&#39;s channel the ends its aie.shareable_with lists may take turns on." alt="" coords="51,123,230,168"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,154,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="99,61,132,122,127,123,97,66"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="178,14,227,42"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="191,54,154,124,150,121,186,56"/>
+</map>

@@ -1,0 +1,16 @@
+<map id="xilinx::AIE::LockPlan::Assignment" name="xilinx::AIE::LockPlan::Assignment">
+<area shape="rect" id="Node000001" title=" " alt="" coords="614,125,766,170"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="289,5,484,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="499,40,546,52,591,69,633,95,668,125,663,125,630,99,589,74,545,57,500,45"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="315,74,458,102"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="473,94,591,114,622,125,617,125,589,120,473,100"/>
+<area shape="rect" id="Node000004" href="$structxilinx_1_1AIE_1_1LockPlan_1_1Placed.html" title=" " alt="" coords="310,125,462,170"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="478,145,616,147,611,148,478,150"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="5,106,169,134"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="183,126,312,139,308,142,184,131"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="62,183,112,211"/>
+<area shape="poly" id="edge7_Node000001_Node000006" title=" " alt="" coords="127,200,195,207,284,212,383,213,484,205,558,189,624,171,630,170,560,194,484,210,384,218,284,218,194,212,127,205"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="126,188,311,158,309,163,128,193"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="357,267,416,295"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="432,284,467,285,508,283,550,276,589,261,617,242,640,218,674,172,679,169,644,221,620,246,591,266,551,281,508,288,467,290,432,289"/>
+</map>
