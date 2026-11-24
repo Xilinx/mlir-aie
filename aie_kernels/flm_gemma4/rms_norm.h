@@ -5,9 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RMSNorm and the residual add. Independent of the model geometry.
-//
-// The pointers must not be `restrict`: callers pass the same buffer as y and x.
 #ifndef AIE_KERNELS_FLM_GEMMA4_RMS_NORM_H
 #define AIE_KERNELS_FLM_GEMMA4_RMS_NORM_H
 
@@ -90,8 +87,7 @@ void rms_norm(bf16 *y, const bf16 *x, const bf16 *w) {
     const bf16_vec w1 = aie::load_v<f32_lanes>(w + f32_lanes);
     const bf16_vec n0 = weighted_norm(x0, w0, s);
     const bf16_vec n1 = weighted_norm(x1, w1, s);
-    // 32-byte stores: rms_residual's y follows a 16-element packet header,
-    // where a 64-byte store would be truncated onto the header.
+    // Split stores to support a 32-byte-aligned output.
     aie::store_v(y, n0.extract<16>(0));
     aie::store_v(y + 16, n0.extract<16>(1));
     aie::store_v(y + 32, n1.extract<16>(0));
@@ -147,7 +143,7 @@ void rms_norm_unweighted(bf16 *y, const bf16 *x) {
 
 /// \brief y = x + x_buf, and x_buf = y, over D elements.
 ///
-/// x_buf becomes the running residual for the next block. y and x may alias.
+/// x_buf must be writable despite its const type; y and x may alias.
 template <int D>
 void residual_add(bf16 *y, const bf16 *x_buf, const bf16 *x) {
   const bf16 *it_x = x;

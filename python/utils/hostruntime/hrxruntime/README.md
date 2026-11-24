@@ -333,7 +333,7 @@ you ever see all-zero output confirm the transaction bytes reached libhrx intact
 
 - The host does no patch-table extraction of its own. For a raw `insts.bin` it
   passes the transaction straight through; for an ELF input
-  (`aiecc --aie-generate-elf`) it extracts `.ctrltext` (the TXN verbatim) via
+  (`aiecc --get-elf`) it extracts `.ctrltext` (the TXN verbatim) via
   the small `control_code_from_elf` helper (defined in Python `_bindings.py` and
   re-exported from the package `__init__.py`; `hrx_test_wrapper.h` on the C++
   side) and hands that to libhrx as the transaction.

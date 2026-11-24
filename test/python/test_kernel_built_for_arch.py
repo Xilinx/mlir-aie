@@ -297,6 +297,12 @@ def test_a_portable_build_is_judged_by_its_untuned_branch(no_device, portable, d
     assert gelu.reference is kernels.gelu_lut_ref
 
 
+def test_a_portable_build_refuses_the_fused_attention_block(no_device, portable):
+    set_current_device(NPU1Col1())
+    with pytest.raises(NotImplementedError, match="tuned AIE2"):
+        kernels.mha(dim_m=16, dim_k=64, dim_n=16, b_col_maj=True, fused=True)
+
+
 def test_the_portable_flag_comes_from_the_kernel_not_the_environment(
     npu1_device, monkeypatch
 ):

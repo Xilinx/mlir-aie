@@ -473,6 +473,16 @@ class KernelDesign:
             raise ValueError(
                 f"{self.fn.name}: every InOut requires a declared initializer"
             )
+        shifted = dict(self.arg_byte_offsets)
+        if any(
+            self.fn.contract.roles[i] is Param
+            and (i not in self._tensor_params or i in shifted)
+            for i, _ in initializers
+        ):
+            raise ValueError(
+                f"{self.fn.name}: an initialized Param must be a tensor bound "
+                "at no byte offset"
+            )
         return initializers
 
     @cached_property
@@ -599,7 +609,7 @@ class KernelDesign:
                 views = self._typed(outputs)
                 kernels = constants[n_param + 1 : n_param + 1 + n_init]
                 for (i, _), init in zip(initializers, kernels):
-                    init(views[slot[i]])
+                    init(views[slot[i]] if i in slot else constants[param_pos.index(i)])
 
         return Stage(
             body,

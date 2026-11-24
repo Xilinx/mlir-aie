@@ -12,12 +12,11 @@
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe -x final.xclbin -k MLIR_AIE -i insts.bin
 import numpy as np
-import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 
 PROBLEM_SIZE = 1024
 AIE_TILE_WIDTH = 32
@@ -50,7 +49,7 @@ def my_vector_bias_add():
         @core(ComputeTile3)
         def core_body():
             # Effective while(1)
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 elem_out = of_out0.acquire(ObjectFifoPort.Produce, 1)
                 for i in range_(AIE_TILE_WIDTH):

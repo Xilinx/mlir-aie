@@ -128,9 +128,11 @@ set(TEST_DEPENDS
   aie-translate
 )
 
+# Full-model examples include cold compilation and hardware execution. YOLO26n
+# alone takes about 500 seconds on CI, largely in simulated-annealing placement.
 add_lit_testsuite(check-reference-designs "Running the aie reference designs"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --timeout 600 --max-failures 1"
+  ARGS "-sv --timeout 1200 --max-failures 1"
 )
 set_target_properties(check-reference-designs PROPERTIES FOLDER "Tutorials")

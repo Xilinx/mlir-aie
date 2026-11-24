@@ -482,6 +482,11 @@ PAD = (
     "<const_pad_before=0, const_pad_after=0>]"
 )
 MEM_ND = "%mbuf : memref<1024xi32> offset = 8 len = 192 sizes = [4, 6, 8] strides = [64, 8, 1]"
+# MEM_ND with PAD's 1 + 2 rows around each of its 6, counted in its length.
+MEM_ND_PADDED = (
+    "%mbuf : memref<1024xi32> offset = 8 len = 288 sizes = [4, 6, 8] "
+    f"strides = [64, 8, 1] {PAD}"
+)
 
 
 @pytest.mark.parametrize("device", ["npu1", "npu2"])
@@ -493,7 +498,7 @@ class TestLoweredTiles:
                 "mem",
                 "MM2S",
                 3,
-                f"{MEM_ND} {PAD}",
+                MEM_ND_PADDED,
                 37,
                 "{repeat_count = 2 : i32, issue_token = true}",
             ),
@@ -501,22 +506,22 @@ class TestLoweredTiles:
         (ev,) = trace(s)
         assert (ev.col, ev.row, ev.direction, ev.channel) == (0, 1, "MM2S", 3)
         assert ev.repeat == 2 and ev.issue_token
-        assert ev.bd.length == 192
+        assert ev.bd.length == 288
         assert ev.bd.dims == ((8, 1), (6, 8)) and ev.bd.outer_stride == 64
         assert ev.bd.padding == ((0, 0), (1, 2), (0, 0))
         assert "pad=[0/0 1/2 0/0]" in explain(s)
 
     def test_memtile_bd_id_and_padding_compare(self, device):
-        bd = f"{MEM_ND} {PAD}"
+        bd = MEM_ND_PADDED
         low = lowered(device, task("mem", "MM2S", 0, bd, 2))
-        high = lowered(device, task("mem", "MM2S", 0, bd, 41))
+        high = lowered(device, task("mem", "MM2S", 0, bd, 22))
         assert compare(low, high) == []
-        unpadded = lowered(device, task("mem", "MM2S", 0, MEM_ND, 41))
+        unpadded = lowered(device, task("mem", "MM2S", 0, MEM_ND, 22))
         assert compare(high, unpadded)
 
     def test_memtile_contiguous_nd_equals_linear(self, device):
         linear = lowered(
-            device, task("mem", "S2MM", 1, "%mbuf : memref<1024xi32> len = 512", 20)
+            device, task("mem", "S2MM", 1, "%mbuf : memref<1024xi32> len = 512", 28)
         )
         nd = lowered(
             device,
@@ -526,7 +531,7 @@ class TestLoweredTiles:
                 1,
                 "%mbuf : memref<1024xi32> len = 512 sizes = [2, 16, 16] "
                 "strides = [256, 16, 1]",
-                20,
+                28,
             ),
         )
         assert compare(linear, nd) == []
@@ -538,7 +543,7 @@ class TestLoweredTiles:
                 1,
                 "%mbuf : memref<1024xi32> len = 512 sizes = [2, 16, 16] "
                 "strides = [256, 32, 1]",
-                20,
+                28,
             ),
         )
         assert compare(linear, strided)

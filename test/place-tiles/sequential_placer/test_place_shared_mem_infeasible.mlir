@@ -13,6 +13,7 @@
 // RUN: not aie-opt --aie-place-tiles %s 2>&1 | FileCheck %s
 
 // CHECK: error: no available compute tiles for placement (shared-memory transport unsatisfiable)
+// CHECK: note: the sequential placer places tiles one at a time and never moves a placed peer; if these constraints can be met together, --placer=sa_placer, which searches placements jointly, may place them
 
 module @shared_mem_five {
   aie.device(npu2) {

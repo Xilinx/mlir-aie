@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Regression test for the aie-rt ELF loader out-of-bounds read fixed by
-// third_party/patches/aie-rt/0002-elfloader-zero-bss-gap.patch.
+// Regression test for the aie-codegen ELF loader out-of-bounds read when a
+// segment has 0 < p_filesz < p_memsz (fixed upstream in aie-codegen).
 //
 // A kernel with both .data and .bss links to one PT_LOAD with
 // 0 < p_filesz < p_memsz -- the ELF-spec representation of .bss.
@@ -21,7 +21,7 @@
 // RUN: cd %t.d && aiecc --get-xclbin --xclbin-name=%t.d/test.xclbin --tmpdir=%t.d/prj %s
 
 // Precondition: the segment really is mixed, otherwise the test is vacuous and
-// would pass even with the bug present (a p_filesz == 0 segment takes aie-rt's
+// would pass even with the bug present (a p_filesz == 0 segment takes aie-codegen's
 // separate, correct calloc path).
 // RUN: llvm-readelf -lW %t.d/prj/elfs_main_core_0_2/elfs_main_core_0_2.elf | awk 'function hex2dec(s,   i,c,v,n){gsub(/^0[xX]/,"",s);n=0;for(i=1;i<=length(s);i++){c=tolower(substr(s,i,1));v=index("0123456789abcdef",c)-1;n=n*16+v}return n} /^  LOAD/ && $7=="RW" {if (hex2dec($6) > hex2dec($5)) f=1} END {exit !f}'
 

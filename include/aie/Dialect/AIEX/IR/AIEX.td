@@ -551,7 +551,12 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
 
   let summary = "Execute a runtime sequence";
   let description = [{
-    Executes an `aiex.runtime_sequence` with the given name and arguments by inlining its instructions at the call site.
+    Executes the named `aie.runtime_sequence` with the given arguments.
+    The callee is assumed to be self-contained: when it returns, its transfers
+    must have completed and it may no longer use its DMA channels.
+
+    Lowering inlines the callee's instructions without adding synchronization;
+    the callee must fulfill this contract.
   }];
 }
 
@@ -756,6 +761,10 @@ def AIE_NpuDmaMemcpyNdOp
     call to DataLayout */
     uint64_t getElementTypeBitwidth();
 
+    // Bytes the transfer moves; nullopt for runtime sizes or a length a
+    // scratchpad parameter sets.
+    std::optional<int64_t> getStaticBytesStreamed();
+
     /* Verifies the supported scope and bounds for a transfer carrying runtime
        (SSA) sizes/strides using the allocation resolved by verifySymbolUses(). */
     llvm::LogicalResult verifyDynamicSizesStrides(
@@ -869,8 +878,11 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
 }
 
 // WRITE32
-def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
+def AIE_NpuWrite32Op
+    : AIEX_Op<
+          "npu.write32", [DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
   let summary = "write32 operator";
+  let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -885,12 +897,14 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
     compile-time-known values or pass runtime sequence values for
     runtime-parameterized sequences.
 
-    If 'buffer' is present then 'address' is interpreted as an offset into the
-    aie.buffer with symbol name 'buffer'.
-    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    If 'buffer' is present then 'address' must be constant and is interpreted
+    as a 32-bit word offset into the aie.buffer with symbol name 'buffer'.
+    The write must fit the buffer and its tile's data memory, and its resolved
+    byte address must be 4-byte aligned. The buffer need not have an assigned
+    address yet; placement-dependent bounds are checked once it does.
+    Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
     into the memory space of aie.tile(column, row).
-    If 'buffer' is not present and 'column' and 'row' are not present then
-    'address' is interpreted as a full 32-bit address in the AIE array.
+    Otherwise, 'address' is a full 32-bit byte address in the AIE array.
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
@@ -900,9 +914,12 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
 }
 
 // MASKWRITE
-def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
+def AIE_NpuMaskPollOp
+    : AIEX_Op<
+          "npu.maskpoll", [DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
   let summary =
       "Block the runtime sequence until a masked 32-bit register matches";
+  let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value, I32:$mask,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -918,13 +935,14 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
     precondition.
 
     The poll timeout is not encoded in the transaction; the firmware applies its
-    own default (see `XAIE_IO_MASKPOLL` in aie-rt's xaie_txn.c). A condition
+    own default (see `XAIE_IO_MASKPOLL` in aie-codegen's xaie_txn.c). A condition
     that never becomes true therefore surfaces as a dispatch timeout rather
     than hanging forever.
 
-    Address interpretation matches `npu.maskwrite32`: an offset into 'buffer'
-    if present, else an offset into aie.tile('column', 'row') if those are
-    present, else a full 32-bit array address.
+    Address interpretation and the buffer bounds check match
+    `npu.maskwrite32`: an offset into 'buffer' if present, else an offset into
+    aie.tile('column', 'row') if those are present, else a full 32-bit array
+    address.
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
@@ -933,8 +951,11 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
   }];
 }
 
-def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
+def AIE_NpuMaskWrite32Op
+    : AIEX_Op<"npu.maskwrite32", [DeclareOpInterfaceMethods<
+                                     NamedOpUserOpInterface>]> {
   let summary = "Write a masked 32-bit value to the AIE array";
+  let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value, I32:$mask,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -949,12 +970,15 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
     compile-time-known values or pass runtime sequence values for
     runtime-parameterized sequences.
 
-    If 'buffer' is present then 'address' is interpreted as an offset into the
-    aie.buffer with symbol name 'buffer'.
-    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    If 'buffer' is present then 'address' must be constant and is interpreted
+    as a 32-bit word offset into the aie.buffer with symbol name 'buffer'.
+    The addressed word must fit the buffer and its tile's data memory, and its
+    resolved byte address must be 4-byte aligned, regardless of the mask.
+    The buffer need not have an assigned address yet; placement-dependent
+    bounds are checked once it does.
+    Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
     into the memory space of aie.tile(column, row).
-    If 'buffer' is not present and 'column' and 'row' are not present then
-    'address' is interpreted as a full 32-bit address in the AIE array.
+    Otherwise, 'address' is a full 32-bit byte address in the AIE array.
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
@@ -964,8 +988,11 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
 }
 
 // BLOCKWRITE
-def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
+def AIE_NpuBlockWriteOp
+    : AIEX_Op<"npu.blockwrite", [DeclareOpInterfaceMethods<
+                                    NamedOpUserOpInterface>]> {
   let summary = "blockwrite operator";
+  let hasVerifier = 1;
   let arguments = (ins UI32Attr:$address, AnyMemRef:$data,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -975,12 +1002,15 @@ def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
   }];
   let description = [{
     blockwrite operator writes the data from the memref 'data' to the AIE array.
-    If 'buffer' is present then 'address' is interpreted as an offset into the
-    aie.buffer with symbol name 'buffer'.
-    If 'column' and 'row' are present then 'address' is interpreted as an offset
+    If 'buffer' is present then 'address' is interpreted as a 32-bit word offset
+    into the aie.buffer with symbol name 'buffer'. The payload must have a
+    static, fixed-size extent with 32-bit elements. The write must fit the
+    buffer and its tile's data memory, and its resolved byte address must be
+    4-byte aligned. The buffer need not have an assigned address yet;
+    placement-dependent bounds are checked once it does.
+    Otherwise, if 'column' and 'row' are present then 'address' is a byte offset
     into the memory space of aie.tile(column, row).
-    If 'buffer' is not present and 'column' and 'row' are not present then
-    'address' is interpreted as a full 32-bit address in the AIE array.
+    Otherwise, 'address' is a full 32-bit byte address in the AIE array.
   }];
   let extraClassDeclaration = [{
     // `names` resolves a referenced buffer without a scan of the device.
@@ -1038,6 +1068,7 @@ def AIE_NpuSyncOp : AIEX_Op<"npu.sync", []> {
     If this operation appears to deadlock, ensure that at least one buffer descriptor is configured to issue a TCT on the channel you expect.
     By default, `dma_memcpy_nd` operations only issue tokens for `S2MM` channels, and `issue_token` must be set to `true` to issue tokens for `MM2S` channels.
   }];
+  let hasVerifier = 1;
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
@@ -1248,15 +1279,22 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   let description = [{
     The control_packet operation represents a low-level AIE control packet header
     and payload.
+
+    `opcode` is 0 (write), 1 (read), or 2 (write with response); 3 is
+    reserved. A write carries its payload in `data`. A read carries no `data`;
+    `length` gives the number of words to read, at most 4. A write payload may
+    be longer than 4 words: `aie-legalize-control-packet` splits it.
   }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
 
     /// Most words -- data payload, or read length when there is no data --
     /// one packet can carry on the wire (the header's beat count field is 2
-    /// bits). Enforced where the header is packed, not here -- see
-    /// AIETranslateControlPacketsToUI32Vec.
+    /// bits). The verifier bounds read lengths; write payloads are bounded
+    /// where the header is packed (AIETranslateControlPacketsToUI32Vec), since
+    /// `aie-legalize-control-packet` splits them first.
     static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }
@@ -1325,6 +1363,9 @@ def AIE_NpuLoadPdiOp
     The easiest workaround is to create an empty `aie.device(npu2) @empty {}` and load that before the main device load.
   }];
   let hasCanonicalizeMethod = 1;
+  let extraClassDeclaration = [{
+    bool loadsSamePdi(NpuLoadPdiOp other);
+  }];
 }
 
 def AIE_NpuWriteConfigOp
@@ -1374,7 +1415,7 @@ def AIE_NpuWriteTeardownOp
     Disables the stream-switch circuits, packet ports and cores the
     configuration of `device_ref` enabled and resets its DMA channels, so the
     next `aiex.npu.write_config` needs no reset. A shim DMA channel has no
-    reset (aie-rt's `xaie_dma.c`), so `device_ref` must not start one itself.
+    reset (aie-codegen's `xaie_dma.c`), so `device_ref` must not start one itself.
 
     It must follow the `aiex.npu.write_config` of `device_ref`, with no
     `load_pdi` between, and is translated and inlined as that op is.
@@ -1395,7 +1436,9 @@ def AIE_NpuWriteTeardownOp
 
 def AIE_DMAConfigureTaskOp
     : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
-                                     TileElement, DMAConfigureTaskLike]>,
+                                     TileElement, DMAConfigureTaskLike,
+                                     DeclareOpInterfaceMethods<
+                                         SymbolUserOpInterface>]>,
       Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task "
                 "on a Channel and Direction on a Tile";
@@ -1407,6 +1450,9 @@ def AIE_DMAConfigureTaskOp
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
 
     An `aie.dma_bd` in a task may give more than 4 dimensions when all are constant; `aie-decompose-large-dma-bd` iterates every one past the innermost three.
+
+    `alloc` names the `aie.shim_dma_allocation` the task serves, on its tile,
+    direction and channel, whose `consumed_by` proofs then cover its pushes.
   }];
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
@@ -1416,7 +1462,7 @@ def AIE_DMAConfigureTaskOp
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
-      UnitAttr:$out_of_order);
+      UnitAttr:$out_of_order, OptionalAttr<FlatSymbolRefAttr>:$alloc);
 
   let regions = (region AnyRegion:$body);
 
@@ -1460,7 +1506,7 @@ def AIE_DMAConfigureTaskOp
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*packet=*/nullptr, /*out_of_order=*/nullptr);
+            /*packet=*/nullptr, /*out_of_order=*/nullptr, /*alloc=*/nullptr);
     }]>];
 }
 
@@ -1529,6 +1575,10 @@ def AIE_DMAConfigureTaskForOp
       return mlir::IntegerAttr::get(
           mlir::IntegerType::get(getContext(), 32), getRepeatCount());
     }
+    // Bytes the task streams each time its block runs, counting each start
+    // and the chain reachable from the body's entry; nullopt when any extent,
+    // repeat or start count is not static, or the total overflows.
+    std::optional<int64_t> getStaticBytesStreamed();
   }];
 }
 
@@ -1627,6 +1677,15 @@ def AIE_DMAStartTaskOp
     bool getPushIssueToken(DMAConfigureTaskOp task) {
       return task.getIssueToken() && !getNoToken();
     }
+    // The alignment the head buffer descriptor id of `task` needs: a push
+    // whose repeat count is a parameter writes that id with an update that
+    // clears its low two bits.
+    static uint32_t headBdIdAlignment(mlir::Value task) {
+      return llvm::any_of(task.getUsers(), [](mlir::Operation *user) {
+        auto start = llvm::dyn_cast<DMAStartTaskOp>(user);
+        return start && start.hasRepeatParameter();
+      }) ? 4 : 1;
+    }
   }];
 
   let extraClassDefinition = [{
@@ -1701,10 +1760,15 @@ def AIE_DMABdPoolPopOp
     this op in place of the implicit allocation a `dma_configure_task` performs.
     If the pool is empty at runtime, the generated builder yields no stream
     (`std::nullopt`).
+
+    With `id`, it takes that ID out of the pool for the rest of the sequence
+    and returns it: something outside the pool programs that ID, a static DMA
+    program or an `aiex.npu.dma_memcpy_nd`, so the pool must never hand it
+    out. `aie-lower-dynamic-bd-pool` emits one for each such ID.
   }];
 
   let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,
-      I32Attr:$bd_end);
+      I32Attr:$bd_end, OptionalAttr<I32Attr>:$id);
 
   let assemblyFormat = [{
     `(` $column `,` $row `)` `partition` ` ` `[` $bd_begin `,` $bd_end `)`
@@ -1862,10 +1926,10 @@ def AIEX_DmaChannelResetOp
     channel count in that direction
     (`AIETargetModel::getNumSourceSwitchboxConnections` /
     `getNumDestSwitchboxConnections` with `WireBundle::DMA`, the same query this
-    op's verifier uses to bound `channel`). That is exactly what aie-rt's
+    op's verifier uses to bound `channel`). That is exactly what aie-codegen's
     `XAie_DmaChannelResetAll` is -- a bare loop over `XAie_DmaChannelReset` with
     no tile-wide reset-all bit underneath it. Resetting a channel that was never
-    configured is safe: aie-rt gates the reset only on the channel index being
+    configured is safe: aie-codegen gates the reset only on the channel index being
     in range for the tile and direction, not on configuration state.
 
     Example:
@@ -1896,7 +1960,7 @@ def AIEX_CoreResetOp
     Pulses the reset bit of the CORE_CONTROL register on `tile`. The pulse is two
     `npu.maskwrite32` writes masked to the reset bit (assert, then deassert), so
     it preserves the ENABLE field packed in the same CORE_CONTROL word instead of
-    clobbering it. This mirrors aie-rt's XAie_CoreReset followed by
+    clobbering it. This mirrors aie-codegen's XAie_CoreReset followed by
     XAie_CoreUnreset. The operation is non blocking and offers no synchronization
     guarantees.
 
@@ -1908,7 +1972,7 @@ def AIEX_CoreResetOp
     ENABLE bit also needs a re-enable, which this op does not emit.
 
     Only core tiles have a CORE_CONTROL register; mem and shim tiles are rejected
-    by the verifier because they have no core to reset. This matches aie-rt's
+    by the verifier because they have no core to reset. This matches aie-codegen's
     XAie_CoreReset, which errors on non core tiles.
 
     `tile` is an SSA `aie.tile` value, so the target is named the same way as
@@ -2022,6 +2086,8 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     A transfer whose offset and length are two different parameters also adds a
     `#aiex.joint_bound` to the length parameter's `joint_bounds`, which the host library
     checks when it syncs the scratchpad.
+    A parameter used as a DMA offset may get `offset_multiple`, the element count its values
+    must be a multiple of; the host library rejects others.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
     For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
@@ -2051,7 +2117,8 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
       OptionalAttr<ScratchpadParameterKind>:$kind,
       OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value,
       OptionalAttr<TypedArrayAttrBase<AIEX_JointBoundAttr,
-                                      "joint bounds">>:$joint_bounds);
+                                      "joint bounds">>:$joint_bounds,
+      OptionalAttr<ConfinedAttr<I32Attr, [IntPositive]>>:$offset_multiple);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }

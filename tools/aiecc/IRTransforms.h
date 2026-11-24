@@ -18,6 +18,7 @@
 #include "StackSizeAnalysis.h"
 #include "Utils.h"
 
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -66,6 +67,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1372,17 +1374,26 @@ inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
 // (e.g. `parsePassPipeline` rejected an option string).
 //===----------------------------------------------------------------------===//
 
-// Tile placement (`aie-place-tiles`), nested under DeviceOp.
-inline std::unique_ptr<mlir::PassManager>
-getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
-                     xilinx::AIE::PlacerType placerType, int saSeed,
-                     double saEffort) {
+// Tile placement (`aie-place-tiles`), at module scope: it places every
+// `aie.device` in order so a later one sees earlier ones' placements.
+inline std::unique_ptr<mlir::PassManager> getPlacementPipeline(
+    mlir::MLIRContext *ctx, int coresPerCol, xilinx::AIE::PlacerType placerType,
+    int saSeed, double saEffort, int64_t placementBudget,
+    llvm::ArrayRef<std::string> walkedFifos,
+    llvm::ArrayRef<std::string> coreDataSizes, bool ctrlPktOverlay,
+    bool adaptiveOverlay, bool packetSwObjFifos) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIE::AIEPlaceTilesOptions opts;
   opts.clPlacerType = placerType;
   opts.clCoresPerCol = coresPerCol;
   opts.clSASeed = saSeed;
   opts.clSAEffort = saEffort;
+  opts.clPlacementBudget = placementBudget;
+  opts.clCtrlPktOverlay = ctrlPktOverlay;
+  opts.clCtrlPktOverlayAdaptive = adaptiveOverlay;
+  opts.clPacketSwObjectFifos = packetSwObjFifos;
+  opts.clSAWalkedFifos.assign(walkedFifos.begin(), walkedFifos.end());
+  opts.clSACoreDataSizes.assign(coreDataSizes.begin(), coreDataSizes.end());
   xilinx::AIEX::addPlacementStage(*pm, opts);
   return pm;
 }
@@ -1403,7 +1414,9 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     mlir::MLIRContext *ctx, mlir::ModuleOp mod, bool dynamicObjFifos,
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
-    bool skipObjectFifoVerify = false, bool assignAddresses = true) {
+    bool skipObjectFifoVerify = false, bool assignAddresses = true,
+    llvm::ArrayRef<int> coverColumns = {}, bool adaptiveOverlay = true,
+    bool checkQueueSpace = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1425,7 +1438,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // params.txt is materialized as a separate graph edge, so the scratchpad
   // lowering in this stage writes no `outputParamsFile`.
   X::addLoweringStage(*pm, dynamicObjFifos, packetSwObjFifos, ctrlPktOverlay,
-                      loadPdiToCtrlPkt, skipObjectFifoVerify);
+                      loadPdiToCtrlPkt, skipObjectFifoVerify, coverColumns,
+                      adaptiveOverlay, checkQueueSpace);
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   if (assignAddresses) {
@@ -1617,10 +1631,79 @@ getRoutingPipeline(mlir::MLIRContext *ctx) {
   return pm;
 }
 
+// Splits a store of two vectors' concatenation into a store of each vector
+// (looking through bitcasts). The backend folds a conversion whose result is
+// stored whole into a converting store (vst.conv); a concatenation of
+// conversions would be a shuffle and a plain store instead.
+struct SplitConcatStoresPass
+    : public mlir::PassWrapper<SplitConcatStoresPass,
+                               mlir::OperationPass<mlir::ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SplitConcatStoresPass)
+  static mlir::Value stripBitcasts(mlir::Value v) {
+    while (auto bc = v.getDefiningOp<mlir::LLVM::BitcastOp>()) {
+      if (!mlir::isa<mlir::VectorType>(bc.getArg().getType()))
+        break;
+      v = bc.getArg();
+    }
+    return v;
+  }
+  void runOnOperation() override {
+    llvm::SmallVector<mlir::LLVM::StoreOp> stores;
+    getOperation().walk([&](mlir::LLVM::StoreOp st) {
+      if (!st.getVolatile_() &&
+          st.getOrdering() == mlir::LLVM::AtomicOrdering::not_atomic)
+        stores.push_back(st);
+    });
+    for (auto st : stores) {
+      auto sh = stripBitcasts(st.getValue())
+                    .getDefiningOp<mlir::LLVM::ShuffleVectorOp>();
+      if (!sh || sh.getV1().getType() != sh.getV2().getType())
+        continue;
+      auto vt = mlir::dyn_cast<mlir::VectorType>(sh.getV1().getType());
+      if (!vt || vt.getRank() != 1 || vt.isScalable())
+        continue;
+      int64_t n = vt.getNumElements();
+      auto mask = sh.getMask();
+      if (int64_t(mask.size()) != 2 * n)
+        continue;
+      bool concat = true;
+      for (int64_t i = 0; i < 2 * n; ++i)
+        concat &= mask[i] == i;
+      if (!concat)
+        continue;
+      // Each half must occupy whole bytes to be stored on its own.
+      if (!vt.getElementType().isIntOrFloat() ||
+          vt.getElementType().getIntOrFloatBitWidth() % 8)
+        continue;
+      uint64_t elemBytes = vt.getElementType().getIntOrFloatBitWidth() / 8;
+      int64_t half = vt.getNumElements() * elemBytes;
+      mlir::OpBuilder b(st);
+      mlir::Location loc = st.getLoc();
+      // An alignment both halves have: dividing the original (or, without
+      // one, the element size) and the offset of the second half.
+      uint64_t align = st.getAlignment().value_or(elemBytes);
+      uint64_t halfAlign =
+          std::min<uint64_t>(align, uint64_t(half) & -uint64_t(half));
+      mlir::Value lo = stripBitcasts(sh.getV1());
+      mlir::Value hi = stripBitcasts(sh.getV2());
+      if (lo.getType() != hi.getType()) {
+        lo = sh.getV1();
+        hi = sh.getV2();
+      }
+      mlir::LLVM::StoreOp::create(b, loc, lo, st.getAddr(), halfAlign);
+      auto i8 = mlir::IntegerType::get(&getContext(), 8);
+      mlir::Value next = mlir::LLVM::GEPOp::create(
+          b, loc, st.getAddr().getType(), i8, st.getAddr(),
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(half)});
+      mlir::LLVM::StoreOp::create(b, loc, hi, next, halfAlign);
+      st.erase();
+    }
+  }
+};
+
 // Per-core LLVM-lowering pipeline. Destructive: extracts the CoreOp at
 // (col, row) and removes the `aie.device` wrapper. col/row=-1 means
-// "all cores" (unified mode). `optLevel` >= 3 adds
-// aievec-split-load-ups-chains.
+// "all cores" (unified mode).
 inline std::unique_ptr<mlir::PassManager>
 getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
                             int col, int row, llvm::StringRef aieTarget,
@@ -1640,8 +1723,11 @@ getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
   pm->addPass(xilinx::AIEX::createAIEXToStandardPass());
 
   // Matches aievec.ups, so it must run before the AIEVec-to-LLVM lowering.
-  if (optLevel >= 3) {
-    pm->addPass(xilinx::aievec::createSplitVectorLoadUpsChainsPass());
+  bool chains = optLevel >= 3;
+  bool wideAccesses = llvm::StringRef(aieTarget).equals_insensitive("aie2p");
+  if (chains || wideAccesses) {
+    pm->addPass(xilinx::aievec::createSplitVectorLoadUpsChainsPass(
+        chains, wideAccesses));
   }
 
   xilinx::ConvertAIEVecToLLVMOptions aievecOpts;
@@ -1678,6 +1764,8 @@ getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
   pm->addPass(mlir::createUBToLLVMConversionPass());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
+  pm->addPass(std::make_unique<SplitConcatStoresPass>());
+  pm->addPass(mlir::createCanonicalizerPass());
   return pm;
 }
 
@@ -1919,6 +2007,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
+  bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
@@ -1989,6 +2078,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
+  bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   // Without region simplification; see getNpuDmaLoweringPipeline.
   mlir::GreedyRewriteConfig canonicalize;

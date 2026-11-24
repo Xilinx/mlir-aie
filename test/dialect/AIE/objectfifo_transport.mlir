@@ -48,3 +48,21 @@ module @end_ports {
     aie.objectfifo @pinned_dma (%tile12, {%tile22, %tile23}, 2 : i32) {prod_port = #aie.end_port<DMA : 1>, cons_ports = [#aie.end_port<DMA>, #aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
  }
 }
+
+// -----
+
+// Packet-directed reception round-trips in both DMA and auto transports.
+// Explicit false prints like the default packet transport.
+// CHECK-LABEL: @out_of_order_transport
+// CHECK: @dma_ooo{{.*}}transport = #aie.transport<dma, packet = #aie.packet_info<>, out_of_order = true>
+// CHECK: @auto_ooo{{.*}}transport = #aie.transport<auto, packet = #aie.packet_info<pkt_id = 3>, out_of_order = true>
+// CHECK: @ordinary_packet{{.*}}transport = #aie.transport<dma, packet = #aie.packet_info<>>}
+module @out_of_order_transport {
+  aie.device(npu2) {
+    %src = aie.tile(0, 2)
+    %dst = aie.tile(0, 5)
+    aie.objectfifo @dma_ooo(%src, {%dst}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @auto_ooo(%src, {%dst}, 2 : i32) {transport = #aie.transport<auto, out_of_order = true, packet = #aie.packet_info<pkt_id = 3>>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @ordinary_packet(%src, {%dst}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>, out_of_order = false>} : !aie.objectfifo<memref<16xi32>>
+  }
+}

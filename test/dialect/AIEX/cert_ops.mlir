@@ -34,7 +34,7 @@ module {
       // CHECK: aiex.cert.maskpoll32(119328, 16777216, 0)
       aiex.cert.maskpoll32(0x1d220, 0x1000000, 0)
 
-      // CHECK: aiex.cert.apply_offset_57(@dma_data_0, 1, -1)
+      // CHECK: aiex.cert.apply_offset_57(@dma_data_0, 1, 65535)
       aiex.cert.apply_offset_57(@dma_data_0, 1, 0xffff)
       // CHECK: aiex.cert.apply_offset_57(@dma_data_1, 1, 2)
       aiex.cert.apply_offset_57(@dma_data_1, 1, 2)
@@ -48,12 +48,12 @@ module {
       aiex.cert.wait_tcts(1, 2, 3)
 
       // Local barrier with barrier_id=1, num_participants=2
-      // CHECK: aiex.cert.local_barrier(1, 2)
-      aiex.cert.local_barrier(1, 2)
+      // CHECK: aiex.cert.local_barrier(lb1, 2)
+      aiex.cert.local_barrier(lb1, 2)
 
       // Remote barrier with barrier_id=1, party_mask=0x3
-      // CHECK: aiex.cert.remote_barrier(1, 3)
-      aiex.cert.remote_barrier(1, 0x3)
+      // CHECK: aiex.cert.remote_barrier(rb1, 3)
+      aiex.cert.remote_barrier(rb1, 0x3)
 
       // No operation
       // CHECK: aiex.cert.nop

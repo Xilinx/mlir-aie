@@ -82,6 +82,9 @@
 // compiler/XRT/Python probes are cached and each failing run is fast.
 //===----------------------------------------------------------------------===//
 //
+// The cases below leave -DCASE (and %t.errdev an -DAIE_DEVICE) in the cache,
+// which a rerun's priming configure would inherit, so start from scratch.
+// RUN: rm -rf %t.err %t.errdev
 // RUN: cmake -G Ninja -S %S -B %t.err -DPython3_EXECUTABLE=%python
 //
 // RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_design_missing_py 2>&1 \

@@ -246,6 +246,48 @@ func.func @test_mul_add_multi_use(%a: vector<16xf32>, %b: vector<16xf32>, %c: ve
 
 // -----
 
+// Test: 16 lanes fold as 32 do
+// CHECK-LABEL: func @test_mul_add_to_fma_16
+// CHECK: %[[RES:.*]] = vector.fma {{.*}} : vector<16xf32>
+// CHECK-NOT: arith.mulf
+// CHECK: return %[[RES]]
+func.func @test_mul_add_to_fma_16(%a: vector<16xf32>, %b: vector<16xf32>, %c: vector<16xf32>) -> vector<16xf32> {
+  %0 = arith.mulf %a, %b fastmath<contract> : vector<16xf32>
+  %1 = arith.addf %c, %0 fastmath<contract> : vector<16xf32>
+  return %1 : vector<16xf32>
+}
+
+// -----
+
+// Test: no fma of a shape the fma lowerings do not take; the multiply is
+// emulated on its own
+// CHECK-LABEL: func @test_mul_add_2d
+// CHECK-NOT: vector.fma
+// CHECK: arith.truncf {{.*}} : vector<8x8xf32> to vector<8x8xbf16>
+// CHECK: %[[MUL:.*]] = arith.mulf {{.*}} : vector<8x8xf32>
+// CHECK: arith.addf %[[MUL]], {{.*}} : vector<8x8xf32>
+// CHECK-NOT: vector.fma
+func.func @test_mul_add_2d(%a: vector<8x8xf32>, %b: vector<8x8xf32>, %c: vector<8x8xf32>) -> vector<8x8xf32> {
+  %0 = arith.mulf %a, %b fastmath<contract> : vector<8x8xf32>
+  %1 = arith.addf %0, %c fastmath<contract> : vector<8x8xf32>
+  return %1 : vector<8x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_mul_add_64
+// CHECK-NOT: vector.fma
+// CHECK: %[[MUL:.*]] = arith.mulf {{.*}} : vector<64xf32>
+// CHECK: arith.addf %[[MUL]], {{.*}} : vector<64xf32>
+// CHECK-NOT: vector.fma
+func.func @test_mul_add_64(%a: vector<64xf32>, %b: vector<64xf32>, %c: vector<64xf32>) -> vector<64xf32> {
+  %0 = arith.mulf %a, %b fastmath<contract> : vector<64xf32>
+  %1 = arith.addf %0, %c fastmath<contract> : vector<64xf32>
+  return %1 : vector<64xf32>
+}
+
+// -----
+
 // Test: a multiply whose inputs are already bf16 is left alone
 // CHECK-LABEL: func @test_mulf_bf16_inputs
 // CHECK-SAME: (%[[A:.*]]: vector<16xbf16>, %[[B:.*]]: vector<16xbf16>)

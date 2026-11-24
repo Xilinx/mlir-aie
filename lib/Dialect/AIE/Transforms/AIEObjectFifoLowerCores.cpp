@@ -19,6 +19,8 @@
 #include "mlir/Transforms/Mem2Reg.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
+#include "llvm/ADT/DenseSet.h"
+
 #include <numeric>
 
 using namespace mlir;
@@ -143,6 +145,13 @@ struct LoweringContext {
       objectSlots{};
   DenseMap<std::pair<Operation *, Operation *>, Value> soleObject{};
   DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> heldCount{};
+  /// The slot a core-pushed endpoint releases next, where the core pushes the
+  /// descriptor of each object it releases.
+  DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> sendSlot{};
+  /// Maximum outstanding objects across all pools sharing a tile's MM2S
+  /// queue. S2MM queues are independent and do not participate in this bound.
+  DenseMap<std::pair<Value, int>, int64_t> sendQueueObjects{};
+  llvm::DenseSet<std::pair<Value, int>> unsynchronizedSendQueues{};
   bool sawError = false;
 
   ObjectFifoCoreEndpointOp endpointOf(Operation *op, StringRef name) {
@@ -187,6 +196,89 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
   LoweringContext &ctx;
   LowerRelease(MLIRContext *context, LoweringContext &ctx)
       : OpRewritePattern(context), ctx(ctx) {}
+
+  /// Push the descriptor of each object this release frees, for a pool
+  /// whose sending channel the core drives. Nothing else starts those
+  /// descriptors, so an object the core does not push is never sent.
+  void emitSendPushes(PatternRewriter &rewriter, Location loc, CoreOp core,
+                      ObjectFifoCoreEndpointOp endpoint, ObjectFifoPoolOp pool,
+                      int size, bool assumeQueueSpace) const {
+    ObjectFifoCorePushAttr push = endpoint.getCorePushAttr();
+    if (!push || endpoint.drains())
+      return;
+    ArrayRef<int32_t> tags = push.getBdTags();
+    int channel = push.getChannel();
+    int depth = pool.getDepth();
+
+    auto key = std::make_pair(core.getOperation(), endpoint.getOperation());
+    memref::AllocaOp slot = ctx.sendSlot.lookup(key);
+    if (!slot) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(&core.getBody().front());
+      slot = memref::AllocaOp::create(
+          rewriter, loc, MemRefType::get({}, rewriter.getIndexType()));
+      slot->setAttr(kBookkeepingSlotAttrName, rewriter.getUnitAttr());
+      Value zero = arith::ConstantIndexOp::create(rewriter, loc, 0);
+      memref::StoreOp::create(rewriter, loc, zero, slot.getResult(),
+                              ValueRange{});
+      ctx.sendSlot[key] = slot;
+    }
+
+    // A pool's locks bound its outstanding tasks, but all pools on this
+    // channel contribute to the same queue. Poll unless their combined bound
+    // fits in the hardware queue.
+    auto queue = std::make_pair(core.getTile(), channel);
+    bool waitForRoom = !assumeQueueSpace &&
+                       (ctx.unsynchronizedSendQueues.contains(queue) ||
+                        ctx.sendQueueObjects.lookup(queue) >
+                            ctx.device.getTargetModel().getDmaTaskQueueDepth());
+    Value current =
+        memref::LoadOp::create(rewriter, loc, slot.getResult(), ValueRange{});
+    Value depthValue = arith::ConstantIndexOp::create(rewriter, loc, depth);
+    for (int step = 0; step < size; ++step) {
+      Value offset = arith::ConstantIndexOp::create(rewriter, loc, step);
+      Value raw = arith::AddIOp::create(rewriter, loc, current, offset);
+      Value which = arith::RemUIOp::create(rewriter, loc, raw, depthValue);
+      emitPushSwitch(rewriter, loc, which, tags, channel,
+                     pool.getRepeatCount().value_or(1) - 1, waitForRoom);
+    }
+    Value taken = arith::ConstantIndexOp::create(rewriter, loc, size);
+    Value raw = arith::AddIOp::create(rewriter, loc, current, taken);
+    Value next = arith::RemUIOp::create(rewriter, loc, raw, depthValue);
+    memref::StoreOp::create(rewriter, loc, next, slot.getResult(),
+                            ValueRange{});
+  }
+
+  /// Push the descriptor `tags[which]` names, selected at runtime. The switch
+  /// folds to one push once the enclosing loops unroll.
+  void emitPushSwitch(PatternRewriter &rewriter, Location loc, Value which,
+                      ArrayRef<int32_t> tags, int channel, int repeatCount,
+                      bool waitForRoom) const {
+    SmallVector<int64_t> cases;
+    for (size_t c = 0; c < tags.size(); ++c)
+      cases.push_back(c);
+    auto switchOp = scf::IndexSwitchOp::create(
+        rewriter, loc, TypeRange{}, which,
+        DenseI64ArrayAttr::get(rewriter.getContext(), cases), tags.size());
+    auto emit = [&](int32_t tag) {
+      if (waitForRoom)
+        DmaPollForQueueSpaceOp::create(rewriter, loc, DMAChannelDir::MM2S,
+                                       channel);
+      DmaPushQueueOp::create(rewriter, loc, DMAChannelDir::MM2S, channel,
+                             /*bd_id=*/nullptr, rewriter.getI32IntegerAttr(tag),
+                             repeatCount, /*out_of_order=*/false);
+      scf::YieldOp::create(rewriter, loc);
+    };
+    rewriter.createBlock(&switchOp.getDefaultRegion());
+    rewriter.setInsertionPointToStart(&switchOp.getDefaultBlock());
+    emit(tags[0]);
+    for (size_t c = 0; c < tags.size(); ++c) {
+      rewriter.createBlock(&switchOp.getCaseRegions()[c]);
+      rewriter.setInsertionPointToStart(&switchOp.getCaseBlock(c));
+      emit(tags[c]);
+    }
+    rewriter.setInsertionPointAfter(switchOp);
+  }
 
   LogicalResult matchAndRewrite(ObjectFifoReleaseOp releaseOp,
                                 PatternRewriter &rewriter) const override {
@@ -233,6 +325,9 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       memref::StoreOp::create(rewriter, loc, next, held.getResult(),
                               ValueRange{});
     }
+
+    emitSendPushes(rewriter, loc, core, endpoint, pool, releaseOp.getSize(),
+                   releaseOp.getAssumeQueueSpace());
 
     if (index) {
       emitAdvanceObjectIndex(rewriter, loc, index.getResult(), pool.getDepth(),
@@ -546,6 +641,24 @@ struct AIEObjectFifoLowerCoresPass
 
     LoweringContext ctx{device, device.getTargetModel().hasProperty(
                                     AIETargetModel::UsesSemaphoreLocks)};
+
+    // Only the recorded producer submits tasks for a sending pool.
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (endpoint.drains())
+        continue;
+      if (auto push = endpoint.getCorePushAttr()) {
+        auto queue = std::make_pair(endpoint.getTile(), int(push.getChannel()));
+        ctx.sendQueueObjects[queue] += pool.getDepth();
+        bool missingLocks = llvm::any_of(
+            endpoint.getSelectedSegments(), [](ObjectFifoSegmentOp segment) {
+              return !segment.getProduceLockAttr() ||
+                     !segment.getConsumeLockAttr();
+            });
+        if (pool.getDisableSynchronization() || missingLocks)
+          ctx.unsynchronizedSendQueues.insert(queue);
+      }
+    }
 
     annotateUnrollHints(device, ctx, builder);
     for (auto coreOp : device.getOps<CoreOp>()) {

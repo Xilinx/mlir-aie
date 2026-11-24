@@ -9,7 +9,7 @@
 
 // CHECK: module @init_join_input {
 // CHECK:   aie.device(xcve2302) {
-// CHECK-DAG:     %[[SHIM_TILE:.*]] = aie.tile(1, 0)
+// CHECK-DAG:     %[[SHIM_TILE:.*]] = aie.tile(2, 0)
 // CHECK-DAG:     %[[MEM_TILE:.*]] = aie.tile(1, 1)
 // CHECK-DAG:     %[[TILE_1_2:.*]] = aie.tile(1, 2)
 // CHECK-DAG:     %[[TILE_2_3:.*]] = aie.tile(2, 3)
@@ -111,7 +111,7 @@
 
 module @init_join_input {
  aie.device(xcve2302) {
-    %tile10 = aie.tile(1, 0)
+    %tile10 = aie.tile(2, 0)
     %tile11 = aie.tile(1, 1)
     %tile12 = aie.tile(1, 2)
     %tile23 = aie.tile(2, 3)

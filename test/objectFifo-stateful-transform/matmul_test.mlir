@@ -9,7 +9,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(2, 0)
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(0, 2)
 // CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC__buf0"} : memref<16x16xi16>
 // CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC__buf1"} : memref<16x16xi16>
@@ -34,11 +34,10 @@
 // CHECK:           }
 // CHECK:           %[[VAL_24:.*]] = aie.core(%[[VAL_1]]) {
 // CHECK-DAG:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:             %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:             %[[C4:.*]] = arith.constant 4 : index
-// CHECK-DAG:             %[[CMAX:.*]] = arith.constant 4294967295 : index
 // CHECK-DAG:             %[[C2:.*]] = arith.constant 2 : index
-// CHECK:             scf.for %[[VAL_29:.*]] = %[[C0]] to %[[CMAX]] step %[[C1]] {
+// CHECK:             scf.while : () -> () {
+// CHECK:             } do {
 // CHECK:               scf.for %[[VAL_31:.*]] = %[[C0]] to %[[C4]] step %[[C2]] {
 // CHECK:                 aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %{{.*}})
 // CHECK:                 func.call @zero_scalar_i16(%[[VAL_4]]) : (memref<16x16xi16>) -> ()
@@ -120,7 +119,7 @@
 module @matmul {
   aie.device(xcve2302) {
 
-    %t00 = aie.tile(0, 0)
+    %t00 = aie.tile(2, 0)
     %t02 = aie.tile(0, 2)
 
     aie.objectfifo @inA  (%t00, { %t02 }, 2 : i32) : !aie.objectfifo<memref<16x8xi16>>
@@ -134,9 +133,10 @@ module @matmul {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c4 = arith.constant 4 : index
-      %intmax = arith.constant 0xFFFFFFFF : index
-
-      scf.for %reps = %c0 to %intmax step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
 
         scf.for %arg2 = %c0 to %c4 step %c1 {
           %elem2 = aie.objectfifo.acquire @outC (Produce, 1) : memref<16x16xi16>
@@ -153,6 +153,7 @@ module @matmul {
           }
           aie.objectfifo.release @outC (Produce, 1)
         }
+        scf.yield
       }
       aie.end
     }

@@ -33,7 +33,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.helpers.dialects.scf import _for as range_
+from aie.helpers.dialects.scf import _for as range_, forever_
 from aie.helpers.taplib import TensorAccessPattern
 
 N_LINES = 12
@@ -48,7 +48,7 @@ LINE_TY = np.ndarray[(LINE_LEN,), np.dtype[np.int8]]
 
 
 def core_body(of_bridge, of_peer_in, of_peer_out, of_host):
-    for _ in range_(sys.maxsize):
+    for _ in forever_():
         # Seed phase: forward shim-provided lines verbatim to peer.
         for _ in range_(SEED_LINES):
             s = of_bridge.acquire(1)

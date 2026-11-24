@@ -15,15 +15,15 @@
 // CHECK: scf.for
 // CHECK-DAG: %[[BD:.*]] = arith.constant 5 : i32
 // CHECK-DAG: %[[RC:.*]] = arith.constant 2 : i32
-// CHECK: aiex.npu.push_queue(2, 0, S2MM : 3) bd_id %[[BD]] repeat %[[RC]] {issue_token = true}
-// CHECK: aiex.npu.push_queue(2, 0, S2MM : 3) bd_id %{{.*}} repeat %{{.*}} {issue_token = true}
+// CHECK: aiex.npu.push_queue(2, 0, S2MM : 1) bd_id %[[BD]] repeat %[[RC]] {issue_token = true}
+// CHECK: aiex.npu.push_queue(2, 0, S2MM : 1) bd_id %{{.*}} repeat %{{.*}} {issue_token = true}
 module {
   aie.device(npu1) {
     %tile_2_0 = aie.tile(2, 0)
     aie.runtime_sequence @start_identity_carry(%arg0: memref<1024xi32>, %n: index) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %init = aiex.dma_configure_task(%tile_2_0, S2MM, 3) {
+      %init = aiex.dma_configure_task(%tile_2_0, S2MM, 1) {
         aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256) {bd_id = 5 : i32}
         aie.end
       } {issue_token = true, repeat_count = 2 : i32}
@@ -48,7 +48,7 @@ module {
     aie.runtime_sequence @start_two_configures(%arg0: memref<1024xi32>, %n: index) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %init = aiex.dma_configure_task(%tile_2_0, S2MM, 3) {
+      %init = aiex.dma_configure_task(%tile_2_0, S2MM, 1) {
         aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
@@ -57,7 +57,7 @@ module {
         // expected-error@+1 {{failed to legalize operation 'aiex.dma_start_task'}}
         aiex.dma_start_task(%prev)
         aiex.dma_await_task(%prev)
-        %t = aiex.dma_configure_task(%tile_2_0, S2MM, 3) {
+        %t = aiex.dma_configure_task(%tile_2_0, S2MM, 1) {
           aie.dma_bd(%arg0 : memref<1024xi32> offset = 512 len = 256) {bd_id = 1 : i32}
           aie.end
         } {issue_token = true}

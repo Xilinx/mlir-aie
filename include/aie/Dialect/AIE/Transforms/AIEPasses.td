@@ -52,7 +52,7 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
   ];
 }
 
-def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
+def AIEPlaceTiles : Pass<"aie-place-tiles", "mlir::ModuleOp"> {
   let summary = "Place logical tiles onto physical AIE tiles";
   let description = [{
     The sequential placer maps cores column-major and FIFO-connected Shim/Mem
@@ -72,6 +72,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     declared in another order or under other names is placed alike. Logical
     tiles whose flows name the same DMA channel by index never share a
     physical tile.
+
+    The pass places a module's devices one after another, so a device's
+    placement may read the devices placed before it (a control overlay's
+    channels). They go in an order set by each device's structure, not module
+    order or names; devices alike in structure keep module order, which then
+    only decides which of two indistinguishable devices goes first.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
@@ -113,10 +119,49 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
               /*default=*/"1.0",
               "Scales the SA placer's moves per temperature step and its "
               "greedy tail. Below 1.0 trades placement cost for compile "
-              "time.">];
+              "time.">,
+       ListOption<"clSAWalkedFifos", "sa-walked-fifos", "std::string",
+                  "ObjectFIFOs whose mem tile pools the SA placer counts as "
+                  "walked whole, one buffer each, as allocation lays out "
+                  "the pools a turn-sharing walk takes, as "
+                  "@<device>::@<fifo> (MLIR symbol references, quoted where "
+                  "a name needs it)">,
+       ListOption<"clSACoreDataSizes", "sa-core-data-sizes", "std::string",
+                  "Bytes the SA placer reserves for a core's own sections, "
+                  "as @<device>:<core>=<bytes>[@<align>], <core> counting the "
+                  "device's aie.core ops in order and <align> the alignment "
+                  "the sections start at (1 when absent). A "
+                  "core's declared data_size or measured_data_size still "
+                  "wins">,
+       Option<"clPlacementBudget", "placement-budget", "int64_t",
+              /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
+              "Search budget per tile; the SA uses it to lay out core tiles "
+              "as aie-assign-buffer-addresses will.">,
+       Option<"clCtrlPktOverlay", "ctrl-pkt-overlay", "bool",
+              /*default=*/"false",
+              "Reserve on each shim the MM2S channel the configuration "
+              "overlay of aie-generate-column-control-overlay will take">,
+       Option<"clCtrlPktOverlayAdaptive", "ctrl-pkt-overlay-adaptive", "bool",
+              /*default=*/"true",
+              "With ctrl-pkt-overlay, where the overlay's MM2S channel goes, "
+              "as aie-generate-column-control-overlay's adaptive option "
+              "says: on, any channel no circuit holds; off, channel 0">,
+       Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
+              /*default=*/"false",
+              "Count every route that asks for no packet header as packet "
+              "switched, as aie-assign-packet-ids' packet-sw-objFifos makes "
+              "it">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,
+                    Statistic<"saLockGroups", "sa-lock-groups",
+                              "Lock groups the SA counts on the placement it "
+                              "kept">,
+                    Statistic<"saLockPenalty", "sa-lock-penalty",
+                              "SA lock penalty of the placement it kept">,
+                    Statistic<"saLockStopped", "sa-lock-stopped",
+                              "Devices whose kept placement's lock packing "
+                              "search stopped before it decided">,
   ];
 }
 
@@ -155,7 +200,7 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 
   let options = [Option<"clPlacementBudget", "placement-budget", "int64_t",
-                        /*default=*/"100000",
+                        /*default=*/"::xilinx::AIE::kDefaultPlacementBudget",
                         "Placements each search, ranked then exhaustive, may "
                         "try per tile before it gives up. A node count rather "
                         "than a time limit, so a build stays reproducible; "
@@ -206,6 +251,56 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "mlir::ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
+}
+
+def AIELowerCoreIssuedConfiguration
+    : Pass<"aie-lower-core-issued-configuration", "xilinx::AIE::DeviceOp"> {
+  let summary = "Lower core-issued DMA queue operations to register accesses";
+  let description = [{
+    Lowers device/tile configuration instructions issued from within a core.
+
+    Concretely, lowers `aie.dma_push_queue` to register writes and
+    `aie.dma_poll_for_queue_space` to a loop that reads the DMA queue status.
+    The accesses execute on the core and address registers on its own tile
+    through the processor bus. The pass sets `processor_bus` on each affected
+    `aie.core` so device configuration enables the bus before core startup.
+  }];
+  let constructor = "xilinx::AIE::createAIELowerCoreIssuedConfigurationPass()";
+  let dependentDialects = ["mlir::func::FuncDialect",
+                           "mlir::arith::ArithDialect", "mlir::scf::SCFDialect",
+                           "mlir::LLVM::LLVMDialect"];
+}
+
+def AIEObjectFifoInsertCoreQueuePushes
+    : Pass<"aie-objectfifo-insert-core-queue-pushes", "xilinx::AIE::DeviceOp"> {
+  let summary =
+      "Insert core-issued tasks to replenish out-of-order receive queues";
+  let description = [{
+    An out-of-order S2MM task accepts a finite number of objects. For FIFOs
+    without `iter_count`, this pass inserts additional tasks so reception can
+    continue beyond the tasks submitted during device configuration.
+
+    After channel allocation, the pass creates a runtime counter for each
+    receiving channel used by a core. Consumer releases decrement that
+    counter across all FIFOs sharing the channel. The first release submits
+    an additional task; subsequent pushes occur once per
+    `getMaxRepeatCount() + 1` released objects (256 on current supported
+    targets). A release of multiple objects carries any excess into the next
+    counter interval. Each pushed task accepts that same number of objects.
+
+    With `check-queue-space=true`, a queue-space poll precedes each push unless
+    the corresponding release has `assume_queue_space`. The program must still
+    avoid circular waits between core synchronization
+    and DMA progress; polling only prevents task-queue overflow.
+  }];
+  let options = [Option<"checkQueueSpace", "check-queue-space", "bool",
+                        /*default=*/"true",
+                        "Wait for room on the task queue before each push.">];
+  let constructor =
+      "xilinx::AIE::createAIEObjectFifoInsertCoreQueuePushesPass()";
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::scf::SCFDialect"];
 }
 
 def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
@@ -579,6 +674,11 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
 
     These are completeness rules, so a design that is deliberately partial --
     one whose other half is supplied elsewhere -- may decline to run this pass.
+
+    On a design that passes, it also records on each shim input the outputs
+    whose progress proves it consumed (`#aie.consumed_by`), replacing any
+    earlier proof; a design that declines this pass keeps its inputs' buffer
+    descriptor IDs apart.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoVerifyPass()";
@@ -606,6 +706,9 @@ def AIEAssignPacketIds : Pass<"aie-assign-packet-ids", "DeviceOp"> {
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Make every route packet-switched, whether or not it asked.">,
+       Option<"clReserveControllerPacketIds", "reserve-controller-packet-ids",
+              "bool", /*default=*/"false",
+              "Reserve controller packet IDs for configuration traffic.">,
   ];
 }
 
@@ -808,34 +911,55 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   ];
 }
 
+def AIEImportOverlay : Pass<"aie-import-overlay", "mlir::ModuleOp"> {
+  let summary = "Import operations from a referenced overlay device";
+  let description = [{
+    Copies the operations of the `aie.device` referenced by the `overlay`
+    attribute into the referencing device, deduplicating equivalent operations
+    and merging routing containers. Both devices must use the same target.
+    Unrouted flows are routed with the application after import.
+  }];
+  let constructor = "xilinx::AIE::createAIEImportOverlayPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIEGenerateColumnControlOverlay
     : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
-  let summary = "Spawns streaming interconnect network for column control";
+  let summary =
+      "Generate a standalone control overlay shared by the module's devices";
   let description = [{
-    For each column of AIE tiles being employed in the design, spawn a network of control packet
-    streaming interconnects which overlay on top of the design.
+    Creates an overlay device and references it from application devices.
+    Completion-token flows are imported and routed with each application.
+    With configuration enabled, also creates shim-to-controller flows and
+    routes the overlay once, before importing its fixed resources.
+    Adaptive placement avoids application reservations; fixed placement uses
+    shim MM2S channel zero. Supplied overlays must be explicitly referenced.
   }];
-
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
   let options =
-      [Option<
-           "clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string",
-           /*default=*/"\"shim-only\"",
-           "Flag to generate TCT routing between tile CTRL and shim SOUTH "
-           "ports. Available options: ['shim-only', 'all-tiles', 'disable']. "
-           "'shim-only' also routes any tile a runtime sequence task issues "
-           "a token from.">,
-       Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool",
-              /*default=*/"false",
-              "Flag to generate routing between shim dma DMA and tile CTRL "
-              "ports, for configuration.">,
-       Option<"clEmitStandaloneOverlay", "emit-standalone-overlay", "bool",
-              /*default=*/"false",
-              "Emit a standalone @ctrl_pkt_overlay device (and tag source "
-              "devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When "
-              "false, the pass applies the overlay in place only.">,
-  ];
+      [Option<"configuration", "configuration", "bool", "false",
+              "Include and pre-route configuration transport">,
+       Option<"adaptive", "adaptive", "bool", "true",
+              "Place configuration transport around application resources">,
+       ListOption<"coverColumns", "cover-columns", "int",
+                  "Additional columns touched by application routing">,
+       Option<"packetSwitched", "packet-sw-objFifos", "bool", "false",
+              "Count route ends with no packet header as packet switched, "
+              "as aie-assign-packet-ids does with this option">];
+}
+
+def AIEAnnotateShimSharing
+    : Pass<"aie-annotate-shim-sharing", "mlir::ModuleOp"> {
+  let summary = "Annotate shim endpoints that can share channels";
+  let description = [{
+    Records module-wide transfer lifetime analysis in aie.shareable_with.
+    Explicit attributes take precedence over inferred sharing permissions.
+  }];
+  let constructor = "xilinx::AIE::createAIEAnnotateShimSharingPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
 }
 
 def AIETraceToConfig : Pass<"aie-trace-to-config", "DeviceOp"> {

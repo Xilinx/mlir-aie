@@ -16,7 +16,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 
 
 def my_vector_add():
@@ -68,7 +68,7 @@ def my_vector_add():
         @core(ComputeTile2)
         def core_body():
             # Effective while(1)
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 # Number of sub-vector "tile" iterations
                 elem_in1 = of_in1.acquire(ObjectFifoPort.Consume, 1)
                 for j in range_(N_div_n):

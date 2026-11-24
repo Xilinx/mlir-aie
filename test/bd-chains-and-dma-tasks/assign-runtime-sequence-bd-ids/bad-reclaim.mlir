@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true warn-unreleased-transfers=false' \
 // RUN:   --verify-diagnostics --split-input-file %s
-// RUN: not aie-opt --aie-assign-runtime-sequence-bd-ids \
+// RUN: not aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unreleased-transfers=false' \
 // RUN:   --split-input-file %s 2>&1 | FileCheck %s --check-prefix=OFF
 
 // Reclaim only takes ids from a task that is not started again later: its BDs

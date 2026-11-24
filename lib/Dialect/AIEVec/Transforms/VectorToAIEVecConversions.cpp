@@ -17,6 +17,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
 
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -50,6 +51,64 @@ using namespace xilinx::aievec;
 // Utility functions
 //===----------------------------------------------------------------------===//
 
+// A scalar i32 -> i8/i16 trunci's [clamp] chain as one SRS: the value
+// before the clamp, the sign of the saturation (1 signed, 0 unsigned) and the
+// clamp's ops, if any. nullopt if the clamp is not the destination type's
+// full range.
+struct ScalarSRSChain {
+  Value source;
+  int32_t sign;
+  arith::MinSIOp minOp;
+  arith::MaxSIOp maxOp;
+};
+static std::optional<ScalarSRSChain>
+matchScalarSRSChain(arith::TruncIOp truncOp) {
+  auto dstIntType = dyn_cast<IntegerType>(truncOp.getOut().getType());
+  if (!dstIntType)
+    return std::nullopt;
+  unsigned dstBits = dstIntType.getWidth();
+  if (dstBits != 8 && dstBits != 16)
+    return std::nullopt;
+  auto srcIntType = dyn_cast<IntegerType>(truncOp.getIn().getType());
+  if (!srcIntType || srcIntType.getWidth() != 32)
+    return std::nullopt;
+
+  // Walk backward through optional clamp chain
+  Value source = truncOp.getIn();
+  arith::MinSIOp minOp = nullptr;
+  arith::MaxSIOp maxOp = nullptr;
+  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+    if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
+      minOp = minsiOp;
+      maxOp = maxsiOp;
+      source = maxOp.getLhs();
+    }
+  } else if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+    if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
+      maxOp = maxsiOp;
+      minOp = minsiOp;
+      source = minOp.getLhs();
+    }
+  }
+  if (!minOp || !maxOp)
+    return ScalarSRSChain{source, 1, nullptr, nullptr};
+
+  // A clamp must be a valid saturation range
+  std::optional<int64_t> loVal = getConstantIntValue(maxOp.getRhs());
+  std::optional<int64_t> hiVal = getConstantIntValue(minOp.getRhs());
+  if (!loVal || !hiVal)
+    return std::nullopt;
+  uint64_t one = 1ULL;
+  int64_t unsignedHi = static_cast<int64_t>((one << dstBits) - 1);
+  int64_t signedLo = -static_cast<int64_t>(one << (dstBits - 1));
+  int64_t signedHi = static_cast<int64_t>((one << (dstBits - 1)) - 1);
+  if (*loVal == 0 && *hiVal == unsignedHi)
+    return ScalarSRSChain{source, 0, minOp, maxOp};
+  if (*loVal == signedLo && *hiVal == signedHi)
+    return ScalarSRSChain{source, 1, minOp, maxOp};
+  return std::nullopt;
+}
+
 // Check if a TruncIOp is part of a shrsi+[clamp]+trunc chain that can be
 // lowered to a compound SRS pattern. Only returns true for chains that the
 // ShiftClampTruncToSRSPattern rewrite will actually match:
@@ -59,6 +118,11 @@ using namespace xilinx::aievec;
 // Does NOT return true for a single min or max without a matching pair,
 // to avoid marking trunci illegal when no rewrite can handle it.
 static bool isSRSCompoundCandidate(arith::TruncIOp trunciOp) {
+  // LowerScalarShiftClampTruncToSRS converts fewer scalar chains than match
+  // the shapes below.
+  if (!isa<VectorType>(trunciOp.getType()) && !matchScalarSRSChain(trunciOp))
+    return false;
+
   Value source = trunciOp.getIn();
 
   // Case 1: direct shrsi → trunci
@@ -193,9 +257,35 @@ static std::optional<Value> getSourceOfWideningOp(Value src) {
   return std::optional<Value>();
 }
 
-// Whether the f32 vector `src` holds bf16 values: it is widened from bf16, or
-// a constant that is exact in bf16.
+// The bf16 scalar that the f32 vector `src` splats, where `src` is a splat
+// of a scalar widened from bf16, possibly already lowered to aievec
+// broadcasts; else null.
+static Value getSplatOfWidenedBF16(Value src) {
+  src = skipShapeCastRoundTrip(src);
+  if (auto concatOp = src.getDefiningOp<aievec::ConcatOp>()) {
+    auto parts = concatOp.getSources();
+    if (parts.empty() || !llvm::all_equal(parts))
+      return {};
+    src = parts.front();
+  }
+  Value scalar;
+  if (auto bcastOp = src.getDefiningOp<vector::BroadcastOp>())
+    scalar = bcastOp.getSource();
+  else if (auto bcastOp = src.getDefiningOp<aievec::BroadcastScalarOp>())
+    scalar = bcastOp.getSource();
+  if (!scalar || isa<VectorType>(scalar.getType()))
+    return {};
+  if (auto extFOp = scalar.getDefiningOp<arith::ExtFOp>())
+    if (extFOp.getIn().getType().isBF16())
+      return extFOp.getIn();
+  return {};
+}
+
+// Whether the f32 vector `src` holds bf16 values: it is widened from bf16, a
+// splat of a scalar widened from bf16, or a constant that is exact in bf16.
 static bool holdsBF16(Value src) {
+  if (getSplatOfWidenedBF16(src))
+    return true;
   if (auto wideSrc = getSourceOfWideningOp(src))
     return getElementTypeOrSelf(wideSrc->getType()).isBF16();
   DenseFPElementsAttr dense;
@@ -212,10 +302,12 @@ static bool holdsBF16(Value src) {
 // narrowed where it is used rather than folded to a bf16 constant, so it does
 // not occupy a vector register outside the code that uses it.
 static Value getBF16Source(OpBuilder &builder, Location loc, Value src) {
-  if (auto wideSrc = getSourceOfWideningOp(src))
-    return *wideSrc;
   auto bf16Type = VectorType::get(cast<VectorType>(src.getType()).getShape(),
                                   builder.getBF16Type());
+  if (Value scalar = getSplatOfWidenedBF16(src))
+    return vector::BroadcastOp::create(builder, loc, bf16Type, scalar);
+  if (auto wideSrc = getSourceOfWideningOp(src))
+    return *wideSrc;
   auto shift =
       arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0));
   return aievec::SRSOp::create(builder, loc, bf16Type, src, shift);
@@ -3007,7 +3099,7 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
 };
 
 // Convert a `vector.extract_strided_slice` op on 1D vectors into an
-// `aievec.shift` op.
+// `aievec.shift` op (an `aievec.ext` alone for the bottom or top half).
 struct LowerVectorExtractStridedSliceOpAIE2Pattern
     : OpConversionPattern<vector::ExtractStridedSliceOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -3030,6 +3122,14 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
       return failure();
 
     auto shortVecType = cast<VectorType>(extractOp.getResult().getType());
+    int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
+    // The bottom or the top half itself: no shift.
+    if (offset == 0 || offset == size) {
+      rewriter.replaceOpWithNewOp<aievec::ExtOp>(
+          extractOp, shortVecType, adaptor.getSource(),
+          rewriter.getI8IntegerAttr(offset == 0 ? 0 : 1));
+      return success();
+    }
     auto bottomHalf =
         aievec::ExtOp::create(rewriter, extractOp.getLoc(), shortVecType,
                               adaptor.getSource(), rewriter.getI8IntegerAttr(0))
@@ -3038,7 +3138,6 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
         aievec::ExtOp::create(rewriter, extractOp.getLoc(), shortVecType,
                               adaptor.getSource(), rewriter.getI8IntegerAttr(1))
             .getResult();
-    int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
     int32_t shiftBytes = offset * getElementSizeInBits(vType) / 8;
     auto shiftBytesConstOp = arith::ConstantOp::create(
         rewriter, extractOp.getLoc(), rewriter.getIntegerType(32),
@@ -3793,12 +3892,27 @@ using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
 //
 // Lane width 16 or 32 maps directly to the native AIE2P 256/1024-bit
 // accumulator. 64 splits into two 32-wide halves and concats the results.
-struct LowerVectorSIToFPI16BF16AIE2pPattern
-    : OpConversionPattern<arith::SIToFPOp> {
-  using OpConversionPattern<arith::SIToFPOp>::OpConversionPattern;
+//
+// arith.uitofp takes u ^ 0x8000, which as a signed value is u - 32768,
+// through the same sequence, and subtracts a magic constant 32768 smaller,
+// 2^23 + 32768, as an f32 vector (bf16 has no such value).
+template <typename SrcOpTy>
+struct LowerVectorIntToFPI16BF16AIE2pPattern : OpConversionPattern<SrcOpTy> {
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+  static constexpr bool isSigned = std::is_same_v<SrcOpTy, arith::SIToFPOp>;
 
-  static Value emitMagicSiToFp(ConversionPatternRewriter &rewriter,
-                               Location loc, Value srcI16, unsigned lanes) {
+  // `accumulatorAdd`: add the magic constant on the accumulator
+  // (aievec.add_elem, AIE2P only) rather than as an arith.addi.
+  LowerVectorIntToFPI16BF16AIE2pPattern(MLIRContext *context,
+                                        bool accumulatorAdd,
+                                        PatternBenefit benefit)
+      : OpConversionPattern<SrcOpTy>(context, benefit),
+        accumulatorAdd(accumulatorAdd) {}
+
+  bool accumulatorAdd;
+
+  Value emitMagicSiToFp(ConversionPatternRewriter &rewriter, Location loc,
+                        Value srcI16, unsigned lanes) const {
     Type i16Ty = rewriter.getI16Type();
     Type i32Ty = rewriter.getI32Type();
     Type bf16Ty = rewriter.getBF16Type();
@@ -3818,12 +3932,29 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
         aievec::UPSOp::create(rewriter, loc, vecF32, magicBF16Vec);
     Value magicAccI = aievec::CastOp::create(rewriter, loc, vecI32, magicAccF,
                                              /*isResAcc=*/true);
+    if (!isSigned) {
+      Value flip = arith::ConstantOp::create(
+          rewriter, loc, vecI16,
+          DenseElementsAttr::get(vecI16, rewriter.getI16IntegerAttr(
+                                             static_cast<int16_t>(0x8000))));
+      srcI16 = arith::XOrIOp::create(rewriter, loc, srcI16, flip);
+    }
     Value vAccI = aievec::UPSOp::create(rewriter, loc, vecI32, srcI16);
-    Value vSumI = arith::AddIOp::create(rewriter, loc, vAccI, magicAccI);
+    Value vSumI =
+        accumulatorAdd
+            ? aievec::AddElemOp::create(rewriter, loc, vecI32, vAccI, magicAccI)
+                  .getResult()
+            : arith::AddIOp::create(rewriter, loc, vAccI, magicAccI)
+                  .getResult();
     Value vSumAccF = aievec::CastOp::create(rewriter, loc, vecF32, vSumI,
                                             /*isResAcc=*/true);
+    Value subtrahend = magicAccF;
+    if (!isSigned)
+      subtrahend = arith::ConstantOp::create(
+          rewriter, loc, vecF32,
+          DenseElementsAttr::get(vecF32, rewriter.getF32FloatAttr(8421376.0f)));
     Value vDiffAccF =
-        aievec::SubElemOp::create(rewriter, loc, vecF32, vSumAccF, magicAccF);
+        aievec::SubElemOp::create(rewriter, loc, vecF32, vSumAccF, subtrahend);
     Value shiftCst =
         arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
     return aievec::SRSOp::create(rewriter, loc, vecBF16, vDiffAccF, shiftCst)
@@ -3831,7 +3962,7 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
   }
 
   LogicalResult
-  matchAndRewrite(arith::SIToFPOp op, OpAdaptor adaptor,
+  matchAndRewrite(SrcOpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcTy = dyn_cast<VectorType>(adaptor.getIn().getType());
     auto dstTy = dyn_cast<VectorType>(op.getType());
@@ -3876,6 +4007,10 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
     return success();
   }
 };
+using LowerVectorSIToFPI16BF16AIE2pPattern =
+    LowerVectorIntToFPI16BF16AIE2pPattern<arith::SIToFPOp>;
+using LowerVectorUIToFPI16BF16AIE2pPattern =
+    LowerVectorIntToFPI16BF16AIE2pPattern<arith::UIToFPOp>;
 
 // Match `arith.extui (vector.bitcast %x : vector<Mxi8> to vector<2Mxi4>)
 // to vector<2Mxi8>` and replace with `aievec.unpack %x` directly on the
@@ -4756,81 +4891,22 @@ struct ShiftClampTruncToSRSPattern : OpConversionPattern<arith::TruncIOp> {
 struct LowerScalarShiftClampTruncToSRS : OpConversionPattern<arith::TruncIOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  // Try to extract a scalar integer constant value from a Value.
-  static std::optional<int64_t> getScalarConstantValue(Value val) {
-    auto defOp = val.getDefiningOp<arith::ConstantOp>();
-    if (!defOp)
-      return std::nullopt;
-    auto intAttr = dyn_cast<IntegerAttr>(defOp.getValue());
-    if (!intAttr)
-      return std::nullopt;
-    return intAttr.getInt();
-  }
-
   LogicalResult
   matchAndRewrite(arith::TruncIOp truncOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     // Only match scalar types (vector compound pattern handles vectors)
-    Type dstType = truncOp.getOut().getType();
-    if (isa<VectorType>(dstType))
+    if (isa<VectorType>(truncOp.getOut().getType()))
       return failure();
-
-    auto dstIntType = dyn_cast<IntegerType>(dstType);
-    if (!dstIntType)
+    std::optional<ScalarSRSChain> chain = matchScalarSRSChain(truncOp);
+    if (!chain)
       return failure();
-
+    Value source = chain->source;
+    int32_t sign = chain->sign;
+    arith::MinSIOp minOp = chain->minOp;
+    arith::MaxSIOp maxOp = chain->maxOp;
+    auto srcIntType = cast<IntegerType>(truncOp.getIn().getType());
+    auto dstIntType = cast<IntegerType>(truncOp.getOut().getType());
     unsigned dstBits = dstIntType.getWidth();
-    if (dstBits != 8 && dstBits != 16)
-      return failure();
-
-    auto srcIntType = dyn_cast<IntegerType>(truncOp.getIn().getType());
-    if (!srcIntType || srcIntType.getWidth() != 32)
-      return failure();
-
-    // Walk backward through optional clamp chain
-    Value source = truncOp.getIn();
-    int32_t sign = 1; // default: signed
-
-    arith::MinSIOp minOp = nullptr;
-    arith::MaxSIOp maxOp = nullptr;
-
-    if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
-      if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
-        minOp = minsiOp;
-        maxOp = maxsiOp;
-        source = maxOp.getLhs();
-      }
-    } else if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
-      if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
-        maxOp = maxsiOp;
-        minOp = minsiOp;
-        source = minOp.getLhs();
-      }
-    }
-
-    // If we found a clamp, verify it's a valid saturation range
-    if (minOp && maxOp) {
-      auto loVal = getScalarConstantValue(maxOp.getRhs());
-      auto hiVal = getScalarConstantValue(minOp.getRhs());
-      if (!loVal || !hiVal)
-        return failure();
-
-      if (dstBits == 0 || dstBits > 63)
-        return failure();
-      uint64_t one = 1ULL;
-      int64_t unsignedLo = 0;
-      int64_t unsignedHi = static_cast<int64_t>((one << dstBits) - 1);
-      int64_t signedLo = -static_cast<int64_t>(one << (dstBits - 1));
-      int64_t signedHi = static_cast<int64_t>((one << (dstBits - 1)) - 1);
-
-      if (*loVal == unsignedLo && *hiVal == unsignedHi) {
-        sign = 0; // unsigned saturation
-      } else if (*loVal == signedLo && *hiVal == signedHi) {
-        sign = 1; // signed saturation
-      } else {
-        return failure();
-      }
-    }
 
     // Now source should be the shrsi result, or any i32 value for clamp-only
     Location loc = truncOp.getLoc();
@@ -5277,8 +5353,8 @@ populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns) {
   // bf16. Higher benefit than the generic per-lane scalarise pattern; runs
   // on AIE2 too but only fires when the legality predicate marks the op
   // illegal (currently AIE2P only).
-  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern>(patterns.getContext(),
-                                                     /*benefit=*/3);
+  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern>(
+      patterns.getContext(), /*accumulatorAdd=*/false, /*benefit=*/3);
   // clang-format on
 }
 
@@ -5788,6 +5864,9 @@ static void populateAIEVecV2PConversionPatterns(
   patterns.add<ConvertVectorFMAOpToAIEVecFMAElemOpAIE2PPattern,
                ConvertMulFToAIEVecMulElemOpAIE2PPattern>(patterns.getContext(),
                                                          /*benefit=*/2);
+  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern,
+               LowerVectorUIToFPI16BF16AIE2pPattern>(
+      patterns.getContext(), /*accumulatorAdd=*/true, /*benefit=*/4);
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
   populateAIE2PShufflePlannerPatterns(patterns, std::move(planner));
@@ -6919,28 +6998,20 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     target.addLegalOp<xilinx::AIE::RuntimeSequenceOp>();
     target.markOpRecursivelyLegal<xilinx::AIE::RuntimeSequenceOp>();
 
-    auto aieVersion = AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string targetStr = aieTarget;
-      if (targetStr == "aieml" || targetStr == "aie2")
-        aieVersion = AIEArch::AIE2;
-      else if (targetStr == "aie2p")
-        aieVersion = AIEArch::AIE2P;
-      else if (targetStr != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        return signalPassFailure();
-      }
-    }
+    std::optional<AIEVecTargetInfo> targetInfo =
+        parseAIEVecLoweringTarget(aieTarget, op);
+    if (!targetInfo)
+      return signalPassFailure();
 
     populateAIEVecCommonConversionPatterns(patterns);
     configureAIEVecCommonLegalizations(target);
-    if (aieVersion == AIEArch::AIE) {
+    if (targetInfo->isAIE1()) {
       populateAIEVecV1ConversionPatterns(patterns);
       configureAIEVecV1Legalizations(target);
-    } else if (aieVersion == AIEArch::AIE2) {
+    } else if (targetInfo->isAIE2()) {
       populateAIEVecV2ConversionPatterns(patterns);
       configureAIEVecV2Legalizations(target);
-    } else if (aieVersion == AIEArch::AIE2P) {
+    } else if (targetInfo->isAIE2P()) {
       auto planner = std::make_shared<AIE2PShufflePlanner>();
       populateAIEVecV2PConversionPatterns(patterns, planner);
       configureAIEVecV2Legalizations(target);

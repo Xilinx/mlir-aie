@@ -285,9 +285,10 @@ struct AIEDMATasksToNPUPass
     return bd_op;
   }
 
+  /// `lengthField` is the value the BD write gave its length field.
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
-                                      AIE::TileOp &tile,
-                                      OpFoldResult bdId = {}) {
+                                      AIE::TileOp &tile, OpFoldResult bdId,
+                                      OpFoldResult lengthField) {
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
     auto col = tile.getCol();
@@ -297,6 +298,7 @@ struct AIEDMATasksToNPUPass
     uint32_t bd_id = constBdId ? *constBdId : bd_op.getBdId().value_or(0);
     uint64_t register_addr = target_model.getDmaBdAddress(col, row, bd_id) +
                              target_model.getDmaBdAddressOffset(col, row);
+    std::optional<uint64_t> staticByteAddress;
     // On the runtime-bd_id path the patched register (BD buffer-address word)
     // is itself runtime: getBdRegisterBase(bd_id) + getDmaBdAddressOffset.
     // Emitted as an SSA operand on the address patch; null keeps the static
@@ -385,14 +387,12 @@ struct AIEDMATasksToNPUPass
           buf_addr += addrOffset.value();
       }
 
-      // The BD's address field, from the target model's layout. Shim NOC BDs
-      // address bytes; mem and core tile BDs address 32-bit words.
       const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
       if (!layout)
         return bd_op->emitOpError(
             "has no buffer descriptor layout on this tile");
       const AIE::DmaBdField &addrBits = layout->bufferOffset;
-      uint64_t divisor = target_model.isShimNOCTile(col, row) ? 1 : 4;
+      uint64_t divisor = getBdAddressUnit(target_model, col, row);
       uint64_t maxByteAddr = (uint64_t(addrBits.mask()) + 1) * divisor - 1;
       if (buf_addr > maxByteAddr)
         return bd_op->emitOpError("buffer address exceeds the tile's DMA "
@@ -408,6 +408,7 @@ struct AIEDMATasksToNPUPass
         if (buf_addr > maxByteAddr)
           return bd_op->emitOpError("buffer address exceeds the tile's DMA "
                                     "address field.");
+        staticByteAddress = buf_addr;
         addrField =
             createConstantI32(builder, loc, addrBits.place(buf_addr / divisor));
       } else {
@@ -472,8 +473,9 @@ struct AIEDMATasksToNPUPass
     // register value and adds a computed delta to it.
     if (bd_op.getOffsetStateTableIdxAttr()) {
       auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
-      if (failed(emitUpdateBdAddressFromOffsetParameter(builder, bd_op, bufType,
-                                                        register_addr)))
+      if (failed(emitUpdateBdAddressFromOffsetParameter(
+              builder, bd_op, bufType, register_addr, target_model, col, row,
+              staticByteAddress, lengthField)))
         return failure();
     }
 
@@ -489,12 +491,16 @@ struct AIEDMATasksToNPUPass
                          std::optional<xilinx::AIE::PacketInfoAttr> packet,
                          bool outOfOrder = false) {
     BdTemplateFields f;
-    if (std::optional<uint32_t> nextBdId = bd_op.getNextBdId()) {
-      f.next_bd_id = *nextBdId;
-      f.use_next_bd = 1;
-    } else if (Value nextBdIdVal = runtimeNextBdId.lookup(bd_op)) {
-      f.next_bd_id_val = nextBdIdVal;
-      f.use_next_bd = 1;
+    // Out-of-order S2MM ignores Next_BD; the IR chain only lists the receive
+    // BDs. Leave the BDs unchained, as the static AIE-RT lowering does.
+    if (!outOfOrder) {
+      if (std::optional<uint32_t> nextBdId = bd_op.getNextBdId()) {
+        f.next_bd_id = *nextBdId;
+        f.use_next_bd = 1;
+      } else if (Value nextBdIdVal = runtimeNextBdId.lookup(bd_op)) {
+        f.next_bd_id_val = nextBdIdVal;
+        f.use_next_bd = 1;
+      }
     }
 
     auto info = bd_op.getPacket().value_or(packet.value_or(nullptr));
@@ -548,6 +554,15 @@ struct AIEDMATasksToNPUPass
     if (failed(
             AIE::verifyBdLockPair(block, outOfOrder, acquire_op, release_op)))
       return failure();
+    // A memtile BD may use locks of its neighbours, so each lock ID is offset
+    // by the base index of the tile that owns that lock, as in AIERT.cpp.
+    auto lockIdFor = [&](AIE::LockOp lock, int32_t id) {
+      if (target_model.isMemTile(tile.getCol(), tile.getRow()))
+        if (auto offset = target_model.getLockLocalBaseIndex(
+                tile.getCol(), tile.getRow(), lock.colIndex(), lock.rowIndex()))
+          id += *offset;
+      return id;
+    };
     if (release_op) {
       AIE::LockOp rel_lock = release_op.getLockOp();
 
@@ -555,7 +570,7 @@ struct AIEDMATasksToNPUPass
       if (acquire_op) {
         AIE::LockOp acq_lock = acquire_op.getLockOp();
         if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
-          f.lock_acq_id = *acqLockId;
+          f.lock_acq_id = lockIdFor(acq_lock, *acqLockId);
           if (failed(lockValue(acquire_op, f.lock_acq_val, f.lock_acq_val_val)))
             return failure();
           f.lock_acq_enable = 1;
@@ -563,22 +578,9 @@ struct AIEDMATasksToNPUPass
       }
 
       if (std::optional<int32_t> relLockId = rel_lock.getLockID()) {
-        f.lock_rel_id = *relLockId;
+        f.lock_rel_id = lockIdFor(rel_lock, *relLockId);
         if (failed(lockValue(release_op, f.lock_rel_val, f.lock_rel_val_val)))
           return failure();
-      }
-
-      // For memtile, add lock offset using getLockLocalBaseIndex. This matches
-      // AIERT.cpp implementation.
-      if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
-        auto lockOffset = target_model.getLockLocalBaseIndex(
-            tile.getCol(), tile.getRow(), rel_lock.colIndex(),
-            rel_lock.rowIndex());
-        if (lockOffset && acquire_op &&
-            acquire_op.getLockOp().getLockID().has_value())
-          f.lock_acq_id += lockOffset.value();
-        if (lockOffset && rel_lock.getLockID().has_value())
-          f.lock_rel_id += lockOffset.value();
       }
     }
     return f;
@@ -742,7 +744,11 @@ struct AIEDMATasksToNPUPass
     Value bdBase =
         getBdRegisterBase(builder, loc, target_model, col, row, bdIdOfr);
     NpuBlockWriteValuesOp::create(builder, loc, bdBase, bdWords);
-    return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr);
+    const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
+    return setAddressForSingleBD(
+        builder, bd_op, tile, bdIdOfr,
+        layout ? OpFoldResult(bdWords[layout->bufferLength.word])
+               : OpFoldResult());
   }
 
   LogicalResult
@@ -903,20 +909,31 @@ struct AIEDMATasksToNPUPass
       // using the wide buffer_length register, exempt from the 10-bit ND
       // wrap-size limit.  Canonicalization zeroes size-1 strides before this
       // pass runs, so isContiguousTransfer is sufficient.
+      // A linear transfer leaves the wraps unset, and the pads apply to them.
       bool treatAsLinear =
+          !padDims.has_value() &&
           isLinearModeTransfer(target_model, tile.getCol(), tile.getRow(),
                                input_sizes, input_strides);
       if (!treatAsLinear && bd_op.getLengthStateTableIdxAttr())
         AIE::placeRuntimeLengthDimension(input_sizes, input_strides);
 
       if (padDims.has_value()) {
-        if (!target_model.isMemTile(tile.getCol(), tile.getRow()))
+        const AIE::DmaBdLayout *layout =
+            target_model.getDmaBdLayout(tile.getCol(), tile.getRow());
+        size_t numPadFields = layout ? layout->padFields().size() : 0;
+        if (numPadFields == 0)
           return bd_op->emitOpError()
                  << "Padding is only supported by memtile dma bds.";
         if (padDims->size() > dims->size())
           return bd_op->emitOpError()
                  << "Mismatch number of dimensions between padding(s)"
                  << " and wrap(s) and stride(s).";
+        for (auto [d, pad] : llvm::enumerate(llvm::reverse(*padDims)))
+          if (d >= numPadFields &&
+              (pad.getConstPadBefore() || pad.getConstPadAfter()))
+            return bd_op->emitOpError()
+                   << "D" << d
+                   << " zero padding is not supported on this tile.";
         if (channelDir == AIE::DMAChannelDir::MM2S) {
           for (size_t i = 0; i < padDims->size(); i++) {
             int j = padDims->size() - i - 1;
@@ -927,6 +944,14 @@ struct AIEDMATasksToNPUPass
             padBefore[i] = 0;
             padAfter[i] = 0;
           }
+          int64_t elementBytes = bd_op.getBufferElementTypeWidthInBytes();
+          if ((padBefore[0] * elementBytes) % 4 ||
+              (padAfter[0] * elementBytes) % 4)
+            return bd_op->emitOpError()
+                   << "Inner-most padding count must result in padding in "
+                      "32-bit words.";
+          padBefore[0] = padBefore[0] * elementBytes / 4;
+          padAfter[0] = padAfter[0] * elementBytes / 4;
         } else
           return bd_op->emitOpError()
                  << "supports padding only for MM2S direction on MemTiles.";
@@ -972,13 +997,13 @@ struct AIEDMATasksToNPUPass
         iteration_stride = 0;
       }
 
-      // Ensure the total transfer length and the length expressed in the lowest
-      // three dimensions of strides/wraps agree. (Fourth dimension is
+      // Ensure the total transfer length and the padded length expressed in the
+      // lowest three dimensions of strides/wraps agree. (Fourth dimension is
       // iteration/repeat count and repeats the whole BD, so should not be
       // incorporated in length of a single BD invocation.)
       uint64_t len_dims_addr_granularity = 1;
       for (size_t i = 0; i < 3; i++) {
-        len_dims_addr_granularity *= sizes[i];
+        len_dims_addr_granularity *= sizes[i] + padBefore[i] + padAfter[i];
       }
       // A runtime length from zero keeps the pattern for the units it adds.
       bool runtimeLengthFromZero =
@@ -1047,7 +1072,9 @@ struct AIEDMATasksToNPUPass
         target_model.isShimNOCTile(tile.getCol(), tile.getRow())
             ? builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault())
             : IntegerAttr());
-    if (failed(setAddressForSingleBD(builder, bd_op, tile)))
+    if (failed(setAddressForSingleBD(
+            builder, bd_op, tile, {},
+            builder.getI64IntegerAttr(len_addr_granularity))))
       return failure();
 
     // A length_state_table_idx adds the runtime length to the BD's

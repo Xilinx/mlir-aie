@@ -22,7 +22,8 @@
 
 // CHECK: aie.core(%[[T02]]) {
 // CHECK-NOT: aie.use_lock
-// CHECK: scf.for
+// CHECK: scf.while
+// CHECK: } do {
 // CHECK-NEXT: %[[ONE:.*]] = arith.constant 1 : i32
 // CHECK-NEXT: aie.use_lock(%[[L02]], AcquireGreaterEqual, %[[ONE]])
 // CHECK: memref.load
@@ -47,13 +48,16 @@ module {
     aie.core(%t02) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %cmax = arith.constant 9223372036854775807 : index
-      scf.for %i = %c0 to %cmax step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         aiex.wait_scratchpad_parameters
         %v = aiex.read_scratchpad_parameter @n : i32
         scf.for %j = %c0 to %c1 step %c1 {
           %w = aiex.read_scratchpad_parameter @n : i32
         }
+        scf.yield
       }
       aie.end
     }

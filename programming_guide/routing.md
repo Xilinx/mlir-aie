@@ -215,16 +215,31 @@ then routes the flows anyway and warns instead.
 
 A packet flow with `priority_route = true` routes first, on its own, and the
 other flows route around it. If the design can't route that way, the flow
-routes with the others. The control overlay that `aiecc
---generate-ctrl-pkt-overlay` adds, which carries control packets to and from
-tiles, uses priority routes.
+routes with the others. Completion-token flows use priority routing when imported into applications.
 
-A control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) goes further. It
-loads the `@ctrl_pkt_overlay` device first and configures the rest of the
-design through it, so the overlay's switch settings can't change. Such a
-design carries `has_ctrl_pkt_overlay` on its `aie.device`. The router keeps
-the overlay's flows (those to or from a `TileControl` port) on the routes
-they take alone, and fails if the design's flows don't fit around them.
+A control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) uses a fixed overlay
+created by the module-level `aie-generate-column-control-overlay` pass. This pass
+creates a standalone `aie.device @ctrl_pkt_overlay`, routes it once, and marks
+its resources with `aie.is_ctrl_pkt_overlay`. Each application device references
+it with `overlay = @ctrl_pkt_overlay`. The following `aie-import-overlay` pass copies its routed switchbox connections, packet rules, master sets, and other
+resources into the application devices. The application router treats these
+as occupied resources; it does not reroute the overlay. The runtime loads the
+overlay's PDI before configuring applications through control packets, and
+application reloads leave its switch settings intact.
+
+With `aiecc --ctrlpkt-adaptive-overlay` (the default in control-packet
+reconfiguration mode), overlay creation chooses shim DMA channels across all
+participating applications and allocates and routes a temporary copy of those
+applications without the overlay. Their switchbox output ports become routing
+penalties when routing the standalone overlay. This encourages the overlay to
+avoid application traffic, but allows it to use those ports when necessary.
+Applications receive identical overlay resources because they import the same
+routed device.
+
+Set `--ctrlpkt-adaptive-overlay=false` to use shim DMA channel 0 and route the
+overlay without application-derived penalties. Shim channel sharing may move
+application endpoints onto the selected control channel when their transfers
+do not overlap configuration transfers; it never moves the overlay channel.
 
 ## Options
 

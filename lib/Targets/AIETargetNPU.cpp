@@ -403,7 +403,7 @@ LogicalResult TxnEncoder::encodeConfig(DeviceOp configured, bool teardown,
   builder.setInsertionPointToStart(scratch->getBody());
   auto holder =
       DeviceOp::create(builder, device.getLoc(), configured.getDevice(),
-                       configured.getSymName());
+                       configured.getSymName(), nullptr);
   holder.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(holder.getBodyRegion(), builder, device.getLoc());
   builder.setInsertionPointToStart(holder.getBody());
@@ -630,6 +630,23 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return failure();
   }
 
+  SmallVector<AIEX::ConfigStep> steps;
+  for (Block &block : seq.getBody())
+    for (Operation &o : block) {
+      if (auto loadPdiOp = dyn_cast<NpuLoadPdiOp>(o)) {
+        FlatSymbolRefAttr ref = loadPdiOp.getDeviceRefAttr();
+        steps.push_back(
+            {&o, loadPdiOp, false,
+             ref ? moduleOp.lookupSymbol<AIE::DeviceOp>(ref) : nullptr});
+      } else if (auto writeConfigOp = dyn_cast<NpuWriteConfigOp>(o)) {
+        steps.push_back({&o, nullptr, false,
+                         moduleOp.lookupSymbol<AIE::DeviceOp>(
+                             writeConfigOp.getDeviceRefAttr())});
+      }
+    }
+  if (failed(AIEX::checkResidentsSurvive(seq, steps)))
+    return failure();
+
   NpuConfigCache ownConfigs;
   TxnEncoder encoder(deviceOp, instructions, locmap, foldDDRAddrOffset,
                      configs ? *configs : ownConfigs);
@@ -665,6 +682,11 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     auto packetOp = dyn_cast<AIEX::NpuControlPacketOp>(o);
     if (!packetOp)
       continue;
+
+    // The C API and Python callers can pass ops that were never verified,
+    // and the encoding below relies on the verifier's checks.
+    if (failed(packetOp.verify()))
+      return failure();
 
     uint32_t before =
         static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
@@ -707,20 +729,12 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // `beats` gets two bits, directly above the address, so an oversized
-    // payload corrupts the address instead of truncating, and `size - 1`
-    // underflows the same way when size is 0. Enforced here (not by a
-    // verifier) since ops may carry more before
-    // --aie-legalize-control-packet splits them.
-    bool sizeFromLength = !data && length;
-    const char *what = sizeFromLength ? "length" : "payload";
-    if (size == 0)
-      return packetOp.emitOpError()
-             << what
-             << " is empty; a control packet must carry at least 1 "
-                "word on the wire";
+    // payload corrupts the address instead of truncating. The verifier
+    // rejects empty payloads and long reads; a long write is legal until
+    // --aie-legalize-control-packet splits it, so it is caught here.
     if (size > AIEX::NpuControlPacketOp::getMaxDataWords())
       return packetOp.emitOpError()
-             << what << " is " << size
+             << "payload is " << size
              << " words; a control packet carries at most "
              << AIEX::NpuControlPacketOp::getMaxDataWords()
              << " on the wire. Run --aie-legalize-control-packet before "
@@ -734,10 +748,7 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     words[1] = hdr | (0x1 & parity(hdr)) << 31;
 
     // configuration data
-    if (opc == 0x0 || opc == 0x2) {
-      if (!data)
-        return packetOp.emitOpError(
-            "control packet with a write opcode requires a data payload");
+    if (data && (opc == 0x0 || opc == 0x2)) {
       for (unsigned i = 0; i < size; i++)
         words[i + 2] = (*data)[i];
     }

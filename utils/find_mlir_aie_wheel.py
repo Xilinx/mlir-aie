@@ -29,7 +29,13 @@ EXPANDED_ASSETS = "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/"
 WHEEL_RE = re.compile(r"mlir_aie-[A-Za-z0-9_.+-]*\.whl")
 
 # Rolling channels published as GitHub releases, searched newest first.
-CHANNELS = ["latest-wheels-4", "latest-wheels-3", "latest-wheels-2", "latest-wheels"]
+CHANNELS = [
+    "latest-wheels-5",
+    "latest-wheels-4",
+    "latest-wheels-3",
+    "latest-wheels-2",
+    "latest-wheels",
+]
 
 
 def find_wheel(commit, channels):

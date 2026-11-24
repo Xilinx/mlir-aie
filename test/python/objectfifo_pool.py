@@ -38,6 +38,10 @@ def consume(handle):
     buf = handle.acquire(1)
     buf[0] = 1
     handle.release(1)
+    handle.acquire(1)
+    handle.release(1, assume_queue_space=True)
+    handle.acquire(1)
+    handle.release(1, assume_queue_space=False)
 
 
 def pool_handle_drives_a_worker():
@@ -150,7 +154,7 @@ def a_pool_holds_a_multidimensional_object():
 
 # The pool's buffer and locks take their variables' names, and the core
 # endpoint names the pool rather than generating a second end.
-# CHECK: module {
+# CHECK: module{{( attributes .*)?}} {
 # CHECK:   aie.device(npu2_1col) {
 # CHECK-DAG: aie.buffer({{.*}}) {sym_name = "buffer"}
 # CHECK-DAG: aie.lock({{.*}}) {init = 1 : i32, sym_name = "prod"}
@@ -162,6 +166,8 @@ def a_pool_holds_a_multidimensional_object():
 # CHECK:     aie.objectfifo.core_endpoint @x_pool__cons({{.*}}) drains @x_pool {segments = [@x_pool_s0]}
 # CHECK:     aie.core({{.*}}) {
 # CHECK:       aie.objectfifo.acquire @x_pool__cons(1)
+# CHECK:       aie.objectfifo.release @x_pool__cons(1)
+# CHECK:       aie.objectfifo.release {assume_queue_space} @x_pool__cons(1)
 # CHECK:       aie.objectfifo.release @x_pool__cons(1)
 # CHECK:     }
 
@@ -177,7 +183,7 @@ def a_pool_holds_a_multidimensional_object():
 pool_handle_drives_a_worker()
 
 # The same body over an ObjectFifo handle emits the same acquire/release pair.
-# CHECK: module {
+# CHECK: module{{( attributes .*)?}} {
 # CHECK:   aie.device(npu2_1col) {
 # CHECK:     aie.objectfifo @y
 # CHECK:     aie.core({{.*}}) {
@@ -187,6 +193,8 @@ pool_handle_drives_a_worker()
 
 # CHECK:     aie.core({{.*}}) {
 # CHECK:       aie.objectfifo.acquire @y(Consume, 1)
+# CHECK:       aie.objectfifo.release @y(Consume, 1)
+# CHECK:       aie.objectfifo.release {assume_queue_space} @y(Consume, 1)
 # CHECK:       aie.objectfifo.release @y(Consume, 1)
 # CHECK:     }
 # CHECK:   }

@@ -175,3 +175,47 @@ module {
     aie.objectfifo @of (%tile12, {%tile13}, 2 : i32) {cons_ports = [#aie.end_port<DMA>, #aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
  }
 }
+
+// -----
+
+module {
+  aie.device(npu2) {
+    %src = aie.tile(0, 2)
+    %dst = aie.tile(0, 5)
+    // expected-error@+1 {{`out_of_order` has been replaced; write transport = #aie.transport<dma, packet = #aie.packet_info<>, out_of_order = true>}}
+    aie.objectfifo @of(%src, {%dst}, 2 : i32) {out_of_order} : !aie.objectfifo<memref<16xi32>>
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) {
+    %src = aie.tile(0, 2)
+    %dst = aie.tile(0, 5)
+    // expected-error@+1 {{`out_of_order` requires a packet transport}}
+    aie.objectfifo @of(%src, {%dst}, 2 : i32) {transport = #aie.transport<dma, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) {
+    %src = aie.tile(0, 2)
+    %dst = aie.tile(0, 5)
+    // expected-error@+1 {{`out_of_order` requires a packet transport}}
+    aie.objectfifo @of(%src, {%dst}, 2 : i32) {transport = #aie.transport<auto, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) {
+    %src = aie.tile(0, 2)
+    %dst = aie.tile(0, 5)
+    // expected-error@+1 {{`packet` belongs to a dma or auto transport, not shared_mem}}
+    aie.objectfifo @of(%src, {%dst}, 2 : i32) {transport = #aie.transport<shared_mem, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+  }
+}

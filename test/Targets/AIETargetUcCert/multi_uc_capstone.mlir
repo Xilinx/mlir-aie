@@ -51,7 +51,7 @@ aie.device(xcve3858) {
   aiex.cert.page {
     aiex.cert.job(2) {
       aiex.cert.write32(0x1000, 1)
-      aiex.cert.remote_barrier(1, 0x3)
+      aiex.cert.remote_barrier(rb1, 0x3)
       aiex.cert.wait_tcts(0, 0, 1)
     }
   }
@@ -59,7 +59,7 @@ aie.device(xcve3858) {
   // uC1 (col1 controller): rendezvous, then write on uC1.
   aiex.cert.page {
     aiex.cert.job(3) {
-      aiex.cert.remote_barrier(1, 0x3)
+      aiex.cert.remote_barrier(rb1, 0x3)
       aiex.cert.write32(0x2000, 1)
     }
   } {placement = 1 : i32}

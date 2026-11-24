@@ -131,9 +131,74 @@ module {
   }
 }
 
-// A v64bf16 load used only as the LHS of bf16 8x8x8 matmuls is loaded as two
-// v32bf16 halves (the second at last index + 32) and joined with a shuffle.
+// A v64bf16 tile load that is converted only for the lhs of bfp16 matmuls
+// is split into two v32bf16 loads (the second at last index + 32) joined by
+// a shuffle.
 // CHECK-LABEL: func.func @split_matmul_lhs_load
+// CHECK-SAME: %[[BUF:.*]]: memref<4x128xbf16>, %[[I:.*]]: index
+// CHECK-DAG: %[[C32:.*]] = arith.constant 32 : index
+// CHECK-DAG: %[[HI_IDX:.*]] = arith.addi %[[I]], %[[C32]] : index
+// CHECK-DAG: %[[LO:.*]] = vector.load %[[BUF]][%{{.*}}, %[[I]]] : memref<4x128xbf16>, vector<32xbf16>
+// CHECK-DAG: %[[HI:.*]] = vector.load %[[BUF]][%{{.*}}, %[[HI_IDX]]] : memref<4x128xbf16>, vector<32xbf16>
+// CHECK: %[[CAT:.*]] = vector.shuffle %[[LO]], %[[HI]] [0, 1, {{.*}}, 62, 63] : vector<32xbf16>, vector<32xbf16>
+// CHECK: %[[A:.*]] = vector.shape_cast %[[CAT]] : vector<64xbf16> to vector<8x8xbf16>
+// CHECK: aievec.to_bfp16 %[[A]] :
+// CHECK-NOT: vector<64xbf16>, vector<64xbf16>
+func.func @split_matmul_lhs_load(%buf: memref<4x128xbf16>, %i: index, %bm: vector<64xi8>, %be: vector<8xi8>, %acc: vector<8x8xf32>) -> (vector<8x8xf32>, vector<8x8xf32>) {
+  %c1 = arith.constant 1 : index
+  %v = vector.load %buf[%c1, %i] : memref<4x128xbf16>, vector<64xbf16>
+  %a = vector.shape_cast %v : vector<64xbf16> to vector<8x8xbf16>
+  %am, %ae = aievec.to_bfp16 %a : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+  %r0 = aievec.matmul_aie2p_bfp16 %am, %ae, %bm, %be, %acc : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
+  %r1 = aievec.matmul_aie2p_bfp16 %am, %ae, %bm, %be, %r0 : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
+  return %r0, %r1 : vector<8x8xf32>, vector<8x8xf32>
+}
+
+// The tile is also converted for a matmul rhs, which reads the whole
+// vector, so the load is not split.
+// CHECK-LABEL: func.func @no_split_matmul_rhs_use
+// CHECK: vector.load {{.*}} : memref<128xbf16>, vector<64xbf16>
+// CHECK-NOT: vector<32xbf16>
+func.func @no_split_matmul_rhs_use(%buf: memref<128xbf16>, %bm: vector<64xi8>, %be: vector<8xi8>, %acc: vector<8x8xf32>) -> (vector<8x8xf32>, vector<8x8xf32>) {
+  %c0 = arith.constant 0 : index
+  %v = vector.load %buf[%c0] : memref<128xbf16>, vector<64xbf16>
+  %a = vector.shape_cast %v : vector<64xbf16> to vector<8x8xbf16>
+  %am, %ae = aievec.to_bfp16 %a : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+  %at, %ate = aievec.to_bfp16 %a transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+  %r0 = aievec.matmul_aie2p_bfp16 %am, %ae, %bm, %be, %acc : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
+  %r1 = aievec.matmul_aie2p_bfp16 %bm, %be, %at, %ate, %acc : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
+  return %r0, %r1 : vector<8x8xf32>, vector<8x8xf32>
+}
+
+// A use other than a conversion keeps the full-width load.
+// CHECK-LABEL: func.func @no_split_other_use
+// CHECK: vector.load {{.*}} : memref<128xbf16>, vector<64xbf16>
+// CHECK-NOT: vector<32xbf16>
+func.func @no_split_other_use(%buf: memref<128xbf16>, %bm: vector<64xi8>, %be: vector<8xi8>, %acc: vector<8x8xf32>) -> (vector<8x8xf32>, vector<64xbf16>) {
+  %c0 = arith.constant 0 : index
+  %v = vector.load %buf[%c0] : memref<128xbf16>, vector<64xbf16>
+  %a = vector.shape_cast %v : vector<64xbf16> to vector<8x8xbf16>
+  %am, %ae = aievec.to_bfp16 %a : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+  %r = aievec.matmul_aie2p_bfp16 %am, %ae, %bm, %be, %acc : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
+  return %r, %v : vector<8x8xf32>, vector<64xbf16>
+}
+
+// The 8x8x4 matmul does not convert its lhs to bfp16, so the load is not
+// split.
+// CHECK-LABEL: func.func @no_split_8x8x4
+// CHECK: vector.load {{.*}} : memref<128xbf16>, vector<64xbf16>
+// CHECK-NOT: vector<32xbf16>
+func.func @no_split_8x8x4(%buf: memref<128xbf16>, %b: vector<8x4xbf16>, %acc: vector<8x4xf32>) -> vector<8x4xf32> {
+  %c0 = arith.constant 0 : index
+  %v = vector.load %buf[%c0] : memref<128xbf16>, vector<64xbf16>
+  %a = vector.shape_cast %v : vector<64xbf16> to vector<8x8xbf16>
+  %r = aievec.matmul_aie2p %a, %b, %acc : vector<8x8xbf16>, vector<8x4xbf16> into vector<8x4xf32>
+  return %r : vector<8x4xf32>
+}
+
+// The same holds before the matmuls are expanded: a v64bf16 load used only as
+// the lhs of bf16 8x8x8 aievec.matmul_aie2p ops is split.
+// CHECK-LABEL: func.func @split_unexpanded_matmul_lhs_load
 // CHECK-SAME: %[[BUF:.*]]: memref<4x128xbf16>, %[[I:.*]]: index
 // CHECK-DAG: %[[C32:.*]] = arith.constant 32 : index
 // CHECK-DAG: %[[HI_IDX:.*]] = arith.addi %[[I]], %[[C32]] : index
@@ -144,48 +209,11 @@ module {
 // CHECK: aievec.matmul_aie2p %[[A]],
 // CHECK: aievec.matmul_aie2p %[[A]],
 // CHECK-NOT: vector<64xbf16>, vector<64xbf16>
-func.func @split_matmul_lhs_load(%buf: memref<4x128xbf16>, %i: index, %b0: vector<8x8xbf16>, %b1: vector<8x8xbf16>, %acc: vector<8x8xf32>) -> (vector<8x8xf32>, vector<8x8xf32>) {
+func.func @split_unexpanded_matmul_lhs_load(%buf: memref<4x128xbf16>, %i: index, %b0: vector<8x8xbf16>, %b1: vector<8x8xbf16>, %acc: vector<8x8xf32>) -> (vector<8x8xf32>, vector<8x8xf32>) {
   %c1 = arith.constant 1 : index
   %v = vector.load %buf[%c1, %i] : memref<4x128xbf16>, vector<64xbf16>
   %a = vector.shape_cast %v : vector<64xbf16> to vector<8x8xbf16>
   %r0 = aievec.matmul_aie2p %a, %b0, %acc : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
   %r1 = aievec.matmul_aie2p %a, %b1, %acc : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
   return %r0, %r1 : vector<8x8xf32>, vector<8x8xf32>
-}
-
-// Also used as a matmul RHS, whose lowering reads the whole vector: not split.
-// CHECK-LABEL: func.func @no_split_matmul_rhs_use
-// CHECK: vector.load {{.*}} : memref<128xbf16>, vector<64xbf16>
-// CHECK-NOT: vector<32xbf16>
-func.func @no_split_matmul_rhs_use(%buf: memref<128xbf16>, %b: vector<8x8xbf16>, %acc: vector<8x8xf32>) -> (vector<8x8xf32>, vector<8x8xf32>) {
-  %c0 = arith.constant 0 : index
-  %v = vector.load %buf[%c0] : memref<128xbf16>, vector<64xbf16>
-  %a = vector.shape_cast %v : vector<64xbf16> to vector<8x8xbf16>
-  %r0 = aievec.matmul_aie2p %a, %b, %acc : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
-  %r1 = aievec.matmul_aie2p %b, %a, %acc : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
-  return %r0, %r1 : vector<8x8xf32>, vector<8x8xf32>
-}
-
-// A use outside any matmul keeps the full-width load.
-// CHECK-LABEL: func.func @no_split_other_use
-// CHECK: vector.load {{.*}} : memref<128xbf16>, vector<64xbf16>
-// CHECK-NOT: vector<32xbf16>
-func.func @no_split_other_use(%buf: memref<128xbf16>, %b: vector<8x8xbf16>, %acc: vector<8x8xf32>) -> (vector<8x8xf32>, vector<64xbf16>) {
-  %c0 = arith.constant 0 : index
-  %v = vector.load %buf[%c0] : memref<128xbf16>, vector<64xbf16>
-  %a = vector.shape_cast %v : vector<64xbf16> to vector<8x8xbf16>
-  %r = aievec.matmul_aie2p %a, %b, %acc : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
-  return %r, %v : vector<8x8xf32>, vector<64xbf16>
-}
-
-// The 8x8x4 matmul lowers its LHS differently; only 8x8x8 is split.
-// CHECK-LABEL: func.func @no_split_8x8x4
-// CHECK: vector.load {{.*}} : memref<128xbf16>, vector<64xbf16>
-// CHECK-NOT: vector<32xbf16>
-func.func @no_split_8x8x4(%buf: memref<128xbf16>, %b: vector<8x4xbf16>, %acc: vector<8x4xf32>) -> vector<8x4xf32> {
-  %c0 = arith.constant 0 : index
-  %v = vector.load %buf[%c0] : memref<128xbf16>, vector<64xbf16>
-  %a = vector.shape_cast %v : vector<64xbf16> to vector<8x8xbf16>
-  %r = aievec.matmul_aie2p %a, %b, %acc : vector<8x8xbf16>, vector<8x4xbf16> into vector<8x4xf32>
-  return %r : vector<8x4xf32>
 }

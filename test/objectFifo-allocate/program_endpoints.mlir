@@ -159,9 +159,9 @@ module @programs_and_tasks {
 
 // -----
 
-// A runtime task's BDs do not steer the choice, so the device image does not
-// depend on the runtime sequence: an instruction stream built for another
-// sequence runs on it. The task pinned to S2MM 2 leaves the program the
+// A runtime task's unpinned BDs do not steer the choice, so the device image
+// does not depend on them: an instruction stream built for another sequence
+// pinning the same ids runs on it. The task on S2MM 2 leaves the program the
 // lowest free channel, S2MM 0.
 
 // CHECK-LABEL: @pinned_task_demand
@@ -199,14 +199,14 @@ module @pinned_task_demand {
 
 // -----
 
-// A shim endpoint without a fifoName gets no shim allocation, so its runtime
-// task is configured on the shim's channel directly too. The source of a
-// packet-switched route stamps its header on the task it becomes.
+// Named shim endpoints retain a channel reservation for subsequent allocation.
+// The source of a packet-switched route stamps its header on the runtime task.
 
 // CHECK-LABEL: @shim_and_packet
 // CHECK: aie.runtime_sequence
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0, <pkt_id = 0>) {
+// CHECK: aie.shim_dma_allocation @host__shim_alloc(%{{.*}}, MM2S, 0)
 // CHECK-NOT: aie.shim_dma_allocation
 module @shim_and_packet {
   aie.device(npu2) {

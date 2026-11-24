@@ -197,6 +197,7 @@ repos:
           lib/Dialect/AIE/Transforms/AIEHoistVectorTransferPointers\.cpp|
           lib/Dialect/AIE/Transforms/AIEInsertTraceFlows\.cpp|
           lib/Dialect/AIE/Transforms/AIELocalizeLocks\.cpp|
+          lib/Dialect/AIE/Transforms/AIELockPlan\.cpp|
           lib/Dialect/AIE/Transforms/AIELowerCascadeFlows\.cpp|
           lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces\.cpp|
           lib/Dialect/AIE/Transforms/AIEObjectFifoAllocate\.cpp|

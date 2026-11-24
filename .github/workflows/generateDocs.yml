@@ -49,7 +49,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
-          submodules: "true"
+          submodules: "recursive"
 
       # docs/programming_guide is a gitignored symlink to the repo-root
       # programming_guide/ tree (kept out of git so a stray `git add .` during

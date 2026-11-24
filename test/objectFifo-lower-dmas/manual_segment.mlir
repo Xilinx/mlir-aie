@@ -11,7 +11,7 @@
 module @manual_fill_segment {
   aie.device(xcve2302) {
     %tile = aie.tile(1, 2)
-    %shim = aie.tile(1, 0)
+    %shim = aie.tile(2, 0)
 
     %b0 = aie.buffer(%tile) {sym_name = "b0"} : memref<48xi32>
     %b1 = aie.buffer(%tile) {sym_name = "b1"} : memref<48xi32>
@@ -71,7 +71,7 @@ module @manual_fill_segment {
 module @manual_fill_segment_allocated {
   aie.device(xcve2302) {
     %tile = aie.tile(1, 2)
-    %shim = aie.tile(1, 0)
+    %shim = aie.tile(2, 0)
 
     aie.objectfifo.pool @pool(%tile) {depth = 2 : i32} : memref<48xi32> {
       aie.objectfifo.segment @s0 {manualFill, offset = 0 : i32, size = 16 : i32}

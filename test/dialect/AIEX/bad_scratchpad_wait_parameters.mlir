@@ -81,11 +81,14 @@ aie.device(npu2) {
   aie.core(%t02) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
-    %cmax = arith.constant 9223372036854775807 : index
     aiex.wait_scratchpad_parameters
-    scf.for %i = %c0 to %cmax step %c1 {
+    scf.while : () -> () {
+      %true = arith.constant true
+      scf.condition(%true)
+    } do {
       // expected-error @+1 {{'aiex.read_scratchpad_parameter' op reads @n in a loop with no aiex.wait_scratchpad_parameters inside it before the read, so after the loop's first iteration it may read a previous dispatch's value}}
       %v = aiex.read_scratchpad_parameter @n : i32
+      scf.yield
     }
     aie.end
   }

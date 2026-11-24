@@ -15,8 +15,7 @@ extern "C" void rms_residual_core(bf16 *restrict x, bf16 *restrict w,
   event1();
 }
 
-// y is rms_residual's: a 16-element packet header, here zeros, then
-// rms_norm(x, w).
+// y holds a zeroed 16-bf16 header followed by rms_norm(x, w).
 extern "C" void rms_norm_core(bf16 *restrict x, bf16 *restrict w,
                               bf16 *restrict y) {
   event0();

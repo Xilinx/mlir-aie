@@ -55,11 +55,10 @@ rt = Runtime(seq, [tile_ty, padded_ty, of_in.prod(), of_out.cons()])
 print(Program(iron.get_current_device(), rt, workers=[worker]).resolve_program())
 
 # The (size, stride) pairs the patterns stand for.
-# CHECK: aie.objectfifo @in_l1({{.*}}dimensionsToStream [<size = 8, stride = 1>, <size = 16, stride = 8>]
-# CHECK: aie.objectfifo @mid({{.*}}dimensionsFromStream [<size = 8, stride = 1>, <size = 16, stride = 8>]
+# CHECK-DAG: aie.objectfifo @in_l1({{.*}}dimensionsToStream [<size = 8, stride = 1>, <size = 16, stride = 8>]
+# CHECK-DAG: aie.objectfifo @mid({{.*}}dimensionsFromStream [<size = 8, stride = 1>, <size = 16, stride = 8>]
 # A padded pattern carries the padding too.
-# CHECK: aie.objectfifo @out({{.*}}dimensionsToStream [<size = 8, stride = 16>, <size = 16, stride = 1>]
-# CHECK-SAME: padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 4, const_pad_after = 4>, <const_pad_before = 0, const_pad_after = 0>]>
+# CHECK-DAG: aie.objectfifo @out({{.*}}dimensionsToStream [<size = 8, stride = 16>, <size = 16, stride = 1>]{{.*}}padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 4, const_pad_after = 4>, <const_pad_before = 0, const_pad_after = 0>]>
 
 # A walk must start at the object's first element and be a pattern.
 for label, dims in [

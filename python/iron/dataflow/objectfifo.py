@@ -22,6 +22,7 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects.aie import Port, Transport, object_fifo, object_fifo_link
 from ...helpers.npdtypes import (
     NpuDType,
+    is_block_float,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
     np_ndarray_type_of,
@@ -34,6 +35,7 @@ from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
+from ..runtime._context import active_recording
 from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
 
@@ -121,6 +123,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         transport: Transport | str | None = None,
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | In | Out | InOut | None = None,
+        release_strategy: str | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -166,8 +169,11 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
                 share memory, and ``Transport.shared_mem()`` insists on shared memory.
                 ``Transport.dma(packet=Packet())`` routes the fifo as an
                 ``aie.packet_flow`` sharing the stream with other packet flows, and
-                ``Packet(id=7)`` pins the 5-bit header for designs that route on it. None
-                leaves the choice to the lowering, which is the same as ``Transport.auto()``.
+                ``Packet(id=7)`` pins the 5-bit header for designs that route on it.
+                ``Transport.dma(packet=Packet(), out_of_order=True)`` selects receiving
+                buffer descriptors through packet headers, allowing FIFOs to share an
+                S2MM channel. None leaves the choice to the lowering, which is the same
+                as ``Transport.auto()``.
                 What drives each end, a DMA channel or a core stream port, is the ``port``
                 of [`prod`][aie.iron.dataflow.objectfifo.ObjectFifo.prod] and
                 [`cons`][aie.iron.dataflow.objectfifo.ObjectFifo.cons].
@@ -183,6 +189,11 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
                 transfers and the consumer receives consumer_obj_type-sized transfers.
                 Producer element count must be an integer multiple of consumer element count.
                 Defaults to None.
+            release_strategy (str | None, optional): What a release on the producer
+                handle starts. ``"cycle_buffers"``, the default, leaves the sending
+                DMA to walk the pool's buffers on its own. ``"push_queue"`` has the
+                core push the descriptor of each buffer it releases, which is what
+                lets two ObjectFifos share a sending channel. Defaults to None.
 
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
@@ -219,6 +230,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         self._delegate_tile: Tile | None = delegate_tile
         self._transport: Transport | None = Transport.coerce(transport)
         self._init_values: list[np.ndarray] | None = init_values
+        self._release_strategy: str | None = release_strategy
 
     @property
     def depth(self) -> int | None:
@@ -533,6 +545,9 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
             if any(p is not None for p in cons_ports):
                 op.set_cons_ports(cons_ports)
 
+            if self._release_strategy is not None:
+                op.set_release_strategy(self._release_strategy)
+
             # Shared-memory delegate: redirect the fifo's buffer pool to a tile
             # whose memory module is shared with both prod and cons. See the
             # delegate_tile docstring on ObjectFifo for the constraint.
@@ -553,16 +568,22 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     ):
         if num_elem < 1:
             raise ValueError("Must consume at least one element")
+        if (recording := active_recording()) is not None:
+            recording.acquired(self, port, num_elem)
         return self.op.acquire(port, num_elem)
 
     def _release(
         self,
         port: ObjectFifoPort,
         num_elem: int,
+        *,
+        assume_queue_space: bool = False,
     ):
         if num_elem < 1:
             raise ValueError("Must produce at least one element")
-        self.op.release(port, num_elem)
+        if (recording := active_recording()) is not None:
+            recording.released(self, port, num_elem)
+        self.op.release(port, num_elem, assume_queue_space=assume_queue_space)
 
 
 class ObjectFifoHandle(PerDeviceConfigurationResolvable):
@@ -650,11 +671,19 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     def release(
         self,
         num_elem: int,
+        *,
+        assume_queue_space: bool = False,
     ) -> None:
         """Release access to some elements of the ObjectFifo, allowing the other endpoint of the ObjectFifo to acquire them.
 
         Args:
             num_elem (int): Number of elements to release.
+            assume_queue_space (bool): Assert that every DMA queue push generated
+                by this release has room, omitting its queue-space polling.
+                Applies to sending tasks and out-of-order receive replenishment.
+                Buffer synchronization and the pushes remain. The programmer
+                must guarantee room on every execution; a full queue can discard
+                a task and prevent progress. Defaults to False.
 
         Raises:
             ValueError: Number of elements cannot exceed ObjectFifo depth.
@@ -663,7 +692,14 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             raise ValueError(
                 f"Number of elements to release {num_elem} must be smaller than depth {self._depth}"
             )
-        self._object_fifo._release(self._fifo_port, num_elem)
+        self._object_fifo._release(
+            self._fifo_port, num_elem, assume_queue_space=assume_queue_space
+        )
+
+    @property
+    def object_fifo(self) -> ObjectFifo:
+        """The ``ObjectFifo`` this is an end of."""
+        return self._object_fifo
 
     @property
     def name(self) -> str | None:
@@ -750,6 +786,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
         repeat_parameter: ScratchpadParameter | str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Shared body for fill()/drain().
 
@@ -772,6 +809,12 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         if self._endpoint is None:
             self.endpoint = RuntimeEndpoint(self._shim_tile)
         active_sequence().note_fifo(self)
+        if (recording := active_recording()) is not None:
+            recording.transferred(
+                self,
+                rt_data.default_tap() if tap is None else tap,
+                length_parameter is not None or repeat_parameter is not None,
+            )
 
         assert self.name is not None
         return emit_shim_transfer(
@@ -786,6 +829,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             length_parameter=length_parameter,
             length_unit=length_unit,
             repeat_parameter=repeat_parameter,
+            out_of_order_id=out_of_order_id,
         )
 
     def fill(
@@ -800,8 +844,14 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
         repeat_parameter: ScratchpadParameter | str | None = None,
+        out_of_order_id: int | None = None,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
+
+        An ``out_of_order`` fifo requires ``out_of_order_id`` to select its
+        receiving buffer. Each packet must contain exactly one receiving
+        object's bytes, with a statically known length. Task repetitions reuse
+        the same ID; use separate fills to cycle through receiving buffers.
 
         Call from within a [`Runtime`][aie.iron.Runtime] sequence body on a producer
         handle. See ``_emit_transfer`` for the shared arguments; returns a
@@ -810,6 +860,46 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
 
+        transport = self._object_fifo._transport
+        if transport and transport.out_of_order:
+            from ...dialects.aiex import shim_dims
+            from ..runtime.data import RuntimeData
+
+            if out_of_order_id is None:
+                raise ValueError(
+                    f"ObjectFifo '{self.name}' is out_of_order, so each fill names "
+                    "the buffer it lands in: pass out_of_order_id"
+                )
+            if not isinstance(source, RuntimeData):
+                raise ValueError(f"Expected a RuntimeData source/dest, got {source}")
+            if length_parameter is not None:
+                raise ValueError("out_of_order fill does not support length_parameter")
+            if tap is None:
+                tap = source.default_tap()
+            _, sizes, _ = shim_dims(tap)
+            # Outer dimensions repeat the BD; the last three size each packet.
+            packet_sizes = sizes[-3:]
+            if not all(isinstance(s, (int, np.integer)) for s in packet_sizes):
+                raise ValueError("out_of_order fill requires a static packet length")
+
+            def element_bytes(dtype):
+                return (
+                    dtype.block_bytes
+                    if is_block_float(dtype)
+                    else np.dtype(dtype).itemsize
+                )
+
+            packet_bytes = math.prod(packet_sizes) * element_bytes(source.dtype)
+            obj_type = self._object_fifo.consumer_obj_type
+            object_bytes = math.prod(
+                np_ndarray_type_get_shape(obj_type)
+            ) * element_bytes(np_ndarray_type_get_dtype(obj_type))
+            if packet_bytes != object_bytes:
+                raise ValueError(
+                    f"out_of_order fill sends {packet_bytes} bytes per packet, but "
+                    f"one receiving object requires {object_bytes} bytes; "
+                    "use an object-sized tap and a separate fill for each destination ID"
+                )
         return self._emit_transfer(
             source,
             tap,
@@ -821,6 +911,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             length_parameter,
             length_unit,
             repeat_parameter,
+            out_of_order_id,
         )
 
     def drain(
@@ -1318,6 +1409,8 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         self._src_offsets = src_offsets if src_offsets is not None else []
         self._dst_offsets = dst_offsets if dst_offsets is not None else []
         self._resolving = False
+        if (recording := active_recording()) is not None:
+            recording.linked(self)
 
         if len(self._srcs) < 1:
             raise ValueError("An ObjectFifoLink must have at least one source")
@@ -1355,6 +1448,31 @@ class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolva
         if tile.tile_type is None and not placed:
             tile.tile_type = AIETileType.MemTile
         ObjectFifoEndpoint.__init__(self, tile)
+
+    @property
+    def srcs(self) -> tuple[ObjectFifoHandle, ...]:
+        """The fifo ends it reads."""
+        return tuple(self._srcs)
+
+    @property
+    def dsts(self) -> tuple[ObjectFifoHandle, ...]:
+        """The fifo ends it fills."""
+        return tuple(self._dsts)
+
+    @property
+    def src_offsets(self) -> tuple[int, ...]:
+        """Where each source lands in a destination object, joining."""
+        return tuple(self._src_offsets)
+
+    @property
+    def dst_offsets(self) -> tuple[int, ...]:
+        """Where each destination's part starts in a source object, splitting."""
+        return tuple(self._dst_offsets)
+
+    @property
+    def mode(self) -> ObjectFifoLinkMode:
+        """``Space`` splits or joins every object; ``Time`` has the many side take turns."""
+        return self._mode
 
     def _walked_objects(self) -> int | None:
         """Return how many input objects a 1:1 link's output walks, or None for a walk within one object.

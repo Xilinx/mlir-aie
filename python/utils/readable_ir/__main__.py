@@ -6,6 +6,7 @@
 """`python -m aie.utils.readable_ir FILE`: print FILE with locations as comments."""
 
 import argparse
+import io
 import sys
 
 from aie.utils.readable_ir import readable
@@ -19,15 +20,20 @@ def main(argv=None) -> int:
     parser.add_argument("-o", "--output", help="Write here instead of stdout")
     args = parser.parse_args(argv)
     if args.input == "-":
+        if isinstance(sys.stdin, io.TextIOWrapper):
+            sys.stdin.reconfigure(encoding="utf-8")
         text = sys.stdin.read()
     else:
-        with open(args.input) as f:
+        with open(args.input, encoding="utf-8") as f:
             text = f.read()
     result = readable(text)
     if args.output:
-        with open(args.output, "w") as f:
+        with open(args.output, "w", encoding="utf-8") as f:
             f.write(result)
     else:
+        # MLIR is UTF-8; a Windows console or pipe defaults to the ANSI code page.
+        if isinstance(sys.stdout, io.TextIOWrapper):
+            sys.stdout.reconfigure(encoding="utf-8")
         sys.stdout.write(result)
     return 0
 

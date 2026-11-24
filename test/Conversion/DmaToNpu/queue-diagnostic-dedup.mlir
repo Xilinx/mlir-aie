@@ -1,11 +1,11 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false warn-unreleased-transfers=false' \
 // RUN:   --aie-dma-tasks-to-npu --aie-dma-to-npu='enforce-queue-depth=false' \
 // RUN:   --verify-diagnostics %s | FileCheck %s --check-prefix=CLEAN \
 // RUN:   --implicit-check-not=aiex.dma_queue_overflow_diagnosed --implicit-check-not=aiex.npu.maskpoll
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false warn-unreleased-transfers=false' \
 // RUN:   --aie-dma-tasks-to-npu --aie-dma-to-npu %s 2>/dev/null \
 // RUN:   | FileCheck %s --check-prefix=GUARD
 

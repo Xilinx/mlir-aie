@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from contextlib import contextmanager
-from contextvars import ContextVar
 from typing import Any, Iterator
 
 from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from aie.helpers.dialects.scf import (
     _for,
+    _for_bounds,
 )
 from aie.helpers.dialects.scf import (
     else_ as _else_,
@@ -21,44 +21,12 @@ from aie.helpers.dialects.scf import (
 from aie.helpers.dialects.scf import (
     yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.ir import InsertionPoint  # pyright: ignore[reportMissingImports]
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    InsertionPoint,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.iron.runtime._context import frame, frames
 from aie.iron.runtime.dmataskhandle import Task
 from aie.iron.runtime.taskgroup import TaskGroup
-
-
-class _LoopFrame:
-    """One active ``range_`` loop.
-
-    Holds the loop body block, the waited flags of each TaskGroup it carries
-    (``None`` for other entries, and for a loop without iter_args), and the
-    values its terminating ``yield_`` passed, if any.
-    """
-
-    def __init__(self, body, specs):
-        self.body = body
-        self.specs = specs
-        self.values: list | None = None
-
-
-# The loops currently being emitted, innermost last. yield_ checks a yielded
-# group against the innermost one's specs, and records its values only when it
-# terminates that loop's body itself, not a nested scf.if or loop. A ContextVar
-# (like the active runtime sequence) so concurrent threads or async tasks
-# generating designs each see only their own loops.
-_loop_frames: ContextVar[tuple[_LoopFrame, ...]] = ContextVar(
-    "iron_loop_frames", default=()
-)
-
-
-@contextmanager
-def _loop_frame(body, specs):
-    frame = _LoopFrame(body, specs)
-    outer = _loop_frames.get()
-    _loop_frames.set(outer + (frame,))
-    try:
-        yield frame
-    finally:
-        _loop_frames.set(outer)
 
 
 def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
@@ -122,9 +90,10 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
         if packers
         else None
     )
+    bounds = _for_bounds(args, kwargs)
     for vals in _for(*args, iter_args=raw, insert_yield=not packers, **kwargs):
         if not packers:
-            with _loop_frame(vals.owner, specs):
+            with frame("for", bounds, vals.owner, specs):
                 yield vals
             continue
         if not raw:
@@ -134,7 +103,7 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
             if len(raw) == 1:
                 a, results = (a,), (results,)
         results = rewrap(tuple(results))
-        with _loop_frame(iv.owner, specs) as frame:
+        with frame("for", bounds, iv.owner, specs) as loop:
             yield iv, rewrap(tuple(a)), results
         ops = iv.owner.operations
         if not len(ops) or ops[len(ops) - 1].name != "scf.yield":
@@ -145,8 +114,8 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
         # A loop result is the Task the body yielded, so it takes that Task's
         # lifetime, not the initial one's.
         for i, (kind, _, _) in enumerate(packers):
-            if kind == "task" and frame.values and isinstance(frame.values[i], Task):
-                results[i]._carry(frame.values[i])
+            if kind == "task" and loop.values and isinstance(loop.values[i], Task):
+                results[i]._carry(loop.values[i])
 
 
 def forever_() -> Iterator[None]:
@@ -158,7 +127,9 @@ def forever_() -> Iterator[None]:
     ``while_true=False``; write it yourself when a body must do some work once
     before it loops forever.
     """
-    return _forever_()
+    for _ in _forever_():
+        with frame("forever"):
+            yield
 
 
 def yield_(values):
@@ -169,10 +140,10 @@ def yield_(values):
     enclosing ``range_`` carried in. See [`Task`][aie.iron.runtime.dmataskhandle.Task].
     """
     values = list(values)
-    frames = _loop_frames.get()
-    specs = frames[-1].specs if frames else None
-    if frames and InsertionPoint.current.block == frames[-1].body:
-        frames[-1].values = values
+    loops = [f for f in frames() if f.kind == "for"]
+    specs = loops[-1].specs if loops else None
+    if loops and InsertionPoint.current.block == loops[-1].body:
+        loops[-1].values = values
     if specs is not None and len(values) != len(specs):
         raise ValueError(
             f"yield_ got {len(values)} values but the loop carries {len(specs)}"
@@ -222,7 +193,7 @@ def if_(cond):
     """
     if isinstance(cond, bool):
         cond = constant(cond)
-    with _if_(cond, hasElse=False) as op:
+    with _if_(cond, hasElse=False) as op, frame("if", cond):
         yield op
 
 
@@ -233,5 +204,5 @@ def else_(branch):
     if not len(blocks):
         with InsertionPoint(blocks.append()):
             _yield_([])
-    with _else_(branch):
+    with _else_(branch), frame("else"):
         yield

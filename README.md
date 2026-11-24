@@ -235,7 +235,7 @@ Below steps replicate what the install script does.
    1. **Latest:** For the latest wheels (not necessarily a release):
       ```bash
       # Install IRON library and mlir-aie from the latest wheel
-      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
+      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-5
       ```
 
    1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.

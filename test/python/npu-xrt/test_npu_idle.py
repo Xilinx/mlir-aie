@@ -18,6 +18,7 @@ context would be one more NPU user for ``wait_idle`` to wait out.
 """
 
 import argparse
+import math
 import os
 import re
 import subprocess
@@ -106,7 +107,12 @@ def test_run_interleaved_times_nothing_while_another_process_holds_the_npu():
     try:
         logged = []
         (stats,) = run_interleaved(
-            [lambda: run_copy(2)], rounds=2, calls=2, idle=True, log=logged.append
+            [lambda: run_copy(2)],
+            rounds=2,
+            calls=2,
+            idle=True,
+            log=logged.append,
+            max_cpu_wait_us=math.inf,
         )
         assert process.poll() is not None
         assert stats.n == 2

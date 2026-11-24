@@ -84,8 +84,8 @@ def AIESCFToControlFlow : Pass<"aie-scf-to-control-flow", "mlir::ModuleOp"> {
     control flow is preserved for its own lowering.
   }];
 
-  let constructor = "xilinx::AIEX::createAIESCFToControlFlowPass()";
-  let dependentDialects = ["mlir::cf::ControlFlowDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -180,9 +180,17 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
 }
 
 def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
-  let summary = "";
+  let summary = "Lower runtime-sequence DMA operations to NPU register writes";
   let description = [{
+    Lowers `aiex.npu.dma_memcpy_nd`, `aiex.npu.dma_wait`, RTP and buffer
+    descriptor writes, and `aiex.npu.push_queue` to register writes and syncs.
 
+    Every path's pushes and syncs meet here, so the pass checks two things
+    on all of them: it guards task-queue depth (`enforce-queue-depth`), and
+    it rejects a runtime sequence that ends with a task-completion token
+    outstanding on a channel some sequence of the device awaits. Such a token
+    outlives the command, and the next command's await on that channel takes
+    it and returns before its own transfer has finished.
   }];
 
   let options = [Option<
@@ -234,7 +242,9 @@ def AIECertPages : Pass<"cert-legalize-pages", "AIE::DeviceOp"> {
   let description = [{
     This pass splits cert jobs into smaller jobs that fit into 8k pages.
     It is used to ensure that the generated code does not exceed the page size
-    limit of the aiebu tools and cert firmware.
+    limit of the aiebu tools and cert firmware. After splitting, it moves job
+    IDs that collide modulo 64 on a page to unused slots. A page with more
+    than 64 jobs is an error.
   }];
 
   let constructor = "xilinx::AIEX::createAIECertPagesPass()";
@@ -343,6 +353,36 @@ def AIEAssignRuntimeSequenceBDIDs
     : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary =
       "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
+  let description = [{
+    Gives each `aie.dma_bd` of an `aiex.dma_configure_task` in a runtime
+    sequence a buffer descriptor id on its tile, in program order, and takes
+    a task's ids back once it is known to have finished, for later tasks to
+    reuse. The sequence must be straight-line (constant loops unrolled,
+    constant branches folded); runtime-valued `scf` ops are rejected.
+
+    An await (`aiex.dma_await_task`, `aiex.npu.sync`, `aiex.npu.dma_wait`)
+    takes the oldest completion token on its channel, which proves that push
+    and every push queued ahead of it finished. `aiex.dma_free_task` releases
+    a task's ids without waiting; reusing ids a free released with nothing
+    proving the task finished is a warning (`warn-unsafe-bd-reuse`), as is an
+    `aiex.npu.dma_memcpy_nd` that reprograms an id an earlier copy on the tile
+    may still have in flight.
+
+    An await on an output also finishes the input pushes its
+    `#aie.consumed_by` proofs cover; a task carries its allocation's proofs
+    through `alloc`.
+
+    A sequence that ends with another device's PDI loaded leaves that array to
+    the next dispatch, whose proofs count on a clean start, so the stretch
+    since the latest load must balance under that device's proofs: no more
+    through an input than its output proves taken, the output not partway
+    through a granule, no other traffic on their channels, and transfer sizes
+    the pass can count. Otherwise the `aiex.npu.load_pdi` is an error.
+
+    Before allocating, the pass checks each channel's completion tokens (an
+    await with no token to take would deadlock the host) and task queue
+    (`enforce-queue-depth`).
+  }];
 
   let options =
       [Option<
@@ -358,17 +398,27 @@ def AIEAssignRuntimeSequenceBDIDs
            "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
            /*default=*/"true",
            "Warn when a BD id released by aiex.dma_free_task without any "
-           "completion guarantee is later reused on the same tile. On by "
-           "default; disable when completion is guaranteed through the compute "
-           "core or another tile, which the runtime sequence cannot see.">,
+           "completion guarantee is later reused on the same tile, or an "
+           "aiex.npu.dma_memcpy_nd reprograms an id an earlier copy may still "
+           "have in flight. On by default; disable when completion is "
+           "guaranteed through the compute core or another tile, which the "
+           "runtime sequence cannot see.">,
+       Option<"warnUnreleasedTransfers", "warn-unreleased-transfers", "bool",
+              /*default=*/"true",
+              "Warn when a straight-line runtime sequence leaves DMA transfers "
+              "neither awaited nor freed. Completion established indirectly "
+              "through computation or other channels may not be visible.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "
-              "task that was never released instead of failing, inserting an "
-              "aiex.npu.maskpoll that proves it finished if no existing poll "
-              "does. Emits a remark for each inserted poll. Off by default: "
-              "the poll hangs if the task's completion depends, through a "
-              "core or another tile, on a push issued after it.">];
+              "task that was never released and is not started again, instead "
+              "of failing: one already proven finished (by an await, a poll or "
+              "a consumed_by proof), or else, inserting an aiex.npu.maskpoll "
+              "that proves it finished, one on a channel whose status can be "
+              "polled that waits on no lock a later task releases. Emits a "
+              "remark for each inserted poll. Off by default: the poll hangs "
+              "if the task's completion depends, through a core or another "
+              "tile, on a push issued after it.">];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
@@ -408,9 +458,10 @@ def AIEReserveRuntimeBDIDs
   let summary =
       "Reserve runtime-sequence pinned BD ids for the static allocator";
   let description = [{
-    Records the compile-time BD ids that `aiex.dma_configure_task` ops pin in the
-    runtime sequence, per tile, as an `aiex.reserved_bd_ids` attribute on each
-    `aie.tile`. The static allocator (`aie-assign-bd-ids`) runs in the AIE
+    Records the compile-time BD ids the runtime sequence pins, per tile, as an
+    `aiex.reserved_bd_ids` attribute on each `aie.tile`: the `bd_id`s of
+    `aiex.dma_configure_task` and `aiex.dma_configure_task_for` BDs, and the
+    `id` of each `aiex.npu.dma_memcpy_nd`. The static allocator (`aie-assign-bd-ids`) runs in the AIE
     dialect and cannot walk AIEX ops, so it reads this attribute to keep its
     auto-assignment off ids the runtime sequence already claimed.
   }];
@@ -694,16 +745,31 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     (i.e., after `aiex.configure` ops have been turned into
     `aiex.npu.load_pdi`).
 
-    With `teardown = true`, an `aiex.npu.write_teardown @device` before the
-    next `load_pdi`, or at the sequence's end, undoes what each configuration
-    enabled, so only a sequence's first configuration keeps its reset. With
-    `init-entry = true` as well, that reset moves into an argument-free
-    `reconfig_init` runtime sequence, which the host runs once before the
+    With `teardown = true`, each configuration undoes what it enabled before
+    the next `load_pdi`, or at the sequence's end: with an
+    `aiex.npu.write_teardown @device`, or with control packets for a control
+    packet configuration. Only a sequence's first configuration, or one after a
+    configuration of the other kind, keeps its reset or overlay load. With
+    `init-entry = true` as well, a device whose sequences all end on
+    configurations of one kind gets an argument-free `reconfig_init` runtime
+    sequence holding that kind's preload, which the host runs before the
     others.
+
+    The pass completes supported in-flight core lock acquires before
+    reconfiguration. It warns and omits lock draining for unknown acquires,
+    incompatible values, or multiple possible core waiters on one lock.
+    These cases require explicit PDI resets.
 
     A sequence whose first and last reset (or overlay load) name the same PDI
     gets one more of the other, so the next dispatch's first load is not skipped
     as cached. Under teardown no sequence needs this.
+
+    A reset between two configurations that each hold a buffer `resident` on
+    the same `memref.global` is an error, as it clears the array underneath
+    that buffer. That includes the reset between a sequence's last
+    configuration and its first when the host runs it again. Every load_pdi
+    resets the array unless the firmware skips it as the PDI it loaded last;
+    under `teardown`, an expanded load resets it only through its preload.
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";

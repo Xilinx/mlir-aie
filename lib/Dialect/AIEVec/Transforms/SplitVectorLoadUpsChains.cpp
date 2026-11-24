@@ -6,11 +6,13 @@
 //===----------------------------------------------------------------------===//
 // Splits 1024-bit vector loads and stores into 512-bit halves where the
 // value is widened or narrowed one half at a time on AIE2P: vector.load +
-// aievec.ups, aievec.srs + vector.store, and bf16 loads feeding the LHS of
-// aievec.matmul_aie2p. Each half then maps to its own memory access instead of
-// a shuffle of the full-width value.
+// aievec.ups, aievec.srs + vector.store, and bf16 tile loads that are the lhs
+// of bfp16 matmuls. Each half then maps to its own memory access instead of
+// a shuffle of the full-width value. Then, on request, any other 1024- or
+// 2048-bit load or store into 512-bit ones.
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -295,10 +297,12 @@ struct SplitVectorSrsStoreChainPattern
   }
 };
 
-/// Splits a 1024-bit bf16 vector.load that only feeds the LHS of bf16 8x8x8
-/// aievec.matmul_aie2p ops into two 512-bit loads joined by a vector.shuffle.
+/// Splits a 1024-bit bf16 vector.load of an 8x8 tile that is only the lhs of
+/// bfp16 matmuls (converted for them by aievec.to_bfp16, or the lhs of a bf16
+/// aievec.matmul_aie2p not yet expanded) into two 512-bit loads joined by a
+/// vector.shuffle.
 ///
-/// The matmul lowering widens the LHS to accfloat one 32-lane half at a time.
+/// The conversion widens such a tile to fp32 one 32-lane half at a time.
 /// With a single 64-lane load, each half is extracted by a shuffle before it is
 /// widened. After this split, and once LLVM folds the halves of the joining
 /// shuffle back to the two loads, each widening reads its own 512-bit load,
@@ -316,11 +320,15 @@ struct SplitVectorLoadMatMulLhsPattern
 
     auto bf16Tile = VectorType::get({8, 8}, rewriter.getBF16Type());
     auto f32Tile = VectorType::get({8, 8}, rewriter.getF32Type());
+    // The tile is the lhs of bfp16 matmuls: converted for them, or, before
+    // the matmuls are expanded, their bf16 8x8x8 lhs.
     auto feedsOnlyMatMulLhs = [&](Operation *user) {
       auto cast = dyn_cast<vector::ShapeCastOp>(user);
       if (!cast || cast.getResultVectorType() != bf16Tile)
         return false;
       return llvm::all_of(cast->getUses(), [&](OpOperand &use) {
+        if (auto conv = dyn_cast<ToBFP16Op>(use.getOwner()))
+          return isBFP16MatMulLhsOnly(conv);
         auto matmul = dyn_cast<MatMulOp_AIE2P>(use.getOwner());
         return matmul && use.getOperandNumber() == 0 &&
                matmul.getRhs().getType() == bf16Tile &&
@@ -348,10 +356,192 @@ struct SplitVectorLoadMatMulLhsPattern
   }
 };
 
+// An AIE2P load or store moves at most 512 bits. A 1024- or 2048-bit one is
+// split here into 512-bit ones rather than left to llc, whose own split of
+// such an access is not reliable.
+//
+// The parts of a wide access of vector type `type`: consecutive 512-bit runs
+// of its elements in row-major order, each a box of the vector (1 in the
+// dimensions before `dim`, a slice of `dim`, whole after it). Empty if the
+// access is not split.
+struct WideAccessParts {
+  VectorType partType;
+  SmallVector<SmallVector<int64_t>> offsets;
+};
+
+static std::optional<WideAccessParts> wideAccessParts(VectorType type) {
+  int64_t bits = type.getNumElements() * type.getElementTypeBitWidth();
+  if (bits != 1024 && bits != 2048)
+    return std::nullopt;
+  int64_t partLanes = type.getNumElements() / (bits / 512);
+  ArrayRef<int64_t> shape = type.getShape();
+  for (int64_t dim = 0; dim < type.getRank(); ++dim) {
+    int64_t inner = 1;
+    for (int64_t n : shape.drop_front(dim + 1))
+      inner *= n;
+    if (partLanes % inner || shape[dim] % (partLanes / inner))
+      continue;
+    int64_t slice = partLanes / inner;
+    WideAccessParts parts;
+    SmallVector<int64_t> partShape(shape);
+    for (int64_t k = 0; k < dim; ++k)
+      partShape[k] = 1;
+    partShape[dim] = slice;
+    parts.partType = VectorType::get(partShape, type.getElementType());
+    for (int64_t i = 0; i < bits / 512; ++i) {
+      // Part i: chunk i % (shape[dim] / slice) of `dim`, at the row-major
+      // position i / (shape[dim] / slice) of the dimensions before it.
+      SmallVector<int64_t> at(type.getRank(), 0);
+      int64_t chunks = shape[dim] / slice;
+      at[dim] = (i % chunks) * slice;
+      for (int64_t k = dim - 1, outer = i / chunks; k >= 0; --k) {
+        at[k] = outer % shape[k];
+        outer /= shape[k];
+      }
+      parts.offsets.push_back(at);
+    }
+    return parts;
+  }
+  return std::nullopt;
+}
+
+// The indices of the part at `offsets` of the split access `op`.
+template <typename OpTy>
+static SmallVector<Value> partIndices(PatternRewriter &rewriter, OpTy op,
+                                      ArrayRef<int64_t> offsets) {
+  SmallVector<Value> indices(op.getIndices());
+  int64_t first = op.getMemRefType().getRank() - op.getVectorType().getRank();
+  for (auto [k, offset] : llvm::enumerate(offsets)) {
+    if (offset == 0)
+      continue;
+    Value step = arith::ConstantIndexOp::create(rewriter, op.getLoc(), offset);
+    indices[first + k] =
+        arith::AddIOp::create(rewriter, op.getLoc(), indices[first + k], step);
+  }
+  return indices;
+}
+
+static SmallVector<int64_t> iota(int64_t from, int64_t count) {
+  return llvm::to_vector(llvm::seq<int64_t>(from, from + count));
+}
+
+// The 1-D vector `v` as consecutive parts of `lanes` lanes: the operands of
+// the concatenations it is made of (through aievec.cast, cast part by part)
+// where they are such parts, otherwise shuffles taking them out.
+static void collectParts(PatternRewriter &rewriter, Location loc, Value v,
+                         int64_t lanes, SmallVectorImpl<Value> &parts) {
+  int64_t n = cast<VectorType>(v.getType()).getNumElements();
+  if (n == lanes) {
+    parts.push_back(v);
+    return;
+  }
+  if (auto vcast = v.getDefiningOp<CastOp>()) {
+    SmallVector<Value> inner;
+    collectParts(rewriter, loc, vcast.getSource(), lanes, inner);
+    Type elemType = vcast.getResult().getType().getElementType();
+    for (Value part : inner) {
+      auto partType = VectorType::get(
+          cast<VectorType>(part.getType()).getShape(), elemType);
+      parts.push_back(
+          CastOp::create(rewriter, loc, partType, part, vcast.getIsResAcc()));
+    }
+    return;
+  }
+  if (auto concat = v.getDefiningOp<vector::ShuffleOp>()) {
+    auto half = cast<VectorType>(concat.getV1().getType()).getNumElements();
+    if (concat.getV1().getType() == concat.getV2().getType() &&
+        half % lanes == 0 && llvm::equal(concat.getMask(), iota(0, 2 * half))) {
+      collectParts(rewriter, loc, concat.getV1(), lanes, parts);
+      collectParts(rewriter, loc, concat.getV2(), lanes, parts);
+      return;
+    }
+  }
+  for (int64_t i = 0; i < n; i += lanes)
+    parts.push_back(
+        vector::ShuffleOp::create(rewriter, loc, v, v, iota(i, lanes)));
+}
+
+struct SplitWideLoadPattern : public OpRewritePattern<vector::LoadOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::LoadOp op,
+                                PatternRewriter &rewriter) const override {
+    VectorType type = op.getVectorType();
+    auto split = wideAccessParts(type);
+    if (!split)
+      return failure();
+    Location loc = op.getLoc();
+    SmallVector<Value> parts;
+    for (ArrayRef<int64_t> at : split->offsets)
+      parts.push_back(vector::LoadOp::create(rewriter, loc, split->partType,
+                                             op.getBase(),
+                                             partIndices(rewriter, op, at)));
+    if (type.getRank() == 1) {
+      // Concatenate pairwise until one vector is left.
+      while (parts.size() > 1) {
+        SmallVector<Value> next;
+        for (size_t i = 0; i < parts.size(); i += 2) {
+          int64_t m = cast<VectorType>(parts[i].getType()).getNumElements();
+          next.push_back(vector::ShuffleOp::create(
+              rewriter, loc, parts[i], parts[i + 1], iota(0, 2 * m)));
+        }
+        parts = std::move(next);
+      }
+      rewriter.replaceOp(op, parts.front());
+      return success();
+    }
+    Value whole = arith::ConstantOp::create(rewriter, loc, type,
+                                            rewriter.getZeroAttr(type));
+    SmallVector<int64_t> strides(type.getRank(), 1);
+    for (auto [part, at] : llvm::zip(parts, split->offsets))
+      whole = vector::InsertStridedSliceOp::create(rewriter, loc, part, whole,
+                                                   at, strides);
+    rewriter.replaceOp(op, whole);
+    return success();
+  }
+};
+
+struct SplitWideStorePattern : public OpRewritePattern<vector::StoreOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::StoreOp op,
+                                PatternRewriter &rewriter) const override {
+    VectorType type = op.getVectorType();
+    auto split = wideAccessParts(type);
+    if (!split)
+      return failure();
+    Location loc = op.getLoc();
+    SmallVector<Value> parts;
+    if (type.getRank() == 1) {
+      collectParts(rewriter, loc, op.getValueToStore(),
+                   split->partType.getNumElements(), parts);
+    } else {
+      SmallVector<int64_t> strides(type.getRank(), 1);
+      for (ArrayRef<int64_t> at : split->offsets)
+        parts.push_back(vector::ExtractStridedSliceOp::create(
+            rewriter, loc, op.getValueToStore(), at, split->partType.getShape(),
+            strides));
+    }
+    for (auto [part, at] : llvm::zip(parts, split->offsets))
+      vector::StoreOp::create(rewriter, loc, part, op.getBase(),
+                              partIndices(rewriter, op, at));
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 /// Pass to split vector.load + aievec.ups chains for better performance
 struct SplitVectorLoadUpsChainsPass
     : public PassWrapper<SplitVectorLoadUpsChainsPass, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SplitVectorLoadUpsChainsPass)
+
+  SplitVectorLoadUpsChainsPass() = default;
+  SplitVectorLoadUpsChainsPass(const SplitVectorLoadUpsChainsPass &other)
+      : PassWrapper(other) {}
+  SplitVectorLoadUpsChainsPass(bool chains, bool wideAccesses) {
+    this->chains = chains;
+    this->wideAccesses = wideAccesses;
+  }
 
   StringRef getArgument() const final { return "aievec-split-load-ups-chains"; }
 
@@ -369,16 +559,38 @@ struct SplitVectorLoadUpsChainsPass
   void runOnOperation() override {
     Operation *op = getOperation();
     MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
 
-    patterns
-        .add<SplitVectorLoadUpsChainPattern, SplitVectorSrsStoreChainPattern,
-             SplitVectorLoadMatMulLhsPattern>(context);
+    if (chains) {
+      RewritePatternSet patterns(context);
+      patterns
+          .add<SplitVectorLoadUpsChainPattern, SplitVectorSrsStoreChainPattern,
+               SplitVectorLoadMatMulLhsPattern>(context);
+      if (failed(applyPatternsGreedily(op, std::move(patterns))))
+        return signalPassFailure();
+    }
 
-    if (failed(applyPatternsGreedily(op, std::move(patterns)))) {
-      signalPassFailure();
+    if (wideAccesses) {
+      // Loads first, so that a store sees the parts a value was joined from.
+      RewritePatternSet loads(context);
+      loads.add<SplitWideLoadPattern>(context);
+      if (failed(applyPatternsGreedily(op, std::move(loads))))
+        return signalPassFailure();
+      RewritePatternSet stores(context);
+      stores.add<SplitWideStorePattern>(context);
+      if (failed(applyPatternsGreedily(op, std::move(stores))))
+        signalPassFailure();
     }
   }
+
+  Option<bool> chains{*this, "chains",
+                      llvm::cl::desc("Split the loads and stores of ups, srs "
+                                     "and bfp16 matmul lhs chains"),
+                      llvm::cl::init(true)};
+  Option<bool> wideAccesses{
+      *this, "wide-accesses",
+      llvm::cl::desc("Split every other 1024- and 2048-bit load and store "
+                     "into 512-bit ones (AIE2P)"),
+      llvm::cl::init(false)};
 };
 
 } // namespace
@@ -388,6 +600,11 @@ namespace aievec {
 
 std::unique_ptr<::mlir::Pass> createSplitVectorLoadUpsChainsPass() {
   return std::make_unique<SplitVectorLoadUpsChainsPass>();
+}
+
+std::unique_ptr<::mlir::Pass>
+createSplitVectorLoadUpsChainsPass(bool chains, bool wideAccesses) {
+  return std::make_unique<SplitVectorLoadUpsChainsPass>(chains, wideAccesses);
 }
 
 } // namespace aievec

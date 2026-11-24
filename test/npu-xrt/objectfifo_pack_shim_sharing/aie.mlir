@@ -5,11 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Three designs packed into one device, each run by its own runtime sequence,
-// one dispatch at a time. Their six shim ends need three MM2S and three S2MM
-// channels on a shim tile that has two of each; as no two members are ever
-// in flight together, a and b take turns on MM2S 0 and S2MM 0, told apart by
-// packet headers, and c keeps channel 1 of each.
+// Each worker blocks on input from its own dispatch and produces exactly the
+// awaited output. The explicit S2MM permissions rely on that synchronization.
 
 module {
   aie.device(NPUDEVICE) {
@@ -18,9 +15,9 @@ module {
     %b = aie.tile(0, 3)
     %c = aie.tile(0, 4)
     aie.objectfifo @in_a(%s, {%a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_a(%a, {%s}, 2 : i32) {aie.shareable_with = [@out_b]} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @in_b(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_b(%b, {%s}, 2 : i32) {aie.shareable_with = [@out_a]} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @in_c(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%a) {

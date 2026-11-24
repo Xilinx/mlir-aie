@@ -11,7 +11,11 @@
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <iostream>
 #include <memory>
@@ -80,6 +84,20 @@ struct DmaBdLayout {
   DmaBdField burstLength, axcache;
   DmaBdField nextBd, useNextBd, validBd;
   DmaBdField lockRelValue, lockRelId, lockAcqEnable, lockAcqValue, lockAcqId;
+
+  /// The (before, after) zero-padding fields, innermost dimension first.
+  llvm::SmallVector<std::pair<DmaBdField, DmaBdField>, 3> padFields() const {
+    llvm::SmallVector<std::pair<DmaBdField, DmaBdField>, 3> fields;
+    for (std::pair<DmaBdField, DmaBdField> field :
+         {std::pair(d0ZeroBefore, d0ZeroAfter),
+          std::pair(d1ZeroBefore, d1ZeroAfter),
+          std::pair(d2ZeroBefore, d2ZeroAfter)}) {
+      if (!field.first.exists())
+        break;
+      fields.push_back(field);
+    }
+    return fields;
+  }
 };
 
 class AIETargetModel {
@@ -116,7 +134,8 @@ public:
     // Device is an NPU-based device.
     IsNPU = 1U << 1,
     // Device model is virtualized.
-    // This is used during CDO code generation to configure aie-rt properly.
+    // This is used during CDO code generation to configure aie-codegen
+    // properly.
     IsVirtualized = 1U << 2,
     // Device uses multi-dimensional buffer descriptors.
     UsesMultiDimensionalBDs = 1U << 3,
@@ -124,6 +143,8 @@ public:
     UsesBDIteration = 1U << 4,
     // Device supports out-of-order S2MM DMA.
     SupportsOutOfOrderDMA = 1U << 5,
+    // Device tiles can be configured by control packets.
+    SupportsControlPackets = 1U << 6,
   };
 
 private:
@@ -270,6 +291,18 @@ public:
   /// Return true if src is South of dst
   bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) const {
     return srcCol == dstCol && srcRow == dstRow + 1;
+  }
+
+  /// The steps (destination column - source column, destination row - source
+  /// row) from one core's cascade output to the next core's input.
+  virtual llvm::ArrayRef<std::pair<int, int>> getCascadeSteps() const {
+    return {};
+  }
+
+  /// Return true if a cascade can run from src to dst.
+  bool isLegalCascade(int srcCol, int srcRow, int dstCol, int dstRow) const {
+    return llvm::is_contained(getCascadeSteps(),
+                              std::pair{dstCol - srcCol, dstRow - srcRow});
   }
 
   /// Return true if src has a memory tile which is West of dst
@@ -566,6 +599,13 @@ public:
   /// queued, nothing running, nothing stalled (0 when unsupported).
   virtual uint32_t getDmaChannelIdleMask() const { return 0; }
 
+  /// Return the array address of the task queue register a push writes, the
+  /// word after the channel's control register.
+  uint32_t getDmaQueueAddress(int col, int row, int channel,
+                              AIE::DMAChannelDir direction) const {
+    return getDmaControlAddress(col, row, channel, direction) + 0x4;
+  }
+
   /// Return the DMA task-queue register address relative to its tile.
   uint32_t getLocalDmaControlAddress(int col, int row, int channel,
                                      AIE::DMAChannelDir direction) const {
@@ -599,6 +639,12 @@ public:
   /// the origins of connect operations in the switchbox.
   virtual uint32_t getNumSourceShimMuxConnections(int col, int row,
                                                   WireBundle bundle) const = 0;
+  /// Return the number of DMA channels a tile has in one direction. An MM2S
+  /// channel feeds the stream switch, or the shim mux on a shim tile, so it is
+  /// counted by that switch's DMA sources; an S2MM channel by its DMA
+  /// destinations. Prefer this to the TileOp connection accessors, which are
+  /// named from the switch's side and so read the other way round.
+  uint32_t getNumDMAChannels(int col, int row, AIE::DMAChannelDir dir) const;
 
   /// Return the number of packet-rule slots per stream-switch slave port.
   virtual uint32_t getNumSlaveSlots() const = 0;
@@ -608,6 +654,12 @@ public:
   virtual uint32_t getNumMselsPerArbiter() const = 0;
   /// Return the largest packet id the stream switch can route.
   virtual uint32_t getMaxPacketId() const = 0;
+
+  /// Bits a packet id spans, and the mask a switch's id match uses.
+  int getPacketIdBits() const {
+    return llvm::Log2_32_Ceil(getMaxPacketId() + 1);
+  }
+  int getPacketIdMask() const { return (1 << getPacketIdBits()) - 1; }
   /// Return the largest out-of-order BD id (unsupported = 0).
   virtual uint32_t getMaxOutOfOrderId() const = 0;
   /// Return the largest DMA task repeat count (unsupported = 0).
@@ -616,7 +668,7 @@ public:
   /// Return how many DMA tasks a single channel's task queue holds
   /// (unsupported = 0). Pushing to a full queue drops the push and sets the
   /// channel's sticky Task_Queue_Overflow bit, stranding whoever waits on that
-  /// transfer. Flat rather than per-tile-type because aie-rt's
+  /// transfer. Flat rather than per-tile-type because aie-codegen's
   /// XAie_DmaGetMaxQueueSize (XAIE_DMA_MAX_QUEUE_SIZE) returns the same depth
   /// for every tile type and architecture.
   virtual uint32_t getDmaTaskQueueDepth() const = 0;
@@ -853,9 +905,16 @@ public:
     addModelProperty(AIETargetModel::UsesMultiDimensionalBDs);
     addModelProperty(AIETargetModel::UsesBDIteration);
     addModelProperty(AIETargetModel::SupportsOutOfOrderDMA);
+    addModelProperty(AIETargetModel::SupportsControlPackets);
   }
 
   AIEArch getTargetArch() const override;
+
+  // Cascade input comes from the North or West, output goes South or East.
+  llvm::ArrayRef<std::pair<int, int>> getCascadeSteps() const override {
+    static constexpr std::pair<int, int> steps[] = {{0, -1}, {1, 0}};
+    return steps;
+  }
 
   uint32_t getAddressGenGranularity() const override { return 32; }
 
@@ -962,9 +1021,9 @@ public:
   // Task_Queue_Size, bits 22:20 of the DMA_{MM2S,S2MM}_Status_N register.
   uint32_t getDmaTaskQueueSizeMask() const override { return 0x7u << 20; }
   // Task_Queue_Size, Channel_Running (bit 19) and the four Stalled_* bits
-  // (5:2): what aie-rt's _XAieMl_DmaWaitForDone polls clear. aie-rt's pending
-  // count adds one to Task_Queue_Size for Channel_Running or a stall, which is
-  // why the field alone does not cover the running task.
+  // (5:2): what aie-codegen's _XAieMl_DmaWaitForDone polls clear. aie-codegen's
+  // pending count adds one to Task_Queue_Size for Channel_Running or a stall,
+  // which is why the field alone does not cover the running task.
   uint32_t getDmaChannelIdleMask() const override {
     return getDmaTaskQueueSizeMask() | (1u << 19) | 0x3Cu;
   }

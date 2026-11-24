@@ -64,13 +64,17 @@ mlir::LogicalResult insertConfigOps(
 // and memref dialects must be loaded.
 mlir::LogicalResult inlineWriteConfigs(mlir::ModuleOp module);
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEAnnotateCoreLockAcquiresPass();
+
 // Insert the ops of `device`'s teardown (see aiex.npu.write_teardown).
 mlir::LogicalResult
 generateAndInsertTeardownOps(mlir::OpBuilder &builder,
                              xilinx::AIE::DeviceOp device,
                              xilinx::AIEX::BlockwriteData &blockwriteData,
                              AIEToConfigurationOutputType outputType =
-                                 AIEToConfigurationOutputType::Transaction);
+                                 AIEToConfigurationOutputType::Transaction,
+                             bool skipCtrlPktOverlay = false);
 
 // --------------------------------------------------------------------------
 // Device reset

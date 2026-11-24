@@ -183,8 +183,10 @@ class KernelContract:
         layouts: A ``TensorLayout`` per argument; ``None`` is identity.
         parameter_bindings: ``(index, value)`` pairs fixing ``Param``
             operands, counts included; the rest come from the caller.
-        initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
-            ``factory(fn)`` returns the kernel that initializes the buffer.
+        initializers: ``(index, factory)`` pairs for ``InOut`` arguments and
+            tensor ``Param`` ones the kernel writes, such as a running state;
+            ``factory(fn)`` returns the kernel that initializes the buffer
+            before each call.
         out_offset: ``(index, step)`` for a kernel that writes ``step``
             elements of its one ``Out`` per call, at the offset it reads
             from bound scalar ``Param`` ``index``. The builder then hands
@@ -272,10 +274,10 @@ class KernelContract:
             raise ValueError("parameter_bindings must name distinct Param arguments")
         initialized = dict(self.initializers)
         if len(initialized) != len(self.initializers) or any(
-            i < 0 or i >= len(self.roles) or self.roles[i] is not InOut
+            i < 0 or i >= len(self.roles) or self.roles[i] not in (InOut, Param)
             for i in initialized
         ):
-            raise ValueError("initializers must name distinct InOut arguments")
+            raise ValueError("initializers must name distinct InOut or Param arguments")
         if self.out_offset is not None:
             index, step = self.out_offset
             if index not in bound or self.roles.count(Out) != 1 or InOut in self.roles:

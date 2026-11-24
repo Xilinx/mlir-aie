@@ -57,6 +57,37 @@ def _oracle(scales, mins, nibbles, *, group, ct_k):
     return np.array(out, dtype=np.uint8)
 
 
+@pytest.mark.parametrize("m,k,group", [(32, 256, 32), (16, 64, 16)])
+def test_unpack_inverts_the_independent_writer(m, k, group):
+    rng = np.random.default_rng(m + k)
+    blocks, expected = [], []
+    for _ in range(3):
+        scales = rng.standard_normal((k // group, m)).astype(bfloat16)
+        mins = rng.standard_normal((k // group, m)).astype(bfloat16)
+        codes = rng.integers(0, 16, (m, k), dtype=np.uint8)
+        blocks.append(_pack(scales, mins, codes))
+        expected.append((codes.T, scales, mins))
+    blocks = np.stack(blocks).reshape(3, 1, -1)
+    actual = kernels.q4nx_unpack(blocks, m_tile=m, k_tile=k, group=group, ct_k=group)
+    assert actual[0].shape == (3, 1, k, m) and actual[0].dtype == np.uint8
+    assert actual[1].shape == actual[2].shape == (3, 1, k // group, m)
+    assert actual[1].dtype == actual[2].dtype == np.float32
+    for i, parts in enumerate(expected):
+        for got, want in zip(actual, parts):
+            np.testing.assert_array_equal(got[i, 0], want)
+
+
+def test_default_block_is_fastflowlms():
+    assert (kernels.Q4NX_M_TILE, kernels.Q4NX_K_TILE, kernels.Q4NX_GROUP) == (
+        32,
+        256,
+        32,
+    )
+    assert kernels.Q4NX_BLOCK_BYTES == 5120
+    blocks = np.zeros((2, kernels.Q4NX_BLOCK_BYTES), np.uint8)
+    assert kernels.q4nx_unpack(blocks)[0].shape == (2, 256, 32)
+
+
 def test_low_nibble_first_and_exponents_shared_across_k():
     q = np.array([np.arange(8) + 8 * (n % 2) for n in range(16)], dtype=np.uint8)
     payload = _pack(np.ones((1, 16)), np.zeros((1, 16)), q)

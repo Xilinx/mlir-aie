@@ -11,12 +11,11 @@
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 import numpy as np
-import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 from aie.dialects import memref
 
 
@@ -142,7 +141,7 @@ def my_vector_add():
         @core(ComputeTile2)
         def core_body():
             # Effective while(1)
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 # Number of sub-vector "tile" iterations
                 use_lock(in2_mem_cons_cons_lock, LockAction.AcquireGreaterEqual)
                 for j in range_(N_div_n):

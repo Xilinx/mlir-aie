@@ -51,7 +51,7 @@ module {
       %rc = arith.constant 1 : i32
       %bd = arith.constant 0 : i32
       // expected-error@+1 {{Repeat count exceeds the [0:0] range.}}
-      aiex.npu.push_queue (0, 0, MM2S:0) bd_id %bd repeat %rc {issue_token = false} : i32, i32
+      aiex.npu.push_queue (2, 0, MM2S:0) bd_id %bd repeat %rc {issue_token = false} : i32, i32
     }
   }
 }
@@ -63,7 +63,7 @@ module {
     aie.runtime_sequence() {
       %rc = arith.constant 0 : i32
       %bd = arith.constant 0 : i32
-      aiex.npu.push_queue (0, 0, MM2S:0) bd_id %bd repeat %rc {issue_token = false} : i32, i32
+      aiex.npu.push_queue (2, 0, MM2S:0) bd_id %bd repeat %rc {issue_token = false} : i32, i32
     }
   }
 }

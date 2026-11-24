@@ -206,6 +206,16 @@ lit on every PR, through `trace_markers` below.
 
 ## Host-side helpers
 
+`aie.utils.aie2p_emulation` provides the arithmetic and runtime-library tables
+used by FastFlowLM host references. The q4nx block defaults (`Q4NX_M_TILE`,
+`Q4NX_K_TILE`, `Q4NX_GROUP`, `Q4NX_BLOCK_BYTES`) and Gemma 4 constants
+(`RMS_EPS`, `BF16_PROJ_M`, `BF16_PROJ_K`, `DECODE_KEYS_PER_ROUND`) are exported
+by `aie.iron.kernels`. `quant.q4nx_unpack` returns codes in `(k, m)` order.
+
+::: aie.utils.aie2p_emulation
+    options:
+      show_root_heading: false
+
 `aie.utils.bfp` is the host side of the block-floating-point kernels: the
 bfp16ebs8 codec and the tile shuffle the `mm_bfp` DMA layout needs. It is
 the Python counterpart of `programming_examples/ml/block_datatypes/helper.h`,

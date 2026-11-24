@@ -6,10 +6,10 @@
 // Enforcement pinned off: these stanzas are about what the count reports, and
 // with it on the compiler inserts a poll instead of saying anything.
 // RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
+// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false warn-unreleased-transfers=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
 // RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
+// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false warn-unreleased-transfers=false' \
 // RUN:         --aie-dma-tasks-to-npu --aie-dma-to-npu='enforce-queue-depth=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
 // RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
@@ -24,7 +24,7 @@
 // NO-OP-PRINT-NOT: see current operation
 
 // A DMA channel's task queue holds only getDmaTaskQueueDepth() entries (4 on
-// AIE2, matching aie-rt's XAIE_DMA_MAX_QUEUE_SIZE). Pushing onto a full queue
+// AIE2, matching aie-codegen's XAIE_DMA_MAX_QUEUE_SIZE). Pushing onto a full queue
 // drops the push, so the transfer never runs and anything waiting on it hangs.
 // Unlike the TCT FIFO, over-production is not safe here.
 

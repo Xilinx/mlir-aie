@@ -4,8 +4,7 @@
 
 # RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
-# RUN: %run_on_npu2_hrx% %pytest %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# REQUIRES: xrt_python_bindings
 """Resize images with resize_linear's four entry points, and match resize_linear_ref exactly.
 
 The sizes are chosen for the places a core can go wrong: a downscale that

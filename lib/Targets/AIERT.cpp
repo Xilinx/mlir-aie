@@ -14,21 +14,10 @@
 #include "llvm/ADT/SmallSet.h"
 
 extern "C" {
-#include "xaiengine/xaie_core.h"
-#include "xaiengine/xaie_dma.h"
-#include "xaiengine/xaie_elfloader.h"
-#include "xaiengine/xaie_interrupt.h"
-#include "xaiengine/xaie_locks.h"
-#include "xaiengine/xaie_mem.h"
-#include "xaiengine/xaie_perfcnt.h"
-#include "xaiengine/xaie_plif.h"
-#include "xaiengine/xaie_reset.h"
-#include "xaiengine/xaie_ss.h"
-#include "xaiengine/xaie_txn.h"
-#include "xaiengine/xaiegbl.h"
-#include "xaiengine/xaiegbl_defs.h"
+#include "aie_codegen.h"
 }
 
+#include <algorithm>
 #include <filesystem>
 
 #define AIERC_STR(x) x, #x
@@ -215,8 +204,8 @@ struct xilinx::AIE::AIERTControl::AIERtImpl {
 
 // Walk DevInst->TxnList to find the active XAie_TxnInst (single-threaded
 // compilation: at most one). Returns null if no transaction is being
-// recorded. The XAie_TxnInst struct and TxnList layout are part of aie-rt's
-// public xaiegbl.h, so this only depends on the public header.
+// recorded. The XAie_TxnInst struct and TxnList layout are part of
+// aie-codegen's public xaiegbl.h, so this only depends on the public header.
 static XAie_TxnInst *getActiveTxnInst(XAie_DevInst &devInst) {
   XAie_List *node = devInst.TxnList.Next;
   if (!node)
@@ -264,7 +253,7 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     devGen = XAIE_DEV_GEN_AIE;
     break;
   case AIEArch::AIE2:
-    // FIXME: What if we don't have an IPU?  aie-rt
+    // FIXME: What if we don't have an IPU?  aie-codegen
     // models non-IPU devices differently.
     devGen = XAIE_DEV_GEN_AIE2IPU;
     break;
@@ -273,10 +262,11 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     break;
   case AIEArch::AIE2ps:
     // AIE2PS configures the array through a CERT ELF instead of CDO or an
-    // xclbin (see AIE2PSTargetModel), so it has no aie-rt device generation.
-    // Listed here so that a new AIEArch still raises -Wswitch.
-    llvm::report_fatal_error("aie-rt configuration is not supported for the "
-                             "AIE2PS architecture");
+    // xclbin (see AIE2PSTargetModel), so it has no aie-codegen device
+    // generation. Listed here so that a new AIEArch still raises -Wswitch.
+    llvm::report_fatal_error(
+        "aie-codegen configuration is not supported for the "
+        "AIE2PS architecture");
   }
   aiert->configPtr = XAie_Config{
       /*AieGen*/ devGen,
@@ -293,7 +283,8 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
       /*AieTileNumRows*/
       static_cast<uint8_t>(tm.rows() - tm.getNumMemTileRows() - 1),
       /*PartProp*/ {},
-      /*Backend*/ XAIE_IO_BACKEND_CDO};
+      /*ShimTileNumRowsNorth*/ 0,
+      /*ShimTileNumRowsSouth*/ 0};
   XAie_InstDeclare(_devInst, &aiert->configPtr);
   aiert->devInst = _devInst;
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &aiert->devInst,
@@ -333,19 +324,23 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn = false;
 
-  // switch (lock->getAc)
-  AIE::LockOp lock;
+  // A memtile BD may use locks of its neighbours, so each lock ID is offset
+  // by the base index of the tile that owns that lock.
+  auto lockIdFor = [&](AIE::LockOp lock) {
+    int id = lock.getLockIDValue();
+    if (targetModel.isMemTile(col, row))
+      if (auto offset = targetModel.getLockLocalBaseIndex(
+              col, row, lock.colIndex(), lock.rowIndex()))
+        id += *offset;
+    return id;
+  };
   for (auto op : block.getOps<AIE::UseLockOp>()) {
-    // Only dyn_cast if you are going to check if it was of the type
-    // expected; if you aren't checking use cast instead as it will at
-    // least assert in debug mode with an easier to understand error than
-    // dereferencing.
-    lock = cast<AIE::LockOp>(op.getLock().getDefiningOp());
+    auto lock = cast<AIE::LockOp>(op.getLock().getDefiningOp());
     switch (op.getAction()) {
     case AIE::LockAction::Acquire:
     case AIE::LockAction::AcquireGreaterEqual: {
       acqEn = op.getAcqEn();
-      acqLockId = lock.getLockIDValue();
+      acqLockId = lockIdFor(lock);
       auto value = op.getConstantValue();
       if (failed(value))
         return failure();
@@ -356,7 +351,7 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
       break;
     }
     case AIE::LockAction::Release: {
-      relLockId = lock.getLockIDValue();
+      relLockId = lockIdFor(lock);
       auto value = op.getConstantValue();
       if (failed(value))
         return failure();
@@ -364,15 +359,6 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
       break;
     }
     }
-  }
-
-  if (targetModel.isMemTile(col, row)) {
-    auto lockOffset = targetModel.getLockLocalBaseIndex(
-        col, row, lock.colIndex(), lock.rowIndex());
-    if (lockOffset && acqLockId)
-      acqLockId.value() += lockOffset.value();
-    if (lockOffset && relLockId)
-      relLockId.value() += lockOffset.value();
   }
 
   // no RelEn in the arch spec even though the API requires you to set it?
@@ -533,7 +519,10 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       bdOp.getPadDimensions();
 
   if (padDims) {
-    llvm::SmallVector<XAie_PadDesc, 4> padDescs(padDims->size());
+    // The verifier leaves the dims past the tile's pad fields unpadded.
+    llvm::SmallVector<XAie_PadDesc, 3> padDescs(
+        std::min(padDims->size(),
+                 targetModel.getDmaBdLayout(col, row)->padFields().size()));
     XAie_DmaPadTensor dmaPadTensor = {};
     dmaPadTensor.NumDim = padDescs.size();
     dmaPadTensor.PadDesc = padDescs.data();
@@ -543,6 +532,8 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     for (size_t i = 0; i < padDims->size(); i++) {
       // Pass down dimensions in reverse order.
       int j = padDims->size() - i - 1;
+      if (j >= static_cast<int>(padDescs.size()))
+        continue;
       uint8_t before;
       uint8_t after;
       if (j > 0) {
@@ -597,12 +588,13 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 
 LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     Operation &op, int col, int row, int chNum, const DMAChannelDir &channelDir,
-    int bdId, int repeatCount, uint32_t padValue, bool outOfOrder) {
+    int bdId, int repeatCount, uint32_t padValue, bool outOfOrder,
+    bool configureChannel, bool pushTask) {
   TxnLocBracket bracket(*this, op.getLoc());
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto tileLoc = XAie_TileLoc(col, row);
-  if (padValue != 0 && direction == DMA_MM2S &&
+  if (configureChannel && padValue != 0 && direction == DMA_MM2S &&
       targetModel.isMemTile(col, row)) {
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaSetPadValue, &aiert->devInst, tileLoc,
                             static_cast<uint8_t>(chNum), padValue);
@@ -611,30 +603,34 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
   if (outOfOrder) {
-    XAie_DmaChannelDesc dmaChannelDesc;
-    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelDescInit, &aiert->devInst,
-                            &dmaChannelDesc, tileLoc);
-    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnOutofOrder, &dmaChannelDesc,
-                            static_cast<uint8_t>(XAIE_ENABLE));
-    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaWriteChannel, &aiert->devInst,
-                            &dmaChannelDesc, tileLoc,
-                            static_cast<uint8_t>(chNum), direction);
+    if (configureChannel) {
+      XAie_DmaChannelDesc dmaChannelDesc;
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelDescInit, &aiert->devInst,
+                              &dmaChannelDesc, tileLoc);
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnOutofOrder, &dmaChannelDesc,
+                              static_cast<uint8_t>(XAIE_ENABLE));
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaWriteChannel, &aiert->devInst,
+                              &dmaChannelDesc, tileLoc,
+                              static_cast<uint8_t>(chNum), direction);
+    }
     // StartBd=0 (ignored) and skip the BD/channel validity check.
     // Disable TCT because the bd lookup id aliases the token bits.
     XAie_DmaDeclareQueueConfig(startQueueCfg, /*StartBd=*/0, repeatCount,
                                /*EnToken=*/static_cast<uint8_t>(XAIE_DISABLE),
                                static_cast<uint8_t>(XAIE_ENABLE));
-    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueueGeneric,
-                            &aiert->devInst, tileLoc, chNum, direction,
-                            &startQueueCfg);
-  } else {
+    if (pushTask)
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueueGeneric,
+                              &aiert->devInst, tileLoc, chNum, direction,
+                              &startQueueCfg);
+  } else if (pushTask) {
     bool enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &aiert->devInst,
                             tileLoc, chNum, direction, bdId, repeatCount,
                             enTokenIssue);
   }
-  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &aiert->devInst, tileLoc,
-                          chNum, direction);
+  if (configureChannel)
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &aiert->devInst, tileLoc,
+                            chNum, direction);
   return success();
 };
 
@@ -825,6 +821,8 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
         XAie_TileLoc(muxOp.getTileOp().getCol(), muxOp.getTileOp().getRow());
     Block &b = muxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(connectOp))
+        continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       // demux!
       if (connectOp.getSourceBundle() == WireBundle::North)
@@ -857,12 +855,20 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp) {
+LogicalResult
+xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp,
+                                            bool skipCtrlPktOverlay) {
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(targetOp.getContext());
+  auto skip = [&](Operation *op) {
+    return skipCtrlPktOverlay && overlay.isAttrPresent(op);
+  };
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
     XAie_LocType tileLoc =
         XAie_TileLoc(switchboxOp.colIndex(), switchboxOp.rowIndex());
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
+      if (skip(connectOp))
+        continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
           switchboxOp, XAie_StrmConnCctDisable, &aiert->devInst, tileLoc,
@@ -872,6 +878,8 @@ LogicalResult xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp) {
           connectOp.destIndex());
     }
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      if (skip(masterSetOp))
+        continue;
       TxnLocBracket bracket(*this, masterSetOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
           masterSetOp, XAie_StrmPktSwMstrPortDisable, &aiert->devInst, tileLoc,
@@ -880,19 +888,21 @@ LogicalResult xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp) {
     }
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
       auto rules = packetRulesOp.getRules().front().getOps<PacketRuleOp>();
-      if (rules.empty())
+      if (rules.empty() || skip(packetRulesOp))
         continue;
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       StrmSwPortType port =
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(packetRulesOp.getSourceBundle());
-      TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortDisable,
-                              &aiert->devInst, tileLoc, port,
-                              packetRulesOp.sourceIndex());
+      if (llvm::none_of(rules, skip))
+        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortDisable,
+                                &aiert->devInst, tileLoc, port,
+                                packetRulesOp.sourceIndex());
       // A slot stays enabled when its port is disabled.
       for (auto [slot, rule] : llvm::enumerate(rules))
-        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotDisable,
-                                &aiert->devInst, tileLoc, port,
-                                packetRulesOp.sourceIndex(), slot);
+        if (!skip(rule))
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotDisable,
+                                  &aiert->devInst, tileLoc, port,
+                                  packetRulesOp.sourceIndex(), slot);
     }
   }
   return success();
@@ -981,8 +991,8 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
     llvm::SetVector<Block *> blockVector =
         getOrderedChainOfBlocks(&memOp.getOperation()->getRegion(0));
 
-    llvm::SmallPtrSet<Block *, 8> oooBlocks =
-        collectOutOfOrderBlocks(blockVector);
+    llvm::SmallPtrSet<Block *, 8> unchainedBlocks =
+        collectUnchainedBlocks(blockVector);
 
     // handle DMA ops separately
     auto dmaOps = llvm::to_vector_of<DMAOp>(
@@ -1000,7 +1010,7 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
         if (block->getOps<DMABDOp>().empty())
           continue;
         if (failed(configureLocksAndBd(*block, col, row,
-                                       oooBlocks.contains(block))))
+                                       unchainedBlocks.contains(block))))
           return failure();
       }
     }
@@ -1029,7 +1039,9 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                  "bd_id assigned by configureLocksAndBd above");
           if (failed(pushToBdQueueAndEnable(
                   *bd.getOperation(), col, row, chNum, channelDir, bdId.value(),
-                  op.getRepeatCount(), op.getPadValue(), op.getOutOfOrder())))
+                  op.getRepeatCount(), op.getPadValue(), op.getOutOfOrder(),
+                  /*configureChannel=*/true,
+                  /*pushTask=*/!op.getCorePushes())))
             return failure();
         }
       }
@@ -1043,7 +1055,14 @@ LogicalResult xilinx::AIE::AIERTControl::addCoreEnable(DeviceOp &targetOp) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
     if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
-      TxnLocBracket bracket(*this, tileOp.getCoreOp().getLoc());
+      CoreOp coreOp = tileOp.getCoreOp();
+      TxnLocBracket bracket(*this, coreOp.getLoc());
+      // A core reaching its own tile's registers goes through the processor
+      // bus, which starts disabled: an access made before this stalls the
+      // core. Only the cores that ask for it pay for it.
+      if (coreOp.getProcessorBus())
+        TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreProcessorBusEnable,
+                                &aiert->devInst, tileLoc);
       TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &aiert->devInst,
                               tileLoc);
     }
@@ -1254,12 +1273,12 @@ void xilinx::AIE::AIERTControl::startTransaction() {
 }
 
 // Project the per-XAie_TxnCmd locations in `cmdLocs` onto the operations
-// aie-rt's serializer actually emits, mirroring _XAie_TxnExportSerialized's
-// command-to-operation mapping. That mapping is not 1:1: the serializer
-// buffers block writes and collapses a run of address-contiguous
-// XAIE_IO_BLOCKWRITE commands into a single block-write operation, holds that
-// pending run across intervening DDR-patch commands (so a patch is emitted
-// *before* the block write it follows in CmdBuf), and drops
+// aie-codegen's serializer actually emits, mirroring
+// _XAie_TxnExportSerialized's command-to-operation mapping. That mapping is not
+// 1:1: the serializer buffers block writes and collapses a run of
+// address-contiguous XAIE_IO_BLOCKWRITE commands into a single block-write
+// operation, holds that pending run across intervening DDR-patch commands (so a
+// patch is emitted *before* the block write it follows in CmdBuf), and drops
 // XAIE_IO_LOAD_PM_END_INTERNAL entirely. Everything else emits one operation
 // in command order.
 static std::vector<mlir::Location>

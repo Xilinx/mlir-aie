@@ -1,0 +1,19 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: cd %t.d
+// RUN: cp %S/aie_control_packet.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// Phoenix loads the overlay once through the xclbin and reuses it across dispatches.
+// RUN: %run_on_npu1% %aiecc --get-xclbin --xclbin-name={0}.xclbin --get=npu_lowered.mlir --get=full_elf_{0}.ctrlpkt.bin --load-pdi-to-ctrl-pkt aie_arch.mlir
+// Phoenix cannot execute load_pdi; the xclbin already installs the overlay.
+// RUN: %run_on_npu1% sed '/aiex.npu.load_pdi/d' npu_lowered.mlir > resident_overlay.mlir
+// RUN: %run_on_npu1% aie-translate --aie-npu-to-binary --aie-output-binary --aie-npu-fold-ddr-addr-offset=true resident_overlay.mlir -o insts.bin
+// RUN: %run_on_npu2% %aiecc --get-full-elf --load-pdi-to-ctrl-pkt aie_arch.mlir
+// RUN: %host_clang %S/test_control_packet.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags
+// RUN: %run_on_npu1% ./test.exe main.xclbin
+// RUN: %run_on_npu2% ./test.exe

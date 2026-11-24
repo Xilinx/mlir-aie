@@ -4,10 +4,8 @@ Copyright (C) 2026 Advanced Micro Devices, Inc.
     SPDX-License-Identifier: MIT
 */
 
-// FastFlowLM's exp and its tables. The tables hold aie_runtime_lib's values,
-// but they are not pinned to banks: pinned, they reserve part of two banks,
-// and the global attention qk core's buffers no longer fit. getExpBf16 is the
-// runtime library's without its clamp to +-88 and its floor-rounding bracket.
+// Unpinned copies of aie_runtime_lib's exp tables. getExpBf16 omits the input
+// clamp and rounding-mode changes; callers must bound the input.
 #ifndef AIE_KERNELS_FLM_GEMMA4_DECODE_LUT_EXP_H
 #define AIE_KERNELS_FLM_GEMMA4_DECODE_LUT_EXP_H
 

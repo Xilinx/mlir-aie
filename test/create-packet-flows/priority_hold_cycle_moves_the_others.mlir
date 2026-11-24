@@ -16,7 +16,7 @@
 // arbiter search meets the cycle through 17 and 22 first and cannot break
 // it, so the router has to move the flows of every cycle it met, not just
 // the first; then 17 and 22 take arbiters of their own at (1,2). Alone they
-// share one; without a control-packet reload, nothing keeps that.
+// share one; the full design requires separate arbiters.
 
 // WARN-NOT: {{warning|error}}
 

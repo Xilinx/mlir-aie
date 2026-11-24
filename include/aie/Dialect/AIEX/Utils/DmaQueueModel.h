@@ -25,6 +25,9 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 
+#include "llvm/Support/MathExtras.h"
+#include <climits>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -47,6 +50,17 @@ public:
                           int64_t channel) {
     return {tile.getCol(), tile.getRow(), static_cast<int>(direction),
             static_cast<int>(channel)};
+  }
+
+  /// The channel of a shim allocation on a placed tile.
+  static ChannelKey keyOf(AIE::ShimDMAAllocationOp allocation) {
+    return keyOf(allocation.getTileOp(), allocation.getChannelDir(),
+                 allocation.getChannelIndex());
+  }
+
+  /// The channel of a configure on a placed tile.
+  static ChannelKey keyOf(DMAConfigureTaskOp cfg) {
+    return keyOf(cfg.getTileOp(), cfg.getDirection(), cfg.getChannel());
   }
 
   /// One channel's queue: its pushes not yet known to have completed, oldest
@@ -164,6 +178,40 @@ inline std::optional<DmaQueueModel::ChannelKey> syncChannelKey(NpuSyncOp sync) {
   return DmaQueueModel::ChannelKey{
       static_cast<int>(*col), static_cast<int>(*row), static_cast<int>(*dir),
       static_cast<int>(*chan)};
+}
+
+/// The channels an aiex.npu.sync syncChannelKey cannot pin down may wait on:
+/// its tile range expanded, any value for an operand known only at run time.
+struct SyncCover {
+  int colLo = 0, colHi = INT_MAX, rowLo = 0, rowHi = INT_MAX;
+  std::optional<int> dir, chan;
+
+  bool covers(const DmaQueueModel::ChannelKey &key) const {
+    return key[0] >= colLo && key[0] < colHi && key[1] >= rowLo &&
+           key[1] < rowHi && (!dir || *dir == key[2]) &&
+           (!chan || *chan == key[3]);
+  }
+};
+
+inline SyncCover syncCover(NpuSyncOp sync) {
+  SyncCover cover;
+  auto range = [](std::optional<uint32_t> first, std::optional<uint32_t> num,
+                  int &lo, int &hi) {
+    if (!first)
+      return;
+    lo = static_cast<int>(*first);
+    if (num)
+      hi = lo + static_cast<int>(*num);
+  };
+  range(getConstantIntOperand(sync.getColumn()),
+        getConstantIntOperand(sync.getColumnNum()), cover.colLo, cover.colHi);
+  range(getConstantIntOperand(sync.getRow()),
+        getConstantIntOperand(sync.getRowNum()), cover.rowLo, cover.rowHi);
+  if (std::optional<uint32_t> dir = getConstantIntOperand(sync.getDirection()))
+    cover.dir = static_cast<int>(*dir);
+  if (std::optional<uint32_t> chan = getConstantIntOperand(sync.getChannel()))
+    cover.chan = static_cast<int>(*chan);
+  return cover;
 }
 
 /// Retire what an aiex.npu.sync proves has drained. This is the lowered form of
@@ -336,6 +384,41 @@ struct QueueEffect {
   }
 };
 
+/// What a push or an await that names no task does to its channel: an
+/// aiex.npu.push_queue; an aiex.npu.dma_memcpy_nd through the placed shim
+/// allocation its metadata names, which always issues a token on S2MM (its
+/// lowering sets one); an aiex.npu.sync syncChannelKey pins down; an
+/// aiex.npu.dma_wait on a placed shim allocation. Ignore for anything else.
+inline QueueEffect rawQueueEffect(mlir::Operation *op,
+                                  mlir::SymbolTable &symbols) {
+  if (auto push = mlir::dyn_cast<NpuPushQueueOp>(op))
+    return QueueEffect::push({static_cast<int>(push.getColumn()),
+                              static_cast<int>(push.getRow()),
+                              static_cast<int>(push.getDirection()),
+                              static_cast<int>(push.getChannel())},
+                             push.getIssueToken());
+  if (auto sync = mlir::dyn_cast<NpuSyncOp>(op)) {
+    if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
+      return QueueEffect::await(*key);
+    return {};
+  }
+  auto copy = mlir::dyn_cast<NpuDmaMemcpyNdOp>(op);
+  auto wait = mlir::dyn_cast<NpuDmaWaitOp>(op);
+  if (!copy && !wait)
+    return {};
+  auto allocation = symbols.lookup<AIE::ShimDMAAllocationOp>(
+      copy ? copy.getMetadata().getRootReference()
+           : wait.getSymbolAttr().getAttr());
+  if (!allocation || !allocation.getTileOp())
+    return {};
+  DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(allocation);
+  if (wait)
+    return QueueEffect::await(key);
+  return QueueEffect::push(key, copy.getIssueToken() ||
+                                    allocation.getChannelDir() ==
+                                        AIE::DMAChannelDir::S2MM);
+}
+
 /// Completion is distinct from queue occupancy: Task_Queue_Size excludes the
 /// running task. Task identities are path-local and renamed at joins, so a
 /// configure executed again in a loop is distinct from the carried old task.
@@ -437,6 +520,26 @@ struct DmaCompletionState {
   }
 };
 
+/// Per-channel analysis visits only the block each push, await or poll
+/// reaches through, plus the ops enclosing them, in block order, rather than
+/// the whole sequence.
+using ChannelVisits =
+    llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *>>;
+
+/// Record `op` and each operation enclosing it up to `body`'s own op into
+/// `blocks`, once per block: an ancestor chain's visited block repeats until
+/// the chain's op there changes.
+inline void recordChannelVisit(mlir::Region &body, mlir::Operation *op,
+                               ChannelVisits &blocks) {
+  for (mlir::Operation *at = op; at != body.getParentOp();
+       at = at->getParentOp()) {
+    auto &ops = blocks[at->getBlock()];
+    if (!ops.empty() && ops.back() == at)
+      break;
+    ops.push_back(at);
+  }
+}
+
 /// Guard every push in a runtime sequence that can land on a full queue, and
 /// (when `warnUnsafeBdReuse`) warn at every Free effect whose own push is not
 /// yet proven complete along some reachable path.
@@ -505,18 +608,9 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     if (auto status = tm.getDmaStatusAddress(
             key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2])))
       keyByStatus[*status] = key;
-  using Visits =
-      llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *>>;
-  std::map<DmaQueueModel::ChannelKey, Visits> visits;
+  std::map<DmaQueueModel::ChannelKey, ChannelVisits> visits;
   auto visit = [&](mlir::Operation *op, const DmaQueueModel::ChannelKey &key) {
-    Visits &blocks = visits[key];
-    for (mlir::Operation *at = op; at != body.getParentOp();
-         at = at->getParentOp()) {
-      auto &ops = blocks[at->getBlock()];
-      if (!ops.empty() && ops.back() == at)
-        break;
-      ops.push_back(at);
-    }
+    recordChannelVisit(body, op, visits[key]);
   };
   body.walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
     if (warnUnsafeBdReuse && mlir::isa<mlir::scf::ForOp, mlir::scf::IfOp>(op))
@@ -535,7 +629,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
   DmaQueueModel::State merged = entry;
   for (const auto &key : keys) {
     uint32_t depth = depthOf(key);
-    const Visits &channelVisits = visits[key];
+    const ChannelVisits &channelVisits = visits[key];
     auto channelEffectOf = [&](mlir::Operation *op) {
       auto it = effects.find(op);
       return it != effects.end() && it->second.key == key ? it->second
@@ -845,6 +939,146 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     merged[key] = channelExit;
   }
   queue.setState(std::move(merged));
+}
+
+/// Check that `sequence` ends, on every path, with no task-completion token
+/// outstanding on a channel some sequence of the device awaits: one in
+/// `awaited`, or one a sync in `mayAwait` may wait on. A token left at the end
+/// outlives the command: the next command's await on that channel takes it and
+/// returns before its own transfer has finished (measured on Strix, NPU
+/// firmware 1.1.2.64), and every completion the compiler derives from an await
+/// assumes the channel started with none. A token on a channel nothing awaits
+/// is never taken. An await consumes the oldest token, so only the count
+/// matters. A loop with an unknown trip count must leave the count where it
+/// found it, or what remains grows with the trip count. Regions the check
+/// cannot follow are not diagnosed, nor channels a sync of the sequence's own
+/// may have waited on.
+template <typename EffectFn>
+inline mlir::LogicalResult
+checkTokensConsumed(AIE::RuntimeSequenceOp sequence,
+                    const std::set<DmaQueueModel::ChannelKey> &awaited,
+                    llvm::ArrayRef<SyncCover> mayAwait, EffectFn effectOf) {
+  mlir::Region &body = sequence.getBody();
+  auto covered = [](llvm::ArrayRef<SyncCover> covers,
+                    const DmaQueueModel::ChannelKey &key) {
+    return llvm::any_of(covers,
+                        [&](const SyncCover &c) { return c.covers(key); });
+  };
+  llvm::SmallVector<SyncCover> ownInexact;
+  body.walk([&](NpuSyncOp sync) {
+    if (!syncChannelKey(sync))
+      ownInexact.push_back(syncCover(sync));
+  });
+  // Each channel's analysis visits only its own pushes and syncs and the ops
+  // enclosing them, in block order.
+  llvm::DenseMap<mlir::Operation *, QueueEffect> effects;
+  std::map<DmaQueueModel::ChannelKey, ChannelVisits> visits;
+  body.walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+    QueueEffect e = effectOf(op);
+    if ((e.kind != QueueEffect::Kind::Push &&
+         e.kind != QueueEffect::Kind::Await) ||
+        (!awaited.count(e.key) && !covered(mayAwait, e.key)) ||
+        covered(ownInexact, e.key))
+      return;
+    effects[op] = e;
+    recordChannelVisit(body, op, visits[e.key]);
+  });
+
+  auto describe = [](mlir::InFlightDiagnostic &diag,
+                     const DmaQueueModel::ChannelKey &key) {
+    diag << " on tile (" << key[0] << "," << key[1] << ") "
+         << AIE::stringifyDMAChannelDir(static_cast<AIE::DMAChannelDir>(key[2]))
+         << " channel " << key[3];
+  };
+  // Small constant trip counts are followed pass by pass, as unrolling would.
+  constexpr int64_t maxFollowedTrips = 64;
+  bool consumed = true;
+  for (const auto &channel : visits) {
+    const DmaQueueModel::ChannelKey &key = channel.first;
+    const ChannelVisits &blocks = channel.second;
+    using Counts = std::set<int64_t>;
+    bool unknown = false;
+    std::function<Counts(mlir::Region &, Counts)> analyze;
+    analyze = [&](mlir::Region &region, Counts counts) -> Counts {
+      if (region.empty())
+        return counts;
+      if (!region.hasOneBlock()) {
+        unknown = true;
+        return counts;
+      }
+      auto visited = blocks.find(&region.front());
+      if (visited == blocks.end())
+        return counts;
+      for (mlir::Operation *at : visited->second) {
+        mlir::Operation &op = *at;
+        if (unknown)
+          return counts;
+        if (auto it = effects.find(&op); it != effects.end()) {
+          Counts next;
+          for (int64_t count : counts)
+            next.insert(it->second.kind == QueueEffect::Kind::Push
+                            ? count + it->second.issuesToken
+                            : std::max<int64_t>(count - 1, 0));
+          counts = std::move(next);
+          continue;
+        }
+        if (auto loop = mlir::dyn_cast<mlir::scf::ForOp>(&op)) {
+          auto lb = mlir::getConstantIntValue(loop.getLowerBound());
+          auto ub = mlir::getConstantIntValue(loop.getUpperBound());
+          auto step = mlir::getConstantIntValue(loop.getStep());
+          if (lb && ub && step && *step > 0 && !loop->hasAttr("unsignedCmp")) {
+            int64_t trips = *ub > *lb ? llvm::divideCeil(*ub - *lb, *step) : 0;
+            if (trips <= maxFollowedTrips) {
+              for (int64_t i = 0; i < trips && !unknown; i++)
+                counts = analyze(loop.getRegion(), counts);
+              continue;
+            }
+          }
+          for (int64_t count : counts) {
+            Counts after = analyze(loop.getRegion(), Counts{count});
+            if (unknown)
+              return counts;
+            if (after == Counts{count})
+              continue;
+            auto diag = loop.emitOpError("changes how many task-completion "
+                                         "tokens are outstanding");
+            describe(diag, key);
+            diag << " in each pass, so how many it leaves depends on its trip "
+                    "count; await as many tokens in each pass as it issues";
+            consumed = false;
+            unknown = true;
+            return counts;
+          }
+          continue;
+        }
+        if (auto branch = mlir::dyn_cast<mlir::scf::IfOp>(&op)) {
+          Counts taken = analyze(branch.getThenRegion(), counts);
+          Counts otherwise = analyze(branch.getElseRegion(), counts);
+          taken.insert(otherwise.begin(), otherwise.end());
+          counts = std::move(taken);
+          continue;
+        }
+        unknown = true;
+        return counts;
+      }
+      return counts;
+    };
+    Counts exits = analyze(body, Counts{0});
+    if (unknown || *exits.rbegin() == 0)
+      continue;
+    int64_t left = *exits.rbegin();
+    // Not sequence.emitOpError(): that would print the whole sequence.
+    auto diag = mlir::emitError(sequence.getLoc())
+                << "ends with " << left << " task-completion token"
+                << (left > 1 ? "s" : "") << " no await consumes";
+    describe(diag, key);
+    diag << "; the next command's await on that channel would return for "
+            "this sequence's transfer instead of its own. Await every "
+            "token-issuing transfer before the sequence ends, or start it "
+            "without issue_token";
+    consumed = false;
+  }
+  return mlir::success(consumed);
 }
 
 } // namespace xilinx::AIEX

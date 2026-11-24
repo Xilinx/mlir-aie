@@ -109,7 +109,9 @@ void addTraceStage(mlir::OpPassManager &pm);
 /// Affine lowering through `aie-prepare-buffers`.
 void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
                       bool packetSwObjFifos, bool ctrlPktOverlay,
-                      bool loadPdiToCtrlPkt, bool skipObjectFifoVerify);
+                      bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
+                      llvm::ArrayRef<int> coverColumns = {},
+                      bool adaptiveOverlay = true, bool checkQueueSpace = true);
 void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
 void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
 
@@ -148,6 +150,10 @@ struct AIEResourceStagesOptions
   Option<bool> loadPdiToCtrlPkt{
       *this, "load-pdi-to-ctrl-pkt",
       llvm::cl::desc("Load PDIs over control packets"), llvm::cl::init(false)};
+  Option<bool> adaptiveOverlay{
+      *this, "ctrlpkt-adaptive-overlay",
+      llvm::cl::desc("Choose the control overlay around application resources"),
+      llvm::cl::init(true)};
   Option<bool> skipObjectFifoVerify{
       *this, "skip-objectFifo-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR"),
@@ -155,7 +161,7 @@ struct AIEResourceStagesOptions
   Option<int64_t> placementBudget{
       *this, "placement-budget",
       llvm::cl::desc("Buffer placements to try per tile before giving up"),
-      llvm::cl::init(100000)};
+      llvm::cl::init(AIE::kDefaultPlacementBudget)};
   Option<bool> allowDeadlockProneRouting{
       *this, "allow-deadlock-prone-routing",
       llvm::cl::desc("Warn of, rather than fail on, deadlock-prone flows"),

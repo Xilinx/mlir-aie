@@ -36,7 +36,8 @@ from aie.utils.trace.events import get_events_for_device
 
 aie1 = get_events_for_device("xcvc1902")
 aie2 = get_events_for_device("npu1")
-aie2p = get_events_for_device("npu2p")
+aie2p = get_events_for_device("npu2")
+assert aie2p.CoreEvent(70).name == "SPARSITY_OVERFLOW"
 
 
 def test_arch(name, core_cls, mem_cls, shim_cls, mem_tile_cls=None):

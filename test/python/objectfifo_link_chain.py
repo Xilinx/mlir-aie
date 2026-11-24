@@ -16,10 +16,7 @@ from aie.iron.device import NPU2, Tile
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.passmanager import PassManager
 
-PLACE = (
-    "builtin.module(aie.device(aie-place-tiles),"
-    "aie.device(aie-objectFifo-stateful-transform))"
-)
+PLACE = "builtin.module(aie-place-tiles,aie.device(aie-objectFifo-stateful-transform))"
 
 
 def vector(n):

@@ -223,10 +223,10 @@ def main():
 
     output = iron.zeros(args.cols * args.rows, dtype=np.int32, device="npu")
     design = reconfigure.specialize(
-        full_elf=args.mode != "separate-dispatch",
         aiecc_flags=(
             ["--load-pdi-to-ctrl-pkt"] if args.mode == "control-packets" else []
         ),
+        full_elf=args.mode != "separate-dispatch",
         mode=args.mode,
         cols=args.cols,
         rows=args.rows,

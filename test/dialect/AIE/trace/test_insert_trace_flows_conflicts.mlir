@@ -155,3 +155,114 @@ module @objectfifo_pinned_channel {
     // CHECK: aie.packet_dest<%{{.*}}, DMA : 0>
   }
 }
+
+// -----
+
+// Test: Three objectFifos end at the shim with no channel pinned, but their
+// #aie.consumed_by proofs let allocation put them in turns on one S2MM
+// channel, so DMA:1 stays free for the trace.
+// CHECK-LABEL: module @proven_turns_traced
+// CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
+module @proven_turns_traced {
+  aie.device(npu2_1col) {
+    %c0 = aie.tile(0, 2)
+    %c1 = aie.tile(0, 3)
+    %c2 = aie.tile(0, 4)
+    %shim = aie.tile(0, 0)
+    aie.objectfifo @in0(%shim, {%c0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out0(%c0, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in1(%shim, {%c1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out1(%c1, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in2(%shim, {%c2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out2(%c2, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%c0) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in0(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out0(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in0(Consume, 1)
+        aie.objectfifo.release @out0(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%c1) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in1(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out1(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in1(Consume, 1)
+        aie.objectfifo.release @out1(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%c2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in2(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out2(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in2(Consume, 1)
+        aie.objectfifo.release @out2(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.trace @trace(%c0) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence @seq0(%a: memref<16xi32>, %b: memref<16xi32>) {
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      aie.trace.start_config @trace
+      %ti = aiex.dma_configure_task_for @in0 {
+        aie.dma_bd(%a : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      %to = aiex.dma_configure_task_for @out0 {
+        aie.dma_bd(%b : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%to)
+      aiex.dma_start_task(%ti)
+      aiex.dma_await_task(%to)
+      aiex.dma_await_task(%ti)
+    }
+    aie.runtime_sequence @seq1(%a: memref<16xi32>, %b: memref<16xi32>) {
+      %ti = aiex.dma_configure_task_for @in1 {
+        aie.dma_bd(%a : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      %to = aiex.dma_configure_task_for @out1 {
+        aie.dma_bd(%b : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%to)
+      aiex.dma_start_task(%ti)
+      aiex.dma_await_task(%to)
+      aiex.dma_await_task(%ti)
+    }
+    aie.runtime_sequence @seq2(%a: memref<16xi32>, %b: memref<16xi32>) {
+      %ti = aiex.dma_configure_task_for @in2 {
+        aie.dma_bd(%a : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      %to = aiex.dma_configure_task_for @out2 {
+        aie.dma_bd(%b : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%to)
+      aiex.dma_start_task(%ti)
+      aiex.dma_await_task(%to)
+      aiex.dma_await_task(%ti)
+    }
+  }
+}

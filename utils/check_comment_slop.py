@@ -124,6 +124,12 @@ COMMENT_RE_CISH = re.compile(r"^\s*(//|/\*|\*/|\*(?=\s|$))")
 # counting it would report any commit adding three files as repeating a concept.
 # Anchored so a comment that merely mentions "copyright" is not mistaken for it.
 LICENSE_RE = re.compile(r"^(copyright\b|spdx-license-identifier:)", re.IGNORECASE)
+# A tool directive is an instruction to a linter or formatter, not prose, so the
+# same directive at several sites is not one concept explained several times.
+DIRECTIVE_RE = re.compile(
+    r"^(NOLINT(NEXTLINE|BEGIN|END)?\b|clang-format (on|off)\b|noqa\b"
+    r"|type: ignore\b|pyright: |fmt: (on|off|skip)\b)"
+)
 # The blank separators, the mode line and the LLVM banner that wrap the two
 # lines above in this repo's header conventions.
 _HEADER_FILLER_RE = re.compile(r"^(\s*|\S*\s*-\*-.*-\*-\s*|={2,}.*={2,}/{0,2})$")
@@ -352,7 +358,7 @@ def collect(diff):
                 moved[stripped] -= 1
                 current = None
                 continue
-            if LICENSE_RE.match(stripped):
+            if LICENSE_RE.match(stripped) or DIRECTIVE_RE.match(stripped):
                 current = None
                 continue
             if (

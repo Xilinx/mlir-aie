@@ -29,6 +29,9 @@ struct AIEAssignPacketIdsPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
+    if (clReserveControllerPacketIds)
+      AIEDialect::ReserveControllerPacketIdsAttrHelper(device.getContext())
+          .setAttr(device, UnitAttr::get(device.getContext()));
     PacketIdSpace space(device);
 
     // Pinned ids are checked before any are handed out, so a bad pin is
@@ -51,7 +54,7 @@ struct AIEAssignPacketIdsPass
     SmallVector<RouteOp> unpinned;
     for (auto route : device.getOps<RouteOp>()) {
       std::optional<PacketInfoAttr> packet = route.getPacket();
-      if ((packet || clPacketSwObjectFifos) &&
+      if (isPacketSwitched(packet.value_or(nullptr), clPacketSwObjectFifos) &&
           !(packet && packet->isAssigned()))
         unpinned.push_back(route);
     }
@@ -104,8 +107,10 @@ xilinx::AIE::createAIEAssignPacketIdsPass() {
 }
 
 std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEAssignPacketIdsPass(bool packetSwitched) {
+xilinx::AIE::createAIEAssignPacketIdsPass(bool packetSwitched,
+                                          bool reserveControllerPacketIds) {
   AIEAssignPacketIdsOptions options;
   options.clPacketSwObjectFifos = packetSwitched;
+  options.clReserveControllerPacketIds = reserveControllerPacketIds;
   return std::make_unique<AIEAssignPacketIdsPass>(options);
 }

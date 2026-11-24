@@ -5,6 +5,6 @@
 //
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: cd %t.d
-// RUN: %aiecc --get-full-elf --load-pdi-to-ctrl-pkt %S/../teardown/aie.mlir
+// RUN: %aiecc --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-teardown=false %S/../teardown/aie.mlir
 // RUN: %host_clang -o test %S/../teardown/test.cpp -std=c++17 %host_link_flags %xrt_flags
 // RUN: %run_on_npu2% ./test sequence

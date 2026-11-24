@@ -64,7 +64,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          submodules: "true"
+          submodules: "recursive"
 
       # The build runs inside a docker container (below), so this only
       # primes a host-side cache dir. It is bind-mounted into the container
@@ -147,6 +147,7 @@ jobs:
             pushd /workspace/build
 
             cmake $MLIR_DIR -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \

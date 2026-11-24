@@ -15,7 +15,9 @@
 
 // CHECK-LABEL: func.func @bf16_8x8x8_mk_kn(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x8_mk_kn(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
@@ -26,7 +28,9 @@ func.func @bf16_8x8x8_mk_kn(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vect
 
 // CHECK-LABEL: func.func @bf16_8x8x8_mk_nk(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] rhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x8_mk_nk(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d1, d2)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
@@ -37,7 +41,9 @@ func.func @bf16_8x8x8_mk_nk(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vect
 
 // CHECK-LABEL: func.func @bf16_8x8x8_km_kn(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] lhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x8_km_kn(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d0)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
@@ -48,7 +54,9 @@ func.func @bf16_8x8x8_km_kn(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vect
 
 // CHECK-LABEL: func.func @bf16_8x8x8_km_nk(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] lhs_transposed rhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x8_km_nk(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d0)>, affine_map<(d0, d1, d2) -> (d1, d2)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
@@ -59,7 +67,9 @@ func.func @bf16_8x8x8_km_nk(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vect
 
 // CHECK-LABEL: func.func @bf16_8x8x8_mk_kn_nm(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[B]], %[[A]], %[[C]] lhs_transposed rhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[BM]], %[[BE]], %[[AM]], %[[AE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x8_mk_kn_nm(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d1, d0)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
@@ -70,7 +80,9 @@ func.func @bf16_8x8x8_mk_kn_nm(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: v
 
 // CHECK-LABEL: func.func @bf16_8x8x8_mk_nk_nm(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[B]], %[[A]], %[[C]] rhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[BM]], %[[BE]], %[[AM]], %[[AE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x8_mk_nk_nm(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d1, d2)>, affine_map<(d0, d1, d2) -> (d1, d0)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
@@ -81,7 +93,9 @@ func.func @bf16_8x8x8_mk_nk_nm(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: v
 
 // CHECK-LABEL: func.func @bf16_8x8x8_km_kn_nm(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[B]], %[[A]], %[[C]] lhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[BM]], %[[BE]], %[[AM]], %[[AE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x8_km_kn_nm(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d0)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d1, d0)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
@@ -92,7 +106,9 @@ func.func @bf16_8x8x8_km_kn_nm(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: v
 
 // CHECK-LABEL: func.func @bf16_8x8x8_km_nk_nm(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[B]], %[[A]], %[[C]] : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[BM]], %[[BE]], %[[AM]], %[[AE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x8_km_nk_nm(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d0)>, affine_map<(d0, d1, d2) -> (d1, d2)>, affine_map<(d0, d1, d2) -> (d1, d0)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
@@ -103,7 +119,9 @@ func.func @bf16_8x8x8_km_nk_nm(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: v
 
 // CHECK-LABEL: func.func @bf16_4x8x8_mk_kn(
 // CHECK-SAME: %[[A:.*]]: vector<4x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] : vector<4x8xbf16>, vector<8x8xbf16> into vector<4x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<4x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<4x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_4x8x8_mk_kn(%A: vector<4x8xbf16>, %B: vector<8x8xbf16>, %C: vector<4x8xf32>) -> vector<4x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<4x8xbf16>, vector<8x8xbf16> into vector<4x8xf32>
@@ -114,7 +132,9 @@ func.func @bf16_4x8x8_mk_kn(%A: vector<4x8xbf16>, %B: vector<8x8xbf16>, %C: vect
 
 // CHECK-LABEL: func.func @bf16_4x8x8_mk_nk(
 // CHECK-SAME: %[[A:.*]]: vector<4x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] rhs_transposed : vector<4x8xbf16>, vector<8x8xbf16> into vector<4x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<4x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<4x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_4x8x8_mk_nk(%A: vector<4x8xbf16>, %B: vector<8x8xbf16>, %C: vector<4x8xf32>) -> vector<4x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d1, d2)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<4x8xbf16>, vector<8x8xbf16> into vector<4x8xf32>
@@ -125,7 +145,9 @@ func.func @bf16_4x8x8_mk_nk(%A: vector<4x8xbf16>, %B: vector<8x8xbf16>, %C: vect
 
 // CHECK-LABEL: func.func @bf16_4x8x8_km_kn(
 // CHECK-SAME: %[[A:.*]]: vector<8x4xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] lhs_transposed : vector<8x4xbf16>, vector<8x8xbf16> into vector<4x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] transpose : vector<8x4xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<4x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_4x8x8_km_kn(%A: vector<8x4xbf16>, %B: vector<8x8xbf16>, %C: vector<4x8xf32>) -> vector<4x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d0)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x4xbf16>, vector<8x8xbf16> into vector<4x8xf32>
@@ -136,7 +158,9 @@ func.func @bf16_4x8x8_km_kn(%A: vector<8x4xbf16>, %B: vector<8x8xbf16>, %C: vect
 
 // CHECK-LABEL: func.func @bf16_4x8x8_km_nk(
 // CHECK-SAME: %[[A:.*]]: vector<8x4xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] lhs_transposed rhs_transposed : vector<8x4xbf16>, vector<8x8xbf16> into vector<4x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] transpose : vector<8x4xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<4x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_4x8x8_km_nk(%A: vector<8x4xbf16>, %B: vector<8x8xbf16>, %C: vector<4x8xf32>) -> vector<4x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d0)>, affine_map<(d0, d1, d2) -> (d1, d2)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x4xbf16>, vector<8x8xbf16> into vector<4x8xf32>
@@ -235,7 +259,9 @@ func.func @bf16_8x8x4_km_nk(%A: vector<8x8xbf16>, %B: vector<4x8xbf16>, %C: vect
 
 // CHECK-LABEL: func.func @bf16_8x8x4_mk_kn_nm(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x4xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[B]], %[[A]], %[[C]] lhs_transposed rhs_transposed : vector<8x4xbf16>, vector<8x8xbf16> into vector<4x8xf32>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x4xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[BM]], %[[BE]], %[[AM]], %[[AE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<4x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x4_mk_kn_nm(%A: vector<8x8xbf16>, %B: vector<8x4xbf16>, %C: vector<4x8xf32>) -> vector<4x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d1, d0)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x4xbf16> into vector<4x8xf32>
@@ -246,7 +272,9 @@ func.func @bf16_8x8x4_mk_kn_nm(%A: vector<8x8xbf16>, %B: vector<8x4xbf16>, %C: v
 
 // CHECK-LABEL: func.func @bf16_8x8x4_mk_nk_nm(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<4x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[B]], %[[A]], %[[C]] rhs_transposed : vector<4x8xbf16>, vector<8x8xbf16> into vector<4x8xf32>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<4x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[BM]], %[[BE]], %[[AM]], %[[AE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<4x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x4_mk_nk_nm(%A: vector<8x8xbf16>, %B: vector<4x8xbf16>, %C: vector<4x8xf32>) -> vector<4x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d1, d2)>, affine_map<(d0, d1, d2) -> (d1, d0)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<4x8xbf16> into vector<4x8xf32>
@@ -257,7 +285,9 @@ func.func @bf16_8x8x4_mk_nk_nm(%A: vector<8x8xbf16>, %B: vector<4x8xbf16>, %C: v
 
 // CHECK-LABEL: func.func @bf16_8x8x4_km_kn_nm(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x4xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[B]], %[[A]], %[[C]] lhs_transposed : vector<8x4xbf16>, vector<8x8xbf16> into vector<4x8xf32>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] transpose : vector<8x4xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[BM]], %[[BE]], %[[AM]], %[[AE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<4x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x4_km_kn_nm(%A: vector<8x8xbf16>, %B: vector<8x4xbf16>, %C: vector<4x8xf32>) -> vector<4x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d0)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d1, d0)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<8x4xbf16> into vector<4x8xf32>
@@ -268,7 +298,9 @@ func.func @bf16_8x8x4_km_kn_nm(%A: vector<8x8xbf16>, %B: vector<8x4xbf16>, %C: v
 
 // CHECK-LABEL: func.func @bf16_8x8x4_km_nk_nm(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<4x8xbf16>, %[[C:.*]]: vector<4x8xf32>)
-// CHECK: %[[R:.*]] = aievec.matmul_aie2p %[[B]], %[[A]], %[[C]] : vector<4x8xbf16>, vector<8x8xbf16> into vector<4x8xf32>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<4x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[R:.*]] = aievec.matmul_aie2p_bfp16 %[[BM]], %[[BE]], %[[AM]], %[[AE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<4x8xf32>
 // CHECK: return %[[R]]
 func.func @bf16_8x8x4_km_nk_nm(%A: vector<8x8xbf16>, %B: vector<4x8xbf16>, %C: vector<4x8xf32>) -> vector<4x8xf32> {
   %0 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d0)>, affine_map<(d0, d1, d2) -> (d1, d2)>, affine_map<(d0, d1, d2) -> (d1, d0)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %A, %B, %C : vector<8x8xbf16>, vector<4x8xbf16> into vector<4x8xf32>
@@ -571,7 +603,9 @@ func.func @bf16_8x1x8_nm(%A: vector<8x1xbf16>, %B: vector<1x8xbf16>, %C: vector<
 // CHECK-SAME: %[[A:.*]]: vector<1x8x8xbf16>, %[[B:.*]]: vector<1x8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
 // CHECK-DAG: %[[L:.*]] = vector.shape_cast %[[A]] : vector<1x8x8xbf16> to vector<8x8xbf16>
 // CHECK-DAG: %[[R:.*]] = vector.shape_cast %[[B]] : vector<1x8x8xbf16> to vector<8x8xbf16>
-// CHECK: aievec.matmul_aie2p %[[L]], %[[R]], %[[C]] rhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[LM:.*]], %[[LE:.*]] = aievec.to_bfp16 %[[L]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[RM:.*]], %[[RE:.*]] = aievec.to_bfp16 %[[R]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: aievec.matmul_aie2p_bfp16 %[[LM]], %[[LE]], %[[RM]], %[[RE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 #a = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>
 #bt = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3)>
 #c = affine_map<(d0, d1, d2, d3) -> (d1, d2)>
@@ -584,7 +618,9 @@ func.func @unit_kblock_rhs_nk(%A: vector<1x8x8xbf16>, %B: vector<1x8x8xbf16>, %C
 
 // The same tile with rhs stored [k, n].
 // CHECK-LABEL: func.func @unit_kblock_rhs_kn(
-// CHECK: aievec.matmul_aie2p %{{.*}}, %{{.*}}, %{{.*}} : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 {{.*}} : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 {{.*}} transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], {{.*}} : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 #a = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>
 #b = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2)>
 #c = affine_map<(d0, d1, d2, d3) -> (d1, d2)>
@@ -602,7 +638,9 @@ func.func @unit_kblock_rhs_kn(%A: vector<1x8x8xbf16>, %B: vector<1x8x8xbf16>, %C
 // CHECK-DAG: %[[ACC:.*]] = vector.shape_cast %[[C]] : vector<8x1x8xf32> to vector<8x8xf32>
 // CHECK-DAG: %[[L:.*]] = vector.shape_cast %[[A]] : vector<8x1x8xbf16> to vector<8x8xbf16>
 // CHECK-DAG: %[[R:.*]] = vector.shape_cast %[[B]] : vector<8x8x1xbf16> to vector<8x8xbf16>
-// CHECK: %[[MM:.*]] = aievec.matmul_aie2p %[[L]], %[[R]], %[[ACC]] lhs_transposed rhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[LM:.*]], %[[LE:.*]] = aievec.to_bfp16 %[[L]] transpose : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[RM:.*]], %[[RE:.*]] = aievec.to_bfp16 %[[R]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[MM:.*]] = aievec.matmul_aie2p_bfp16 %[[LM]], %[[LE]], %[[RM]], %[[RE]], %[[ACC]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 // CHECK: %[[RES:.*]] = vector.shape_cast %[[MM]] : vector<8x8xf32> to vector<8x1x8xf32>
 // CHECK: return %[[RES]]
 #a = affine_map<(d0, d1, d2, d3, d4) -> (d3, d1, d0)>
@@ -638,7 +676,9 @@ func.func @unit_batch_acc_nm(%A: vector<1x4x8xbf16>, %B: vector<1x8x8xbf16>, %C:
 // kept.
 // CHECK-LABEL: func.func @extf_rhs_nk(
 // CHECK-SAME: %[[A:.*]]: vector<8x8xbf16>, %[[B:.*]]: vector<8x8xbf16>, %[[C:.*]]: vector<8x8xf32>)
-// CHECK: aievec.matmul_aie2p %[[A]], %[[B]], %[[C]] rhs_transposed : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+// CHECK: %[[AM:.*]], %[[AE:.*]] = aievec.to_bfp16 %[[A]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: %[[BM:.*]], %[[BE:.*]] = aievec.to_bfp16 %[[B]] : vector<8x8xbf16> -> vector<64xi8>, vector<8xi8>
+// CHECK: aievec.matmul_aie2p_bfp16 %[[AM]], %[[AE]], %[[BM]], %[[BE]], %[[C]] : vector<64xi8>, vector<8xi8>, vector<64xi8>, vector<8xi8> into vector<8x8xf32>
 func.func @extf_rhs_nk(%A: vector<8x8xbf16>, %B: vector<8x8xbf16>, %C: vector<8x8xf32>) -> vector<8x8xf32> {
   %a = arith.extf %A : vector<8x8xbf16> to vector<8x8xf32>
   %b = arith.extf %B : vector<8x8xbf16> to vector<8x8xf32>

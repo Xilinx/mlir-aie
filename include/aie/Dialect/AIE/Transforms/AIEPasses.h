@@ -17,6 +17,8 @@
 #include "mlir/Pass/Pass.h"
 
 namespace xilinx::AIE {
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEAnnotateShimSharingPass();
 
 /// Discardable attribute set by `--aie-objectfifo-lower-cores` on `scf.for`
 /// and forever `scf.while` loops containing ObjectFifo accesses -- the loop
@@ -34,11 +36,37 @@ inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
 inline constexpr llvm::StringLiteral kObjectFifoObjectSlotAttrName =
     "aie.objectfifo.object_slot";
 
+/// How `--aie-objectfifo-allocate` says a pool's buffers fit no memory its
+/// users reach; the diagnostic's symbol argument names the pool's objectFIFO,
+/// nested in its device.
+inline constexpr llvm::StringLiteral kNoBufferRoom =
+    "could not place buffers in accessible memory with available capacity";
+/// The note on it naming, as its symbol arguments, the mem tile pools channel
+/// turns walked whole: one buffer each, where the SA placer counts objects.
+inline constexpr llvm::StringLiteral kTurnWalkedNote =
+    "channel turns walked these objectFIFOs' mem tile pools whole: ";
+
+/// How `--aie-assign-buffer-addresses` says a buffer fits no tile memory left,
+/// and the note it adds, at the core, when a core on that tile keeps its own
+/// sections there; the note's symbol argument names the core's device.
+inline constexpr llvm::StringLiteral kNoTileRoom = "could not be placed: ";
+inline constexpr llvm::StringLiteral kCoreSectionsNote =
+    "this core keeps its own sections in ";
+
 /// Whether `whileOp` repeats forever: its condition is a constant true, and its
 /// condition region does nothing but forward its arguments to the body. This is
 /// how IRON's `Worker` writes a core that runs until reconfiguration. Such a
 /// loop can be unrolled by repeating its body.
 bool isForeverLoop(mlir::scf::WhileOp whileOp);
+
+/// Whether `forOp` counts from 0 to INT64_MAX in steps of 1 and never reads its
+/// induction variable. INT64_MAX iterations never finish, so the loop repeats
+/// forever; a smaller bound such as 2^32-1 can be reached.
+bool isForeverForLoop(mlir::scf::ForOp forOp);
+
+/// Replace `forOp`, which `isForeverForLoop` accepts, with an `scf.while` that
+/// `isForeverLoop` accepts and that carries the same values.
+mlir::scf::WhileOp replaceWithForeverLoop(mlir::scf::ForOp forOp);
 
 /// Whether `op` is a loop that objectFifo lowering unrolls by the rotation
 /// period of the objectFifos accessed in it: an `scf.for`, or an `scf.while`
@@ -51,8 +79,8 @@ mlir::Operation *getObjectFifoLoopParent(mlir::Operation *op);
 #define GEN_PASS_DECL
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
-std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
-std::unique_ptr<mlir::OperationPass<DeviceOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEPlaceTilesPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEPlaceTilesPass(const AIEPlaceTilesOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPrepareBuffersPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
@@ -71,6 +99,13 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass(const AIECoreToStandardOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIELowerCoreIssuedConfigurationPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoInsertCoreQueuePushesPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoInsertCoreQueuePushesPass(
+    const AIEObjectFifoInsertCoreQueuePushesOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEFindFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIESplitFlowViasPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELocalizeLocksPass();
@@ -88,6 +123,9 @@ createAIECoreIntRangeNarrowingPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options,
+                        llvm::ArrayRef<std::pair<TileID, Port>> avoidedPorts);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoUnrollPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoUnrollPass(const AIEObjectFifoUnrollOptions &options);
@@ -95,7 +133,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoSplitPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoVerifyPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignPacketIdsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
-createAIEAssignPacketIdsPass(bool packetSwitched);
+createAIEAssignPacketIdsPass(bool packetSwitched,
+                             bool reserveControllerPacketIds = false);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
@@ -114,10 +153,13 @@ createAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLivenessPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEImportOverlayPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEGenerateColumnControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEGenerateColumnControlOverlayPass(
     const AIEGenerateColumnControlOverlayOptions &options);
+bool getsColumnControlOverlay(DeviceOp device, bool configuration);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
@@ -131,7 +173,9 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// Adds the passes of `aie-objectFifo-stateful-transform` to `pm`, which
 /// anchors on DeviceOp.
 void addObjectFifoLoweringPasses(mlir::OpPassManager &pm, bool packetSwitched,
-                                 bool skipVerify);
+                                 bool skipVerify,
+                                 bool reserveControllerPacketIds = false,
+                                 bool checkQueueSpace = true);
 
 /// Register `aie-objectFifo-stateful-transform` as a pipeline over the passes
 /// that lower `aie.objectfifo`.

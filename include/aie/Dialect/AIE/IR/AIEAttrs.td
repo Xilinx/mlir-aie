@@ -86,6 +86,36 @@ def LockBlocking : I32EnumAttr<"LockBlocking", "lock operation is blocking",
   let cppNamespace = "xilinx::AIE";
 }
 
+def LockAcquireAttr : AttrDef<AIE_Dialect, "LockAcquire", []> {
+  let mnemonic = "lock_acquire";
+  let summary = "An acquire condition on a physical lock";
+  let description = [{
+    Identifies a lock by its owner tile and lock ID. The action uses the same
+    `Acquire` and `AcquireGreaterEqual` cases as `aie.use_lock`. The value
+    records the requested count; teardown checks whether a writable counter
+    value can satisfy it.
+  }];
+  let parameters = (ins "int32_t":$column, "int32_t":$row, "int32_t":$lock_id,
+      EnumParameter<LockAction>:$action, "int32_t":$value);
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
+def CoreLockAcquiresAttr : AttrDef<AIE_Dialect, "CoreLockAcquires", []> {
+  let mnemonic = "core_lock_acquires";
+  let summary = "The known acquire conditions of a core";
+  let description = [{
+    Retains acquire conditions after core compilation removes `aie.use_lock`
+    operations. `complete = true` declares that the list covers every acquire
+    the core can issue. An empty complete list declares no acquires.
+    `complete = false` records that some acquires are unknown.
+  }];
+  let parameters = (ins "bool":$complete,
+      OptionalArrayRefParameter<"LockAcquireAttr">:$acquires);
+  let assemblyFormat = "`<` `complete` `=` $complete `,` `acquires` `=` "
+                       "`[` (`]`) : ($acquires^ `]`)? `>`";
+}
+
 def AIEArch
     : I32EnumAttr<"AIEArch", "AIE Architecture",
                   [I32EnumAttrCase<"AIE1", 1>, I32EnumAttrCase<"AIE2", 2>,
@@ -235,6 +265,48 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 def PacketInfoArrayAttr
     : TypedArrayAttrBase<PacketInfoAttr, "array of packet headers">;
 
+def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
+  let mnemonic = "consumed_by";
+  let summary = "An output whose progress proves a shim input consumed";
+  let description = [{
+    Held in the `consumed_by` of a shim input: its `aie.route_endpoint` until
+    `--aie-objectfifo-allocate`, its `aie.shim_dma_allocation` after.
+    `--aie-objectfifo-verify` records one where the design proves that, once
+    the host has received `R` bytes through `output` since the array was
+    loaded, the input's first `G(R) * input_bytes / output_bytes` bytes have
+    left the shim, taken by the tile they went to, so the transfers that sent
+    them have finished. `G(R)` is `R`, or with a nonzero `granule_bytes` `g`,
+    `R` rounded down to a multiple of `g`: the input's bytes then reach the
+    output through a later segment of a join, whose drainer takes it only
+    after the segments ahead of it in each object.
+    `--aie-assign-runtime-sequence-bd-ids` credits that completion when an
+    await retires a transfer on `output`.
+
+    The proof describes the array of the device holding it, or of `device`:
+    `--aie-materialize-runtime-sequences` sets that on the copies it makes in
+    another device, and BD id assignment credits it only while that device's
+    PDI is loaded.
+
+    ```
+      aie.shim_dma_allocation @in(%shim, MM2S, 0) {consumed_by = [
+          #aie.consumed_by<output = @out, input_bytes = 256,
+                           output_bytes = 6144>]}
+    ```
+  }];
+
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$output,
+      "int64_t":$input_bytes, "int64_t":$output_bytes,
+      DefaultValuedParameter<"int64_t", "0">:$granule_bytes,
+      OptionalParameter<"::mlir::FlatSymbolRefAttr">:$device);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
+def ConsumedByArrayAttr
+    : TypedArrayAttrBase<ConsumedByAttr,
+                         "outputs whose progress proves a shim input consumed">;
+
 def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
   let mnemonic = "bd_iteration";
   let summary = [{
@@ -310,6 +382,54 @@ def InitValuesArrayAttr
 // ObjectFifo pools and endpoints
 //===----------------------------------------------------------------------===//
 
+def ObjectFifoRelease
+    : I32EnumAttr<"ObjectFifoRelease",
+                  "ObjectFifo sending DMA task submission strategy",
+                  [I32EnumAttrCase<"CycleBuffers", 0, "cycle_buffers">,
+                   I32EnumAttrCase<"PushQueue", 1, "push_queue">]> {
+  let cppNamespace = "xilinx::AIE";
+  // The attribute class comes from ObjectFifoReleaseAttr below, which prints
+  // the case by name rather than by number.
+  let genSpecializedAttr = 0;
+}
+
+def ObjectFifoReleaseAttr
+    : EnumAttr<AIE_Dialect, ObjectFifoRelease, "release_strategy"> {
+  let summary = "Select cyclic DMA execution or core-issued send tasks";
+  let description = [{
+    Controls how an ObjectFifo's sending DMA receives work. `cycle_buffers`
+    uses a cyclic BD chain synchronized by buffer locks. `push_queue` has the
+    producer core submit a task for each released object, allowing several
+    FIFOs to share one MM2S channel. Both strategies retain buffer-lock
+    synchronization.
+
+    This attribute can be attached to `aie.objectfifo` or its draining
+    `aie.objectfifo.dma_endpoint`. See those operations for defaults and
+    lowering requirements.
+  }];
+}
+
+def ObjectFifoCorePushAttr : AttrDef<AIE_Dialect, "ObjectFifoCorePush", []> {
+  let mnemonic = "core_push";
+  let summary = "The MM2S tasks submitted by a core endpoint's releases";
+  let description = [{
+    DMA lowering attaches this attribute only to a filling core endpoint
+    that submits `push_queue` tasks. `channel` names the MM2S queue on the
+    core's tile; `bd_tags` identifies one sending descriptor per buffer slot.
+    Core lowering uses this mapping after DMA lowering removes the DMA
+    endpoint, then removes the core endpoint and this attribute.
+
+    The corresponding `aie.dma_start` carries `core_pushes`, which prevents
+    device configuration from submitting startup tasks.
+
+    Example: `core_push = #aie.core_push<channel = 0, bd_tags = [4, 5]>`.
+  }];
+  let parameters = (ins "uint32_t":$channel,
+      ArrayRefParameter<"int32_t">:$bd_tags);
+  let assemblyFormat =
+      "`<` `channel` `=` $channel `,` `bd_tags` `=` `[` $bd_tags `]` `>`";
+}
+
 def ObjectFifoRole
     : I32EnumAttr<"ObjectFifoRole",
                   "What an objectFifo endpoint does to its pool's buffers",
@@ -370,6 +490,13 @@ def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
     allocation pick the id, `#aie.packet_info<pkt_id = 3>` pins it. It belongs
     to `auto` and `dma`; on `auto` it only matters when the DMAs are used.
 
+    `out_of_order = true` requires `packet` and selects receiving buffer
+    descriptors through the packet header's `out_of_order_id`. This allows
+    multiple packet FIFOs to share an S2MM channel. It changes descriptor
+    selection, not packet arrival order. Like `packet`, it only applies when
+    `auto` chooses DMA. The default is false. FIFOs pinned to the same
+    receiving channel must explicitly set `out_of_order = true`.
+
     What drives each end (a DMA channel or a core stream port) is not part of
     the path; see `#aie.end_port`.
 
@@ -377,13 +504,15 @@ def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
     ```
       transport = #aie.transport<dma>
       transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>
+      transport = #aie.transport<dma, packet = #aie.packet_info<>, out_of_order = true>
     ```
   }];
 
   let parameters = (ins EnumParameter<ObjectFifoTransportMode>:$mode,
-      PacketInfoField:$packet);
+      PacketInfoField:$packet,
+      DefaultValuedParameter<"bool", "false">:$out_of_order);
 
-  let assemblyFormat = "`<` $mode (`,` struct($packet)^)? `>`";
+  let assemblyFormat = "`<` $mode (`,` struct($packet, $out_of_order)^)? `>`";
 
   let genVerifyDecl = 1;
 }

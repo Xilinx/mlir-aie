@@ -7,19 +7,17 @@
 # RUN: %run_on_npu2% %pytest %s
 # REQUIRES: xrt_python_bindings
 
-"""Three workers on one column, their shim ends left for the placer to place.
+"""Three outputs on a shim with two S2MM channels.
 
-Their three outputs need three S2MM channels and the one shim tile has two.
-The runtime sequence awaits each output before draining the next, so the
-placer counts two of them once and allocation has them take turns on one
-channel. Two workers read an input each; the third makes its own data, as
-sending ends in one sequence never take turns (a shim MM2S task reports
-itself complete before its words leave the shim).
+The explicit sharing of out0 and out1 relies on each worker consuming fresh
+input for every output, with all output awaited before the next worker's fill.
+The autonomous third worker has a dedicated channel.
 """
 
 import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
+from aie.ir import ArrayAttr, FlatSymbolRefAttr
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, TaskGroup, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2Col1
@@ -77,7 +75,13 @@ def placed_shim_sharing(x: In, y: Out):
             [f.cons() for f in outs],
         ],
     )
-    return Program(NPU2Col1(), rt, workers=workers).resolve_program()
+    module = Program(NPU2Col1(), rt, workers=workers).resolve_program()
+    with module.context:
+        for a, b in [(0, 1), (1, 0)]:
+            outs[a].op.attributes["aie.shareable_with"] = ArrayAttr.get(
+                [FlatSymbolRefAttr.get(outs[b].name)]
+            )
+    return module
 
 
 def test_objectfifo_placed_shim_sharing():

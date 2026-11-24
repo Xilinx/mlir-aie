@@ -19,8 +19,7 @@
 // CHECK:       memref.store %{{.*}}__buf0, %[[S0]][]
 // CHECK:       %[[S1:.*]] = memref.alloca() : memref<memref<8xi8>>
 // CHECK:       memref.store %{{.*}}__buf1, %[[S1]][]
-// CHECK:       scf.for
-// CHECK-NOT:   iter_args
+// CHECK:       scf.while : () -> () {
 // CHECK:         %[[OBJ:.*]] = memref.load %[[S0]][] : memref<memref<8xi8>>
 // CHECK:         memref.load %[[OBJ]]
 // CHECK:       aie.end
@@ -34,14 +33,17 @@ module {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c3 = arith.constant 3 : index
-      %cmax = arith.constant 9223372036854775807 : index
-      scf.for %o = %c0 to %cmax step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         scf.for %i = %c0 to %c3 step %c1 {
           %x = aie.objectfifo.acquire @fifo(Consume, 1) : memref<8xi8>
           %v = memref.load %x[%c0] : memref<8xi8>
           memref.store %v, %buf[%c0] : memref<8xi8>
           aie.objectfifo.release @fifo(Consume, 1)
         }
+        scf.yield
       }
       aie.end
     } {dynamic_objfifo_lowering = false}
@@ -59,8 +61,7 @@ module {
 // CHECK:     aie.core
 // CHECK:       %[[S0:.*]] = memref.alloca() : memref<memref<8xi8>>
 // CHECK:       %[[S1:.*]] = memref.alloca() : memref<memref<8xi8>>
-// CHECK:       scf.for
-// CHECK-NOT:   iter_args
+// CHECK:       scf.while : () -> () {
 // CHECK:         %[[OBJ:.*]] = memref.load %[[S0]][] : memref<memref<8xi8>>
 // CHECK:         memref.load %[[OBJ]]
 // CHECK-NOT:     arith.select
@@ -77,8 +78,10 @@ module {
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
       %c3 = arith.constant 3 : index
-      %cmax = arith.constant 9223372036854775807 : index
-      scf.for %o = %c0 to %cmax step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         scf.for %i = %c0 to %c3 step %c1 {
           %x = aie.objectfifo.acquire @fifo(Consume, 1) : memref<8xi8>
           %v = memref.load %x[%c0] : memref<8xi8>
@@ -90,6 +93,7 @@ module {
           memref.store %v, %d1[%c0] : memref<8xi8>
           aie.objectfifo.release @fifo(Consume, 1)
         }
+        scf.yield
       }
       aie.end
     } {dynamic_objfifo_lowering = false}

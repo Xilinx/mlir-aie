@@ -86,7 +86,7 @@ module {
 
 // -----
 
-// A loop meant to run forever is not a bound: such a core stalls once the data
+// A loop that runs forever is not a bound: such a core stalls once the data
 // stops, which is how the design ends.
 
 module {
@@ -95,11 +95,37 @@ module {
     %tile = aie.tile(0, 2)
     aie.objectfifo @in(%shim, {%tile}, 2 : i32) {iter_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
     %core = aie.core(%tile) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @in (Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// An scf.for is a bound however large its trip count: 2^32 - 1 releases are
+// counted like any other.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    // expected-note@+1 {{the DMA endpoint is here}}
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) {iter_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c4294967295 = arith.constant 4294967295 : index
       scf.for %i = %c0 to %c4294967295 step %c1 {
         %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        // expected-error@+1 {{releases 4294967295 objects through @in__cons over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2)}}
         aie.objectfifo.release @in (Consume, 1)
       }
       aie.end

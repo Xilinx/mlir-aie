@@ -17,40 +17,40 @@
 // CHECK:         %[[S01_1:.*]] = aie.amsel<3> (3)
 // CHECK:         %[[S01_2:.*]] = aie.amsel<4> (3)
 // CHECK:         %[[S01_3:.*]] = aie.amsel<5> (3)
-// CHECK:         %[[S01_4:.*]] = aie.masterset(DMA : 1, %[[S01_3]]) {aie.is_ctrl_pkt_overlay}
-// CHECK:         %[[S01_5:.*]] = aie.masterset(North : 0, %[[S01_0]], %[[S01_3]]) {aie.is_ctrl_pkt_overlay}
-// CHECK:         %[[S01_6:.*]] = aie.masterset(North : 2, %[[S01_1]]) {aie.is_ctrl_pkt_overlay}
-// CHECK:         %[[S01_7:.*]] = aie.masterset(North : 3, %[[S01_2]]) {aie.is_ctrl_pkt_overlay}
+// CHECK:         %[[S01_4:.*]] = aie.masterset(DMA : 1, %[[S01_3]]) {aie.priority_route}
+// CHECK:         %[[S01_5:.*]] = aie.masterset(North : 0, %[[S01_0]], %[[S01_3]]) {aie.priority_route}
+// CHECK:         %[[S01_6:.*]] = aie.masterset(North : 2, %[[S01_1]]) {aie.priority_route}
+// CHECK:         %[[S01_7:.*]] = aie.masterset(North : 3, %[[S01_2]]) {aie.priority_route}
 // CHECK:         aie.packet_rules(DMA : 1) {
-// CHECK:         aie.rule(31, 26, %[[S01_2]]) {aie.priority_route}
-// CHECK:         } {aie.is_ctrl_pkt_overlay}
+// CHECK:         aie.rule(31, 26, %[[S01_2]])
+// CHECK:         } {aie.priority_route}
 // CHECK:         aie.packet_rules(South : 0) {
 // CHECK:         aie.rule(31, 20, %[[S01_3]])
 // CHECK:         aie.rule(31, 29, %[[S01_0]])
-// CHECK:         } {aie.is_ctrl_pkt_overlay}
+// CHECK:         } {aie.priority_route}
 // CHECK:         aie.packet_rules(South : 2) {
 // CHECK:         aie.rule(31, 0, %[[S01_1]])
-// CHECK:         } {aie.is_ctrl_pkt_overlay}
+// CHECK:         } {aie.priority_route}
 // CHECK-LABEL: aie.switchbox(%tile_0_2)
 // CHECK:         %[[S02_0:.*]] = aie.amsel<4> (2)
 // CHECK:         %[[S02_1:.*]] = aie.amsel<3> (3)
 // CHECK:         %[[S02_2:.*]] = aie.amsel<4> (3)
 // CHECK:         %[[S02_3:.*]] = aie.amsel<5> (3)
-// CHECK:         %[[S02_4:.*]] = aie.masterset(Core : 0, %[[S02_2]]) {aie.is_ctrl_pkt_overlay}
-// CHECK:         %[[S02_5:.*]] = aie.masterset(DMA : 0, %[[S02_3]]) {aie.is_ctrl_pkt_overlay}
-// CHECK:         %[[S02_6:.*]] = aie.masterset(North : 0, %[[S02_3]]) {aie.is_ctrl_pkt_overlay}
-// CHECK:         %[[S02_7:.*]] = aie.masterset(North : 1, %[[S02_1]]) {aie.is_ctrl_pkt_overlay}
-// CHECK:         %[[S02_8:.*]] = aie.masterset(North : 4, %[[S02_0]]) {aie.is_ctrl_pkt_overlay}
+// CHECK:         %[[S02_4:.*]] = aie.masterset(Core : 0, %[[S02_2]]) {aie.priority_route}
+// CHECK:         %[[S02_5:.*]] = aie.masterset(DMA : 0, %[[S02_3]]) {aie.priority_route}
+// CHECK:         %[[S02_6:.*]] = aie.masterset(North : 0, %[[S02_3]]) {aie.priority_route}
+// CHECK:         %[[S02_7:.*]] = aie.masterset(North : 1, %[[S02_1]]) {aie.priority_route}
+// CHECK:         %[[S02_8:.*]] = aie.masterset(North : 4, %[[S02_0]]) {aie.priority_route}
 // CHECK:         aie.packet_rules(South : 3) {
 // CHECK:         aie.rule(31, 26, %[[S02_1]])
-// CHECK:         } {aie.is_ctrl_pkt_overlay}
+// CHECK:         } {aie.priority_route}
 // CHECK:         aie.packet_rules(South : 0) {
 // CHECK:         aie.rule(31, 20, %[[S02_0]])
 // CHECK:         aie.rule(31, 29, %[[S02_2]])
-// CHECK:         } {aie.is_ctrl_pkt_overlay}
+// CHECK:         } {aie.priority_route}
 // CHECK:         aie.packet_rules(South : 2) {
 // CHECK:         aie.rule(31, 0, %[[S02_3]])
-// CHECK:         } {aie.is_ctrl_pkt_overlay}
+// CHECK:         } {aie.priority_route}
 
 module {
   aie.device(npu1_1col) {

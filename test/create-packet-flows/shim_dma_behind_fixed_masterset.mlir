@@ -11,7 +11,7 @@
 // already owns South:3, so no flow can reach DMA:1. Reduced from
 // router_properties.py seed 772.
 
-// CHECK: error: Unable to find a legal routing: no path leads from (0, 3) DMA:0 to (0, 0) DMA:1
+// CHECK: error: Unable to find a legal routing: packet flow 4 ends at (0, 0) DMA:1, whose output port is reserved by a fixed aie.masterset
 
 module {
   aie.device(npu1_1col) {

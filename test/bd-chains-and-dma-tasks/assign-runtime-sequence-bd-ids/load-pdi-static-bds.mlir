@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids --split-input-file %s | FileCheck %s
+// RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids='warn-unreleased-transfers=false' --split-input-file %s | FileCheck %s
 
 // A runtime task after an aiex.npu.load_pdi avoids the static BDs of the device
 // it loaded as well as those of the device holding the sequence. Each load

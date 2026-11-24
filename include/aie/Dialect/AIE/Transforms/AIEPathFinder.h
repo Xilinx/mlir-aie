@@ -15,8 +15,10 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/IntEqClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -39,8 +41,8 @@ int shimMuxChannelFrom(Port src);
 int shimMuxChannelTo(Port dst);
 
 // The connections from the source ports to the destination ports of a
-// switchbox, if `srcCoords == dstCoords`, or of the wires from one switchbox
-// to its neighbour at `dstCoords`.
+// switchbox's crossbar, if `isCrossbar`, or of the wires from one switchbox to
+// the one at `dstCoords`.
 struct SwitchboxConnect {
   // A connection from a source port to a destination port.
   struct Cell {
@@ -61,6 +63,8 @@ struct SwitchboxConnect {
     llvm::SmallDenseMap<int, int, 2> packetIds;
     // whether a prioritized flow uses the connection
     bool isPriority = false;
+    // added to the demand, so routes keep off the connection where they can
+    double avoidance = 0;
   };
 
   SwitchboxConnect() = default;
@@ -69,6 +73,7 @@ struct SwitchboxConnect {
       : srcCoords(srcCoords), dstCoords(dstCoords) {}
 
   TileID srcCoords, dstCoords;
+  bool isCrossbar = true;
   std::vector<Port> srcPorts;
   std::vector<Port> dstPorts;
   // The connection from srcPorts[i] to dstPorts[j] is cells[i * dstPorts.size()
@@ -135,9 +140,10 @@ struct SwitchboxConnect {
   // update demand at the beginning of each dijkstraShortestPaths iteration
   void updateDemand();
 
-  // Bumps an over-capacity cell's demand, all but ruling it out if a
-  // prioritized flow uses it, to keep prioritized flows' routes.
-  static void bumpDemand(Cell &c);
+  // Bumps the demand of the connection from srcPorts[i] to dstPorts[j] if it
+  // is at capacity, all but ruling it out if a prioritized flow uses it, to
+  // keep prioritized flows' routes.
+  void bumpDemand(size_t i, size_t j);
 
 private:
   static int indexIn(llvm::ArrayRef<Port> ports, Port p) {
@@ -214,13 +220,16 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 }
 
 // A hop of a packet flow's tree, from one port to the next; `joined` when the
-// flow takes it by joining another flow's tree.
+// flow takes it by joining another flow's tree, `isCrossbar` when it crosses a
+// switchbox rather than a wire.
 struct TreeHop {
   PathEndPoint from, to;
   bool joined;
+  bool isCrossbar;
 
   bool operator==(const TreeHop &rhs) const {
-    return from == rhs.from && to == rhs.to && joined == rhs.joined;
+    return from == rhs.from && to == rhs.to && joined == rhs.joined &&
+           isCrossbar == rhs.isCrossbar;
   }
 };
 using PacketTrees = std::map<PathEndPoint, std::vector<TreeHop>>;
@@ -274,9 +283,8 @@ struct RoutingFaults {
   // Sources whose tree waits on an arbiter it holds itself; they stop
   // trunking (see RouteState::trunked).
   std::vector<PathEndPoint> untrunk;
-  // Whether the connections all break the overlay's master sets; see
-  // RouteState::overlayMasters.
-  bool onlyOverlayMasters = false;
+  // Whether every rejected connection would change a pinned master set.
+  bool onlyPriorityMasters = false;
 };
 
 // A routing findPaths found.
@@ -289,6 +297,10 @@ struct Routing {
   // are routed apart from the others the source sends.
   std::map<std::pair<PathEndPoint, int>, SwitchSettings> idSettings;
 };
+
+// How the router's message starts when the flows do not fit the links.
+inline constexpr llvm::StringLiteral kNoLegalRouting =
+    "Unable to find a legal routing";
 
 // Why no legal routing was found, reported at `loc`, or the device if unset,
 // with `reason` if the router can say. A routing check's failure also names
@@ -306,6 +318,17 @@ public:
     return llvm::inconvertibleErrorCode();
   }
 
+  // Another failure of this error's own dynamic type, naming `reason`,
+  // `faults` and `loc`: how the replay ladder reconstructs a kept attempt's
+  // failure from its stored fields without a classID switch at each site
+  // that needs one.
+  virtual std::unique_ptr<RoutingFailure>
+  clone(std::string reason, RoutingFaults faults,
+        std::optional<mlir::Location> loc) const {
+    return std::make_unique<RoutingFailure>(std::move(reason),
+                                            std::move(faults), loc);
+  }
+
   std::string reason;
   RoutingFaults faults;
   std::optional<mlir::Location> loc;
@@ -318,6 +341,12 @@ class DeadlockProneRouting
 public:
   static char ID;
   using ErrorInfo::ErrorInfo;
+  std::unique_ptr<RoutingFailure>
+  clone(std::string reason, RoutingFaults faults,
+        std::optional<mlir::Location> loc) const override {
+    return std::make_unique<DeadlockProneRouting>(std::move(reason),
+                                                  std::move(faults), loc);
+  }
 };
 
 // No legal routing around the routes prioritized flows keep, which the reason
@@ -327,6 +356,12 @@ class PinnedRoutingFailure
 public:
   static char ID;
   using ErrorInfo::ErrorInfo;
+  std::unique_ptr<RoutingFailure>
+  clone(std::string reason, RoutingFaults faults,
+        std::optional<mlir::Location> loc) const override {
+    return std::make_unique<PinnedRoutingFailure>(std::move(reason),
+                                                  std::move(faults), loc);
+  }
 };
 
 // Checks a routing that fits the fabric: a RoutingFailure if it is unusable,
@@ -348,10 +383,56 @@ struct PacketConstraints {
   // The prioritized packet flows from these sources take these trees
   // instead of being routed.
   PacketTrees pinned;
+  // The packet ids each pinned tree carries. A pinned source's other flows
+  // route with the rest of the design, prioritized or not.
+  std::map<PathEndPoint, std::set<int>> pinnedIds;
   // Whether prioritized packet flows not pinned route first, keeping
   // other flows off their channels; otherwise they route like the others.
   bool prioritize = true;
 };
+
+// The relax settings an attempt reads while it routes (see Pathfinder::relax).
+enum class Relax : uint8_t {
+  None = 0,
+  IdsApart = 1 << 0,
+  SplitShared = 1 << 1,
+  // Trees that share destinations no longer meet (see TreeBuilder::meet), so
+  // what is left of their hazard is a hold cycle through those receivers.
+  MeetApart = 1 << 2,
+  // A flow meets another id's tree ahead of a same-id partner that has not
+  // routed yet (see Pathfinder::meetAhead).
+  MeetAheadOfPartners = 1 << 3,
+  LLVM_MARK_AS_BITMASK_ENUM(MeetAheadOfPartners)
+};
+LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
+
+// What one attempt of a relax ladder read that a relax step changes, and what
+// it found. A later attempt of the ladder that reads the same replays it
+// exactly, as routing is deterministic and the ladder's constraints are fixed.
+struct PathfinderAttempt {
+  std::vector<Flow> flows;
+  std::vector<llvm::BitVector> circuitOnly;
+  // The settings' values, and which of them the attempt read.
+  Relax values = Relax::None, consulted = Relax::None;
+  // The routing found, else the failure: a clone of it (so reconstructing a
+  // replay's failure needs no classID switch, just prototype->clone()) and
+  // its contents.
+  std::optional<Routing> routing;
+  std::unique_ptr<RoutingFailure> prototype;
+  std::string reason;
+  RoutingFaults faults;
+  std::optional<mlir::Location> loc;
+  // What relax reads after the attempt.
+  llvm::DenseSet<TileID> crowdedTiles;
+  bool packetsFailed = false;
+  std::string checkReason;
+  // Each iteration's routing, kept under -aie-pathfinder-verify-replays.
+  std::vector<llvm::hash_code> trajectory;
+};
+
+// The boundary the wires from tile `a` to its neighbour `b` cross: between
+// rows (else columns) `below` and the next, upward (else back).
+std::tuple<bool, int, bool> boundaryOf(TileID a, TileID b);
 
 // Congestion-negotiated routing: each iteration routes every flow by
 // Dijkstra, given each connection's demand, and raises the demand of the
@@ -370,8 +451,14 @@ public:
   mlir::LogicalResult addFixedConnection(SwitchboxOp switchboxOp);
   // Keeps routes out of the switchbox at `coords`.
   void excludeTile(TileID coords);
-  // A RoutingFailure if no legal routing is found in `maxIterations`.
+  // Keeps routes off an output port of a switchbox where another is free.
+  void avoidPort(TileID coords, Port port);
+  // A RoutingFailure if no legal routing is found in `maxIterations`. An
+  // attempt that replays one in `attempts` returns what that one found.
   llvm::Expected<Routing> findPaths(int maxIterations);
+  // The attempts of the relax ladder being routed, if the caller keeps them;
+  // it routes one design under one set of constraints meanwhile.
+  std::vector<PathfinderAttempt> *attempts = nullptr;
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
   // Loosens the packet constraints by one step after findPaths found no
   // routing; false once no step is left or no packet stream took part in the
@@ -382,7 +469,10 @@ public:
   // direction; route the second id of an unbranchable split apart, which
   // restarts sharing and caps; then share and cap again; route the ids a
   // source sends that a source it must keep apart from does not as a part of
-  // their own, which restarts sharing and caps; then share and cap again.
+  // their own, which restarts sharing and caps; then share and cap again;
+  // route each other source of a cluster that has to meet first, one per
+  // attempt (see rotateLeads); meet ahead of same-id partners; then stop
+  // meeting, which runs the steps before rotating again.
   bool relax();
 
 private:
@@ -443,9 +533,16 @@ private:
   // Route `flow`'s tree around those routed before it this iteration. A
   // RoutingFailure if it reaches no path to a destination.
   llvm::Error routePart(RouteState &st, int flow);
+  // findPaths' iterations, once it has set the graph up; each routing's hash
+  // goes to `trajectory` if given.
+  llvm::Expected<Routing> negotiate(int maxIterations,
+                                    std::vector<llvm::hash_code> *trajectory);
   // Steer the next iteration away from what the routing check faulted.
-  // Returns the illegal edges the faults count as.
-  int applyRoutingFaults(RouteState &st, const RoutingFaults &faults);
+  // Returns the illegal edges the faults count as; `pinnedOnly` counts those
+  // of them that are connections only pinned trees take, which no penalty
+  // moves.
+  int applyRoutingFaults(RouteState &st, const RoutingFaults &faults,
+                         int &pinnedOnly);
   // A RoutingFailure saying why the last iteration's routing does not fit.
   llvm::Error explainNoRouting(const RouteState &st) const;
   // A RoutingFailure if the flows crossing some row or column boundary need
@@ -458,6 +555,8 @@ private:
   bool routeIdsApart();
   bool splitSharedIds();
   bool stopMeeting();
+  bool rotateLeads();
+  bool meetAhead();
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -472,9 +571,13 @@ private:
   std::map<PathEndPoint, std::map<PathEndPoint, mlir::Location>> flowLocs;
   std::optional<mlir::Location> flowLoc(const PathEndPoint &src,
                                         const PathEndPoint *dst) const;
-  // The routing graph, by the tiles a SwitchboxConnect connects: a tile to
-  // itself for its switchbox, or to a neighbour for the wires between them.
-  std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
+  // The routing graph, by the tiles a SwitchboxConnect connects and whether it
+  // is a crossbar: a tile to itself for its switchbox, or to a neighbour for
+  // the wires between them.
+  using GraphKey = std::tuple<TileID, TileID, bool>;
+  static GraphKey crossbarKey(TileID tile) { return {tile, tile, true}; }
+  static GraphKey wireKey(TileID src, TileID dst) { return {src, dst, false}; }
+  std::map<GraphKey, SwitchboxConnect> graph;
 
   // Dense routing graph (built once by buildRoutingGraph()).
   bool graphBuilt = false;
@@ -497,19 +600,30 @@ private:
   // Why the routing check rejected the last routing it rejected.
   std::string checkReason;
   // Whether packet streams took part in the last failure: the routing check
-  // rejected a routing, or packet streams cross a link left overused.
+  // rejected a routing, or packet streams cross a link left overused, or the
+  // boundary it crosses.
   bool packetsFailed = true;
-  bool shareChannels = false, idsApart = false, splitShared = false;
-  // Trees that share destinations no longer meet (see TreeBuilder::meet), so
-  // what is left of their hazard is a hold cycle through those receivers.
-  bool meetApart = false;
+  bool shareChannels = false;
+  Relax settings = Relax::None;
   // Whether a tree met another in any attempt, so stopping meeting can change
   // anything.
   bool treesMet = false;
   // The device's columns and rows; the graph has tiles one past each.
   int columns = 0, rows = 0;
   size_t relaxStep = 0;
+  // The sources that route first among those that have to meet, and how many
+  // turns of rotateLeads they have taken.
+  std::set<PathEndPoint> leads;
+  size_t leadStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
+  // The relax settings this attempt read; sortFlows and findPaths fold in
+  // the others (shareChannels, leads, cappedTiles) before it routes.
+  Relax consulted = Relax::None;
+  // Whether `setting` is on, noting that this attempt read it.
+  bool consult(Relax setting) {
+    consulted |= setting;
+    return any(settings & setting);
+  }
 };
 
 // Routes the flows of a device with a Pathfinder, and finds or creates the
@@ -537,6 +651,8 @@ public:
   }
 
   Pathfinder pathfinder;
+  // Passed to Pathfinder::avoidPort.
+  std::vector<std::pair<TileID, Port>> avoidedPorts;
   // The routing runAnalysis found.
   Routing routing;
   // The sources of the circuit flows lowered so far.

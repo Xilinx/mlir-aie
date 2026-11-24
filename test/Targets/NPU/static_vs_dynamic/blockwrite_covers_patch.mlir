@@ -100,6 +100,7 @@ aie.device(npu1) {
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)
+      aiex.dma_await_task(%prev)
       aiex.dma_free_task(%prev)
       scf.yield %t : index
     }

@@ -53,16 +53,16 @@ module {
 
       // Flush the queue with the merged op: it lowers to the same masked reset
       // pulse on DMA_MM2S_0_Ctrl (bit 1) that ../dma issues directly, mirroring
-      // aie-rt's XAie_DmaChannelReset. Reset-only, so the enqueue + lock arm below
+      // aie-codegen's XAie_DmaChannelReset. Reset-only, so the enqueue + lock arm below
       // are still needed.
       aiex.dma_channel_reset(%t02, MM2S, 0)
 
-      // Enqueue the good BD (1) on the flushed queue (aie-rt
+      // Enqueue the good BD (1) on the flushed queue (aie-codegen
       // XAie_DmaChannelPushBdToQueue -- DMA_MM2S_0_Start_Queue, 0x1DE14).
       %bd_good = arith.constant 1 : i32
       aiex.npu.push_queue (0, 2, MM2S:0) bd_id %bd_good repeat %rc {issue_token = true} : i32, i32
 
-      // Arm cons so the good BD runs (aie-rt XAie_LockSetValue via aiex.set_lock).
+      // Arm cons so the good BD runs (aie-codegen XAie_LockSetValue via aiex.set_lock).
       %cons_v1 = arith.constant 1 : i32
       aiex.set_lock(%cons, %cons_v1)
 

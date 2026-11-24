@@ -42,6 +42,21 @@ def ScratchpadParameterKind
   let cppNamespace = "::xilinx::AIEX";
 }
 
+// CERT barrier ids, named as the assembler operands are: $lb0..$lb15 and
+// $rb0..$rb6. AIEBU encodes $rbN as firmware barrier N+1, and the firmware
+// accepts remote barriers 1..7, so rb7 does not exist.
+def CertLocalBarrierId
+    : I32EnumAttr<"CertLocalBarrierId", "CERT local barrier (lb0..lb15)",
+                  !foreach(i, !range(16), I32EnumAttrCase<"lb"#i, i>)> {
+  let cppNamespace = "::xilinx::AIEX";
+}
+
+def CertRemoteBarrierId
+    : I32EnumAttr<"CertRemoteBarrierId", "CERT remote barrier (rb0..rb6)",
+                  !foreach(i, !range(7), I32EnumAttrCase<"rb"#i, i>)> {
+  let cppNamespace = "::xilinx::AIEX";
+}
+
 // How a `load_pdi` op should be expanded by the `aie-expand-load-pdi` pass.
 def AIEX_ExpandNone : I32EnumAttrCase<"none", 0>;
 def AIEX_ExpandWrite32 : I32EnumAttrCase<"write32", 1>;

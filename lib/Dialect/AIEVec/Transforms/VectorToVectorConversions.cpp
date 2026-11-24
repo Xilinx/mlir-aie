@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
@@ -41,16 +42,6 @@ using namespace xilinx::aievec;
 //============================================================================//
 //================== Common AIE canonicalization analysis ====================//
 //============================================================================//
-
-static AIEArch decodeAIETarget(const std::string &target) {
-  if (!target.empty()) {
-    if (target == "aieml" || target == "aie2" || target == "aie2p")
-      return AIEArch::AIE2;
-    if (target != "aie")
-      return AIEArch::UNKNOWN;
-  }
-  return AIEArch::AIE;
-}
 
 //============================================================================//
 //============ Common AIE canonicalization conversion patterns ===============//
@@ -711,6 +702,9 @@ static APFloat roundedToBF16(APFloat v) {
 
 // True if `val` is an f32 vector whose elements are all bf16 values.
 static bool holdsBF16(Value val) {
+  // a splat of a scalar widened from bf16
+  if (auto bcastOp = val.getDefiningOp<vector::BroadcastOp>())
+    val = bcastOp.getSource();
   if (auto extfOp = val.getDefiningOp<arith::ExtFOp>())
     return getElementTypeOrSelf(extfOp.getIn().getType()).isBF16();
   DenseFPElementsAttr dense;
@@ -887,6 +881,20 @@ struct EmulateMulFInBF16Pattern : public OpRewritePattern<arith::MulFOp> {
   }
 };
 
+static bool contracts(arith::FastMathFlagsAttr flags) {
+  return flags &&
+         bitEnumContainsAll(flags.getValue(), arith::FastMathFlags::contract);
+}
+
+/// Whether `op` may take a multiply into a vector.fma: it allows contraction
+/// and has a type the FMA lowerings take, a 1-D f32 vector of 16 or 32 lanes.
+static bool fusesIntoFMA(arith::AddFOp op) {
+  auto type = dyn_cast<VectorType>(op.getType());
+  return isF32Vector(op.getType()) && type.getRank() == 1 &&
+         (type.getNumElements() == 16 || type.getNumElements() == 32) &&
+         contracts(op.getFastmathAttr());
+}
+
 /// Pattern to fold an f32 multiply into the add that is its only user, as a
 /// vector.fma with bf16 inputs. Only when both ops allow contraction: the
 /// fused result can differ where the product underflows or overflows.
@@ -895,11 +903,7 @@ struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
 
   LogicalResult matchAndRewrite(arith::AddFOp op,
                                 PatternRewriter &rewriter) const override {
-    auto contracts = [](arith::FastMathFlagsAttr flags) {
-      return flags && bitEnumContainsAll(flags.getValue(),
-                                         arith::FastMathFlags::contract);
-    };
-    if (!isF32Vector(op.getType()) || !contracts(op.getFastmathAttr()))
+    if (!fusesIntoFMA(op))
       return failure();
     for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
                                    std::pair(op.getRhs(), op.getLhs())}) {
@@ -910,6 +914,32 @@ struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
       Value lhs = roundToBF16(rewriter, loc, mulOp.getLhs());
       Value rhs = roundToBF16(rewriter, loc, mulOp.getRhs());
       rewriter.replaceOpWithNewOp<vector::FMAOp>(op, lhs, rhs, acc);
+      rewriter.eraseOp(mulOp);
+      return success();
+    }
+    return failure();
+  }
+};
+
+/// FuseMulAddFInBF16Pattern for a multiply whose inputs already hold bf16
+/// values, outside bf16 emulation; likewise only when both ops allow
+/// contraction.
+struct FuseExactMulAddFPattern : public OpRewritePattern<arith::AddFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::AddFOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!fusesIntoFMA(op))
+      return failure();
+    for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
+                                   std::pair(op.getRhs(), op.getLhs())}) {
+      auto mulOp = mulOperand.getDefiningOp<arith::MulFOp>();
+      if (!mulOp || !mulOp->hasOneUse() ||
+          !contracts(mulOp.getFastmathAttr()) || !holdsBF16(mulOp.getLhs()) ||
+          !holdsBF16(mulOp.getRhs()))
+        continue;
+      rewriter.replaceOpWithNewOp<vector::FMAOp>(op, mulOp.getLhs(),
+                                                 mulOp.getRhs(), acc);
       rewriter.eraseOp(mulOp);
       return success();
     }
@@ -1106,16 +1136,16 @@ struct CanonicalizeVectorForAIEVecPass
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
 
-    AIEArch aieVersion = decodeAIETarget(aieTarget);
-    if (aieVersion == AIEArch::UNKNOWN) {
-      op->emitError() << "unknown AIE target '" << aieTarget << "'";
+    std::optional<AIEVecTargetInfo> targetInfo =
+        parseAIEVecLoweringTarget(aieTarget, op);
+    if (!targetInfo) {
       signalPassFailure();
       return;
     }
 
     populateCommonAIECanonicalizeConversionPatterns(patterns);
     configureCommonAIECanonicalizeLegalizations(target);
-    if (aieVersion == AIEArch::AIE) {
+    if (targetInfo->isAIE1()) {
       populateAIEv1CanonicalizeConversionPatterns(patterns);
       configureAIEv1CanonicalizeLegalizations(target);
     } else {
@@ -1127,8 +1157,9 @@ struct CanonicalizeVectorForAIEVecPass
       RewritePatternSet patterns(context);
       patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
-      if (aieTarget == "aie2p")
-        patterns.add<FlattenVectorIterArgsPattern>(context);
+      if (targetInfo->isAIE2P())
+        patterns.add<FlattenVectorIterArgsPattern, FuseExactMulAddFPattern>(
+            context);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
@@ -1186,6 +1217,9 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
 
   pm.addPass(createReorderOperationsPass());
   pm.addPass(createCopyRemovalPass());
-  pm.addPass(createVectorBroadcastLoweringPass(options.aieTarget == "aie2p"));
+  std::optional<AIEVecTargetInfo> targetInfo =
+      parseAIEVecTarget(options.aieTarget);
+  pm.addPass(
+      createVectorBroadcastLoweringPass(targetInfo && targetInfo->isAIE2P()));
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
 }

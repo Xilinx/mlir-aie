@@ -4,10 +4,10 @@
 # RUN: %python %s
 
 import numpy as np
-
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.iron import ObjectFifo, Worker
 from aie.iron.device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
+from aie.iron.runtime.endpoint import RuntimeEndpoint
 
 VECTOR_TYPE = np.ndarray[(16,), np.dtype[np.int32]]
 
@@ -71,3 +71,19 @@ for kind in ("split", "join", "forward"):
     test_explicit_tile_identity(kind)
     test_default_isolation(kind)
 print("All ObjectFifo tile sharing tests passed")
+
+
+def test_runtime_shim_tile_identity():
+    for kind in (AIETileType.ShimNOCTile, AIETileType.ShimPLTile):
+        for coords in ({}, {"col": 0}, {"col": 0, "row": 0}):
+            tile = Tile(**coords, tile_type=kind)
+            first = RuntimeEndpoint(tile)
+            second = RuntimeEndpoint(tile)
+            assert first.tile is second.tile is tile
+    first, second = RuntimeEndpoint(), RuntimeEndpoint()
+    assert first.tile is not second.tile
+    assert first.tile is not AnyShimTile
+    assert AnyShimTile.col is None and AnyShimTile.row is None
+
+
+test_runtime_shim_tile_identity()

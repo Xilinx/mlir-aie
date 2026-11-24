@@ -50,7 +50,7 @@ from aie.iron import (
 )
 from aie.iron.controlflow import else_, if_, range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
-from aie.iron.dataflow.objectfifo import ObjectFifoHandle
+from aie.iron.dataflow.objectfifo import ObjectFifoHandle, ObjectFifoLink
 from aie.iron.device import AnyComputeTile, AnyMemTile, Tile
 from aie.utils.config import aie_kernels_dir
 from yolo_params import Params
@@ -344,6 +344,12 @@ class SegmentDesign:
         runs = [(a, b) for a, b in spans if set(range(a, b)) <= mine]
         groups = {first: network.ops[first:stop] for first, stop in runs}
         inside = {i for first, stop in runs for i in range(first, stop)}
+        # The worker making each tensor, by its first operator.
+        self.maker = {
+            network.ops[i].dst.name: network.ops[first].name
+            for first, stop in runs
+            for i in range(first, stop)
+        }
         # An attention worker holds every value, so it also makes the
         # positional conv over them and adds it in, as PSA does next.
         self.tails: dict[str, tuple[Conv, Add]] = {}
@@ -363,6 +369,7 @@ class SegmentDesign:
             if {i + 1, i + 2} & inside:
                 raise ValueError(f"{pe.name}: the attention worker makes it")
             self.tails[op.name] = (pe, add)
+            self.maker[add.dst.name] = op.name
             inside |= {i + 1, i + 2}
         drained = {t.name for t in outputs}
         for op in ops:
@@ -432,8 +439,8 @@ class SegmentDesign:
         """Issue one image's drains and every fill that reads no staged rows; await nothing.
 
         `handles` and `locate` are as `transfer`'s. The fills join the
-        output drains' group, freed once those drains are awaited: by then
-        the network has read every filled row.
+        output drains' group and are awaited with it, before their buffer
+        descriptors are freed for later images' transfers.
         """
         filled = dict(zip(self.in_fifos, handles))
         drains = TaskGroup()
@@ -466,7 +473,9 @@ class SegmentDesign:
         for fill in sorted(self.fills, key=attrgetter("step")):
             if fill.tensor.name not in staged:
                 buffer, total, offset = locate(fill.tensor)
-                filled[fill.fifo].fill(buffer, fill.tap(total, offset), group=drains)
+                filled[fill.fifo].fill(
+                    buffer, fill.tap(total, offset), wait=True, group=drains
+                )
         return Pending(filled, staging, drains)
 
     def transfer_tail(
@@ -491,7 +500,7 @@ class SegmentDesign:
             if fill.tensor.name in staged:
                 buffer, total, offset = locate(fill.tensor)
                 pending.filled[fill.fifo].fill(
-                    buffer, fill.tap(total, offset), group=pending.drains
+                    buffer, fill.tap(total, offset), wait=True, group=pending.drains
                 )
         return pending.drains
 
@@ -1130,11 +1139,50 @@ class SegmentDesign:
                 depths[name] = max(depths.get(name, 0), depth)
 
         # A worker's several held inputs come from one memtile, taking turns
-        # on one channel (its weights take the other).
+        # on one channel (its weights take the other). Those read in place in
+        # one stretch from several workers come joined instead, a row of each
+        # in one object: turns are only sure where one core makes them all,
+        # and a join's sources cannot take turns at that core.
         hub = AnyMemTile.copy() if len(external) > 1 else None
+        together: dict[int, list[str]] = {}
+        for name in external:
+            if (
+                hub is not None
+                and name in direct
+                and name not in per_row
+                and self.l1_rows(tensors[name], depths[name], 1) != depths[name]
+            ):
+                stretch = next(
+                    i
+                    for i, st in enumerate(stretches)
+                    if delay[st[0][0].dst.name] == delay[name]
+                    and {op.name for op, *_ in readers[name]}
+                    <= {op.name for op, _ in st}
+                )
+                together.setdefault(stretch, []).append(name)
+        joined: dict[str, tuple[int, int]] = {}
+        for names in together.values():
+            if len({self.maker.get(n, n) for n in names}) < 2:
+                continue
+            sizes = [stream_bytes_of(tensors[n]) for n in names]
+            offsets = list(itertools.accumulate([0] + sizes[:-1]))
+            # The rows wait in their own holds: a join's pool has a part per
+            # input, which no descriptor walks whole, so it stays shallow.
+            stages = [self.held(tensors[n], depths[n] - 1) for n in names]
+            self.read_stages.update(stages)
+            fifo = ObjectFifo(row(sum(sizes)), depth=2, name=f"join{self.holds}")
+            self.holds += 1
+            ObjectFifoLink(
+                [stage.cons(depth=2) for stage in stages], fifo.prod(), hub, offsets
+            )
+            arg(("join", names[0]), fifo.cons(depth=1))
+            for n, offset, size in zip(names, offsets, sizes):
+                at[("in", n)] = at[("join", names[0])]
+                joined[n] = (offset, size)
         for name in external:
             source = tensors[name]
-            arg(("in", name), self.consumer(source, depths[name], 1, hub))
+            if name not in joined:
+                arg(("in", name), self.consumer(source, depths[name], 1, hub))
             if name not in direct:
                 lo, _ = span[name]
                 arg(
@@ -1876,8 +1924,16 @@ class SegmentDesign:
                     ]
                     # Every tensor's height is its rate times the shortest's.
                     with if_((s >= d) & (s < d + shortest)) as branch:
+                        got = {}
                         for name in reads:
-                            arrived[name] = values[at[("in", name)]].acquire(1)
+                            i = at[("in", name)]
+                            if i not in got:
+                                got[i] = values[i].acquire(1)
+                            arrived[name] = (
+                                view(got[i], *joined[name])
+                                if name in joined
+                                else got[i]
+                            )
                         for op, inputs in stretch:
                             name = op.dst.name
                             m = rate[name]
@@ -1909,8 +1965,9 @@ class SegmentDesign:
                                     values[at[copy]](o, private.acquire(1))
                                     private.release(1)
                                 handle.release(1)
+                        for i in got:
+                            values[i].release(1)
                         for name in reads:
-                            values[at[("in", name)]].release(1)
                             del arrived[name]
                     drained = sum(
                         rate[op.dst.name] * len(pieces[op.name]) // packs[op.name]

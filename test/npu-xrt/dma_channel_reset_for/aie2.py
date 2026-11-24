@@ -28,14 +28,12 @@ to the next with no PDI reload. `inputs` and `outputs` stream per dispatch as
 usual; only `weights` is resident.
 """
 
-import sys
-
 import numpy as np
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 
 N = 256
 TILE = 16
@@ -71,7 +69,7 @@ def build_design():
 
             @core(compute)
             def core_body():
-                for _ in range_(sys.maxsize):
+                for _ in forever_():
                     weight = weights.acquire(ObjectFifoPort.Consume, 1)
                     for tile_index in range_(N_TILES):
                         input_tile = inputs.acquire(ObjectFifoPort.Consume, 1)

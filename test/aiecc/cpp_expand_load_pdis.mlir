@@ -74,9 +74,11 @@ module {
             %c1 = arith.constant 1 : index
             %c16 = arith.constant 16 : index
             %c1_i32 = arith.constant 1 : i32
-            %c_intmax = arith.constant 0xFFFFFE : index
 
-            scf.for %niter = %c0 to %c_intmax step %c1 {
+            scf.while : () -> () {
+                %true = arith.constant true
+                scf.condition(%true)
+            } do {
                 %elem_in = aie.objectfifo.acquire @of_in (Consume, 1) : memref<16xi32>
                 %elem_out = aie.objectfifo.acquire @of_out(Produce, 1) : memref<16xi32>
                 scf.for %i = %c0 to %c16 step %c1 {
@@ -86,6 +88,7 @@ module {
                 }
                 aie.objectfifo.release @of_in (Consume, 1)
                 aie.objectfifo.release @of_out(Produce, 1)
+                scf.yield
             }
             aie.end
         }

@@ -1,14 +1,14 @@
 # Global fallback
-**                             @andrej @fifield @hunhoffe @jgmelber
+**                             @andrej @fifield @jgmelber
 
 # Repo infrastructure
-.github                        @andrej @erwei-xilinx @fifield @hunhoffe @jgmelber @stephenneuendorffer
-tools/**                       @andrej @erwei-xilinx @hunhoffe @jgmelber
-utils/**                       @andrej @erwei-xilinx @hunhoffe @jgmelber
+.github                        @andrej @erwei-xilinx @fifield @jgmelber @stephenneuendorffer
+tools/**                       @andrej @erwei-xilinx @jgmelber
+utils/**                       @andrej @erwei-xilinx @jgmelber
 
 # Compiler: dialects, conversions, targets
-**/AIE/**                      @abisca @erwei-xilinx @fifield @hunhoffe @stephenneuendorffer
-**/AIEX/**                     @abisca @fifield @hunhoffe @jgmelber
+**/AIE/**                      @abisca @erwei-xilinx @fifield @stephenneuendorffer
+**/AIEX/**                     @abisca @fifield @jgmelber
 **/AIEVec/**                   @erwei-xilinx @jsetoain
 **/XLLVM/                      @jsetoain
 **/Conversion/                 @erwei-xilinx @jsetoain
@@ -19,29 +19,29 @@ lib/Conversion/AIEVecToLLVM/   @jsetoain
 lib/CAPI/                      @fifield
 
 # Runtime libraries
-aie_runtime_lib/**             @andrej @hunhoffe @jgmelber @stephenneuendorffer
-runtime_lib/**                 @andrej @hunhoffe @jgmelber @stephenneuendorffer
+aie_runtime_lib/**             @andrej @jgmelber @stephenneuendorffer
+runtime_lib/**                 @andrej @jgmelber @stephenneuendorffer
 
 # Python frontend / bindings
-python/**                      @abisca @andrej @hunhoffe @jgmelber
-python/utils/hostruntime/hsaruntime/** @ypapadop-amd
-python/compiler/hsaco/**       @ypapadop-amd
-python/compiler/aie-hsaco*.py  @ypapadop-amd
+python/**                      @abisca @andrej @jgmelber
+python/utils/hostruntime/hsaruntime/**
+python/compiler/hsaco/**
+python/compiler/aie-hsaco*.py
 
 # Kernels
-aie_kernels/**                 @andrej @hunhoffe @jackl-xilinx @jgmelber
+aie_kernels/**                 @andrej @jackl-xilinx @jgmelber
 
 # Platforms
 platforms/**                   @eddierichter-amd @jackl-xilinx @jgmelber
 
 # Docs, guides, examples
-docs/**                        @hunhoffe @jgmelber @stephenneuendorffer
-programming_guide/**           @abisca @andrej @denolf @hunhoffe @jackl-xilinx @jgmelber
-programming_examples/**        @andrej @denolf @fifield @hunhoffe @jackl-xilinx @jgmelber
+docs/**                        @jgmelber @stephenneuendorffer
+programming_guide/**           @abisca @andrej @denolf @jackl-xilinx @jgmelber
+programming_examples/**        @andrej @denolf @fifield @jackl-xilinx @jgmelber
 
 # Tests
-test/**                        @fifield @hunhoffe @jackl-xilinx @jgmelber @stephenneuendorffer
+test/**                        @fifield @jackl-xilinx @jgmelber @stephenneuendorffer
 test/**/AIEVec*/**             @jsetoain
 test/unit_tests/aievec_tests/  @jsetoain
-test/python/test_hsa_*.py      @ypapadop-amd
-test/python/test_hsaco_*.py    @ypapadop-amd
+test/python/test_hsa_*.py
+test/python/test_hsaco_*.py

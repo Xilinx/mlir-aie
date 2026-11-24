@@ -13,10 +13,15 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Matchers.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringMap.h"
 
+#include <bitset>
 #include <map>
 #include <set>
 #include <type_traits>
@@ -47,6 +52,39 @@ static constexpr uint32_t cert_page_limit = 8192;
 static constexpr uint32_t cert_job_start_cost = 8;
 static constexpr uint32_t cert_job_end_cost = 4;
 
+// True if `seq` holds its device's generated configuration, i.e. carries the
+// aie.generated_configure tag, either from convert-aie-to-transaction or from
+// tagConfigureByName.
+static bool isGeneratedConfigure(AIE::RuntimeSequenceOp seq) {
+  return AIE::AIEDialect::GeneratedConfigureAttrHelper(seq.getContext())
+      .isAttrPresent(seq);
+}
+
+// Hand-written IR may have no tag: there the sequence named `configure` is the
+// configuration. Tag it, unless a sequence of the device is already tagged (the
+// generated one was then named `configure0`, and `configure` is the user's).
+// Runs on every device before any sequence is converted, so the choice does
+// not depend on conversion order.
+static void tagConfigureByName(AIE::DeviceOp device) {
+  auto seqs = device.getBody()->getOps<AIE::RuntimeSequenceOp>();
+  if (llvm::any_of(seqs, isGeneratedConfigure))
+    return;
+  for (auto seq : seqs)
+    if (seq.getSymName() == "configure") {
+      AIE::AIEDialect::GeneratedConfigureAttrHelper(device.getContext())
+          .setAttr(seq, UnitAttr::get(device.getContext()));
+      return;
+    }
+}
+
+// The generated configuration sequence of `device`, or null if it has none.
+static AIE::RuntimeSequenceOp findGeneratedConfigure(AIE::DeviceOp device) {
+  for (auto seq : device.getBody()->getOps<AIE::RuntimeSequenceOp>())
+    if (isGeneratedConfigure(seq))
+      return seq;
+  return nullptr;
+}
+
 // Returns the PDI id to use for a cert.load_pdi that references `deviceSymName`
 // within `parentDevice`. If a load_pdi for that symbol already exists, its id
 // is reused so repeated loads of the same PDI share an id; otherwise a fresh id
@@ -76,9 +114,9 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
   matchAndRewrite(AIE::RuntimeSequenceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto symName = op.getSymName();
+    bool isConfigure = isGeneratedConfigure(op);
     uint32_t newJobId = 1;
-    if (symName != "configure") {
+    if (!isConfigure) {
       uint32_t maxJobId = 1;
       op->getParentOp()->walk([&](AIEX::CertJobOp certJobOp) {
         maxJobId = std::max(maxJobId, certJobOp.getJobId());
@@ -94,7 +132,7 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
 
     // Tag the implicit configuration job so a later step can force it to be the
     // first page on uC0 and keep it out of user implicit pages.
-    if (symName == "configure")
+    if (isConfigure)
       jobOp->setAttr("cert.configure", rewriter.getUnitAttr());
 
     // Clone runtime sequence body into job
@@ -110,6 +148,21 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
     return success();
   }
 };
+
+// Tile coordinates replace the upper bits of a tile-relative address. Warn
+// when the given address has upper bits of its own that disagree.
+static void warnOnMismatchedTileBits(Operation *op, uint32_t address,
+                                     uint32_t col, uint32_t row) {
+  const auto &tm = AIE::getTargetModel(op);
+  uint32_t expectedUpperBits = ((col & 0xff) << tm.getColumnShift()) |
+                               ((row & 0xff) << tm.getRowShift());
+  uint32_t upperBits = address & ~0xfffff;
+  if (upperBits != 0 && upperBits != expectedUpperBits)
+    op->emitWarning() << "address upper bits (0x" << llvm::utohexstr(upperBits)
+                      << ") don't match row=" << row << " col=" << col
+                      << " computed bits (0x"
+                      << llvm::utohexstr(expectedUpperBits) << ")";
+}
 
 struct NpuWrite32ToCertWrite32 : OpConversionPattern<AIEX::NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
@@ -132,25 +185,12 @@ struct NpuWrite32ToCertWrite32 : OpConversionPattern<AIEX::NpuWrite32Op> {
 
     uint32_t absoluteAddr = *absAddress;
 
-    // If row and col are specified, validate that the address upper bits match
+    // An address that became constant only after resolveRelativeAddresses,
+    // by folding or run inlining, still carries its tile coordinates.
     std::optional<uint32_t> col = op.getColumn();
     std::optional<uint32_t> row = op.getRow();
-    if (col && row) {
-      const auto &tm = AIE::getTargetModel(op);
-      uint32_t expectedUpperBits = ((*col & 0xff) << tm.getColumnShift()) |
-                                   ((*row & 0xff) << tm.getRowShift());
-
-      // Warn if the original address had non-zero upper bits that don't match
-      uint32_t origAddress = *address;
-      uint32_t origUpperBits = origAddress & ~0xfffff;
-      if (origUpperBits != 0 && origUpperBits != expectedUpperBits) {
-        op.emitWarning() << "address upper bits (0x"
-                         << llvm::utohexstr(origUpperBits)
-                         << ") don't match row=" << *row << " col=" << *col
-                         << " computed bits (0x"
-                         << llvm::utohexstr(expectedUpperBits) << ")";
-      }
-    }
+    if (col && row)
+      warnOnMismatchedTileBits(op, *address, *col, *row);
 
     rewriter.replaceOpWithNewOp<AIEX::CertWrite32Op>(op, absoluteAddr, *value);
     return success();
@@ -181,25 +221,10 @@ struct NpuMaskWrite32ToCertMaskWrite32
 
     uint32_t absoluteAddr = *absAddress;
 
-    // If row and col are specified, validate that the address upper bits match
     std::optional<uint32_t> col = op.getColumn();
     std::optional<uint32_t> row = op.getRow();
-    if (col && row) {
-      const auto &tm = AIE::getTargetModel(op);
-      uint32_t expectedUpperBits = ((*col & 0xff) << tm.getColumnShift()) |
-                                   ((*row & 0xff) << tm.getRowShift());
-
-      // Warn if the original address had non-zero upper bits that don't match
-      uint32_t origAddress = *address;
-      uint32_t origUpperBits = origAddress & ~0xfffff;
-      if (origUpperBits != 0 && origUpperBits != expectedUpperBits) {
-        op.emitWarning() << "address upper bits (0x"
-                         << llvm::utohexstr(origUpperBits)
-                         << ") don't match row=" << *row << " col=" << *col
-                         << " computed bits (0x"
-                         << llvm::utohexstr(expectedUpperBits) << ")";
-      }
-    }
+    if (col && row)
+      warnOnMismatchedTileBits(op, *address, *col, *row);
 
     rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(op, absoluteAddr,
                                                          *mask, *value);
@@ -232,7 +257,13 @@ struct NpuMaskPollToCertMaskPoll32 : OpConversionPattern<AIEX::NpuMaskPollOp> {
 };
 
 struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
-  using OpConversionPattern::OpConversionPattern;
+  // nextChainId is owned by the caller and shared by every rewrite in one
+  // conversion, so each name search resumes after the last name allocated.
+  // symbolTable is the device's; each new chain is added to it.
+  NpuBlockWriteToCertUcDma(MLIRContext *ctx, unsigned &nextChainId,
+                           SymbolTable &symbolTable)
+      : OpConversionPattern(ctx), nextChainId(nextChainId),
+        symbolTable(symbolTable) {}
 
   LogicalResult
   matchAndRewrite(AIEX::NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -244,11 +275,16 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
       return failure();
     MemRefType dataType = cast<MemRefType>(dataOperand.getResult().getType());
     uint32_t dataSize = dataType.getNumElements();
+    // An empty copy is a no-op, and AIEBU rejects a descriptor whose payload
+    // label has no data.
+    if (dataSize == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
 
-    int id = 0;
-    std::string symbolName = "chain_" + std::to_string(id);
-    while (op->getParentOfType<AIE::DeviceOp>().lookupSymbol(symbolName))
-      symbolName = "chain_" + std::to_string(++id);
+    std::string symbolName = "chain_" + std::to_string(nextChainId++);
+    while (symbolTable.lookup(symbolName))
+      symbolName = "chain_" + std::to_string(nextChainId++);
 
     // Create a new uc_dma_write_des_sync operation
     rewriter.replaceOpWithNewOp<AIEX::CertUcDmaWriteDesSyncOp>(op, symbolName);
@@ -263,15 +299,19 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
 
     // Insert after the last existing uc_dma_chain (before any pages/jobs),
     // preserving the order of blockwrite ops. Globals are allowed to precede
-    // the chains, so skip over them too.
+    // the chains, so skip over them too. The previous chain ends that leading
+    // run, so resume the scan there instead of at the start of the body.
     Block *deviceBody = parentDevice.getBody();
     Operation *insertAfter = nullptr;
-    for (Operation &bodyOp : *deviceBody) {
-      if (isa<AIEX::CertUcDmaChainOp>(bodyOp) || isa<memref::GlobalOp>(bodyOp))
-        insertAfter = &bodyOp;
-      else
-        break;
+    Block::iterator it = deviceBody->begin();
+    if (lastChain && lastChain->getBlock() == deviceBody) {
+      insertAfter = lastChain;
+      it = std::next(Block::iterator(lastChain));
     }
+    for (; it != deviceBody->end() &&
+           isa<AIEX::CertUcDmaChainOp, memref::GlobalOp>(*it);
+         ++it)
+      insertAfter = &*it;
     if (insertAfter)
       rewriter.setInsertionPointAfter(insertAfter);
     else
@@ -280,6 +320,8 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     auto symbolAttr = rewriter.getStringAttr(symbolName);
     auto chainOp =
         AIEX::CertUcDmaChainOp::create(rewriter, op.getLoc(), symbolAttr);
+    symbolTable.insert(chainOp);
+    lastChain = chainOp;
 
     Block *bb = new Block();
     chainOp.getRegion().push_back(bb);
@@ -291,6 +333,10 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
                                              op->getLoc());
     return success();
   }
+
+  unsigned &nextChainId;
+  SymbolTable &symbolTable;
+  mutable Operation *lastChain = nullptr;
 };
 
 struct NpuSyncToCertWaitTCTS : OpConversionPattern<AIEX::NpuSyncOp> {
@@ -438,8 +484,27 @@ struct RunOpInlining : OpRewritePattern<AIEX::RunOp> {
 struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
   using OpRewritePattern::OpRewritePattern;
 
+  // Clone the configure body at the rewriter's insertion point. The body is
+  // an optional region, so `aiex.configure @device {}` has no block to clone.
+  static void cloneConfigureBody(AIEX::ConfigureOp op,
+                                 PatternRewriter &rewriter) {
+    if (op.getRegion().empty())
+      return;
+    IRMapping bodyMapper;
+    for (Operation &o : op.getRegion().front().getOperations()) {
+      if (isa<AIE::EndOp>(o))
+        continue;
+      rewriter.clone(o, bodyMapper);
+    }
+  }
+
   LogicalResult matchAndRewrite(AIEX::ConfigureOp op,
                                 PatternRewriter &rewriter) const override {
+    // A run resolves its callee through the enclosing configure, so the
+    // configure is lowered only once RunOpInlining has expanded its runs.
+    if (!op.getRegion().getOps<AIEX::RunOp>().empty())
+      return failure();
+
     // Get the referenced device
     AIE::DeviceOp referencedDevice = op.getReferencedDeviceOp();
     if (!referencedDevice)
@@ -467,12 +532,7 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
           FlatSymbolRefAttr::get(rewriter.getContext(), deviceSymName));
 
       // Clone configure body operations after the load_pdi
-      IRMapping bodyMapper;
-      for (Operation &o : op.getRegion().front().getOperations()) {
-        if (isa<AIE::EndOp>(o))
-          continue;
-        rewriter.clone(o, bodyMapper);
-      }
+      cloneConfigureBody(op, rewriter);
 
       rewriter.eraseOp(op);
       return success();
@@ -509,25 +569,24 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
 
     // Find the "configure" sequence content from the referenced device
     // It could be either:
-    // 1. Still a RuntimeSequenceOp named "configure" (if that device hasn't
+    // 1. Still the generated configuration sequence (if that device hasn't
     // been processed yet)
     // 2. Already converted to cert.page/cert.job (if that device was processed
     // first)
 
-    AIE::RuntimeSequenceOp configureSeq = nullptr;
-    referencedDevice.walk([&](AIE::RuntimeSequenceOp seq) {
-      if (seq.getSymName() == "configure") {
-        configureSeq = seq;
-      }
-    });
+    AIE::RuntimeSequenceOp configureSeq =
+        findGeneratedConfigure(referencedDevice);
 
     if (configureSeq) {
-      // Clone operations from the "configure" runtime_sequence
+      // Clone operations from the "configure" runtime_sequence. An empty
+      // sequence (`{}`) has no block, and leaves the section job empty.
       IRMapping mapper;
-      for (Operation &o : configureSeq.getRegion().front().getOperations()) {
-        if (isa<AIE::EndOp>(o))
-          continue;
-        rewriter.clone(o, mapper);
+      if (!configureSeq.getRegion().empty()) {
+        for (Operation &o : configureSeq.getRegion().front().getOperations()) {
+          if (isa<AIE::EndOp>(o))
+            continue;
+          rewriter.clone(o, mapper);
+        }
       }
     } else {
       // "configure" was already converted - find the first cert.page
@@ -574,18 +633,141 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
     // Clone configure body operations after the load_pdi
     // Operations that reference external values were not cloned into the
     // section, so we clone them here into the main control flow
-    IRMapping bodyMapper;
-    for (Operation &o : op.getRegion().front().getOperations()) {
-      if (isa<AIE::EndOp>(o))
-        continue;
-      rewriter.clone(o, bodyMapper);
-    }
+    cloneConfigureBody(op, rewriter);
 
     // Erase the original configure op
     rewriter.eraseOp(op);
     return success();
   }
 };
+
+// The blockwrite that loads the BD an address_patch patches: the nearest
+// preceding blockwrite, when it targets the patched BD.
+static AIEX::NpuBlockWriteOp
+findPatchedBlockWrite(AIEX::NpuAddressPatchOp patch) {
+  const auto &tm = AIE::getTargetModel(patch);
+  uint32_t addr = patch.getAddr();
+  int col = (addr >> tm.getColumnShift()) & 0x1f;
+  int row = (addr >> tm.getRowShift()) & 0x1f;
+  if (!tm.isValidTile({col, row}))
+    return {};
+  for (Block::iterator it(patch); it != patch->getBlock()->begin();) {
+    auto blockWrite = dyn_cast<AIEX::NpuBlockWriteOp>(*--it);
+    if (!blockWrite)
+      continue;
+    if (blockWrite.getAddress() + tm.getDmaBdAddressOffset(col, row) != addr)
+      return {};
+    return blockWrite;
+  }
+  return {};
+}
+
+// apply_offset_57 names an argument by its first 32-bit register, 2 * arg_idx,
+// in a 16-bit field, and reserves the index 0xFFFF for the control code's own
+// address. So the largest usable arg_idx is the one whose double still fits.
+static constexpr uint32_t kMaxApplyOffsetArgIdx = 0x7FFF;
+
+// An address_patch writes buffer address + arg_plus into a BD register, but
+// cert.apply_offset_57 adds the buffer address to the BD template in memory.
+// So before conversion the patched template word must hold arg_plus, and the
+// template must belong to its blockwrite alone: dma-to-npu shares identical
+// templates between BDs, and a shared one would accumulate every BD's address.
+static LogicalResult prepareAddressPatchTemplates(AIE::DeviceOp device) {
+  LogicalResult result = success();
+  SymbolTable symbols(device);
+  // Count each global's symbol uses once, then keep the counts current as
+  // getters are added and erased. Asking SymbolTable per patch walks the whole
+  // device each time, which is quadratic in the number of patched BDs. With no
+  // counts (an op with unknown symbol uses), every patched template is copied.
+  std::optional<llvm::DenseMap<StringAttr, unsigned>> symbolUseCounts;
+  if (auto uses = SymbolTable::getSymbolUses(&device.getRegion())) {
+    symbolUseCounts.emplace();
+    for (const SymbolTable::SymbolUse &use : *uses)
+      ++(*symbolUseCounts)[use.getSymbolRef().getRootReference()];
+  }
+  SmallVector<AIEX::NpuAddressPatchOp> patches;
+  device.walk([&](AIEX::NpuAddressPatchOp patch) { patches.push_back(patch); });
+  for (AIEX::NpuAddressPatchOp patch : patches) {
+    std::optional<uint32_t> argIdx = patch.getArgIdx();
+    if (argIdx && *argIdx > kMaxApplyOffsetArgIdx) {
+      patch.emitError("arg_idx ")
+          << *argIdx << " does not fit apply_offset_57's 16-bit argument "
+          << "offset; the largest is " << kMaxApplyOffsetArgIdx;
+      result = failure();
+      continue;
+    }
+    AIEX::NpuBlockWriteOp blockWrite = findPatchedBlockWrite(patch);
+    if (!blockWrite)
+      continue;
+    auto getGlobal = dyn_cast_or_null<memref::GetGlobalOp>(
+        blockWrite.getData().getDefiningOp());
+    if (!getGlobal)
+      continue;
+    auto global = symbols.lookup<memref::GlobalOp>(getGlobal.getName());
+    if (!global)
+      continue;
+    std::optional<Attribute> initialValue = global.getInitialValue();
+    auto words = initialValue ? dyn_cast<DenseIntElementsAttr>(*initialValue)
+                              : DenseIntElementsAttr();
+    if (!words)
+      continue;
+
+    if (!patch.getArgIdx()) {
+      patch.emitError("cert lowering requires an address_patch with arg_idx");
+      result = failure();
+      continue;
+    }
+    APInt argPlus;
+    if (!matchPattern(patch.getArgPlus(), m_ConstantInt(&argPlus))) {
+      patch.emitError("cert lowering requires a constant arg_plus: "
+                      "apply_offset_57 cannot add a runtime offset");
+      result = failure();
+      continue;
+    }
+    // An i32 arg_plus is unsigned, so any value fits; a negative i64 has 64
+    // active bits and is rejected.
+    if (argPlus.getActiveBits() > 32) {
+      patch.emitError("arg_plus ")
+          << argPlus.getSExtValue()
+          << " does not fit the BD's 32-bit address word";
+      result = failure();
+      continue;
+    }
+    unsigned word = (patch.getAddr() - blockWrite.getAddress()) / 4;
+    if (word >= words.getNumElements())
+      continue;
+
+    // Give this blockwrite a private template if anything else uses it,
+    // whether through another getter or through this one (after CSE).
+    if (!symbolUseCounts ||
+        symbolUseCounts->lookup(global.getSymNameAttr()) != 1 ||
+        !getGlobal->hasOneUse()) {
+      OpBuilder builder(global);
+      auto copy = cast<memref::GlobalOp>(builder.clone(*global));
+      // insert renames the copy, so count it under its new name.
+      StringAttr copyName = symbols.insert(copy);
+      OpBuilder atBlockWrite(blockWrite);
+      auto privateGet =
+          memref::GetGlobalOp::create(atBlockWrite, getGlobal.getLoc(),
+                                      getGlobal.getType(), copy.getSymName());
+      blockWrite.getDataMutable().assign(privateGet);
+      if (symbolUseCounts)
+        (*symbolUseCounts)[copyName] = 1;
+      if (getGlobal->use_empty()) {
+        if (symbolUseCounts)
+          --(*symbolUseCounts)[global.getSymNameAttr()];
+        getGlobal->erase();
+      }
+      global = copy;
+    }
+
+    auto values = llvm::to_vector(words.getValues<APInt>());
+    values[word] = argPlus.zextOrTrunc(values[word].getBitWidth());
+    global.setInitialValueAttr(
+        DenseIntElementsAttr::get(words.getType(), values));
+  }
+  return result;
+}
 
 struct NpuAddressPatchToCertApplyOffset57
     : OpConversionPattern<AIEX::NpuAddressPatchOp> {
@@ -594,48 +776,31 @@ struct NpuAddressPatchToCertApplyOffset57
   LogicalResult
   matchAndRewrite(AIEX::NpuAddressPatchOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // find the previous blockwrite operation
-    Block::iterator it(op);
-    while (it != op->getBlock()->begin()) {
-      --it;
-      auto blockWriteOp = dyn_cast<AIEX::NpuBlockWriteOp>(*it);
-      if (!blockWriteOp)
-        continue;
-
-      const auto &tm = AIE::getTargetModel(op);
-      uint32_t addr = op.getAddr();
-      int col = (addr >> tm.getColumnShift()) & 0x1f;
-      int row = (addr >> tm.getRowShift()) & 0x1f;
-      if (!tm.isValidTile({col, row}))
-        return failure();
-
-      // if it's not a matching blockwrite, give up.
-      if (blockWriteOp.getAddress() + tm.getDmaBdAddressOffset(col, row) !=
-          addr)
-        break;
-
-      Value data = blockWriteOp.getData();
-      auto getGlobalOp = dyn_cast<memref::GetGlobalOp>(data.getDefiningOp());
-      if (!getGlobalOp)
-        break;
-
-      // replace the address with the new address
-      std::optional<uint32_t> argIdx = op.getArgIdx();
-      if (!argIdx)
-        break;
-      rewriter.setInsertionPoint(blockWriteOp);
-      rewriter.replaceOpWithNewOp<AIEX::CertApplyOffset57Op>(
-          op, getGlobalOp.getName(), 1, *argIdx);
-      return success();
-    }
-
-    return failure();
+    AIEX::NpuBlockWriteOp blockWriteOp = findPatchedBlockWrite(op);
+    std::optional<uint32_t> argIdx = op.getArgIdx();
+    if (!blockWriteOp || !argIdx)
+      return failure();
+    auto getGlobalOp =
+        dyn_cast<memref::GetGlobalOp>(blockWriteOp.getData().getDefiningOp());
+    if (!getGlobalOp)
+      return failure();
+    rewriter.setInsertionPoint(blockWriteOp);
+    rewriter.replaceOpWithNewOp<AIEX::CertApplyOffset57Op>(
+        op, getGlobalOp.getName(), 1, *argIdx);
+    return success();
   }
 };
 
 struct MergeConsecutiveCertUcDmaWriteDesSyncOps
     : OpRewritePattern<AIEX::CertUcDmaWriteDesSyncOp> {
-  using OpRewritePattern::OpRewritePattern;
+  // symbolTable is the device's. useCounts holds the symbol uses in the device,
+  // counted once up front: a merge erases the earlier chain and its one
+  // enqueue and moves no other chain reference.
+  MergeConsecutiveCertUcDmaWriteDesSyncOps(
+      MLIRContext *context, SymbolTable &symbolTable,
+      llvm::DenseMap<StringAttr, unsigned> &useCounts)
+      : OpRewritePattern(context), symbolTable(symbolTable),
+        useCounts(useCounts) {}
 
   LogicalResult matchAndRewrite(AIEX::CertUcDmaWriteDesSyncOp op,
                                 PatternRewriter &rewriter) const override {
@@ -666,11 +831,8 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
     // find the uc_dma_chain
     StringRef sym_name = op.getSymbol();
     StringRef prev_sym_name = prevWriteDesSync.getSymbol();
-    auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        op->getParentOfType<AIE::DeviceOp>().lookupSymbol(sym_name));
-    auto prevChain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        prevWriteDesSync->getParentOfType<AIE::DeviceOp>().lookupSymbol(
-            prev_sym_name));
+    auto chain = symbolTable.lookup<AIEX::CertUcDmaChainOp>(sym_name);
+    auto prevChain = symbolTable.lookup<AIEX::CertUcDmaChainOp>(prev_sym_name);
     if (!chain || !prevChain)
       return failure();
 
@@ -681,10 +843,8 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
     // other enqueues, and erasing a shared @prevChain would leave a dangling
     // symbol reference that neither the verifier nor the page cost model
     // notices. Decline the merge instead.
-    auto deviceOp = op->getParentOfType<AIE::DeviceOp>();
     auto isSingleUse = [&](AIEX::CertUcDmaChainOp c) {
-      auto uses = SymbolTable::getSymbolUses(c, deviceOp);
-      return uses && llvm::hasSingleElement(*uses);
+      return useCounts.lookup(c.getSymNameAttr()) == 1;
     };
     if (!isSingleUse(chain) || !isSingleUse(prevChain))
       return failure();
@@ -715,14 +875,23 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
           rewriter, bdOp.getLoc(), bdOp.getRemoteAddress(),
           bdOp.getLocalAddress(), bdOp.getLength(), true);
     }
+    useCounts.erase(prevChain.getSymNameAttr());
+    symbolTable.remove(prevChain);
     rewriter.eraseOp(prevChain);
     rewriter.eraseOp(prevWriteDesSync);
     return success();
   }
+
+  SymbolTable &symbolTable;
+  llvm::DenseMap<StringAttr, unsigned> &useCounts;
 };
 
 struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
-  using OpRewritePattern::OpRewritePattern;
+  // The pattern runs over the module, so it keeps a table per device and adds
+  // the globals it creates to it.
+  SplitNpuBlockWriteOpPattern(MLIRContext *context,
+                              SymbolTableCollection &symbolTables)
+      : OpRewritePattern(context), symbolTables(symbolTables) {}
 
   LogicalResult matchAndRewrite(AIEX::NpuBlockWriteOp op,
                                 PatternRewriter &rewriter) const override {
@@ -748,8 +917,9 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     // Find the original memref.global operation
     auto deviceOp = op->getParentOfType<AIE::DeviceOp>();
-    auto originalGlobal = dyn_cast_if_present<memref::GlobalOp>(
-        deviceOp.lookupSymbol(dataOperand.getName()));
+    SymbolTable &symbolTable = symbolTables.getSymbolTable(deviceOp);
+    auto originalGlobal =
+        symbolTable.lookup<memref::GlobalOp>(dataOperand.getName());
     if (!originalGlobal)
       return failure();
 
@@ -789,25 +959,27 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     // Ensure unique names
     int counter = 0;
-    while (deviceOp.lookupSymbol(firstName)) {
+    while (symbolTable.lookup(firstName)) {
       firstName =
           dataOperand.getName().str() + "_split_0_" + std::to_string(counter++);
     }
     counter = 0;
-    while (deviceOp.lookupSymbol(secondName)) {
+    while (symbolTable.lookup(secondName)) {
       secondName =
           dataOperand.getName().str() + "_split_1_" + std::to_string(counter++);
     }
 
     // Create the new global operations
     rewriter.setInsertionPoint(originalGlobal);
-    memref::GlobalOp::create(rewriter, loc, firstName,
-                             rewriter.getStringAttr("private"), firstChunkType,
-                             firstChunkAttr, true, nullptr);
+    auto firstGlobal = memref::GlobalOp::create(
+        rewriter, loc, firstName, rewriter.getStringAttr("private"),
+        firstChunkType, firstChunkAttr, true, nullptr);
+    symbolTable.insert(firstGlobal);
 
-    memref::GlobalOp::create(rewriter, loc, secondName,
-                             rewriter.getStringAttr("private"), secondChunkType,
-                             secondChunkAttr, true, nullptr);
+    auto secondGlobal = memref::GlobalOp::create(
+        rewriter, loc, secondName, rewriter.getStringAttr("private"),
+        secondChunkType, secondChunkAttr, true, nullptr);
+    symbolTable.insert(secondGlobal);
 
     // Create get_global operations for the new data
     rewriter.setInsertionPoint(op);
@@ -837,7 +1009,72 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     return success();
   }
+
+  SymbolTableCollection &symbolTables;
 };
+
+// Rewrite each tile- or buffer-relative write32, maskwrite32, maskpoll and
+// blockwrite to the absolute address it targets, so that splitting,
+// address_patch matching and lowering all use the raw address. This runs before
+// configure sequences are cloned into another device, where the buffer symbol
+// would no longer resolve.
+static LogicalResult resolveRelativeAddresses(AIE::DeviceOp device) {
+  AIE::NamedOpTable names(device);
+  LogicalResult result = success();
+  auto isRelative = [](auto op) {
+    return op.getBuffer() || (op.getColumn() && op.getRow());
+  };
+  auto dropRelative = [](auto op) {
+    op.removeBufferAttr();
+    op.removeColumnAttr();
+    op.removeRowAttr();
+  };
+  // These take the address as an operand. A runtime address is left to the
+  // lowering, which rejects it.
+  auto resolveOperand = [&](auto op, bool warnOnTileBits) {
+    if (!isRelative(op))
+      return;
+    std::optional<uint32_t> offset =
+        AIEX::getConstantIntOperand(op.getAddress());
+    if (!offset)
+      return;
+    std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
+    if (!address) {
+      result = failure();
+      return;
+    }
+    std::optional<uint32_t> col = op.getColumn();
+    std::optional<uint32_t> row = op.getRow();
+    if (warnOnTileBits && col && row)
+      warnOnMismatchedTileBits(op, *offset, *col, *row);
+    OpBuilder builder(op);
+    Value absolute = arith::ConstantOp::create(
+        builder, op.getLoc(),
+        builder.getI32IntegerAttr(static_cast<int32_t>(*address)));
+    op.getAddressMutable().set(absolute);
+    dropRelative(op);
+  };
+  device.walk([&](Operation *op) {
+    if (auto write = dyn_cast<AIEX::NpuWrite32Op>(op)) {
+      resolveOperand(write, /*warnOnTileBits=*/true);
+    } else if (auto write = dyn_cast<AIEX::NpuMaskWrite32Op>(op)) {
+      resolveOperand(write, /*warnOnTileBits=*/true);
+    } else if (auto poll = dyn_cast<AIEX::NpuMaskPollOp>(op)) {
+      resolveOperand(poll, /*warnOnTileBits=*/false);
+    } else if (auto write = dyn_cast<AIEX::NpuBlockWriteOp>(op)) {
+      if (!isRelative(write))
+        return;
+      std::optional<uint32_t> address = write.getAbsoluteAddress(&names);
+      if (!address) {
+        result = failure();
+        return;
+      }
+      write.setAddress(*address);
+      dropRelative(write);
+    }
+  });
+  return result;
+}
 
 struct AIENpuToCertPass
     : xilinx::AIEX::impl::AIENpuToCertBase<AIENpuToCertPass> {
@@ -854,6 +1091,15 @@ struct AIENpuToCertPass
       }
     }
 
+    bool resolved = true;
+    for (auto dev : devices)
+      resolved &= succeeded(resolveRelativeAddresses(dev));
+    if (!resolved)
+      return signalPassFailure();
+
+    for (auto dev : devices)
+      tagConfigureByName(dev);
+
     // Process main device first (named "main" or specified by --device-name)
     // so referenced devices' "configure" sequences can be found before they
     // get converted to cert.job
@@ -861,7 +1107,6 @@ struct AIENpuToCertPass
     for (auto dev : devices) {
       if (dev.getSymName() == deviceName) {
         mainDevice = dev;
-        processDevice(dev);
         break;
       }
     }
@@ -872,6 +1117,9 @@ struct AIENpuToCertPass
       signalPassFailure();
       return;
     }
+
+    migrateGlobalsIntoMainDevice(mainDevice, devices);
+    processDevice(mainDevice);
 
     // Then process other devices
     for (auto dev : devices) {
@@ -894,106 +1142,250 @@ struct AIENpuToCertPass
     }
   }
 
+  // Move globals into the surviving device and rename payload references before
+  // cloning configure bodies. Reserve device names for sections, including when
+  // renaming the main device's globals: processDevice skips names that resolve.
+  void migrateGlobalsIntoMainDevice(AIE::DeviceOp mainDevice,
+                                    ArrayRef<AIE::DeviceOp> devices) {
+    auto isDeviceName = [&](StringRef candidate) {
+      return llvm::any_of(devices, [&](AIE::DeviceOp device) {
+        return device.getSymName() == candidate;
+      });
+    };
+
+    // Names and payload uses are indexed once per device and kept current
+    // below; scanning the device per global is quadratic in the globals.
+    DeviceNames mainNames = collectNames(mainDevice);
+    std::optional<PayloadUses> mainUses;
+    for (auto global : llvm::to_vector(mainDevice.getOps<memref::GlobalOp>())) {
+      StringRef oldName = global.getSymName();
+      if (!isDeviceName(oldName))
+        continue;
+      std::string newName;
+      unsigned counter = 0;
+      do
+        newName = oldName.str() + "_" + std::to_string(counter++);
+      while (mainNames.contains(newName) || isDeviceName(newName));
+      if (!mainUses)
+        mainUses = collectPayloadUses(mainDevice);
+      renamePayloadUses(*mainUses, oldName, newName);
+      removeName(mainNames, oldName);
+      ++mainNames[newName];
+      global.setSymName(newName);
+    }
+
+    for (auto dev : devices) {
+      if (dev == mainDevice)
+        continue;
+      DeviceNames devNames = collectNames(dev);
+      PayloadUses devUses = collectPayloadUses(dev);
+      auto globals = llvm::to_vector(dev.getOps<memref::GlobalOp>());
+      for (auto global : globals) {
+        StringRef oldName = global.getSymName();
+        std::string newName = oldName.str();
+        unsigned counter = 0;
+        // Avoid a temporary collision with another source global: rewriting
+        // its uses later would otherwise redirect both payloads to one symbol.
+        auto taken = [&](StringRef candidate) {
+          return mainNames.contains(candidate) || isDeviceName(candidate) ||
+                 (candidate != oldName && devNames.contains(candidate));
+        };
+        while (taken(newName))
+          newName = oldName.str() + "_" + std::to_string(counter++);
+        if (newName != oldName) {
+          renamePayloadUses(devUses, oldName, newName);
+          global.setSymName(newName);
+        }
+        removeName(devNames, oldName);
+        ++mainNames[newName];
+        global->moveBefore(mainDevice.getBody(), mainDevice.getBody()->begin());
+      }
+    }
+  }
+
+  // The sym_names of a device's body ops, with their counts. The device
+  // verifier rejects duplicates among all of them, including SSA ops such as
+  // aie.buffer that the symbol table does not index.
+  using DeviceNames = llvm::StringMap<unsigned>;
+  static DeviceNames collectNames(AIE::DeviceOp dev) {
+    DeviceNames names;
+    for (Operation &op : dev.getBody()->getOperations())
+      if (auto symName =
+              op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
+        ++names[symName.getValue()];
+    return names;
+  }
+  static void removeName(DeviceNames &names, StringRef name) {
+    auto it = names.find(name);
+    if (it != names.end() && --it->second == 0)
+      names.erase(it);
+  }
+
+  // The ops that reference a payload global, by the name they reference. A
+  // generic symbol-use rewrite would also rename same-named device references,
+  // such as load_pdi's device_ref, which resolve against the module. Nested
+  // symbol tables resolve their own names, so their uses are left alone.
+  using PayloadUses = llvm::StringMap<SmallVector<Operation *>>;
+  static PayloadUses collectPayloadUses(AIE::DeviceOp dev) {
+    PayloadUses uses;
+    dev.walk<WalkOrder::PreOrder>([&](Operation *op) {
+      if (op != dev && op->hasTrait<OpTrait::SymbolTable>())
+        return WalkResult::skip();
+      if (auto get = dyn_cast<memref::GetGlobalOp>(op))
+        uses[get.getName()].push_back(op);
+      else if (auto bd = dyn_cast<AIEX::CertUcDmaBdOp>(op))
+        uses[bd.getRemoteAddress()].push_back(op);
+      else if (auto patch = dyn_cast<AIEX::CertApplyOffset57Op>(op))
+        uses[patch.getSymbol()].push_back(op);
+      return WalkResult::advance();
+    });
+    return uses;
+  }
+
+  // Point the indexed references to `oldName` at `newName`.
+  static void renamePayloadUses(PayloadUses &uses, StringRef oldName,
+                                StringRef newName) {
+    auto it = uses.find(oldName);
+    if (it == uses.end())
+      return;
+    SmallVector<Operation *> ops = std::move(it->second);
+    uses.erase(it);
+    for (Operation *op : ops) {
+      auto newRef = FlatSymbolRefAttr::get(op->getContext(), newName);
+      if (auto get = dyn_cast<memref::GetGlobalOp>(op))
+        get.setNameAttr(newRef);
+      else if (auto bd = dyn_cast<AIEX::CertUcDmaBdOp>(op))
+        bd.setRemoteAddressAttr(newRef);
+      else if (auto patch = dyn_cast<AIEX::CertApplyOffset57Op>(op))
+        patch.setSymbolAttr(newRef);
+    }
+    llvm::append_range(uses[newName], ops);
+  }
+
+  // Absorb each device that an npu.load_pdi in `currentDevice` names as a
+  // same-named cert.section built from the device's configuration.
+  LogicalResult absorbLoadedDevices(AIE::DeviceOp currentDevice,
+                                    ModuleOp moduleOp) {
+    // Collect npu.load_pdi operations, before they become cert.load_pdi. An
+    // absorbed configuration can load further devices, so its loads are
+    // collected too.
+    llvm::SmallVector<AIEX::NpuLoadPdiOp, 4> loads;
+    auto collectLoads = [&](Operation *root) {
+      root->walk([&](AIEX::NpuLoadPdiOp loadPdiOp) {
+        if (loadPdiOp.getDeviceRef())
+          loads.push_back(loadPdiOp);
+      });
+    };
+    collectLoads(currentDevice);
+
+    OpBuilder builder(&getContext());
+    // Worklist in collection order: absorbing a device appends its loads, so
+    // `loads` can grow (and reallocate) while it is being walked.
+    size_t next = 0;
+    while (next < loads.size()) {
+      AIEX::NpuLoadPdiOp load = loads[next++];
+      std::optional<StringRef> deviceRef = load.getDeviceRef();
+      if (!deviceRef)
+        continue;
+      StringRef refSymName = *deviceRef;
+      // Skip if section already exists
+      Operation *existing = AIE::lookupNamedOpIn(currentDevice, refSymName);
+      if (isa_and_present<AIEX::CertSectionOp>(existing))
+        continue;
+
+      // Find referenced device
+      AIE::DeviceOp refDevice = nullptr;
+      for (auto &op : moduleOp.getBody()->getOperations()) {
+        if (auto dev = dyn_cast<AIE::DeviceOp>(op)) {
+          if (dev.getSymName() == refSymName) {
+            refDevice = dev;
+            break;
+          }
+        }
+      }
+
+      if (!refDevice)
+        continue;
+
+      // Find the generated configuration sequence
+      AIE::RuntimeSequenceOp configureSeq = findGeneratedConfigure(refDevice);
+
+      if (!configureSeq)
+        continue;
+
+      // Any other symbol of that name would leave the load without its
+      // section.
+      if (existing) {
+        load.emitError("cannot absorb device @")
+            << refSymName << " as a cert.section: @" << refSymName
+            << " is already defined by '" << existing->getName() << "'";
+        return failure();
+      }
+
+      // Create cert.section in current device
+      builder.setInsertionPoint(currentDevice.getBody()->getTerminator());
+      auto sectionOp = AIEX::CertSectionOp::create(
+          builder, configureSeq.getLoc(), builder.getStringAttr(refSymName));
+
+      Block *sectionBlock = new Block();
+      sectionOp.getBody().push_back(sectionBlock);
+      builder.setInsertionPointToStart(sectionBlock);
+
+      // Create page
+      auto pageOp = AIEX::CertPageOp::create(builder, configureSeq.getLoc());
+      Block *pageBlock = new Block();
+      pageOp.getBody().push_back(pageBlock);
+      builder.setInsertionPointToStart(pageBlock);
+
+      // Get unique job ID
+      uint32_t maxJobId = 0;
+      currentDevice.walk([&](AIEX::CertJobOp certJobOp) {
+        maxJobId = std::max(maxJobId, certJobOp.getJobId());
+      });
+
+      // Create job
+      auto jobOp =
+          AIEX::CertJobOp::create(builder, configureSeq.getLoc(), maxJobId + 1);
+
+      // Clone configure sequence body into job
+      IRMapping mapper;
+      configureSeq.getRegion().cloneInto(&jobOp.getBody(), mapper);
+
+      // Ensure terminators
+      AIEX::CertJobOp::ensureTerminator(jobOp.getBody(), builder,
+                                        configureSeq.getLoc());
+      AIEX::CertPageOp::ensureTerminator(pageOp.getBody(), builder,
+                                         configureSeq.getLoc());
+      AIEX::CertSectionOp::ensureTerminator(sectionOp.getBody(), builder,
+                                            configureSeq.getLoc());
+      collectLoads(jobOp);
+    }
+    return success();
+  }
+
   void processDevice(AIE::DeviceOp currentDevice) {
     auto moduleOp = currentDevice->getParentOfType<ModuleOp>();
 
-    // Identify and convert referenced "configure" sequences early, before the
-    // RuntimeSequenceOp conversion runs on other devices.
-    if (moduleOp) {
+    // Inline RunOps and convert ConfigureOps to cert.section + cert.load_pdi.
+    // ConfigureOpToCertSection waits for the runs of a configure to be inlined.
+    RewritePatternSet p_expand(&getContext());
+    p_expand.insert<RunOpInlining, ConfigureOpToCertSection>(&getContext());
+    FrozenRewritePatternSet expandPatterns(std::move(p_expand));
 
-      // Collect npu.load_pdi operations (before they are converted below)
-      llvm::SmallVector<StringRef, 4> referencedDeviceSyms;
-      currentDevice.walk([&](AIEX::NpuLoadPdiOp loadPdiOp) {
-        if (loadPdiOp.getDeviceRef())
-          referencedDeviceSyms.push_back(*loadPdiOp.getDeviceRef());
-      });
+    // Absorbing a device can clone in run and configure ops, and expanding
+    // those can clone in further loads. Repeat until the expansion that follows
+    // an absorption changes nothing.
+    bool changed = true;
+    while (changed) {
+      // Identify and convert referenced "configure" sequences, before the
+      // RuntimeSequenceOp conversion runs on other devices.
+      if (moduleOp && failed(absorbLoadedDevices(currentDevice, moduleOp)))
+        return signalPassFailure();
 
-      if (!referencedDeviceSyms.empty()) {
-        OpBuilder builder(&getContext());
-
-        for (StringRef refSymName : referencedDeviceSyms) {
-          // Skip if section already exists
-          if (currentDevice.lookupSymbol(refSymName))
-            continue;
-
-          // Find referenced device
-          AIE::DeviceOp refDevice = nullptr;
-          for (auto &op : moduleOp.getBody()->getOperations()) {
-            if (auto dev = dyn_cast<AIE::DeviceOp>(op)) {
-              if (dev.getSymName() == refSymName) {
-                refDevice = dev;
-                break;
-              }
-            }
-          }
-
-          if (!refDevice)
-            continue;
-
-          // Find "configure" runtime sequence
-          AIE::RuntimeSequenceOp configureSeq = nullptr;
-          refDevice.walk([&](AIE::RuntimeSequenceOp seq) {
-            if (seq.getSymName() == "configure") {
-              configureSeq = seq;
-            }
-          });
-
-          if (!configureSeq)
-            continue;
-
-          // Create cert.section in current device
-          builder.setInsertionPoint(currentDevice.getBody()->getTerminator());
-          auto sectionOp =
-              AIEX::CertSectionOp::create(builder, configureSeq.getLoc(),
-                                          builder.getStringAttr(refSymName));
-
-          Block *sectionBlock = new Block();
-          sectionOp.getBody().push_back(sectionBlock);
-          builder.setInsertionPointToStart(sectionBlock);
-
-          // Create page
-          auto pageOp =
-              AIEX::CertPageOp::create(builder, configureSeq.getLoc());
-          Block *pageBlock = new Block();
-          pageOp.getBody().push_back(pageBlock);
-          builder.setInsertionPointToStart(pageBlock);
-
-          // Get unique job ID
-          uint32_t maxJobId = 0;
-          currentDevice.walk([&](AIEX::CertJobOp certJobOp) {
-            maxJobId = std::max(maxJobId, certJobOp.getJobId());
-          });
-
-          // Create job
-          auto jobOp = AIEX::CertJobOp::create(builder, configureSeq.getLoc(),
-                                               maxJobId + 1);
-
-          // Clone configure sequence body into job
-          IRMapping mapper;
-          configureSeq.getRegion().cloneInto(&jobOp.getBody(), mapper);
-
-          // Ensure terminators
-          AIEX::CertJobOp::ensureTerminator(jobOp.getBody(), builder,
-                                            configureSeq.getLoc());
-          AIEX::CertPageOp::ensureTerminator(pageOp.getBody(), builder,
-                                             configureSeq.getLoc());
-          AIEX::CertSectionOp::ensureTerminator(sectionOp.getBody(), builder,
-                                                configureSeq.getLoc());
-        }
-      }
+      if (failed(applyPatternsGreedily(currentDevice, expandPatterns,
+                                       GreedyRewriteConfig(), &changed)))
+        return signalPassFailure();
     }
-
-    // Inline RunOps first
-    RewritePatternSet p_run_inline(&getContext());
-    p_run_inline.insert<RunOpInlining>(&getContext());
-    if (failed(applyPatternsGreedily(currentDevice, std::move(p_run_inline))))
-      return signalPassFailure();
-
-    // Then convert ConfigureOps to cert.section + cert.load_pdi
-    RewritePatternSet p_configure(&getContext());
-    p_configure.insert<ConfigureOpToCertSection>(&getContext());
-    if (failed(applyPatternsGreedily(currentDevice, std::move(p_configure))))
-      return signalPassFailure();
 
     ConversionTarget target(getContext());
     target.addIllegalOp<AIE::RuntimeSequenceOp>();
@@ -1019,6 +1411,9 @@ struct AIENpuToCertPass
     if (failed(applyPartialConversion(currentDevice, target, std::move(p0))))
       return signalPassFailure();
 
+    if (failed(prepareAddressPatchTemplates(currentDevice)))
+      return signalPassFailure();
+
     target.addIllegalOp<AIEX::NpuAddressPatchOp>();
 
     // patch conversion must come before blockwrite conversion
@@ -1030,8 +1425,9 @@ struct AIENpuToCertPass
 
     // Split oversized NpuBlockWriteOps before lowering them to cert ops
     {
+      SymbolTableCollection symbolTables;
       RewritePatternSet p(&getContext());
-      p.insert<SplitNpuBlockWriteOpPattern>(&getContext());
+      p.insert<SplitNpuBlockWriteOpPattern>(&getContext(), symbolTables);
       if (failed(applyPatternsGreedily(getOperation(), std::move(p))))
         signalPassFailure();
     }
@@ -1044,8 +1440,11 @@ struct AIENpuToCertPass
     target.addIllegalOp<AIEX::NpuWrite32Op>();
     target.addIllegalOp<AIEX::NpuLoadPdiOp>();
 
+    unsigned nextChainId = 0;
+    SymbolTable symbolTable(currentDevice);
     RewritePatternSet p2(&getContext());
-    p2.insert<NpuBlockWriteToCertUcDma>(&getContext());
+    p2.insert<NpuBlockWriteToCertUcDma>(&getContext(), nextChainId,
+                                        symbolTable);
     p2.insert<NpuMaskWrite32ToCertMaskWrite32>(&getContext());
     p2.insert<NpuMaskPollToCertMaskPoll32>(&getContext());
     p2.insert<NpuWrite32ToCertWrite32>(&getContext());
@@ -1143,13 +1542,110 @@ struct AIENpuToCertPass
 
 } // namespace
 
+// The chain a uC DMA push names, synchronous or not.
+static StringRef pushedChain(Operation &o) {
+  if (auto push = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o))
+    return push.getSymbol();
+  if (auto push = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o))
+    return push.getSymbol();
+  return {};
+}
+
+// Registers r0..r7 are local to a job. Splitting a job, or moving some of its
+// ops into a new job, gives each part its own local registers, so a value
+// defined in one part is gone in the other. r8..r23 are shared by all jobs and
+// survive both.
+static bool isLocalRegister(uint32_t r) { return r < 8; }
+
+// The local registers `o` reads (uses) and writes (defs).
+static void collectLocalRegisterDefsUses(Operation &o,
+                                         SmallVectorImpl<uint32_t> &uses,
+                                         SmallVectorImpl<uint32_t> &defs) {
+  auto add = [](SmallVectorImpl<uint32_t> &regs, uint32_t r) {
+    if (isLocalRegister(r))
+      regs.push_back(r);
+  };
+  if (auto op = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o)) {
+    add(defs, op.getWaitHandle());
+  } else if (auto op = dyn_cast<AIEX::CertWaitUcDmaOp>(o)) {
+    add(uses, op.getWaitHandle());
+  } else if (auto op = dyn_cast<AIEX::CertRead32Op>(o)) {
+    add(defs, op.getValue());
+  } else if (auto op = dyn_cast<AIEX::CertRead32DOp>(o)) {
+    add(uses, op.getAddress());
+    add(defs, op.getValue());
+  } else if (auto op = dyn_cast<AIEX::CertWrite32DOp>(o)) {
+    if (op.getAddressIsReg())
+      add(uses, op.getAddress());
+    if (op.getValueIsReg())
+      add(uses, op.getValue());
+  }
+}
+
+// A job touching any local register is never split, which keeps every
+// definition and use of those registers in one job.
+static bool jobUsesLocalRegister(AIEX::CertJobOp job) {
+  SmallVector<uint32_t> uses, defs;
+  for (Operation &o : job.getBody().front())
+    collectLocalRegisterDefsUses(o, uses, defs);
+  return !uses.empty() || !defs.empty();
+}
+
+// The first local register `ops` reads before defining it: its value comes
+// from earlier in the job, so moving `ops` into a new job would lose it.
+static std::optional<uint32_t>
+findLocalRegisterCrossingIn(ArrayRef<Operation *> ops) {
+  llvm::SmallDenseSet<uint32_t> defined;
+  SmallVector<uint32_t> uses, defs;
+  for (Operation *o : ops) {
+    uses.clear();
+    defs.clear();
+    collectLocalRegisterDefsUses(*o, uses, defs);
+    for (uint32_t r : uses)
+      if (!defined.contains(r))
+        return r;
+    defined.insert(defs.begin(), defs.end());
+  }
+  return std::nullopt;
+}
+
+// AIEBU lays down each chain and each payload global once per page, however
+// many pushes on that page name them, so data is charged once per page.
+struct PageDataSeen {
+  llvm::DenseSet<Operation *> chains;
+  llvm::DenseSet<Operation *> payloads;
+};
+
+// A pushed chain's BDs and payloads, charged the first time the page names
+// them.
+static void addChainDataCost(StringRef sym_name, const SymbolTable &symbolTable,
+                             uint32_t &data_cost, PageDataSeen &seen) {
+  auto chain = symbolTable.lookup<AIEX::CertUcDmaChainOp>(sym_name);
+  if (!chain || !seen.chains.insert(chain).second)
+    return;
+  for (auto bdOp : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>()) {
+    data_cost += 16; // bd op
+    auto global = symbolTable.lookup<memref::GlobalOp>(bdOp.getRemoteAddress());
+    if (!global || !seen.payloads.insert(global).second)
+      continue;
+    auto initVal = global.getInitialValue();
+    if (!initVal)
+      continue;
+    auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
+    if (!data)
+      continue;
+    data_cost += data.getNumElements() * 4; // 4 bytes per element
+  }
+}
+
 // Instruction sizes follow the AIEBU CERT ISA specification so the running
 // total here matches the bytes emitJob actually produces. Keep the cost model
 // and emitter in sync when adding a cert op:
 // an op the emitter can emit but this function ignores is counted as free,
 // which makes the page look smaller than it is.
-static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
-                            uint32_t &text_cost, uint32_t &data_cost) {
+static void updateCostForOp(Operation &o, const SymbolTable &symbolTable,
+                            uint32_t &text_cost, uint32_t &data_cost,
+                            PageDataSeen &seen) {
   // Several distinct op kinds share an encoded instruction size below --
   // an instruction-size table, not a copy-paste clone.
   // NOLINTBEGIN(bugprone-branch-clone)
@@ -1176,46 +1672,44 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     // NOLINTEND(bugprone-branch-clone)
   } else if (auto syncOp = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o)) {
     text_cost += 4; // ISA_OPSIZE_UC_DMA_WRITE_DES_SYNC
-    // find the uc_dma_chain
-    StringRef sym_name = syncOp.getSymbol();
-    auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
-        deviceOp.lookupSymbol(sym_name));
-    if (!chain)
-      return;
-    for (auto bdOp : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>()) {
-      data_cost += 16; // bd op
-      StringRef data_sym_name = bdOp.getRemoteAddress();
-      auto global = dyn_cast_if_present<memref::GlobalOp>(
-          deviceOp.lookupSymbol(data_sym_name));
-      if (!global)
-        continue;
-      auto initVal = global.getInitialValue();
-      if (!initVal)
-        continue;
-      auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
-      if (!data)
-        continue;
-      data_cost += data.getNumElements() * 4; // 4 bytes per element
-    }
+    addChainDataCost(syncOp.getSymbol(), symbolTable, data_cost, seen);
+  } else if (auto desOp = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o)) {
+    text_cost += 8; // ISA_OPSIZE_UC_DMA_WRITE_DES
+    addChainDataCost(desOp.getSymbol(), symbolTable, data_cost, seen);
+  } else if (isa<AIEX::CertWaitUcDmaOp>(o)) {
+    text_cost += 4; // ISA_OPSIZE_WAIT_UC_DMA
+  } else if (isa<AIEX::CertRead32Op>(o)) {
+    text_cost += 8; // ISA_OPSIZE_READ_32
+  } else if (isa<AIEX::CertRead32DOp>(o)) {
+    text_cost += 4; // ISA_OPSIZE_READ_32_D
+  } else if (isa<AIEX::CertWrite32DOp>(o)) {
+    text_cost += 12; // ISA_OPSIZE_WRITE_32_D
+  } else if (isa<AIEX::CertSaveTimestampsOp>(o)) {
+    text_cost += 8; // ISA_OPSIZE_SAVE_TIMESTAMPS
+  } else if (isa<AIEX::CertSaveRegisterOp>(o)) {
+    text_cost += 12; // ISA_OPSIZE_SAVE_REGISTER
   }
 }
 
-static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
-                             AIEX::CertJobOp &split_job,
+static uint32_t estimateCost(AIEX::CertPageOp op,
+                             const SymbolTable &symbolTable,
+                             uint32_t split_target, AIEX::CertJobOp &split_job,
                              Block::iterator &split_iter,
                              bool &found_split_point) {
   uint32_t text_cost = 32; // page header: `.align 16` padding plus `.eop`
   uint32_t data_cost = 0;
+  PageDataSeen seen;
   found_split_point = false;
-  AIE::DeviceOp deviceOp = op->getParentOfType<AIE::DeviceOp>();
 
   for (auto job : op.getBody().front().getOps<AIEX::CertJobOp>()) {
+    // Cuts inside a job that uses local registers would lose their values.
+    bool splittable = !jobUsesLocalRegister(job);
     // START_JOB precedes the body, so it is already spent at every candidate
     // split point inside this job; END_JOB is charged after the body below.
     text_cost += cert_job_start_cost;
     for (auto &o : job.getBody().front().getOperations()) {
       Block::iterator current(&o);
-      if (!found_split_point && !isa<AIE::EndOp>(o) &&
+      if (splittable && !found_split_point && !isa<AIE::EndOp>(o) &&
           current != job.getBody().front().begin() &&
           (text_cost + data_cost) >= split_target) {
         split_job = job;
@@ -1223,9 +1717,10 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
         found_split_point = true;
       }
 
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      updateCostForOp(o, symbolTable, text_cost, data_cost, seen);
 
-      if (!found_split_point && (text_cost + data_cost) >= split_target) {
+      if (splittable && !found_split_point &&
+          (text_cost + data_cost) >= split_target) {
         Block::iterator next = current;
         ++next;
         if (next != job.getBody().front().end() && !isa<AIE::EndOp>(*next)) {
@@ -1247,12 +1742,37 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
   return text_cost + data_cost;
 }
 
-// A cut inside a barrier's [min, max] textual indices would separate its
-// participants, which must remain co-resident (see
-// checkLocalBarrierColocation).
-static void computeBarrierSpans(AIEX::CertPageOp page,
-                                std::map<Operation *, int> &flatIndex,
-                                std::map<int, std::pair<int, int>> &spans) {
+// A cut before flat index p separates a span [lo, hi] when lo < p <= hi.
+// Local barrier participants must share a page (see
+// checkLocalBarrierColocation). A payload patch must share a page with every
+// later uC-DMA push of that payload: each page carries its own payload copy,
+// so a push on another page would use the unpatched addresses.
+enum class SpanKind { LocalBarrier, PatchedPayload };
+
+struct IndivisibleSpan {
+  int lo, hi;
+  SpanKind kind;
+};
+
+// Index non-terminator ops in textual order and record indivisible spans.
+static void computeIndivisibleSpans(AIEX::CertPageOp page,
+                                    const SymbolTable &symbolTable,
+                                    std::map<Operation *, int> &flatIndex,
+                                    SmallVectorImpl<IndivisibleSpan> &spans) {
+  std::map<int, std::pair<int, int>> barriers;
+  // Patches accumulate and survive pushes, so later pushes depend on the
+  // earliest patch of their payload.
+  llvm::StringMap<int> firstPatch;
+  auto payloadsOf = [&](StringRef chainSym) {
+    SmallVector<StringRef> payloads;
+    auto chain = symbolTable.lookup<AIEX::CertUcDmaChainOp>(chainSym);
+    if (!chain || chain.getBody().empty())
+      return payloads;
+    for (auto bd : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>())
+      payloads.push_back(bd.getRemoteAddress());
+    return payloads;
+  };
+
   int idx = 0;
   for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
     for (auto &o : job.getBody().front().getOperations()) {
@@ -1260,48 +1780,63 @@ static void computeBarrierSpans(AIEX::CertPageOp page,
         continue;
       flatIndex[&o] = idx;
       if (auto bar = dyn_cast<AIEX::CertLocalBarrierOp>(o)) {
-        int id = bar.getLocalBarrierId();
-        auto it = spans.find(id);
-        if (it == spans.end())
-          spans[id] = {idx, idx};
+        int id = static_cast<int>(bar.getLocalBarrierId());
+        auto it = barriers.find(id);
+        if (it == barriers.end())
+          barriers[id] = {idx, idx};
         else {
           it->second.first = std::min(it->second.first, idx);
           it->second.second = std::max(it->second.second, idx);
+        }
+      } else if (auto patch = dyn_cast<AIEX::CertApplyOffset57Op>(o)) {
+        firstPatch.try_emplace(patch.getSymbol(), idx);
+      } else if (StringRef pushed = pushedChain(o); !pushed.empty()) {
+        for (StringRef payload : payloadsOf(pushed)) {
+          auto it = firstPatch.find(payload);
+          if (it != firstPatch.end())
+            spans.push_back({it->second, idx, SpanKind::PatchedPayload});
         }
       }
       ++idx;
     }
   }
+  for (auto &[id, span] : barriers)
+    spans.push_back({span.first, span.second, SpanKind::LocalBarrier});
 }
 
-// A cut before flat index `p` (ops with index < p -> earlier page) separates a
-// local_barrier group iff some participant is before and some at/after the cut.
-static bool cutSeparatesBarrier(const std::map<int, std::pair<int, int>> &spans,
-                                int p) {
-  return llvm::any_of(spans, [p](const auto &entry) {
-    auto [lo, hi] = entry.second;
-    return lo < p && hi >= p;
-  });
+// Return whether the cut separates a span, optionally reporting its kind.
+static bool cutSeparatesSpan(ArrayRef<IndivisibleSpan> spans, int p,
+                             SpanKind *kind = nullptr) {
+  const auto *it = llvm::find_if(
+      spans, [p](const IndivisibleSpan &s) { return s.lo < p && s.hi >= p; });
+  if (it == spans.end())
+    return false;
+  if (kind)
+    *kind = it->kind;
+  return true;
 }
 
-// Choose the barrier-safe cut closest to split_target, allowing both interior
+// Choose the span-safe cut closest to split_target, allowing both interior
 // and job-boundary cuts. Each half needs content so repeated splitting
 // progresses.
-static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
+static bool findLegalSplitPoint(AIEX::CertPageOp page,
+                                const SymbolTable &symbolTable,
+                                uint32_t split_target,
                                 const std::map<Operation *, int> &flatIndex,
-                                const std::map<int, std::pair<int, int>> &spans,
+                                ArrayRef<IndivisibleSpan> spans,
                                 AIEX::CertJobOp &split_job,
                                 Block::iterator &split_iter) {
-  AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
   uint32_t text_cost = 32; // page header, mirrors estimateCost
   uint32_t data_cost = 0;
+  PageDataSeen seen;
   bool found = false;
   uint32_t best_delta = 0;
   // Whether some job already visited holds a real op, i.e. whether cutting at
   // the current job's first op would leave content on the earlier page.
   bool sawOpInEarlierJob = false;
   for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
-    text_cost += cert_job_start_cost; // mirrors estimateCost
+    text_cost += cert_job_start_cost;             // mirrors estimateCost
+    bool splittable = !jobUsesLocalRegister(job); // mirrors estimateCost
     bool sawOpInJob = false;
     for (auto &o : job.getBody().front().getOperations()) {
       if (isa<AIE::EndOp>(o))
@@ -1312,10 +1847,10 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
       // Admitting the latter matters for a page built of small jobs whose sizes
       // only sum over the limit: no job has an interior point worth cutting at,
       // yet a cut between two whole jobs splits it perfectly well.
-      if (sawOpInJob || sawOpInEarlierJob) {
+      if (sawOpInJob ? splittable : sawOpInEarlierJob) {
         auto fi = flatIndex.find(&o);
         int p = fi == flatIndex.end() ? 0 : fi->second;
-        if (!cutSeparatesBarrier(spans, p)) {
+        if (!cutSeparatesSpan(spans, p)) {
           uint32_t cost = text_cost + data_cost;
           uint32_t delta =
               cost > split_target ? cost - split_target : split_target - cost;
@@ -1327,7 +1862,7 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
           }
         }
       }
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      updateCostForOp(o, symbolTable, text_cost, data_cost, seen);
       sawOpInJob = true;
     }
     text_cost += cert_job_end_cost; // mirrors estimateCost
@@ -1342,7 +1877,10 @@ namespace {
 // page According to CERT spec: "load_pdi and preempt should take one whole job
 // which in turn should take one whole page"
 struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
-  using OpRewritePattern::OpRewritePattern;
+  // `hadError` is raised with an error diagnostic, as in
+  // SplitCertPageOpPattern.
+  IsolateFullPageOpsPattern(MLIRContext *context, bool *hadError)
+      : OpRewritePattern(context), hadError(hadError) {}
 
   // Create an empty, terminated cert.page directly after `after`, in the same
   // block. Staying in `after`'s block is what keeps a page that was moved into
@@ -1439,6 +1977,19 @@ struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
         if (!isa<AIE::EndOp>(*it))
           afterOps.push_back(&*it);
 
+      // Isolation is mandatory, so a local register written before the
+      // full-page op and read after it cannot be kept; reject the job.
+      if (auto crossing = findLocalRegisterCrossingIn(afterOps)) {
+        StringRef name = fullPageOp->getName().getStringRef();
+        *hadError = true;
+        return jobOp.emitError()
+               << "job " << jobOp.getJobId() << " must be split around its "
+               << name << ", but local register r" << *crossing
+               << " is written before it and read after it; keep that "
+                  "register's uses on one side of the "
+               << name << ", or put them in a separate job";
+      }
+
       auto emitJobPage = [&](uint32_t jobId, ArrayRef<Operation *> ops) {
         auto page = makePageAfter(rewriter, anchor, loc);
         rewriter.setInsertionPoint(page.getBody().front().getTerminator());
@@ -1473,6 +2024,8 @@ struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
 
     return success();
   }
+
+  bool *hadError;
 };
 
 struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
@@ -1481,8 +2034,12 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
   // the pass -- so without this the "cannot split" error below would print and
   // the oversized page would still reach codegen. The pass checks the flag
   // after applyPatternsGreedily and calls signalPassFailure().
-  SplitCertPageOpPattern(MLIRContext *context, bool *hadError)
-      : OpRewritePattern(context), hadError(hadError) {}
+  // symbolTable is the device's; splitting only clones jobs, so it stays
+  // current.
+  SplitCertPageOpPattern(MLIRContext *context, const SymbolTable &symbolTable,
+                         bool *hadError)
+      : OpRewritePattern(context), symbolTable(symbolTable),
+        hadError(hadError) {}
 
   LogicalResult matchAndRewrite(AIEX::CertPageOp op,
                                 PatternRewriter &rewriter) const override {
@@ -1492,8 +2049,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     AIEX::CertJobOp split_job;
     Block::iterator split_iter;
     bool found_split_point = false;
-    uint32_t cost = estimateCost(op, cert_page_size / 2, split_job, split_iter,
-                                 found_split_point);
+    uint32_t cost = estimateCost(op, symbolTable, cert_page_size / 2, split_job,
+                                 split_iter, found_split_point);
     LLVM_DEBUG(llvm::outs()
                << "Estimate cost for page: " << " is " << cost << "\n");
 
@@ -1503,15 +2060,17 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     bool isImplicit = op->hasAttr("cert.implicit");
 
     std::map<Operation *, int> flatIndex;
-    std::map<int, std::pair<int, int>> barrierSpans;
-    computeBarrierSpans(op, flatIndex, barrierSpans);
+    SmallVector<IndivisibleSpan> spans;
+    computeIndivisibleSpans(op, symbolTable, flatIndex, spans);
 
     // The initial estimate can miss a job-boundary cut or an earlier candidate;
-    // search all positions before declaring the page unsplittable.
+    // search all positions before declaring the page unsplittable. Spans are
+    // not applied here: a page whose cuts are all blocked by a span has split
+    // points, and the span check below reports which constraint blocks them.
     if (!found_split_point)
       found_split_point =
-          findLegalSplitPoint(op, cert_page_size / 2, flatIndex, barrierSpans,
-                              split_job, split_iter);
+          findLegalSplitPoint(op, symbolTable, cert_page_size / 2, flatIndex,
+                              {}, split_job, split_iter);
 
     // Over the split trigger but with nowhere to cut. Every cut has to leave at
     // least one op on each side, so a page whose bulk sits in a single one-op
@@ -1520,60 +2079,78 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     // firmware will reject.
     if (!found_split_point) {
       if (cost > cert_page_limit) {
-        op.emitError() << "cert.page is an estimated " << cost
-                       << " bytes, over the " << cert_page_limit
-                       << "-byte microcontroller page limit, and offers no "
-                          "split point (a split must leave at least one op on "
-                          "each page); break the oversized job into smaller "
-                          "jobs";
+        auto jobs = op.getBody().front().getOps<AIEX::CertJobOp>();
+        auto blocker = llvm::find_if(jobs, jobUsesLocalRegister);
+        if (blocker != jobs.end())
+          op.emitError() << "cert.page is an estimated " << cost
+                         << " bytes, over the " << cert_page_limit
+                         << "-byte microcontroller page limit, and cannot be "
+                            "split: job "
+                         << (*blocker).getJobId()
+                         << " uses local registers r0..r7, which do not "
+                            "survive a split; break it into smaller jobs "
+                            "that each keep a register's definition and "
+                            "uses together";
+        else
+          op.emitError() << "cert.page is an estimated " << cost
+                         << " bytes, over the " << cert_page_limit
+                         << "-byte microcontroller page limit, and offers no "
+                            "split point (a split must leave at least one op "
+                            "on each page); break the oversized job into "
+                            "smaller jobs";
         *hadError = true;
       }
       return failure();
     }
 
-    // never split a local_barrier participant set across an .eop
-    // (G-localbar). If the cost-chosen split point would separate a barrier
-    // group, retarget to a legal split point; if none exists the page cannot be
-    // made legal, so fail the compile rather than emit something broken.
-    // an implicit page (formed by formImplicitPages) groups jobs meant to
-    // be cooperatively scheduled together; an explicit page is a user-authored
-    // boundary. This governs the wording of the diagnostics below (the remedy
-    // differs), not whether they fire.
-    if (!barrierSpans.empty()) {
+    // Never split a local_barrier participant set, or a payload patch from a
+    // later push of that payload, across an .eop. If the cost-chosen split
+    // point would, retarget to a legal split point; if none exists the page
+    // cannot be made legal, so fail the compile rather than emit something
+    // broken. An implicit page (formed by formImplicitPages) groups jobs meant
+    // to be cooperatively scheduled together; an explicit page is a
+    // user-authored boundary. This governs the wording of the diagnostics
+    // below (the remedy differs), not whether they fire.
+    if (!spans.empty()) {
       auto fi = flatIndex.find(&*split_iter);
       int p = fi == flatIndex.end() ? 0 : fi->second;
-      if (cutSeparatesBarrier(barrierSpans, p)) {
-        if (!findLegalSplitPoint(op, cert_page_size / 2, flatIndex,
-                                 barrierSpans, split_job, split_iter)) {
-          // No split keeps every local_barrier group intact. Leave the
-          // page whole: severing a barrier hangs the firmware, so an oversized
-          // page is the better of the two. That is only survivable while the
-          // page still fits, though -- past cert_page_limit neither option
-          // works, and both fail silently at runtime, so diagnose and fail the
-          // compile. The remedy differs by page kind: an implicit page just
-          // needs a user-authored boundary in the right place, while an
-          // explicit page is already where the user put it and has to be made
-          // smaller or its participants regrouped. Raise `hadError` so the pass
-          // actually fails -- returning failure() alone only tells the greedy
-          // driver this pattern did not apply.
+      SpanKind kind = SpanKind::LocalBarrier;
+      if (cutSeparatesSpan(spans, p, &kind)) {
+        if (!findLegalSplitPoint(op, symbolTable, cert_page_size / 2, flatIndex,
+                                 spans, split_job, split_iter)) {
+          // Leave the page whole: a severed span hangs the firmware or pushes
+          // stale addresses, so an oversized page is the better of the two.
+          // That is only survivable while the page still fits; past
+          // cert_page_limit, diagnose and raise `hadError` so the pass fails
+          // rather than only this rewrite.
           if (cost > cert_page_limit) {
+            bool barrier = kind == SpanKind::LocalBarrier;
+            StringRef what = barrier
+                                 ? "a local_barrier participant set"
+                                 : "a cert.apply_offset_57 from a uC-DMA push "
+                                   "of the payload it patches";
             if (isImplicit)
               op.emitError()
                   << "implicit cert.page is an estimated " << cost
                   << " bytes, over the " << cert_page_limit
                   << "-byte microcontroller page limit, and cannot be split "
-                     "without separating a local_barrier participant set "
-                     "across pages; insert an explicit cert.page boundary to "
-                     "co-locate the barrier participants";
+                     "without separating "
+                  << what
+                  << " across pages; insert an explicit cert.page boundary to "
+                  << (barrier ? "co-locate the barrier participants"
+                              : "co-locate each apply_offset_57 with its "
+                                "pushes");
             else
               op.emitError()
                   << "cert.page is an estimated " << cost << " bytes, over the "
                   << cert_page_limit
                   << "-byte microcontroller page limit, and cannot be split "
-                     "without separating a local_barrier participant set "
-                     "across pages; reduce the page's contents or regroup its "
-                     "local_barrier participants so that a legal split point "
-                     "exists";
+                     "without separating "
+                  << what << " across pages; reduce the page's contents or "
+                  << (barrier ? "regroup its local_barrier participants"
+                              : "regroup its apply_offset_57 ops and their "
+                                "pushes")
+                  << " so that a legal split point exists";
             *hadError = true;
           }
           return failure();
@@ -1610,18 +2187,9 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
            "a job-boundary cut needs a preceding job with content, else the "
            "earlier page is empty and the split makes no progress");
 
-    // NOTE: the device-wide job-id shift below only keeps job ids unique per
-    // page; job_id is a label, not an order, so it does not affect
-    // emission/execution order, which is textual. A device-wide job-id renumber
-    // is left for a follow-up. A job-boundary cut creates no new job -- every
-    // job keeps its id, just on a different page -- so there is nothing to
-    // renumber and the walk is skipped.
-    if (!jobBoundaryCut)
-      op->getParentOfType<AIE::DeviceOp>().walk([&](AIEX::CertJobOp certJobOp) {
-        if (certJobOp.getJobId() > split_job.getJobId())
-          certJobOp.setJobId(certJobOp.getJobId() + 1);
-      });
-
+    // The second half of a split job takes the next ID, which may collide
+    // with another job on its page; allocateJobIds resolves that after all
+    // splitting is done.
     auto cloneJobRange = [&](AIEX::CertJobOp sourceJob, uint32_t jobId,
                              Block::iterator begin, Block::iterator end) {
       auto newJobOp = AIEX::CertJobOp::create(rewriter, loc, jobId);
@@ -1698,6 +2266,7 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     return success();
   }
 
+  const SymbolTable &symbolTable;
   bool *hadError;
 };
 
@@ -1875,6 +2444,39 @@ static void lowerPagePlacementToGroups(AIE::DeviceOp dev) {
   }
 }
 
+// The firmware indexes job contexts by job_id % 64, and a page's jobs finish
+// before the next page starts. Keep each page's noncolliding IDs and move the
+// colliding ones to free slots.
+static LogicalResult allocateJobIds(AIE::DeviceOp device) {
+  WalkResult result = device.walk([&](AIEX::CertPageOp page) {
+    std::bitset<AIEX::CertJobOp::NumSlots> used;
+    SmallVector<AIEX::CertJobOp> collisions;
+    unsigned count = 0;
+    for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
+      unsigned slot = job.getJobId() % AIEX::CertJobOp::NumSlots;
+      if (used.test(slot))
+        collisions.push_back(job);
+      used.set(slot);
+      ++count;
+    }
+    if (count > AIEX::CertJobOp::NumSlots) {
+      page.emitError() << "cert.page has " << count << " jobs, exceeding the "
+                       << AIEX::CertJobOp::NumSlots
+                       << " firmware job slots; reduce the jobs on this page";
+      return WalkResult::interrupt();
+    }
+    unsigned slot = 0;
+    for (auto job : collisions) {
+      while (used.test(slot))
+        ++slot;
+      job.setJobId(slot);
+      used.set(slot);
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
 struct AIECertPagesPass
     : xilinx::AIEX::impl::AIECertPagesBase<AIECertPagesPass> {
   void runOnOperation() override {
@@ -1894,12 +2496,20 @@ struct AIECertPagesPass
     // split/isolated pages, emitting them on group 0.)
     lowerPagePlacementToGroups(getOperation());
 
+    // The steps below look chains and payloads up many times per op. None of
+    // them creates a symbol, and the merge removes the chains it erases.
+    SymbolTable symbolTable(getOperation());
+
     // First, isolate load_pdi and preempt operations into their own job/page
+    bool isolateError = false;
     RewritePatternSet isolatePatterns(&getContext());
-    isolatePatterns.insert<IsolateFullPageOpsPattern>(&getContext());
+    isolatePatterns.insert<IsolateFullPageOpsPattern>(&getContext(),
+                                                      &isolateError);
     if (failed(
             applyPatternsGreedily(getOperation(), std::move(isolatePatterns))))
       signalPassFailure();
+    if (isolateError)
+      return signalPassFailure();
 
     // Then apply the page splitting pattern. `splitError` catches diagnostics
     // the pattern emits while declining to split (see SplitCertPageOpPattern):
@@ -1907,15 +2517,24 @@ struct AIECertPagesPass
     // illegal-to-split page would otherwise print an error and still compile.
     bool splitError = false;
     RewritePatternSet p1(&getContext());
-    p1.insert<SplitCertPageOpPattern>(&getContext(), &splitError);
+    p1.insert<SplitCertPageOpPattern>(&getContext(), symbolTable, &splitError);
     if (failed(applyPatternsGreedily(getOperation(), std::move(p1))))
       signalPassFailure();
     if (splitError)
       signalPassFailure();
 
-    // Add the merge pattern for CertUcDmaWriteDesSyncOps
+    if (failed(allocateJobIds(getOperation())))
+      return signalPassFailure();
+
+    // Add the merge pattern for CertUcDmaWriteDesSyncOps. With an op whose
+    // symbol uses are unknown, no use is counted and nothing merges.
+    llvm::DenseMap<StringAttr, unsigned> useCounts;
+    if (auto uses = SymbolTable::getSymbolUses(&getOperation().getRegion()))
+      for (const SymbolTable::SymbolUse &use : *uses)
+        ++useCounts[use.getSymbolRef().getRootReference()];
     RewritePatternSet p3(&getContext());
-    p3.insert<MergeConsecutiveCertUcDmaWriteDesSyncOps>(&getContext());
+    p3.insert<MergeConsecutiveCertUcDmaWriteDesSyncOps>(&getContext(),
+                                                        symbolTable, useCounts);
     if (failed(applyPatternsGreedily(getOperation(), std::move(p3))))
       return signalPassFailure();
   }

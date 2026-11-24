@@ -13,7 +13,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, Buffer
 from aie.iron.device import NPU2Col1
 
 
-# CHECK:  module {
+# CHECK:  module{{( attributes .*)?}} {
 # CHECK:    aie.device(npu2_1col) {
 # CHECK:      %pinned_bank_buf = aie.buffer(%{{.*}}) {mem_bank = 1 : i32, sym_name = "pinned_bank_buf"} : memref<4096xui8>
 # CHECK:      %default_bank_buf = aie.buffer(%{{.*}}) {sym_name = "default_bank_buf"} : memref<4096xui8>

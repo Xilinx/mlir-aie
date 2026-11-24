@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=true' \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=true warn-unreleased-transfers=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids \
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unreleased-transfers=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
-// RUN: sed '/expected-/d' %s | aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=false' \
+// RUN: sed '/expected-/d' %s | aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=false warn-unreleased-transfers=false' \
 // RUN:         --verify-diagnostics --split-input-file
 
 // aiex.dma_free_task returns BD ids to the allocator with no completion
@@ -28,7 +28,8 @@ aie.device(npu2) {
     // expected-note@+1 {{released here}}
     aiex.dma_free_task(%t0)
     %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%arg0 : memref<512xi32> offset = 256 len = 256)
       aie.end
     }
@@ -176,7 +177,8 @@ aie.device(npu2) {
     aiex.dma_free_task(%a)
     aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
     %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.end
     }
@@ -203,7 +205,8 @@ aie.device(npu2) {
     aiex.dma_start_task(%b)
     aiex.dma_await_task(%b)
     %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.end
     }

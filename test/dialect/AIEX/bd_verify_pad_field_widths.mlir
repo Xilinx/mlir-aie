@@ -24,7 +24,7 @@ module {
     aie.runtime_sequence(%arg0: memref<128xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
         // expected-error@+1 {{D0 pad_before/pad_after exceeds the [0:63] range.}}
-        aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 4 sizes = [4] strides = [1] pad [<const_pad_before = 64, const_pad_after = 0>]) {bd_id = 0 : i32}
+        aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 68 sizes = [4] strides = [1] pad [<const_pad_before = 64, const_pad_after = 0>]) {bd_id = 0 : i32}
         aie.end
       }
     }
@@ -41,7 +41,7 @@ module {
     %buf = aie.buffer(%tile_0_1) { address = 0x0 : i32 } : memref<128xi32>
     aie.runtime_sequence(%arg0: memref<128xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-        aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 4 sizes = [4] strides = [1] pad [<const_pad_before = 63, const_pad_after = 0>]) {bd_id = 0 : i32}
+        aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 67 sizes = [4] strides = [1] pad [<const_pad_before = 63, const_pad_after = 0>]) {bd_id = 0 : i32}
         aie.end
       }
     }

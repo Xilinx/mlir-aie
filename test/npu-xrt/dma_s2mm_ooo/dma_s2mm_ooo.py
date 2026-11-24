@@ -659,6 +659,7 @@ def _run_and_verify(opts):
     # matching all of them proves placement follows the pinned out-of-order id.
     # n=1 has no non-identity rotation, so it runs the single identity case.
     for shift in range(1, n) or [0]:
+        print(f"Testing shift={shift}", flush=True)
         out = iron.zeros((rounds * c * M * tw,), dtype=np.int32, device="npu")
         dma_s2mm_ooo(
             out,

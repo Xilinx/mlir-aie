@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "test_library.h"
+#include <aie_codegen.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -15,7 +16,6 @@
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
-#include <xaiengine.h>
 
 #include "aie_inc.cpp"
 

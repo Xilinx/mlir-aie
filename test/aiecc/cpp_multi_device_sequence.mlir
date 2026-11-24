@@ -14,7 +14,7 @@
 // RUN: aiecc --device-name=device2 --get-scratchpad-parameters --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
 // RUN: aiecc --device-name=device1 --sequence-name=seq_a --get-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
 // RUN: aiecc --get-scratchpad-parameters --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
-// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --device-name=device1 --get-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
+// RUN: aie-opt -aie-generate-column-control-overlay="configuration=true " --aie-import-overlay %s -o %t.ctrlpkt_overlay.mlir && aiecc --device-name=device1 --get-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
 // RUN: aiecc --device-name=device1 --sequence-name=seq_a --get-xclbin --tmpdir=%t.count_a %s
 // RUN: FileCheck %s --check-prefix=COUNT_A --input-file=%t.count_a/kernels_device1.json
 // RUN: aiecc --device-name=device1 --sequence-name=seq_b --get-xclbin --tmpdir=%t.count_b %s

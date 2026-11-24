@@ -1001,6 +1001,46 @@ def _readable_diagnostic(line: str) -> str:
     return f"[{edge['edge']}] {line[edge.end():]}" if edge else line.strip()
 
 
+# How aiecc marks placing a design again, and says which placement stands.
+_PLACING_AGAIN = "aiecc: placing again with "
+_FAILURE_STANDS_RE = re.compile(r"placement (\d+)'s failure stands$")
+_STANDS_RE = re.compile(r"^aiecc: (placement \d+ \(.*\) stands|no placement with .*)$")
+
+
+def standing_placement(log: str) -> tuple[list[str], list[str], list[str]]:
+    """Split an aiecc log around the placement that stands.
+
+    When aiecc places a design again, each placement prints as it runs, a
+    line marks where the next one starts, and one line says which placement
+    stands (the last, unless it names another whose failure stands); what
+    aiecc prints after that line reports on that placement.
+
+    Args:
+        log: aiecc's output.
+
+    Returns:
+        In log order: aiecc's lines placing again before the standing
+        placement, the lines that placement printed, and aiecc's lines after
+        it (placing again, saying which stands, and its report).
+    """
+    placements: list[list[str]] = [[]]
+    ends: list[str] = []
+    after: list[str] | None = None
+    for line in log.splitlines():
+        if after is not None:
+            after.append(line)
+        elif line.startswith(_PLACING_AGAIN):
+            ends.append(line)
+            placements.append([])
+        elif _STANDS_RE.match(line.rstrip()):
+            after = [line.rstrip()]
+        else:
+            placements[-1].append(line)
+    stands = _FAILURE_STANDS_RE.search(after[0]) if after else None
+    index = int(stands[1]) - 1 if stands else len(placements) - 1
+    return ends[:index], placements[index], ends[index:] + (after or [])
+
+
 def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
     """Return the compiler diagnostics in an aiecc log, without the MLIR dumps.
 
@@ -1009,25 +1049,38 @@ def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
     naming the fix hundreds of lines from either end of the log, so neither
     the head nor the tail of a failure is worth showing on its own. Keep the
     ``error:`` and ``warning:`` lines and the edge aiecc gave up on, in order
-    and without repeats.
+    and without repeats, at most `limit` of them. When aiecc placed the design
+    more than once, only the placement that stands is summarised, in log
+    order between aiecc's lines placing again and saying which stands, which
+    are always kept.
     """
-    lines = log.splitlines()
+    before, standing, after = standing_placement(log)
     kept: list[str] = []
     seen: set[str] = set()
-    for line in lines:
-        if "error: " in line or "warning: " in line:
-            keep = _readable_diagnostic(line)
-        elif line.startswith("aiecc: ") and line.rstrip().endswith("failed"):
-            keep = line.rstrip()
-        else:
-            continue
-        if keep in seen:
-            continue
-        seen.add(keep)
-        kept.append(keep)
-        if len(kept) == limit:
-            kept.append(f"... truncated, see the full log ({len(lines)} lines)")
-            break
+    summarised = 0
+    for section in (before, standing, after):
+        for line in section:
+            if line.startswith(_PLACING_AGAIN) or _STANDS_RE.match(line):
+                keep = line
+            elif "error: " in line or "warning: " in line:
+                keep = _readable_diagnostic(line)
+            elif line.startswith("aiecc: ") and line.rstrip().endswith("failed"):
+                keep = line.rstrip()
+            else:
+                continue
+            if keep in seen:
+                continue
+            seen.add(keep)
+            kept.append(keep)
+            if section is not standing:
+                continue
+            summarised += 1
+            if summarised == limit:
+                kept.append(
+                    f"... truncated, see the full log ({len(log.splitlines())} "
+                    "lines)"
+                )
+                break
     return kept
 
 
@@ -1045,7 +1098,10 @@ def _run_aiecc(
     logger.debug("Running: %s", " ".join(cmd))
     # Files rather than pipes: a pipe nobody reads while the link files build
     # would fill and stall aiecc's lowering on its next write.
-    with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+    with (
+        tempfile.TemporaryFile("w+", encoding="utf-8") as out,
+        tempfile.TemporaryFile("w+", encoding="utf-8") as err,
+    ):
         proc = subprocess.Popen(
             cmd,
             cwd=cwd,
@@ -1054,7 +1110,7 @@ def _run_aiecc(
             ),
             stdout=out,
             stderr=err,
-            text=True,
+            encoding="utf-8",
         )
         if build_link_files is not None:
             try:
@@ -1076,7 +1132,13 @@ def _run_aiecc(
         # debug logging is off by default and the failure path below only runs
         # on a non-zero exit.
         if proc.returncode == 0:
-            for line in stderr.splitlines():
+            # Only the placement that stands, and the line saying which it is:
+            # an earlier placement's errors were what aiecc placed again for.
+            _, standing, after = standing_placement(stderr)
+            for line in after:
+                if _STANDS_RE.match(line):
+                    print(f"[aiecc] {line}", file=sys.stderr)
+            for line in standing + after:
                 # Notes are the explanation, not decoration. A warning that
                 # queue-depth enforcement could not be applied says why in an
                 # attached note, so dropping notes leaves the generic overflow
@@ -1097,13 +1159,13 @@ def _run_aiecc(
             f"[aiecc] Compilation failed with exit code {proc.returncode}:\n"
             f"{detail if summary else error_msg}"
         )
-        with open(mlir_file) as f:
+        with open(mlir_file, encoding="utf-8") as f:
             ir_text = f.read()
         if readable_path is not None:
             # A diagnostic aid: its own failure must not hide aiecc's error.
             try:
                 text = readable(ir_text)
-                with open(readable_path, "w") as f:
+                with open(readable_path, "w", encoding="utf-8") as f:
                     f.write(text)
             except Exception as dump_error:
                 message += f"\nCould not write the design's readable IR: {dump_error!r}"
@@ -1112,7 +1174,7 @@ def _run_aiecc(
                     f"\nThe design's IR, each op noted with its source: {readable_path}"
                 )
         exc = RuntimeError(message)
-        attach_tool_location(exc, error_msg, ir_text)
+        attach_tool_location(exc, "\n".join(standing_placement(error_msg)[1]), ir_text)
         raise exc
 
 
@@ -1292,7 +1354,7 @@ def compile_mlir_module(
     # If no work_dir is provided, fall back to a temporary file instead.
     if work_dir:
         mlir_file = os.path.join(work_dir, "aie.mlir")
-        with open(mlir_file, "w") as f:
+        with open(mlir_file, "w", encoding="utf-8") as f:
             f.write(mlir_text)
         profile = os.path.abspath(os.path.join(work_dir, AIECC_PROFILE_NAME))
         _run_aiecc(
@@ -1305,7 +1367,9 @@ def compile_mlir_module(
     elif build_link_files is not None:
         raise ValueError("build_link_files requires work_dir.")
     else:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".mlir", delete=False
+        ) as f:
             f.write(mlir_text)
             mlir_file = f.name
         try:
@@ -1658,6 +1722,26 @@ def _select_declared_kernels(funcs, link_with: dict[str, set[str | None]]) -> li
     ]
 
 
+def kernel_compile_jobs() -> int:
+    """Concurrent Peano kernel compiles: AIE_KERNEL_COMPILE_JOBS, else cores.
+
+    Without the variable, one fewer than the cores this process may run on, so
+    aiecc, which starts placing while the kernels build, keeps one.
+    """
+    try:
+        jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
+    except ValueError:
+        jobs = 0
+    if jobs > 0:
+        return jobs
+    cores = (
+        len(os.sched_getaffinity(0))
+        if sys.platform == "linux"
+        else (os.cpu_count() or 1)
+    )
+    return max(1, cores - 1)
+
+
 def compile_external_kernels(
     funcs,
     kernel_dir,
@@ -1749,13 +1833,7 @@ def compile_external_kernels(
             pending,
             in_place=lambda f: object_cache is None or not object_cache.accepts(f),
         )
-    try:
-        jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
-    except ValueError:
-        jobs = 0
-    if jobs <= 0:
-        jobs = os.cpu_count() or 1
-    jobs = max(1, min(jobs, len(groups)))
+    jobs = max(1, min(kernel_compile_jobs(), len(groups)))
 
     if jobs == 1:
         for group in groups:
@@ -1952,6 +2030,9 @@ def _compile_external_kernel(
             "symbol_prefix, or drop inline for this kernel."
         )
 
+    # The compilers run with kernel_dir as their cwd, so paths under it must
+    # not be relative to the caller's.
+    kernel_dir = os.path.abspath(kernel_dir)
     # A missing/stale stamp can mean either a legacy cache entry or an interrupted
     # prefix pass. Never rename those bytes again; rebuild from source instead.
     output_file = os.path.join(kernel_dir, func.object_file_name)

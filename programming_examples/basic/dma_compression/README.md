@@ -307,7 +307,7 @@ Per-arch shas guard against silent regressions on either side.
 | `MEMORY_MODULE_DMA_S2MM_0_CTRL`           | 0x1DE00            | 4   | Channel-level `Decompression_Enable` |
 | `MEMORY_MODULE_DMA_MM2S_0_CTRL`           | 0x1DE10            | 4   | Channel-level `Compression_Enable`   |
 
-Source: `third_party/aie-rt/driver/src/global/xaiemlgbl_params.h` and
+Source: `third_party/aie-codegen/src/global/xaiemlgbl_params.h` and
 `xaiemlgbl_reginit.c` (AIE2P uses the same addresses and bit positions —
 see `xaie2pgbl_params.h`).
 

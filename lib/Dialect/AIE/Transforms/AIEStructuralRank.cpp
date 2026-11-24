@@ -23,12 +23,14 @@ static bool isSymbolReference(Attribute value) {
 
 /// An op's name and attributes. Symbol names and references are left out:
 /// what a reference names enters through a link instead, and a fifo name
-/// only says whether there is one.
+/// only says whether there is one. A consumed_by proof is left out too, so
+/// whether verification ran never moves a channel.
 static void describe(Operation *op, llvm::raw_ostream &os) {
   os << op->getName();
   for (NamedAttribute attr : op->getAttrs()) {
     if (isSymbolReference(attr.getValue()) ||
-        attr.getName() == SymbolTable::getSymbolAttrName())
+        attr.getName() == SymbolTable::getSymbolAttrName() ||
+        attr.getName() == "consumed_by")
       continue;
     os << ' ' << attr.getName();
     if (attr.getName() != "fifoName")
@@ -133,6 +135,22 @@ StructuralGraph StructuralGraph::of(DeviceOp device) {
         }
       }
     });
+  }
+  return graph;
+}
+
+StructuralGraph StructuralGraph::of(ModuleOp module) {
+  StructuralGraph graph;
+  for (DeviceOp device : module.getOps<DeviceOp>()) {
+    StructuralGraph own = of(device);
+    graph.add(device);
+    for (Operation *node : own.nodes) {
+      graph.nodes.push_back(node);
+      graph.features[node] = std::move(own.features[node]);
+      graph.link(device, node, "holds");
+    }
+    for (auto &[op, links] : own.links)
+      llvm::append_range(graph.links[op], links);
   }
   return graph;
 }

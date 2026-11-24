@@ -90,17 +90,25 @@ transpose_tile(const aie::vector<T, Elems> &v) {
  *
  * A simplified example of this kernel can be found in the AIE-API
  * documentation: https://xilinx.github.io/aie_api/group__group__mmul.html
+ *
+ * A column-major B's column blocks are b_pitch tiles apart; c_zero starts C
+ * at 0 rather than adding to it; traced = false leaves the event markers to
+ * a caller that times a larger call.
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
-          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false>
+          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false,
+          unsigned b_pitch = colA, bool c_zero = false, bool traced = true>
 static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                                               const T_in *__restrict pB,
                                               T_out *__restrict pC) {
 
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
+  static_assert(b_row_maj || b_pitch >= colA,
+                "b_pitch steps a column-major B's column blocks, colA or more");
 
-  event0();
+  if constexpr (traced)
+    event0();
 
 #ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
   // The bfp16 emulation converts every A and B tile from bf16 to bfp16 before
@@ -151,8 +159,8 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
             pB2 = pBj + MMUL::size_B;
             pBj += 2 * MMUL::size_B;
           } else {
-            pB2 = pBj + colA * MMUL::size_B;
-            pBj += 2 * colA * MMUL::size_B;
+            pB2 = pBj + b_pitch * MMUL::size_B;
+            pBj += 2 * b_pitch * MMUL::size_B;
           }
 
           aie::vector<T_in, MMUL::size_A> A0;
@@ -167,7 +175,12 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           aie::vector<T_out, MMUL::size_C> acc_C01;
           aie::vector<T_out, MMUL::size_C> acc_C10;
           aie::vector<T_out, MMUL::size_C> acc_C11;
-          if constexpr (c_row_maj) {
+          if constexpr (c_zero) {
+            acc_C00 = aie::zeros<T_out, MMUL::size_C>();
+            acc_C01 = aie::zeros<T_out, MMUL::size_C>();
+            acc_C10 = aie::zeros<T_out, MMUL::size_C>();
+            acc_C11 = aie::zeros<T_out, MMUL::size_C>();
+          } else if constexpr (c_row_maj) {
             acc_C00 = aie::load_v<MMUL::size_C>(pC1);
             acc_C01 = aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
             acc_C10 = aie::load_v<MMUL::size_C>(pC2);
@@ -287,7 +300,8 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
     aie::set_rounding(saved_rounding);
 #endif
 
-  event1();
+  if constexpr (traced)
+    event1();
 }
 
 #ifdef B_COL_MAJ

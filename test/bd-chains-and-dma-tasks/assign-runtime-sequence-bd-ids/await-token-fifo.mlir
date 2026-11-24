@@ -16,6 +16,7 @@
 // CHECK: aie.dma_bd({{.*}} {bd_id = 3 : i32}
 aie.device(npu2) {
   %tile = aie.tile(0, 0)
+  // expected-warning@+1 {{may exit with 1 DMA transfer(s) neither awaited nor freed}}
   aie.runtime_sequence @oldest_token_only(%buf: memref<256xi32>) {
     %oldest = aiex.dma_configure_task(%tile, MM2S, 0) {
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
@@ -31,12 +32,14 @@ aie.device(npu2) {
     } {issue_token = true}
     aiex.dma_start_task(%oldest)
     aiex.dma_start_task(%middle)
+    // expected-note@+1 {{first outstanding transfer starts here}}
     aiex.dma_start_task(%newest)
     aiex.dma_await_task(%newest)
     // expected-note@+1 {{released here}}
     aiex.dma_free_task(%middle)
     %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.end
     }
@@ -135,7 +138,8 @@ aie.device(npu2) {
     // expected-note@+1 {{released here}}
     aiex.dma_free_task(%task)
     %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.end
     }
@@ -274,7 +278,8 @@ aie.device(npu2) {
     // expected-note@+1 {{released here}}
     aiex.dma_free_task(%b)
     %c = aiex.dma_configure_task(%tile, MM2S, 0) {
-      // expected-warning@+1 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      // expected-warning@+2 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      // expected-note@+1 {{not proven finished: it names no shim allocation, so no output's progress can prove it consumed}}
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
       aie.end
     }

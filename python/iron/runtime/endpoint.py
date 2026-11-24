@@ -31,12 +31,18 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
                 f"RuntimeEndpoint requires a shim tile (ShimNOCTile or "
                 f"ShimPLTile), but got tile_type={tile.tile_type}"
             )
-        # Always produce a fresh Tile: shim tiles are never shared between
-        # endpoints, and the singletons (AnyShimTile) must stay unbound.
+        # An explicit typed tile is a shared placement constraint, just as it
+        # is for Workers and ObjectFifo links. Clone only the default singleton
+        # or a tile whose type still needs to be inferred.
         default_type = (
             tile.tile_type if tile.tile_type is not None else AIETileType.ShimNOCTile
         )
-        super().__init__(tile.with_type(default_type))
+        endpoint_tile = (
+            tile
+            if tile is not AnyShimTile and tile.tile_type is not None
+            else tile.with_type(default_type)
+        )
+        super().__init__(endpoint_tile)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RuntimeEndpoint):

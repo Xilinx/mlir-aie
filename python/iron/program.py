@@ -6,6 +6,7 @@
 
 import logging
 
+import aie
 import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
@@ -276,6 +277,16 @@ class Program:
 
         self._validate_composition()
         with mlir_mod_ctx(context=context, location=loc) as ctx:
+            ctx.module.operation.attributes["iron.provenance"] = ir.DictAttr.get(
+                {
+                    name: ir.StringAttr.get(value)
+                    for name, value in (
+                        ("version", getattr(aie, "__version__", None)),
+                        ("revision", getattr(aie, "__commit__", None)),
+                    )
+                    if value is not None
+                }
+            )
             scratchpad_parameters: dict[str, ScratchpadParameter] = {}
             for configuration in self._configurations:
                 for worker in configuration.workers:

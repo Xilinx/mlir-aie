@@ -18,7 +18,7 @@ using namespace xilinx::AIE;
 
 void AIEX::addPlacementStage(OpPassManager &pm,
                              const AIEPlaceTilesOptions &options) {
-  pm.nest<DeviceOp>().addPass(createAIEPlaceTilesPass(options));
+  pm.addPass(createAIEPlaceTilesPass(options));
 }
 
 void AIEX::addTraceStage(OpPassManager &pm) {
@@ -33,23 +33,41 @@ void AIEX::addTraceStage(OpPassManager &pm) {
 
 void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool packetSwObjFifos, bool ctrlPktOverlay,
-                            bool loadPdiToCtrlPkt, bool skipObjectFifoVerify) {
+                            bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
+                            llvm::ArrayRef<int> coverColumns,
+                            bool adaptiveOverlay, bool checkQueueSpace) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
+  // The verifier checks a parameter-waiting Worker's fifo volume per dispatch
+  // from the aiex.wait_scratchpad_parameters and parameter syncs that the
+  // scratchpad lowering below replaces. Split is idempotent, so the lowering
+  // after it splits again and does not verify twice.
+  if (!skipObjectFifoVerify) {
+    OpPassManager &verify = pm.nest<DeviceOp>();
+    verify.addPass(createAIEObjectFifoSplitPass());
+    verify.addPass(createAIEObjectFifoVerifyPass());
+  }
   // Before lock IDs and buffer addresses, which its new locks and buffers need.
   pm.addPass(createAIELowerScratchpadParametersPass());
 
-  // With the overlay requested, it claims its shim DMA channels before
-  // objectFIFO lowering works around them; otherwise it runs after tile
-  // control IDs are assigned.
+  pm.nest<DeviceOp>().addPass(createAIEObjectFifoSplitPass());
   AIEGenerateColumnControlOverlayOptions overlay;
-  overlay.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
-  overlay.clEmitStandaloneOverlay = ctrlPktOverlay && loadPdiToCtrlPkt;
-  if (ctrlPktOverlay)
-    pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
-
+  overlay.configuration = ctrlPktOverlay || loadPdiToCtrlPkt;
+  overlay.adaptive = adaptiveOverlay;
+  overlay.coverColumns = llvm::to_vector(coverColumns);
+  overlay.packetSwitched = packetSwObjFifos;
+  pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
+  pm.addPass(createAIEImportOverlayPass());
+  pm.addPass(createAIEAnnotateShimSharingPass());
   OpPassManager &dpm = pm.nest<DeviceOp>();
-  addObjectFifoLoweringPasses(dpm, packetSwObjFifos, skipObjectFifoVerify);
+  dpm.addPass(createAIEAssignPacketIdsPass(packetSwObjFifos, ctrlPktOverlay));
+  dpm.addPass(createAIEObjectFifoAllocatePass());
+  AIEObjectFifoInsertCoreQueuePushesOptions pushOptions;
+  pushOptions.checkQueueSpace = checkQueueSpace;
+  dpm.addPass(createAIEObjectFifoInsertCoreQueuePushesPass(pushOptions));
+  dpm.addPass(createAIEObjectFifoLowerDMAsPass());
+  dpm.addPass(createAIEObjectFifoLowerCoresPass());
+  dpm.addPass(createAIEObjectFifoErasePoolsPass());
   AIEObjectFifoUnrollOptions unroll;
   unroll.clDefaultDynamic = dynamicObjFifos;
   dpm.addPass(createAIEObjectFifoUnrollPass(unroll));
@@ -57,13 +75,11 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   dpm.addPass(createAIEAssignLockIDsPass());
   dpm.addPass(createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
+  dpm.addPass(createAIELowerCoreIssuedConfigurationPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(createAIEBroadcastPacketPass());
   dpm.addPass(createAIELowerMulticastPass());
-  dpm.addPass(createAIEAssignTileCtrlIDsPass());
-
-  if (!ctrlPktOverlay)
-    pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
+  pm.nest<DeviceOp>().addPass(createAIEAssignTileCtrlIDsPass());
 
   // A buffer's name becomes a symbol in its core's object.
   pm.nest<DeviceOp>().addPass(createAIEPrepareBuffersPass());
@@ -76,8 +92,8 @@ void AIEX::addBufferAddressStage(OpPassManager &pm, int64_t placementBudget) {
 }
 
 void AIEX::addRoutingStage(OpPassManager &pm, bool allowDeadlockProne) {
+  pm.nest<DeviceOp>().addPass(createAIESplitFlowViasPass());
   OpPassManager &dpm = pm.nest<DeviceOp>();
-  dpm.addPass(createAIESplitFlowViasPass());
   AIERoutePathfinderFlowsOptions options;
   options.clAllowDeadlockProne = allowDeadlockProne;
   dpm.addPass(createAIEPathfinderPass(options));
@@ -93,12 +109,17 @@ void AIEX::registerAIEResourceStagesPipeline() {
         place.clCoresPerCol = options.coresPerCol;
         place.clSASeed = options.saSeed;
         place.clSAEffort = options.saEffort;
+        place.clPlacementBudget = options.placementBudget;
+        place.clCtrlPktOverlay =
+            options.ctrlPktOverlay || options.loadPdiToCtrlPkt;
+        place.clCtrlPktOverlayAdaptive = options.adaptiveOverlay;
+        place.clPacketSwObjectFifos = options.packetSwObjFifos;
         addPlacementStage(pm, place);
         addTraceStage(pm);
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,
                          options.ctrlPktOverlay || options.loadPdiToCtrlPkt,
-                         options.loadPdiToCtrlPkt,
-                         options.skipObjectFifoVerify);
+                         options.loadPdiToCtrlPkt, options.skipObjectFifoVerify,
+                         {}, options.adaptiveOverlay);
         addBufferAddressStage(pm, options.placementBudget);
         addRoutingStage(pm, options.allowDeadlockProneRouting);
       });

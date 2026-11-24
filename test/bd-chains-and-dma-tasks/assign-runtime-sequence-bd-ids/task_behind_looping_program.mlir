@@ -9,7 +9,7 @@
 // A chain that ends, or an aiex.dma_channel_reset since the latest load, frees
 // the channel; after a load, the loaded device's programs are the ones that run.
 
-// RUN: aie-opt --verify-diagnostics --split-input-file --aie-assign-runtime-sequence-bd-ids %s
+// RUN: aie-opt --verify-diagnostics --split-input-file --aie-assign-runtime-sequence-bd-ids='warn-unreleased-transfers=false' %s
 
 module {
   aie.device(npu2) {

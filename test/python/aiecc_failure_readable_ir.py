@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %PYTHON %s
+# An ASCII locale stands in for a Windows code page: UTF-8 IR must round-trip.
+# RUN: env LC_ALL=C PYTHONCOERCECLOCALE=0 PYTHONUTF8=0 %PYTHON %s
 # REQUIRES: peano
 
 # When aiecc rejects a design compiled into a work_dir, the design's IR is
 # written beside it with each op's source as a comment, and the error says
 # where.
 
+import sys
 import tempfile
 from pathlib import Path
 
@@ -17,6 +20,7 @@ from aie.utils.compile.utils import compile_mlir_module
 IR = """
 module {
   aie.device(npu1_1col) {
+    // naïve fifo: no consumer drains it
     %t02 = aie.tile(0, 2) loc("design.py":3:0)
     %t03 = aie.tile(0, 3) loc("design.py":4:0)
     aie.objectfifo @act_in(%t02, {%t03}, 2 : i32) : !aie.objectfifo<memref<16xi32>> loc(#loc2)
@@ -41,7 +45,7 @@ with tempfile.TemporaryDirectory() as work:
         raise AssertionError("expected aiecc to reject a fifo with no drainer")
     path = Path(work) / "aie.readable.mlir"
     assert message.endswith(f"each op noted with its source: {path}"), message
-    lines = path.read_text().splitlines()
+    lines = path.read_text(encoding="utf-8").splitlines()
     fifo = next(line for line in lines if "aie.objectfifo @act_in" in line)
     assert fifo.endswith("  // act_in · design.py:12"), fifo
     assert not any("#loc" in line for line in lines), lines
@@ -62,14 +66,16 @@ with tempfile.TemporaryDirectory() as work:
     else:
         raise AssertionError("expected aiecc to reject a fifo with no drainer")
     assert message.startswith("[aiecc] Compilation failed"), message
-    assert "Could not write the design's readable IR: IsADirectoryError" in message
+    # Windows refuses to open a directory for writing as access denied.
+    error = "PermissionError" if sys.platform == "win32" else "IsADirectoryError"
+    assert f"Could not write the design's readable IR: {error}" in message, message
 print("PASS: aiecc's error kept when the readable IR cannot be written")
 
 # A design compiled through CompilableDesign, whose failed build is cleaned
 # from its cache directory, keeps the readable IR the error points at.
 with tempfile.TemporaryDirectory() as work:
     design = Path(work) / "design.mlir"
-    design.write_text(IR)
+    design.write_text(IR, encoding="utf-8")
     try:
         CompilableDesign(design, use_cache=False).compile(
             xclbin_path=f"{work}/final.xclbin", inst_path=f"{work}/insts.bin"

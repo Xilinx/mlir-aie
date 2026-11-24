@@ -28,9 +28,11 @@ module {
     aie.objectfifo @of_out(%logical_core, {%logical_shim_noc_0}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
     %0 = aie.core(%logical_core) {
       %c0 = arith.constant 0 : index
-      %cmax = arith.constant 9223372036854775807 : index
       %c1 = arith.constant 1 : index
-      scf.for %arg0 = %c0 to %cmax step %c1 {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
         %2 = aie.objectfifo.acquire @of_out(Produce, 1) : memref<256xi32>
         %4 = aie.objectfifo.acquire @of_in(Consume, 1) : memref<256xi32>
         %c0_1 = arith.constant 0 : index
@@ -42,6 +44,7 @@ module {
         }
         aie.objectfifo.release @of_in(Consume, 1)
         aie.objectfifo.release @of_out(Produce, 1)
+        scf.yield
       }
       aie.end
     }

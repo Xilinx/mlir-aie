@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
-          submodules: "true"
+          submodules: "recursive"
 
       - name: Install C/C++ toolchain
         run: |
@@ -122,7 +122,7 @@ jobs:
           #   MLIRAIEVecAttributesIncGen    -> AIEVecEnums.h.inc,
           #                                    AIEVecAttributes.h.inc
           #   MLIRAIENormalizeAddressSpacesIncGen -> AIENormalizeAddressSpaces.inc
-          #   xaienginecdo_static-headers   -> vendored xaiengine/*.h used by
+          #   xaienginecdo_static-headers   -> aie-codegen headers used by
           #                                    the CDO backend (AIETargets,
           #                                    AIEToConfiguration)
           #   aiecc_version                 -> aiecc/AIECCVersion.h
@@ -213,6 +213,7 @@ jobs:
             lib/Dialect/AIE/Transforms/AIEHoistVectorTransferPointers.cpp
             lib/Dialect/AIE/Transforms/AIEInsertTraceFlows.cpp
             lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp
+            lib/Dialect/AIE/Transforms/AIELockPlan.cpp
             lib/Dialect/AIE/Transforms/AIELowerCascadeFlows.cpp
             lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp
             lib/Dialect/AIE/Transforms/AIEObjectFifoAllocate.cpp
@@ -341,7 +342,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
-          submodules: "true"
+          submodules: "recursive"
 
       - name: Setup Python env
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0

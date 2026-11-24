@@ -51,14 +51,17 @@
 // VEC-IR: vector.store %{{.*}}, %{{.*}}[%c0] : memref<1024xi32, #ptr.generic_space>, vector<64xi32>
 // VEC-IR: ptr.ptr_add %{{.*}}, %c256 :
 
-// With the split, the two halves are loaded separately and one shuffle
-// concatenates the ups results.
+// With the split, the two halves are loaded separately, and each ups result
+// is stored in its two 512-bit halves, with no concatenation of the two.
 // VEC-LL-NOT: shufflevector
-// VEC-LL: call {{.*}}@llvm.aie2p.acc32.v32.I512.ups
+// VEC-LL: %[[LO:.*]] = call {{.*}}@llvm.aie2p.acc32.v32.I512.ups
 // VEC-LL-NOT: shufflevector
-// VEC-LL: call {{.*}}@llvm.aie2p.acc32.v32.I512.ups
-// VEC-LL: shufflevector
-// VEC-LL-NOT: shufflevector
+// VEC-LL: %[[HI:.*]] = call {{.*}}@llvm.aie2p.acc32.v32.I512.ups
+// VEC-LL-NOT: <64 x i32>
+// VEC-LL-COUNT-2: shufflevector <32 x i32> %[[LO]], <32 x i32> poison, <16 x i32>
+// VEC-LL-COUNT-2: shufflevector <32 x i32> %[[HI]], <32 x i32> poison, <16 x i32>
+// VEC-LL-COUNT-4: store <16 x i32>
+// VEC-LL-NOT: <64 x i32>
 
 module {
   aie.device(npu2) {

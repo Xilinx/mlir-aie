@@ -16,6 +16,9 @@ void ess_WriteGM(uint64_t addr, const void *data, uint64_t size);
 void ess_ReadGM(uint64_t addr, void *data, uint64_t size);
 }
 
+// Next free simulated DDR physical address.
+static uint64_t nextAlignedAddr = 0;
+
 int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, ext_mem_model_t &handle,
                         int size) {
   int size_bytes = size * sizeof(int);

@@ -6,7 +6,7 @@ llvm_map_components_to_libnames(llvm_libs support core irreader object objcopy)
 # Build aiecc compiler driver
 # AiebuConfigElf.cpp belongs to the optional aiecc-aiebu library below.
 set(LLVM_OPTIONAL_SOURCES AiebuConfigElf.cpp)
-add_llvm_executable(aiecc aiecc.cpp StackSizeAnalysis.cpp)
+add_llvm_executable(aiecc aiecc.cpp StackSizeAnalysis.cpp Provenance.cpp)
 llvm_update_compile_flags(aiecc)
 
 # Refresh AIECCVersion.h each build so --version reflects the current SHA.

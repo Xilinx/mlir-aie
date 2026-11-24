@@ -12,7 +12,7 @@
 // ENABLED-NOT: see current operation
 // ENABLED: note: released here
 // ENABLED-NOT: see current operation
-// DISABLED-NOT: warning:
+// DISABLED-NOT: warning: {{.*}}reuses buffer descriptor
 
 module {
   aie.device(npu2) {

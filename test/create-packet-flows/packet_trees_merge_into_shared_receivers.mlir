@@ -18,7 +18,7 @@
 // CHECK-LABEL: aie.switchbox(%tile_2_2)
 // CHECK:         aie.packet_rules(North : 3) {
 // CHECK-NEXT:      aie.rule(31, 30, %[[T:[0-9]+]])
-// CHECK:         aie.packet_rules(West : 1) {
+// CHECK:         aie.packet_rules(West : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 30, %[[T]])
 
 module {

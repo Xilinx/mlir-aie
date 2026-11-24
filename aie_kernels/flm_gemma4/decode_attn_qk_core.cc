@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The running max arrives after q in qm and leaves after the scores in s.
+// qm holds queries then running maxima; s holds scores then updated maxima.
 #include "decode_attn_qk.cc"
 
 extern "C" void attn_qk_round_core(bf16 *qm, bf16 *k, bf16 *s, float *c,

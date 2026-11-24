@@ -18,6 +18,8 @@ def AIEVec_Dialect : Dialect {
   let cppNamespace = "::xilinx::aievec";
 
   let useDefaultAttributePrinterParser = 1;
+  // bfp16 FIFO stream addresses are LLVM pointers.
+  let dependentDialects = ["::mlir::LLVM::LLVMDialect"];
 
   let extraClassDeclaration = [{
     void registerTypes();

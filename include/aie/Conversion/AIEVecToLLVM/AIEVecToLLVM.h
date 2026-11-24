@@ -9,6 +9,7 @@
 #ifndef AIE_CONVERSION_AIEVECTOLLVM_AIEVECTOLLVM_H
 #define AIE_CONVERSION_AIEVECTOLLVM_AIEVECTOLLVM_H
 
+#include "aie/Dialect/AIEVec/Utils/TargetInfo.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include <memory>
@@ -26,7 +27,7 @@ enum class Aie2Fp32Emulation : uint32_t;
 
 void populateAIEVecToLLVMConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
-    Aie2Fp32Emulation aie2Fp32EmulationOption, llvm::StringRef aieTarget);
+    Aie2Fp32Emulation aie2Fp32EmulationOption, AIEVecTargetInfo aieTarget);
 
 void populateAIEVecToLLVMCommonConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns);

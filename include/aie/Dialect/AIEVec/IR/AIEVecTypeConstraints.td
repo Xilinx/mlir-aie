@@ -30,11 +30,10 @@ class VectorOfShape<list<int> shape>
 class VectorOfElementType<Type type>
     : SubstLeaves<"$_self", ElementType<"_self">.result, type.predicate>;
 
-// Notice: This predicate class assumes that the type has been verified to be a
-//         ShapedType
 class VectorOfShapeAndType<list<int> shape, Type type>
-    : Type<And<[VectorOfShape<shape>, VectorOfElementType<type>]>,
-           "vector of shape <"#!interleave(shape, "x")#"> and",
+    : Type<And<[IsVectorOfAnyRankTypePred, VectorOfShape<shape>,
+                VectorOfElementType<type>]>,
+           "vector of shape <"#!interleave(shape, "x")#"> of "#type.summary,
            "::mlir::VectorType">;
 
 class ShapedTypeBitWidth<string name>

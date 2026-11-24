@@ -23,10 +23,10 @@
 namespace xilinx::AIE {
 struct AIERTControl;
 
-// RAII helper. Constructs while AIERTControl is recording an aie-rt
+// RAII helper. Constructs while AIERTControl is recording an aie-codegen
 // transaction, captures the current XAie_TxnInst command count at entry, and
-// at scope end attributes every aie-rt command produced during the scope to
-// `loc`. exportSerializedTransaction() projects the captured ranges onto the
+// at scope end attributes every aie-codegen command produced during the scope
+// to `loc`. exportSerializedTransaction() projects the captured ranges onto the
 // serialized transaction's operations, and the AIEToConfiguration round-trip
 // reads them back out so re-emitted aiex.npu.* ops carry the source op's MLIR
 // Location instead of the device's fallback location.
@@ -49,12 +49,12 @@ struct AIERTControl {
   ~AIERTControl();
 
   mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug);
-  mlir::LogicalResult pushToBdQueueAndEnable(mlir::Operation &op, int col,
-                                             int row, int chNum,
-                                             const DMAChannelDir &channelDir,
-                                             int bdId, int repeatCount,
-                                             uint32_t padValue = 0,
-                                             bool outOfOrder = false);
+  mlir::LogicalResult
+  pushToBdQueueAndEnable(mlir::Operation &op, int col, int row, int chNum,
+                         const DMAChannelDir &channelDir, int bdId,
+                         int repeatCount, uint32_t padValue = 0,
+                         bool outOfOrder = false, bool configureChannel = true,
+                         bool pushTask = true);
   mlir::LogicalResult configureLocksAndBd(mlir::Block &block, int col, int row,
                                           bool outOfOrder = false);
   mlir::LogicalResult initLocks(DeviceOp &targetOp);
@@ -63,7 +63,8 @@ struct AIERTControl {
                                         bool skipCtrlPktOverlay = false);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
                                     bool skipCtrlPktOverlay = false);
-  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp);
+  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp,
+                                       bool skipCtrlPktOverlay = false);
   mlir::LogicalResult disableCores(DeviceOp &targetOp);
   mlir::LogicalResult resetDmaChannels(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);

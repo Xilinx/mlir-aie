@@ -115,7 +115,7 @@ flow, but pick a Python that matches your `pyxrt` (above).
 
 ```bash
 uv venv --python 3.12 ironenv && source ironenv/bin/activate
-pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
+pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-5
 pip install -r utils/peano-requirements.txt  # Peano, pinned to the tested nightly CI uses
 ```
 

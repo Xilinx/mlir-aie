@@ -526,20 +526,21 @@ class DeviceConfiguration(DeviceResources):
 
         @device(current_device.resolve(), sym_name=device_name, loc=loc)
         def device_body():
-            all_fifos = set()
-            all_pools = set()
-            for runtime in self._runtimes:
-                all_fifos.update(runtime.fifos)
+            # First-use order, not name order: the order these are emitted in
+            # steers placement, and a name is only what its Python variable
+            # happened to be called.
+            all_fifos = dict.fromkeys(
+                handle for runtime in self._runtimes for handle in runtime.fifos
+            )
+            all_pools = {}
             for worker in self._workers:
                 for handle in worker.fifos:
                     # A pool handle states one end only, so it has no fifo graph
                     # to walk and no delegate tile to follow.
                     if isinstance(handle, ObjectFifoPoolHandle):
-                        all_pools.add(handle)
+                        all_pools[handle] = None
                     else:
-                        all_fifos.add(handle)
-            all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
-            all_pools = sorted(all_pools, key=lambda obj: obj.name or "")
+                        all_fifos[handle] = None
 
             all_tiles = []
             for worker in self._workers:

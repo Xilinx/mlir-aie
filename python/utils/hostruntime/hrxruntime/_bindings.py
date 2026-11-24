@@ -415,7 +415,7 @@ def _check(status, what: str):
 def control_code_from_elf(elf_bytes: bytes):
     """Extract the XAie transaction words (``.ctrltext``) from a control ELF.
 
-    Only needed for an ELF input (``aiecc --aie-generate-elf``): ``.ctrltext``
+    Only needed for an ELF input (``aiecc --get-elf``): ``.ctrltext``
     is the TXN stream verbatim, which is what libhrx patches from. A raw
     ``insts.bin`` is already the transaction and needs no extraction. libhrx
     derives the buffer patch table from the transaction itself inside

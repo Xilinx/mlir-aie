@@ -11,7 +11,7 @@
 
 // CHECK: module @ndDMAObjFifoAIE2 {
 // CHECK:   aie.device(xcve2302) {
-// CHECK-DAG:     %[[tile_1_0:.*]] = aie.tile(1, 0)
+// CHECK-DAG:     %[[tile_1_0:.*]] = aie.tile(2, 0)
 // CHECK-DAG:     %[[tile_1_1:.*]] = aie.tile(1, 1)
 // CHECK-DAG:     %[[tile_2_2:.*]] = aie.tile(2, 2)
 // CHECK-DAG:     %[[tile_2_3:.*]] = aie.tile(2, 3)
@@ -119,7 +119,7 @@
 
 module @ndDMAObjFifoAIE2 {
  aie.device(xcve2302) {
-    %tile10 = aie.tile(1, 0)
+    %tile10 = aie.tile(2, 0)
     %tile11 = aie.tile(1, 1)
     %tile22 = aie.tile(2, 2)
     %tile23 = aie.tile(2, 3)
