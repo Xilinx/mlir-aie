@@ -271,6 +271,37 @@ def test_cached_reuse_run_correct(cached, kernels):
         np.testing.assert_array_equal(out.numpy(), base + 1)
 
 
+def test_cached_empty_dispatch_is_one_cache_entry(cached, kernels):
+    """Handles of one kernel share one cached empty executable."""
+    kernel_a, _ = kernels
+    first = cached.load(kernel_a)
+    second = cached.load(kernel_a)
+
+    assert first.empty_dispatch_ns() > 0
+    assert second.empty_dispatch_ns() > 0
+    assert len(cached._exe_cache) == 2
+    assert first._empty is None and second._empty is None
+
+
+def test_cached_empty_dispatch_evicts_when_the_cache_is_full(cached, kernels):
+    """The empty executable takes a cache slot, evicting before it is built."""
+    kernel_a, _ = kernels
+    cached._cache_size = 1
+    handle = cached.load(kernel_a)
+
+    assert handle.empty_dispatch_ns() > 0
+    assert len(cached._exe_cache) == 1
+    (exe, _), *_ = cached._exe_cache.values()
+    assert exe is not handle.executable
+
+    base = np.arange(1, 1025, dtype=np.int32)
+    in_a = iron.tensor(base, dtype=np.int32, device="npu")
+    out = iron.zeros(1024, dtype=np.int32, device="npu")
+    cached.run(handle, [in_a, out])
+    out.to("cpu")
+    np.testing.assert_array_equal(out.numpy(), base + 1)
+
+
 # --- HRXHostRuntime (uncached) ---------------------------------------------
 
 
@@ -302,6 +333,17 @@ def test_uncached_run_correct(uncached, kernels):
     out.to("cpu")
     assert res.is_success()
     np.testing.assert_array_equal(out.numpy(), base + 1)
+
+
+def test_empty_dispatch_ns_reuses_its_executable(uncached, kernels):
+    """empty_dispatch_ns() times a dispatch and builds its executable once."""
+    kernel_a, _ = kernels
+    handle = uncached.load(kernel_a)
+
+    assert handle.empty_dispatch_ns() > 0
+    empty = handle._empty
+    assert handle.empty_dispatch_ns() > 0
+    assert handle._empty is empty
 
 
 def test_uncached_cleanup_drains(uncached, kernels):
