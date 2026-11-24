@@ -1,0 +1,445 @@
+{
+ "schema": 1,
+ "target": "sa-placer",
+ "id": "45342262454",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45342262454",
+ "date": "2026-11-24T06:40:57+00:00",
+ "commit": {
+  "id": "1fb6e82cb8c2afbeb9339723b727e185699c343f",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/1fb6e82cb8c2afbeb9339723b727e185699c343f",
+  "message": "Patch aie_api unaligned accessors so newer Peano nightlies don't fold the realigning shift (#4081)",
+  "timestamp": "2026-11-24T04:04:55Z"
+ },
+ "event": "schedule",
+ "pmode": null,
+ "device": "AMD EPYC 7763 64-Core Processor",
+ "device_raw": null,
+ "provenance": {
+  "commit": "1fb6e82cb8",
+  "fixtures": "9b6b41d42657",
+  "cpu": "AMD EPYC 7763 64-Core Processor"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 12,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "test_sa_effort": {
+   "failed_seeds": {
+    "value": 0,
+    "unit": "seeds"
+   },
+   "cpu_ms_mean": {
+    "value": 1520.9,
+    "unit": "ms"
+   },
+   "cpu_ms_max": {
+    "value": 1844.3,
+    "unit": "ms"
+   },
+   "peak_rss_mb_max": {
+    "value": 67.2,
+    "unit": "MiB"
+   },
+   "final_cost_mean": {
+    "value": 12,
+    "unit": "cost"
+   },
+   "final_cost_max": {
+    "value": 12,
+    "unit": "cost"
+   }
+  },
+  "mobilenet": {
+   "failed_seeds": {
+    "value": 0,
+    "unit": "seeds"
+   },
+   "cpu_ms_mean": {
+    "value": 102294.3,
+    "unit": "ms"
+   },
+   "cpu_ms_max": {
+    "value": 113140.5,
+    "unit": "ms"
+   },
+   "peak_rss_mb_max": {
+    "value": 147.3,
+    "unit": "MiB"
+   },
+   "final_cost_mean": {
+    "value": 288.3,
+    "unit": "cost"
+   },
+   "final_cost_max": {
+    "value": 299,
+    "unit": "cost"
+   }
+  }
+ },
+ "builds": {},
+ "detail": [
+  {
+   "fixture": "test_sa_effort",
+   "seed": 1,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1844.3,
+   "peak_rss_mb": 65.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 2,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1481.7,
+   "peak_rss_mb": 66.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 3,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1551.3,
+   "peak_rss_mb": 67.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 4,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1513.6,
+   "peak_rss_mb": 65.6
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 5,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1294.4,
+   "peak_rss_mb": 65.3
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 6,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1730.9,
+   "peak_rss_mb": 66.5
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 7,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1452.7,
+   "peak_rss_mb": 65.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 8,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1505.3,
+   "peak_rss_mb": 66.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 9,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1410.8,
+   "peak_rss_mb": 65.5
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 10,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1734.5,
+   "peak_rss_mb": 65.0
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 11,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1378.6,
+   "peak_rss_mb": 66.4
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 12,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1603.9,
+   "peak_rss_mb": 66.6
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 13,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1743.1,
+   "peak_rss_mb": 64.9
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 14,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1176.5,
+   "peak_rss_mb": 65.8
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 15,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1391.5,
+   "peak_rss_mb": 67.0
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 16,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1698.1,
+   "peak_rss_mb": 66.8
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 17,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1590.4,
+   "peak_rss_mb": 65.2
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 18,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1370.6,
+   "peak_rss_mb": 65.1
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 19,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1563.2,
+   "peak_rss_mb": 67.2
+  },
+  {
+   "fixture": "test_sa_effort",
+   "seed": 20,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 12,
+   "cpu_ms": 1382.3,
+   "peak_rss_mb": 64.6
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 1,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 286,
+   "cpu_ms": 99738.1,
+   "peak_rss_mb": 144.6
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 2,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 295,
+   "cpu_ms": 88635.1,
+   "peak_rss_mb": 147.1
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 3,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 297,
+   "cpu_ms": 100015.4,
+   "peak_rss_mb": 144.8
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 4,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 290,
+   "cpu_ms": 111370.0,
+   "peak_rss_mb": 145.1
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 5,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 279,
+   "cpu_ms": 101243.9,
+   "peak_rss_mb": 147.3
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 6,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 293,
+   "cpu_ms": 101622.4,
+   "peak_rss_mb": 145.0
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 7,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 289,
+   "cpu_ms": 104196.2,
+   "peak_rss_mb": 144.6
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 8,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 288,
+   "cpu_ms": 108502.6,
+   "peak_rss_mb": 143.3
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 9,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 289,
+   "cpu_ms": 103879.8,
+   "peak_rss_mb": 145.5
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 10,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 284,
+   "cpu_ms": 103374.0,
+   "peak_rss_mb": 138.9
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 11,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 298,
+   "cpu_ms": 96861.4,
+   "peak_rss_mb": 145.8
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 12,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 282,
+   "cpu_ms": 110681.9,
+   "peak_rss_mb": 137.1
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 13,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 288,
+   "cpu_ms": 106605.3,
+   "peak_rss_mb": 139.3
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 14,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 286,
+   "cpu_ms": 106421.7,
+   "peak_rss_mb": 145.1
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 15,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 283,
+   "cpu_ms": 92137.4,
+   "peak_rss_mb": 143.8
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 16,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 274,
+   "cpu_ms": 103515.6,
+   "peak_rss_mb": 143.3
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 17,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 285,
+   "cpu_ms": 98518.1,
+   "peak_rss_mb": 144.0
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 18,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 299,
+   "cpu_ms": 95141.5,
+   "peak_rss_mb": 145.3
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 19,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 292,
+   "cpu_ms": 113140.5,
+   "peak_rss_mb": 143.9
+  },
+  {
+   "fixture": "mobilenet",
+   "seed": 20,
+   "passed": true,
+   "timed_out": false,
+   "final_cost": 289,
+   "cpu_ms": 100284.3,
+   "peak_rss_mb": 143.7
+  }
+ ]
+}
