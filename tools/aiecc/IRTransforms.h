@@ -2038,6 +2038,14 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 inline std::unique_ptr<mlir::PassManager>
 getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
+  if (ctrlPkt) {
+    auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+    dpm.addPass(xilinx::AIEX::createAIEUnrollRuntimeSequenceLoopsPass());
+    mlir::GreedyRewriteConfig canonicalize;
+    canonicalize.setRegionSimplificationLevel(
+        mlir::GreedySimplifyRegionLevel::Disabled);
+    dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
+  }
   auto flag = [](bool b) { return b ? "true" : "false"; };
   std::string expandPipeline =
       llvm::formatv("aie-expand-load-pdi{{ctrl-pkt={0} teardown={1} "
