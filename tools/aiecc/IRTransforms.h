@@ -29,7 +29,6 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "aie/Targets/AIETargets.h"
-#include "aie/Targets/AliasScopeDomains.h"
 
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
@@ -53,6 +52,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
@@ -60,6 +60,7 @@
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -586,6 +587,8 @@ inline mlir::LogicalResult checkBankPlacement(
   return result;
 }
 
+inline std::string upgradeIRFromPeano(llvm::StringRef ir);
+
 // Inspect both the optimized core IR (including merge-mode kernels) and the
 // embedded IR in separately compiled objects. Missing IR or unresolved table
 // placement is an error, not a successful verification.
@@ -717,8 +720,14 @@ inline mlir::LogicalResult checkLutBankSeparation(
       }
     };
 
+    // Peano's opt wrote the core IR.
     std::string coreIR = irForCore(coreOp);
-    checkPairs(coreIR, xilinx::aiecc::readLutPairsFromIR(coreIR), true);
+    std::optional<std::vector<LutPair>> corePairs;
+    if (auto buffer = llvm::MemoryBuffer::getFile(coreIR)) {
+      corePairs = xilinx::aiecc::readLutPairsFromIRText(
+          upgradeIRFromPeano((*buffer)->getBuffer()));
+    }
+    checkPairs(coreIR, corePairs, true);
     if (auto files = coreOp.getLinkFiles()) {
       for (auto f : files->getAsRange<mlir::StringAttr>()) {
         std::string object = resolvePath(f.getValue());
@@ -764,6 +773,30 @@ patchCoreElfFiles(mlir::ModuleOp src,
 //===----------------------------------------------------------------------===//
 // LLVM-IR text post-processing
 //===----------------------------------------------------------------------===//
+
+// The reverse of downgradeIRForPeano, for Peano's text that aiecc's LLVM parses
+// back. Peano spells an alias scope domain `!{!N, !"name"}`; aiecc's LLVM
+// requires the disjoint flag `!{!N, i1 false, !"name"}` and does not upgrade
+// text. Bitcode is returned unchanged.
+inline std::string upgradeIRFromPeano(llvm::StringRef ir) {
+  std::string result = ir.str();
+  if (llvm::isBitcode(ir.bytes_begin(), ir.bytes_end())) {
+    return result;
+  }
+  for (size_t p = 0;
+       (p = result.find("= distinct !{!", p)) != std::string::npos;) {
+    size_t bol = result.rfind('\n', p);
+    bol = (bol == std::string::npos) ? 0 : bol + 1;
+    llvm::StringRef id = llvm::StringRef(result).slice(bol, p).trim();
+    size_t first = p + llvm::StringRef("= distinct !{").size();
+    p = first;
+    if (id.starts_with("!") &&
+        result.compare(first, id.size() + 4, id.str() + ", !\"") == 0) {
+      result.insert(first + id.size(), ", i1 false");
+    }
+  }
+  return result;
+}
 
 // Strip newer-LLVM features Peano's older opt/llc can't parse. aiecc's LLVM is
 // 24; Peano's is 21, so the text handed between them needs the gap patched.
@@ -1348,7 +1381,7 @@ struct CanonicalCoreIR {
 inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
   llvm::LLVMContext context;
   llvm::SMDiagnostic error;
-  std::string upgraded = xilinx::AIE::upgradeAliasScopeDomains(ir);
+  std::string upgraded = upgradeIRFromPeano(ir);
   std::unique_ptr<llvm::Module> module =
       llvm::parseIR(llvm::MemoryBufferRef(upgraded, "core"), error, context);
   if (!module || !module->getModuleInlineAsm().empty() ||

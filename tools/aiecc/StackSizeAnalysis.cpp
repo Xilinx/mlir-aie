@@ -7,8 +7,6 @@
 
 #include "StackSizeAnalysis.h"
 
-#include "aie/Targets/AliasScopeDomains.h"
-
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1006,9 +1004,7 @@ std::optional<std::vector<LutPair>> readLutPairs(llvm::MemoryBufferRef buffer) {
   }
   llvm::LLVMContext context;
   llvm::SMDiagnostic err;
-  std::string ir = xilinx::AIE::upgradeAliasScopeDomains(buffer.getBuffer());
-  std::unique_ptr<llvm::Module> module = llvm::parseIR(
-      llvm::MemoryBufferRef(ir, buffer.getBufferIdentifier()), err, context);
+  std::unique_ptr<llvm::Module> module = llvm::parseIR(buffer, err, context);
   if (!module) {
     return std::nullopt;
   }
@@ -1106,6 +1102,11 @@ xilinx::aiecc::readLutPairsFromIR(llvm::StringRef irPath) {
   // LTO can inline a live source function and remove its symbol, so absence
   // from the final ELF cannot prove a raw IR function's gathers are dead.
   return readLutPairs((*buffer)->getMemBufferRef());
+}
+
+std::optional<std::vector<LutPair>>
+xilinx::aiecc::readLutPairsFromIRText(llvm::StringRef ir) {
+  return readLutPairs(llvm::MemoryBufferRef(ir, "ir"));
 }
 
 std::optional<std::vector<LutPair>>

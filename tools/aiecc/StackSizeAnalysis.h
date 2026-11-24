@@ -192,6 +192,9 @@ readLutPairsFromObject(llvm::StringRef objectPath,
 // symbol names: LTO may inline their gathers and remove the original symbol.
 std::optional<std::vector<LutPair>> readLutPairsFromIR(llvm::StringRef irPath);
 
+// readLutPairsFromIR for IR already in memory.
+std::optional<std::vector<LutPair>> readLutPairsFromIRText(llvm::StringRef ir);
+
 // Tile-relative addresses of the data symbols the linked core ELF defines.
 // Ambiguous names are omitted. If supplied, `sizes` receives ELF symbol sizes;
 // callers must check that a table's whole extent lies in one memory bank.
