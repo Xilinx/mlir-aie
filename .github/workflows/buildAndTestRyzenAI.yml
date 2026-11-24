@@ -291,9 +291,6 @@ jobs:
       LIT_OPTS: -v --time-tests --timeout 600
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-hrx-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-hrx-${{ github.run_id }}
-      # Token for the (private) HRX release repo. fetch-hrx-release.sh passes it
-      # to gh / curl; the runner's own gh auth is used when this is empty.
-      GH_TOKEN: ${{ secrets.HRX_RELEASE_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -425,9 +422,6 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    env:
-      # Token for the (private) HRX release repo; empty falls back to anonymous.
-      GH_TOKEN: ${{ secrets.HRX_RELEASE_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
