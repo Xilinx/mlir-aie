@@ -38,23 +38,23 @@
 // CHECK: Address: 0x000000000021D0F0 {{.*}} is: 0x00000000
 // CHECK: Address: 0x000000000021D0F4 {{.*}} is: 0x02000000
 
-// Out-of-order is enabled (bit 3), and the start queue has repeat count=0x5.
-// CHECK: (Write64): Address:  0x000000000021DE00 Data:  0x00000008
-// CHECK: (Write64): Address:  0x000000000021DE04 Data:  0x00050000
-
 // Compute tile (1,2): a 1-way, 2-packet receive BD (bd_id 0).
 // - The iteration word (block + 0x10) packs (wrap-1) at bit 13 and
 // (step_in_words-1) at bit 0: wrap-1 = size-1 = 1, step-1 = stride-1 = 3.
 // - Out-of-order is enabled (bit 3) same as the other channels.
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000221D000
 // CHECK: Address: 0x000000000221D010 {{.*}} is: 0x00002003
-// CHECK: (Write64): Address:  0x000000000221DE00 Data:  0x00000008
 
 // Memtile (0,1), different register layout:
 // - Packet-enable is bit 31 of the first word (0x80000004 = enable + len 4).
 // - Out-of-order enable is bit 3 of the channel control (0x1A0600).
 // CHECK: Address: 0x00000000001A0000 {{.*}} is: 0x80000004
 // CHECK: Address: 0x00000000001A0020 {{.*}} is: 0x80000004
+
+// Out-of-order is enabled (bit 3), and the start queue has repeat count=0x5.
+// CHECK: (Write64): Address:  0x000000000021DE00 Data:  0x00000008
+// CHECK: (Write64): Address:  0x000000000021DE04 Data:  0x00050000
+// CHECK: (Write64): Address:  0x000000000221DE00 Data:  0x00000008
 // CHECK: (Write64): Address:  0x00000000001A0600 Data:  0x00000008
 
 module {
