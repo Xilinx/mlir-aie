@@ -44,6 +44,15 @@
 // LINKED-DAG: load float, ptr %{{.*}}, align 64
 // LINKED-DAG: memory(read, argmem: readwrite)
 
+// Alias scope domains reach Peano without the disjoint flag, in every form;
+// the loop ID shaped like a scope keeps its operands.
+// LINKED-DAG: ![[NAMED:[0-9]+]] = distinct !{![[NAMED]], !"merge_kernel"}
+// LINKED-DAG: ![[UNNAMED:[0-9]+]] = distinct !{![[UNNAMED]]}
+// LINKED-DAG: !{{[0-9]+}} = !{!"string.domain"}
+// LINKED-DAG: !llvm.loop ![[LOOP:[0-9]+]]
+// LINKED-DAG: ![[LOOP]] = distinct !{![[LOOP]], ![[PROGRESS:[0-9]+]]}
+// LINKED-DAG: ![[PROGRESS]] = !{!"llvm.loop.mustprogress"}
+
 // Peano's opt then folds the alwaysinline kernel in and dead-strips the
 // linkonce_odr definition: no `@merge_kernel` survives (--implicit-check-not
 // above; the inliner's `merge_kernel.exit` label carries no `@`). Opt runs on

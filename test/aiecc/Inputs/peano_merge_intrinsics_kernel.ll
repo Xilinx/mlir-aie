@@ -17,6 +17,9 @@
 ;   * an over-aligned alloca and over-aligned accesses to it, whose alignment
 ;     the post-link downgrade must not strip -- opt cannot re-derive it, and the
 ;     core misbehaves without it.
+;   * alias scope domains in Peano's spelling, without the disjoint flag
+;     aiecc's LLVM requires: named and unnamed self-referential, and
+;     string-identified. The loop ID has a scope's shape and must be left alone.
 ;
 ; The (ptr, ptr) signature is aiecc's bare-pointer memref calling convention.
 
@@ -26,12 +29,13 @@ define linkonce_odr void @merge_kernel(ptr %in, ptr %out) #0 {
 entry:
   %scratch = alloca [4 x float], align 64
   call void @llvm.lifetime.start.p0(i64 16, ptr %scratch)
+  call void @llvm.experimental.noalias.scope.decl(metadata !6)
   br label %body
 
 body:
   %i = phi i32 [ 0, %entry ], [ %i.next, %body ]
   %in.ptr = getelementptr inbounds i32, ptr %in, i32 %i
-  %x = load i32, ptr %in.ptr, align 4
+  %x = load i32, ptr %in.ptr, align 4, !alias.scope !6, !noalias !7
   ; A clamp to [0, 255]: llvm.smax / llvm.smin.
   %lo = call i32 @llvm.smax.i32(i32 %x, i32 0)
   %clamped = call i32 @llvm.smin.i32(i32 %lo, i32 255)
@@ -46,10 +50,10 @@ body:
   %acc = call float @llvm.fmuladd.f32(float %mag.reloaded, float %v, float %v)
   %res = fptosi float %acc to i32
   %out.ptr = getelementptr inbounds i32, ptr %out, i32 %i
-  store i32 %res, ptr %out.ptr, align 4
+  store i32 %res, ptr %out.ptr, align 4, !alias.scope !7, !noalias !6
   %i.next = add nuw nsw i32 %i, 1
   %done = icmp eq i32 %i.next, 16
-  br i1 %done, label %exit, label %body
+  br i1 %done, label %exit, label %body, !llvm.loop !8
 
 exit:
   call void @llvm.lifetime.end.p0(i64 16, ptr %scratch)
@@ -62,5 +66,17 @@ declare i32 @llvm.smax.i32(i32, i32)
 declare i32 @llvm.smin.i32(i32, i32)
 declare void @llvm.lifetime.start.p0(i64 immarg, ptr nocapture)
 declare void @llvm.lifetime.end.p0(i64 immarg, ptr nocapture)
+declare void @llvm.experimental.noalias.scope.decl(metadata)
 
 attributes #0 = { alwaysinline memory(read, argmem: readwrite, target_mem: none) }
+
+!0 = distinct !{!0, !"merge_kernel"}
+!1 = distinct !{!1, !0, !"merge_kernel: in"}
+!2 = distinct !{!2}
+!3 = distinct !{!3, !2}
+!4 = !{!"string.domain"}
+!5 = !{!"string.scope", !4}
+!6 = !{!1}
+!7 = !{!3, !5}
+!8 = distinct !{!8, !9}
+!9 = !{!"llvm.loop.mustprogress"}

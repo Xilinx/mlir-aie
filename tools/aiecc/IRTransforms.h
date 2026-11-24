@@ -49,6 +49,7 @@
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -774,27 +775,107 @@ patchCoreElfFiles(mlir::ModuleOp src,
 // LLVM-IR text post-processing
 //===----------------------------------------------------------------------===//
 
+// Rewrite the operands of every alias scope domain in textual IR. Domains are
+// found through the scopes that `!alias.scope`/`!noalias` lists and
+// noalias.scope.decl calls name: a loop ID has the same shape as a scope.
+inline void rewriteAliasScopeDomains(
+    std::string &ir,
+    llvm::function_ref<void(std::vector<std::string> &)> rewrite) {
+  struct Node {
+    size_t begin, end, body;
+    std::vector<std::string> ops;
+  };
+  llvm::StringMap<Node> nodes;
+  for (size_t begin = 0; begin < ir.size();) {
+    size_t end = ir.find('\n', begin);
+    if (end == std::string::npos) {
+      end = ir.size();
+    }
+    llvm::StringRef line = llvm::StringRef(ir).slice(begin, end).rtrim();
+    size_t eq = line.find(" = ");
+    llvm::StringRef rest = eq == llvm::StringRef::npos
+                               ? llvm::StringRef()
+                               : line.drop_front(eq + 3);
+    rest.consume_front("distinct ");
+    if (line.starts_with("!") && rest.starts_with("!{") &&
+        rest.ends_with("}")) {
+      Node node{
+          begin, begin + line.size(), begin + (line.size() - rest.size()), {}};
+      llvm::StringRef body = rest.drop_front(2).drop_back();
+      size_t start = 0;
+      int depth = 0;
+      bool quoted = false;
+      for (size_t i = 0; i <= body.size(); ++i) {
+        char c = i < body.size() ? body[i] : ',';
+        if (c == '"') {
+          quoted = !quoted;
+        } else if (!quoted && c == '{') {
+          ++depth;
+        } else if (!quoted && c == '}') {
+          --depth;
+        } else if (!quoted && depth == 0 && c == ',') {
+          llvm::StringRef op = body.slice(start, i).trim();
+          if (!op.empty()) {
+            node.ops.push_back(op.str());
+          }
+          start = i + 1;
+        }
+      }
+      nodes[line.take_front(eq)] = std::move(node);
+    }
+    begin = end + 1;
+  }
+  auto idAt = [&](size_t p) {
+    size_t e = p + 1;
+    while (e < ir.size() && std::isdigit(static_cast<unsigned char>(ir[e]))) {
+      ++e;
+    }
+    return llvm::StringRef(ir).slice(p, e);
+  };
+  llvm::StringSet<> domains;
+  for (llvm::StringRef use :
+       {"!alias.scope !", "!noalias !",
+        "@llvm.experimental.noalias.scope.decl(metadata !"}) {
+    for (size_t p = 0; (p = ir.find(use.str(), p)) != std::string::npos;) {
+      p += use.size() - 1;
+      auto list = nodes.find(idAt(p));
+      if (list == nodes.end()) {
+        continue;
+      }
+      for (const std::string &scopeId : list->second.ops) {
+        auto scope = nodes.find(scopeId);
+        if (scope != nodes.end() && scope->second.ops.size() >= 2 &&
+            nodes.count(scope->second.ops[1])) {
+          domains.insert(scope->second.ops[1]);
+        }
+      }
+    }
+  }
+  std::vector<Node *> edits;
+  for (const auto &domain : domains) {
+    edits.push_back(&nodes[domain.getKey()]);
+  }
+  llvm::sort(edits, [](Node *a, Node *b) { return a->begin > b->begin; });
+  for (Node *node : edits) {
+    rewrite(node->ops);
+    ir.replace(node->body, node->end - node->body,
+               "!{" + llvm::join(node->ops, ", ") + "}");
+  }
+}
+
 // The reverse of downgradeIRForPeano, for Peano's text that aiecc's LLVM parses
-// back. Peano spells an alias scope domain `!{!N, !"name"}`; aiecc's LLVM
-// requires the disjoint flag `!{!N, i1 false, !"name"}` and does not upgrade
-// text. Bitcode is returned unchanged.
+// back: aiecc's LLVM requires an alias scope domain's disjoint flag and does
+// not upgrade text. Bitcode is returned unchanged.
 inline std::string upgradeIRFromPeano(llvm::StringRef ir) {
   std::string result = ir.str();
   if (llvm::isBitcode(ir.bytes_begin(), ir.bytes_end())) {
     return result;
   }
-  for (size_t p = 0;
-       (p = result.find("= distinct !{!", p)) != std::string::npos;) {
-    size_t bol = result.rfind('\n', p);
-    bol = (bol == std::string::npos) ? 0 : bol + 1;
-    llvm::StringRef id = llvm::StringRef(result).slice(bol, p).trim();
-    size_t first = p + llvm::StringRef("= distinct !{").size();
-    p = first;
-    if (id.starts_with("!") &&
-        result.compare(first, id.size() + 4, id.str() + ", !\"") == 0) {
-      result.insert(first + id.size(), ", i1 false");
+  rewriteAliasScopeDomains(result, [](std::vector<std::string> &ops) {
+    if (ops.size() < 2 || !llvm::StringRef(ops[1]).starts_with("i1 ")) {
+      ops.insert(ops.begin() + std::min<size_t>(1, ops.size()), "i1 false");
     }
-  }
+  });
   return result;
 }
 
@@ -881,31 +962,14 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
       p = arg + sizeArg.size();
     }
   }
-  // LLVM 24 gives each alias scope domain a disjoint flag, `!N = distinct
-  // !{!N, i1 false, ...}`, which Peano rejects ("domain must have one or two
-  // operands"). Drop it: `false` is the old meaning, and reading a disjoint
-  // domain as non-disjoint only loses noalias facts.
-  for (size_t p = 0;
-       (p = result.find("= distinct !{!", p)) != std::string::npos;) {
-    size_t bol = result.rfind('\n', p);
-    bol = (bol == std::string::npos) ? 0 : bol + 1;
-    llvm::StringRef id = llvm::StringRef(result).slice(bol, p).trim();
-    size_t first = p + llvm::StringRef("= distinct !{").size();
-    const std::string self = id.str() + ", i1 ";
-    p = first;
-    if (!id.starts_with("!") || result.compare(first, self.size(), self) != 0) {
-      continue;
+  // LLVM 24 gives each alias scope domain a disjoint flag as its second
+  // operand, which Peano rejects. Drop it: `false` is the old meaning, and
+  // reading a disjoint domain as non-disjoint only loses noalias facts.
+  rewriteAliasScopeDomains(result, [](std::vector<std::string> &ops) {
+    if (ops.size() >= 2 && llvm::StringRef(ops[1]).starts_with("i1 ")) {
+      ops.erase(ops.begin() + 1);
     }
-    size_t valStart = first + self.size();
-    size_t valEnd = valStart;
-    while (valEnd < result.size() && isIdentChar(result[valEnd])) {
-      ++valEnd;
-    }
-    llvm::StringRef val = llvm::StringRef(result).slice(valStart, valEnd);
-    if (val == "false" || val == "true") {
-      result.erase(first + id.size(), valEnd - first - id.size());
-    }
-  }
+  });
   replaceTypedLiteral("half -inf", "half 0xHFC00");
   replaceTypedLiteral("half inf", "half 0xH7C00");
   replaceTypedLiteral("half nan", "half 0xH7E00");
