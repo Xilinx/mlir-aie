@@ -1041,6 +1041,7 @@ CASES: list[Case] = [
     Case("flm_gemma4_q4nx_lm_head_epilogue", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_q4nx_lm_head_rms", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_swa_prefill", calls=4, devices=("npu2",), smoke=True),
+    Case("flm_gemma4_swa_prefill", dict(head_dim=128), calls=4, devices=("npu2",)),
     check("flm_gemma4_prefill_block_begin", devices=("npu2",), smoke=True),
     check("flm_gemma4_prefill_block_begin", dict(head_dim=256), devices=("npu2",)),
     check("flm_gemma4_prefill_block_end", devices=("npu2",), smoke=True),
@@ -1140,6 +1141,12 @@ CASES: list[Case] = [
         calls=4,
         devices=("npu2",),
     ),
+    Case(
+        "flm_gemma4_prefill_round_begin",
+        dict(head_dim=128),
+        calls=4,
+        devices=("npu2",),
+    ),
     # Mask positions (inner_k, inner_q, inner_k_current): the global build's
     # chunk crosses the causal edge; the sliding-window one, with a window of
     # 8, crosses both edges.
@@ -1157,12 +1164,26 @@ CASES: list[Case] = [
         calls=4,
         devices=("npu2",),
     ),
+    Case(
+        "flm_gemma4_prefill_qk_core",
+        dict(head_dim=128),
+        scalars=(92, 100, 96),
+        calls=4,
+        devices=("npu2",),
+    ),
     Case("flm_gemma4_prefill_fv_core", calls=4, devices=("npu2",), smoke=True),
     Case("flm_gemma4_prefill_fv_core", dict(head_dim=256), calls=4, devices=("npu2",)),
+    Case("flm_gemma4_prefill_fv_core", dict(head_dim=128), calls=4, devices=("npu2",)),
     Case("flm_gemma4_prefill_block_mid_core", calls=4, devices=("npu2",), smoke=True),
     Case(
         "flm_gemma4_prefill_block_mid_core",
         dict(head_dim=256),
+        calls=4,
+        devices=("npu2",),
+    ),
+    Case(
+        "flm_gemma4_prefill_block_mid_core",
+        dict(head_dim=128),
         calls=4,
         devices=("npu2",),
     ),
@@ -3510,12 +3531,13 @@ CASES += [
     ),
     # P*V's product at a head dimension past the key block.
     check("mha", dict(dim_m=16, dim_k=256, dim_n=64, pv=True), smoke=True),
-    # The prefill toolkit's S*V accumulate, one case per geometry. Each
+    # The prefill toolkit's S*V accumulate, one case per head dim. Each
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V
     # order from a right one, which is why both are smoke cases.
     Case("prefill_fv", dict(head_dim=512), calls=4, smoke=True),
     Case("prefill_fv", dict(head_dim=256), calls=4, smoke=True),
+    Case("prefill_fv", dict(head_dim=128), calls=4),
     check("mm_bfp", _mm_bfp, devices=("npu2",), smoke=True),
     check("mm_bfp", dict(**_mm_bfp, mixed=True), devices=("npu2",), smoke=True),
     # The mixed kernel walks its 2x2 output tiles with one loop that wraps at

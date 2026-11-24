@@ -69,7 +69,7 @@ _ATOL_ULP = 4
 _ATOL_ULP_AIE2 = 1
 
 # PrefillGeom<DH>: head_dim -> (query chunk, key chunk).
-_GEOM = {512: (8, 8), 256: (16, 16)}
+_GEOM = {512: (8, 8), 256: (16, 16), 128: (16, 16)}
 
 # The softmax runs on exp2, and flash_attn_prefill.h folds attention's
 # 1/sqrt(head_dim) into its bf16 log2(e) multiplier.
@@ -322,6 +322,11 @@ def case_data(head_dim, block_q, n_blocks, window, row, col):
         # The sliding-window geometry with the window open, which is what
         # exercises its 2x2 decomposition against the rescale.
         (256, 128, 2, 1 << 20, 0, 0),
+        # head_dim 128 on the sliding-window geometry: the same grid as 256 at
+        # half the width, with its own 1/sqrt(head_dim) in the exp2 argument.
+        (128, 128, 2, 1 << 20, 0, 0),
+        (128, 256, 3, 1 << 20, 1, 1),
+        (128, 256, 1, 64, 1, 1),
     ],
 )
 def test_prefill_round_matches_masked_attention(

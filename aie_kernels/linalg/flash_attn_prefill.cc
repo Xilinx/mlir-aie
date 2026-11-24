@@ -12,9 +12,9 @@
 // The five entry points of one flash-attention prefill geometry; see
 // flash_attn_prefill.h for the algorithm and what separates the geometries.
 //
-// PREFILL_HEAD_DIM picks the geometry: 512 global, 256 sliding-window. One per
-// translation unit, since the factory's per-parameterization symbol prefix
-// already keeps two instantiations apart in a single design.
+// PREFILL_HEAD_DIM picks the geometry: 512 global, 256 or 128 sliding-window.
+// One per translation unit, since the factory's per-parameterization symbol
+// prefix already keeps two instantiations apart in a single design.
 //
 // The split is per step so a core body can take an acquire point per object,
 // which is what lets the Q/K/V and O legs be ObjectFifos. These carry no
