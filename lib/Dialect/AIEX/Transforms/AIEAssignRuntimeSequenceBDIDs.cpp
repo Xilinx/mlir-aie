@@ -52,6 +52,7 @@
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEASSIGNRUNTIMESEQUENCEBDIDS
+#define GEN_PASS_DEF_AIENORMALIZEDMATASKGROUPS
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
@@ -60,6 +61,44 @@ using namespace xilinx;
 using namespace xilinx::AIEX;
 
 namespace {
+
+static DMAAwaitTaskOp taskTripleAwait(Operation *operation) {
+  auto configure = dyn_cast_or_null<DMAConfigureTaskLike>(operation);
+  if (!configure || !configure.getBody().hasOneBlock() ||
+      configure.getRepeatCount() || configure.getRepeatCountVal() ||
+      !configure.getIssueToken() || !operation->getResult(0).hasNUses(2))
+    return {};
+  if (auto concrete = dyn_cast<DMAConfigureTaskOp>(operation);
+      concrete && concrete.getOutOfOrder())
+    return {};
+  auto start = dyn_cast_or_null<DMAStartTaskOp>(operation->getNextNode());
+  auto await = start ? dyn_cast_or_null<DMAAwaitTaskOp>(start->getNextNode())
+                     : DMAAwaitTaskOp();
+  if (!start || !await || start.getTask() != operation->getResult(0) ||
+      await.getTask() != operation->getResult(0) || start.getRepeatCount() ||
+      start.getRepeatCountVal() || start.getNoToken() ||
+      start.hasRepeatParameter())
+    return {};
+  Block &body = configure.getBody().front();
+  if (body.getNumArguments() || body.getOperations().size() != 2 ||
+      !isa<AIE::DMABDOp>(body.front()) || !isa<AIE::EndOp>(body.back()))
+    return {};
+  auto bd = cast<AIE::DMABDOp>(body.front());
+  return bd.getBdId() || bd.getNextBdId() ? DMAAwaitTaskOp() : await;
+}
+
+struct AIENormalizeDMATaskGroupsPass
+    : xilinx::AIEX::impl::AIENormalizeDMATaskGroupsBase<
+          AIENormalizeDMATaskGroupsPass> {
+  void runOnOperation() override {
+    getOperation().walk([](DMAAwaitTaskOp await) {
+      if (await.getDeferCompletion() &&
+          (taskTripleAwait(await.getTask().getDefiningOp()) != await ||
+           !taskTripleAwait(await->getNextNode())))
+        await.removeDeferCompletionAttr();
+    });
+  }
+};
 
 struct AIEAssignRuntimeSequenceBDIDsPass
     : xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<
@@ -630,27 +669,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   static std::optional<TaskTriple> taskTriple(Operation *operation) {
     auto configure = dyn_cast_or_null<DMAConfigureTaskOp>(operation);
-    if (!configure || !configure.getBody().hasOneBlock() ||
-        configure.getRepeatCount() || configure.getRepeatCountVal() ||
-        !configure.getIssueToken() || configure.getOutOfOrder() ||
-        !configure.getResult().hasNUses(2))
+    auto await = configure ? taskTripleAwait(operation) : DMAAwaitTaskOp();
+    if (!await)
       return std::nullopt;
-    auto start = dyn_cast_or_null<DMAStartTaskOp>(configure->getNextNode());
-    auto await = start ? dyn_cast_or_null<DMAAwaitTaskOp>(start->getNextNode())
-                       : DMAAwaitTaskOp();
-    if (!start || !await || start.getTask() != configure.getResult() ||
-        await.getTask() != configure.getResult() || start.getRepeatCount() ||
-        start.getRepeatCountVal() || start.getNoToken() ||
-        start.hasRepeatParameter())
-      return std::nullopt;
-    Block &body = configure.getBody().front();
-    if (body.getNumArguments() || body.getOperations().size() != 2 ||
-        !isa<AIE::DMABDOp>(body.front()) || !isa<AIE::EndOp>(body.back()))
-      return std::nullopt;
-    auto bd = cast<AIE::DMABDOp>(body.front());
-    if (bd.getBdId() || bd.getNextBdId())
-      return std::nullopt;
-    return TaskTriple{configure, start, await};
+    return TaskTriple{configure, cast<DMAStartTaskOp>(configure->getNextNode()),
+                      await};
   }
 
   bool fitsNow(DMAConfigureTaskOp configure) {
@@ -2413,6 +2436,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 };
 
 } // namespace
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIENormalizeDMATaskGroupsPass() {
+  return std::make_unique<AIENormalizeDMATaskGroupsPass>();
+}
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 AIEX::createAIEAssignRuntimeSequenceBDIDsPass() {

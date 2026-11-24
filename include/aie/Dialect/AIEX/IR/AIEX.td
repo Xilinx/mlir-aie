@@ -1863,6 +1863,10 @@ def AIE_DMAAwaitTaskOp
     that boundary. Every group transfer completes before the next operation
     outside the group.
 
+    Run `aie-normalize-dma-task-groups` before rewrites that can remove
+    implicit group boundaries. The pass removes `defer_completion` from
+    each group's last await. `aiecc` runs this pass before placement.
+
     The allocator may reorder configure/start pairs across channels and delay
     marked awaits within the group. It may wait for a subset before starting
     more tasks to respect descriptor and queue limits. The `chain-tasks` option

@@ -349,6 +349,21 @@ def AIEResolveAddressPatchBuffers
                            "xilinx::AIEX::AIEXDialect"];
 }
 
+def AIENormalizeDMATaskGroups
+    : Pass<"aie-normalize-dma-task-groups", "AIE::DeviceOp"> {
+  let summary = "Make deferred DMA group endings explicit";
+  let description = [{
+    Removes `defer_completion` from awaits that end a group at another
+    operation, an ineligible triple, or the block end. Each group then ends
+    with an unmarked await. Concrete and symbolic configure tasks use the
+    static allocator's eligibility checks.
+
+    Run before canonicalization, inlining, or other rewrites can remove
+    implicit group boundaries.
+  }];
+  let constructor = "xilinx::AIEX::createAIENormalizeDMATaskGroupsPass()";
+}
+
 def AIEAssignRuntimeSequenceBDIDs
     : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary =

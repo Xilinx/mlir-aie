@@ -47,6 +47,8 @@ createAIEFuseTraceBuffersPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEResolveAddressPatchBuffersPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIENormalizeDMATaskGroupsPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEAssignRuntimeSequenceBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEAssignRuntimeSequenceBDIDsPass(
