@@ -2089,8 +2089,14 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx,
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-  if (lowerControlPackets)
+  mlir::GreedyRewriteConfig canonicalize;
+  canonicalize.setRegionSimplificationLevel(
+      mlir::GreedySimplifyRegionLevel::Disabled);
+  if (lowerControlPackets) {
+    dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
+    dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
     dpm.addPass(X::createAIECtrlPacketToDmaPass());
+  }
   dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
@@ -2102,10 +2108,6 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx,
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
   bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
-  // Without region simplification; see getNpuDmaLoweringPipeline.
-  mlir::GreedyRewriteConfig canonicalize;
-  canonicalize.setRegionSimplificationLevel(
-      mlir::GreedySimplifyRegionLevel::Disabled);
   dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());

@@ -8,6 +8,8 @@
 // RUN: aie-opt --aie-materialize-runtime-sequences --split-input-file %s | FileCheck %s
 // RUN: split-file %s %t
 // RUN: aie-opt --aie-materialize-runtime-sequences --aie-unroll-runtime-sequence-loops --aie-substitute-shim-dma-allocations --aie-assign-runtime-sequence-bd-ids="warn-unreleased-transfers=false warn-unsafe-bd-reuse=false" --split-input-file %t/tasks.mlir > /dev/null
+// RUN: aie-opt --aie-normalize-dma-task-groups --aie-materialize-runtime-sequences --aie-substitute-shim-dma-allocations --aie-assign-runtime-sequence-bd-ids="chain-tasks=true" %t/ownership.mlir 2> %t/warnings | FileCheck %s --check-prefix=OWNERSHIP
+// RUN: FileCheck %s --check-prefix=WARN < %t/warnings
 
 // A cloned shim allocation's consumed_by names the clone of its output, which
 // comes along even where the inlined sequence never names it. Two designs'
@@ -21,8 +23,10 @@
 // CHECK-DAG: aie.shim_dma_allocation @out_0(%{{.*}}, S2MM, 0)
 // CHECK: aiex.npu.load_pdi {device_ref = @a}
 // CHECK: aiex.dma_configure_task_for @in_0 {
+// CHECK-NOT: aiex.dma_free_task
 // CHECK: aiex.npu.load_pdi {device_ref = @b}
 // CHECK: aiex.dma_configure_task_for @in {
+// CHECK-NOT: aiex.dma_free_task
 // CHECK-LABEL: aie.device(npu2) @a
 module {
   aie.device(npu2) @main {
@@ -72,11 +76,9 @@ module {
 // CHECK: %[[FIRST_ALLOC:.*]] = aiex.dma_configure_task_for
 // CHECK: %[[FIRST_TILE:.*]] = aiex.dma_configure_task(
 // CHECK: aiex.dma_free_task(%[[FIRST_TILE]])
-// CHECK-NEXT: aiex.dma_free_task(%[[FIRST_ALLOC]])
 // CHECK-NEXT: %[[SECOND_ALLOC:.*]] = aiex.dma_configure_task_for
 // CHECK: %[[SECOND_TILE:.*]] = aiex.dma_configure_task(
 // CHECK: aiex.dma_free_task(%[[SECOND_TILE]])
-// CHECK-NEXT: aiex.dma_free_task(%[[SECOND_ALLOC]])
 // CHECK-NEXT: }
 module {
   aie.device(npu2) @main {
@@ -140,6 +142,68 @@ module {
         aiex.dma_free_task(%forwarded)
         scf.yield %forwarded : index
       }
+    }
+  }
+}
+
+// -----
+
+//--- ownership.mlir
+
+// OWNERSHIP-LABEL: aie.runtime_sequence @chained
+// OWNERSHIP: aie.next_bd
+// OWNERSHIP: aiex.dma_start_task(%[[FIRST_CHAIN:.*]])
+// OWNERSHIP-NEXT: aiex.dma_await_task(%[[FIRST_CHAIN]])
+// OWNERSHIP: aie.next_bd
+// OWNERSHIP: aiex.dma_start_task(%[[SECOND_CHAIN:.*]])
+// OWNERSHIP-NEXT: aiex.dma_await_task(%[[SECOND_CHAIN]])
+// OWNERSHIP-NEXT: }
+// OWNERSHIP-LABEL: aie.runtime_sequence @unreleased_calls
+// OWNERSHIP: aie.dma_bd{{.*}} {bd_id = 0 : i32}
+// OWNERSHIP: aiex.dma_start_task
+// OWNERSHIP-NOT: aiex.dma_free_task
+// OWNERSHIP: aie.dma_bd{{.*}} {bd_id = 1 : i32}
+// OWNERSHIP: aiex.dma_start_task
+// OWNERSHIP-NEXT: }
+// WARN: warning: may exit with 2 DMA transfer(s) neither awaited nor freed
+module {
+  aie.device(npu2) @main {
+    aie.runtime_sequence @chained(%buffer: memref<16xi32>) {
+      aiex.configure @worker {
+        aiex.run @deferred(%buffer) : (memref<16xi32>)
+        aiex.run @deferred(%buffer) : (memref<16xi32>)
+      }
+    }
+    aie.runtime_sequence @unreleased_calls(%buffer: memref<16xi32>) {
+      aiex.configure @worker {
+        aiex.run @unreleased(%buffer) : (memref<16xi32>)
+        aiex.run @unreleased(%buffer) : (memref<16xi32>)
+      }
+    }
+  }
+  aie.device(npu2) @worker {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @input(%shim, MM2S, 0)
+    aie.runtime_sequence @deferred(%buffer: memref<16xi32>) {
+      %first = aiex.dma_configure_task_for @input {
+        aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 8)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%first)
+      aiex.dma_await_task(%first) {defer_completion}
+      %second = aiex.dma_configure_task_for @input {
+        aie.dma_bd(%buffer : memref<16xi32> offset = 8 len = 8)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%second)
+      aiex.dma_await_task(%second)
+    }
+    aie.runtime_sequence @unreleased(%buffer: memref<16xi32>) {
+      %task = aiex.dma_configure_task_for @input {
+        aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      }
+      aiex.dma_start_task(%task)
     }
   }
 }

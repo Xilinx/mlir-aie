@@ -56,6 +56,24 @@ module {
       aiex.npu.dma_memcpy_nd(%out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @of_out, id = 1 : i64} : memref<16xi32>
       aiex.npu.dma_memcpy_nd(%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @of_in, id = 0 : i64, issue_token = true} : memref<16xi32>
       aiex.npu.dma_wait {symbol = @of_out}
+      aiex.npu.dma_wait {symbol = @of_in}
+    }
+
+    aie.runtime_sequence @looped(%buffer : memref<16xi32>) {
+      %zero = arith.constant 0 : index
+      %one = arith.constant 1 : index
+      %two = arith.constant 2 : index
+      scf.for %iteration = %zero to %two step %one {
+        %active = arith.cmpi ult, %iteration, %two : index
+        scf.if %active {
+          %task = aiex.dma_configure_task_for @of_in {
+            aie.dma_bd(%buffer : memref<16xi32> offset = 0 len = 16)
+            aie.end
+          } {issue_token = true}
+          aiex.dma_start_task(%task)
+          aiex.dma_await_task(%task)
+        }
+      }
     }
   }
 }
