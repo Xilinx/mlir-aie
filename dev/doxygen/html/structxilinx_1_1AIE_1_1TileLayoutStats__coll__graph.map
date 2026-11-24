@@ -1,5 +1,0 @@
-<map id="xilinx::AIE::TileLayoutStats" name="xilinx::AIE::TileLayoutStats">
-<area shape="rect" id="Node000001" title="What the searches cost, for –mlir&#45;pass&#45;statistics." alt="" coords="5,173,201,201"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="70,5,136,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="105,47,106,173,100,172,101,50"/>
-</map>
