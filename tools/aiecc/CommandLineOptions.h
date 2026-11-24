@@ -68,6 +68,10 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+inline cl::opt<bool> dmaChainBds(
+    "dma-chain-bds", cl::init(true),
+    cl::desc("Chain eligible runtime DMA tasks with deferrable completion"));
+
 inline cl::opt<bool> allowDeadlockProneRouting(
     "allow-deadlock-prone-routing",
     cl::desc("Warn of, rather than fail on, flows the router finds can "
@@ -251,9 +255,6 @@ inline cl::opt<bool> ctrlpktEliminateDeadWrites(
 inline cl::opt<bool>
     ctrlpktCoalesce("ctrlpkt-coalesce", cl::init(true),
                     cl::desc("Merge adjacent control-packet writes"));
-inline cl::opt<bool> ctrlpktChainBds(
-    "ctrlpkt-chain-bds", cl::init(true),
-    cl::desc("Chain control-packet DMA tasks with deferrable completion"));
 inline cl::opt<unsigned> ctrlpktMulticastSpan(
     "ctrlpkt-multicast-span", cl::value_desc("w"),
     cl::desc("Send the control packets the core tiles of each <w> columns "
@@ -798,7 +799,8 @@ inline bool resolveOptions(bool resuming = false) {
     ctrlpktAddressOrder = false;
     ctrlpktEliminateDeadWrites = false;
     ctrlpktCoalesce = false;
-    ctrlpktChainBds = false;
+    if (loadPdiToCtrlPkt)
+      dmaChainBds = false;
     ctrlpktMulticastSpan = 0;
   }
   // Under --expand-load-pdis, the teardown disables every route a
@@ -825,8 +827,6 @@ inline bool resolveOptions(bool resuming = false) {
          resolveDependentOption(ctrlpktEliminateDeadWrites, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktCoalesce, loadPdiToCtrlPkt,
-                                "--load-pdi-to-ctrl-pkt") &&
-         resolveDependentOption(ctrlpktChainBds, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
          resolveDependentOption(ctrlpktMulticastSpan, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt");

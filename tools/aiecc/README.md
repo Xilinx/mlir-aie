@@ -205,8 +205,9 @@ routes retain final values and action order through separate completion.
   and marks eligible awaits with `defer_completion`.
 - `aie-assign-runtime-sequence-bd-ids{chain-tasks}` schedules independent task
   triples and forms same-channel chains from the available descriptor IDs.
-  The driver enables it for control packets. Other producers can use the same
-  deferrable-await contract; allocation does not inspect transfer payloads.
+  `--dma-chain-bds` (default: on) controls this optimization for application
+  and control-packet tasks. Producers use the same deferrable-await contract;
+  allocation does not inspect transfer payloads.
 - `--ctrlpkt-parallel-shims` (default: on) permits parallel delivery to
   independent destinations.
 - `--ctrlpkt-multicast-span=<w>` (default: 1; 0 off): the overlay gets a control

@@ -65,8 +65,8 @@ const RegisterInfo *AIETargetModel::lookupRegister(llvm::StringRef name,
   return db->lookupRegister(name, getModuleForTile(*this, tile, isMem));
 }
 
-bool AIETargetModel::isReorderableRegisterWrite(TileID tile,
-                                                uint32_t offset) const {
+bool AIETargetModel::isOrdinaryWriteAddress(TileID tile,
+                                            uint32_t offset) const {
   if ((offset & 3) || !isValidTile(tile) ||
       (getTargetArch() != AIEArch::AIE2 && getTargetArch() != AIEArch::AIE2p))
     return false;

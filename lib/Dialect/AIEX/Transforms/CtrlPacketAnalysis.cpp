@@ -39,7 +39,7 @@ SmallVector<PacketInterval> AIEX::packetIntervals(Block &block) {
                          llvm::seq<size_t>(0, packet.getDataAttr().size()),
                          [&](size_t word) {
                            return AIE::getTargetModel(packet)
-                               .isReorderableRegisterWrite(
+                               .isOrdinaryWriteAddress(
                                    tile.getTileID(),
                                    packet.getLocalAddress() + 4 * word);
                          });

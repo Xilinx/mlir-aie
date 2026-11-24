@@ -2004,7 +2004,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIELowerDynamicBDPoolPass(poolOpts));
   dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
-  bdIdOpts.chainTasks = !cli::loadPdiToCtrlPkt || cli::ctrlpktChainBds;
+  bdIdOpts.chainTasks = cli::dmaChainBds;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
@@ -2096,7 +2096,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx,
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIESplitLongRepeatsPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
-  bdIdOpts.chainTasks = !cli::loadPdiToCtrlPkt || cli::ctrlpktChainBds;
+  bdIdOpts.chainTasks = cli::dmaChainBds;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
@@ -2122,7 +2122,7 @@ inline std::unique_ptr<mlir::PassManager>
 getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIEX::AIECtrlPacketToDmaOptions opts;
-  opts.chainBds = cli::ctrlpktChainBds;
+  opts.chainBds = cli::dmaChainBds;
   opts.parallelShims = cli::ctrlpktParallelShims;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIEX::createAIECtrlPacketToDmaPass(opts));

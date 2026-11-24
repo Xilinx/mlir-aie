@@ -2192,7 +2192,7 @@ bool AIEX::NpuControlPacketOp::isOrdinaryWrite(
           ((1u << (target.getColumnShift() - target.getRowShift())) - 1))};
   uint32_t offset = getAddress() & ((1u << target.getRowShift()) - 1);
   for (size_t index = 0; index < data->size(); ++index)
-    if (!target.isReorderableRegisterWrite(tile, offset + 4 * index))
+    if (!target.isOrdinaryWriteAddress(tile, offset + 4 * index))
       return false;
   return true;
 }

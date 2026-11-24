@@ -734,7 +734,7 @@ public:
   const RegisterInfo *lookupRegister(llvm::StringRef name, TileID tile,
                                      bool isMem = false) const;
 
-  bool isReorderableRegisterWrite(TileID tile, uint32_t offset) const;
+  bool isOrdinaryWriteAddress(TileID tile, uint32_t offset) const;
 
   /// Lookup event number by name and tile.
   /// Return Event number if found, nullopt otherwise

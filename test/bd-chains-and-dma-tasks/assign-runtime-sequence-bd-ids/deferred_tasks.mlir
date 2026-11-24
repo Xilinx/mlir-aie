@@ -8,7 +8,9 @@
 // RUN: aie-opt %s --aie-resource-stages --aie-substitute-shim-dma-allocations --canonicalize --aie-assign-runtime-sequence-bd-ids="chain-tasks=true reclaim-bds=true" | FileCheck %s --check-prefix=CANON
 // RUN: aie-opt %s --aie-normalize-dma-task-groups | FileCheck %s --check-prefix=NORMALIZE
 // RUN: %aiecc -j1 --reclaim-runtime-bds --get=npu_dma_lowered.mlir --output-dir=%t.driver --tmpdir=%t.driver/work %s
-// RUN: FileCheck %s --check-prefix=DRIVER < %t.driver/npu_dma_lowered.mlir
+// RUN: FileCheck %s --check-prefixes=DRIVER,DRIVER-CHAIN < %t.driver/npu_dma_lowered.mlir
+// RUN: %aiecc -j1 --dma-chain-bds=false --reclaim-runtime-bds --get=npu_dma_lowered.mlir --output-dir=%t.unchained --tmpdir=%t.unchained/work %s
+// RUN: FileCheck %s --check-prefixes=DRIVER,DRIVER-QUEUE < %t.unchained/npu_dma_lowered.mlir
 
 module {
   aie.device(npu2) {
@@ -20,6 +22,16 @@ module {
     // NORMALIZE: aiex.dma_await_task{{.*}} {defer_completion}
     // NORMALIZE: aiex.dma_await_task{{.*}} {defer_completion}
     // NORMALIZE: aiex.dma_await_task(%{{.*}}){{$}}
+    // DRIVER-CHAIN-LABEL: @parallel
+    // DRIVER-CHAIN-COUNT-2: aiex.npu.write32
+    // DRIVER-CHAIN-NOT: aiex.npu.write32
+    // DRIVER-CHAIN-COUNT-2: aiex.npu.sync
+    // DRIVER-CHAIN-NEXT: {{^ *}}}
+    // DRIVER-QUEUE-LABEL: @parallel
+    // DRIVER-QUEUE-COUNT-3: aiex.npu.write32
+    // DRIVER-QUEUE-NOT: aiex.npu.write32
+    // DRIVER-QUEUE-COUNT-3: aiex.npu.sync
+    // DRIVER-QUEUE-NEXT: {{^ *}}}
     // CHAIN-LABEL: @parallel
     // CHAIN: %[[LEFT:.*]] = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
     // CHAIN: offset = 0 len = 4) {bd_id = 0 : i32}
