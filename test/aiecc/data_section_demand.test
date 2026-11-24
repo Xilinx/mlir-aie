@@ -6,7 +6,7 @@
 // to the ordinary data reservation, even when they have greater alignment.
 // REQUIRES: system-linux
 // RUN: split-file %s %t
-// RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -I%S/../../tools/aiecc %S/data_section_demand.cpp %S/../../tools/aiecc/StackSizeAnalysis.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags --libs object irreader core support --system-libs) %host_link_flags -o %t/measure'
+// RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -I%S/../../tools/aiecc -I%S/../../include %S/data_section_demand.cpp %S/../../tools/aiecc/StackSizeAnalysis.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags --libs object irreader core support --system-libs) %host_link_flags -o %t/measure'
 // RUN: %host_clang -x c -c %t/globals.c -o %t/globals.o
 // RUN: %host_clang -nostdlib -no-pie -Wl,--build-id=none,-e,0,-T,%t/peano.ld %t/globals.o -o %t/peano.elf
 // RUN: %t/measure %t/peano.elf | FileCheck %s --check-prefix=PEANO

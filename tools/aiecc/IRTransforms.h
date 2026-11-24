@@ -29,6 +29,7 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
 #include "aie/Targets/AIETargets.h"
+#include "aie/Targets/AliasScopeDomains.h"
 
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
@@ -847,6 +848,31 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
       p = arg + sizeArg.size();
     }
   }
+  // LLVM 24 gives each alias scope domain a disjoint flag, `!N = distinct
+  // !{!N, i1 false, ...}`, which Peano rejects ("domain must have one or two
+  // operands"). Drop it: `false` is the old meaning, and reading a disjoint
+  // domain as non-disjoint only loses noalias facts.
+  for (size_t p = 0;
+       (p = result.find("= distinct !{!", p)) != std::string::npos;) {
+    size_t bol = result.rfind('\n', p);
+    bol = (bol == std::string::npos) ? 0 : bol + 1;
+    llvm::StringRef id = llvm::StringRef(result).slice(bol, p).trim();
+    size_t first = p + llvm::StringRef("= distinct !{").size();
+    const std::string self = id.str() + ", i1 ";
+    p = first;
+    if (!id.starts_with("!") || result.compare(first, self.size(), self) != 0) {
+      continue;
+    }
+    size_t valStart = first + self.size();
+    size_t valEnd = valStart;
+    while (valEnd < result.size() && isIdentChar(result[valEnd])) {
+      ++valEnd;
+    }
+    llvm::StringRef val = llvm::StringRef(result).slice(valStart, valEnd);
+    if (val == "false" || val == "true") {
+      result.erase(first + id.size(), valEnd - first - id.size());
+    }
+  }
   replaceTypedLiteral("half -inf", "half 0xHFC00");
   replaceTypedLiteral("half inf", "half 0xH7C00");
   replaceTypedLiteral("half nan", "half 0xH7E00");
@@ -1322,8 +1348,9 @@ struct CanonicalCoreIR {
 inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
   llvm::LLVMContext context;
   llvm::SMDiagnostic error;
+  std::string upgraded = xilinx::AIE::upgradeAliasScopeDomains(ir);
   std::unique_ptr<llvm::Module> module =
-      llvm::parseIR(llvm::MemoryBufferRef(ir, "core"), error, context);
+      llvm::parseIR(llvm::MemoryBufferRef(upgraded, "core"), error, context);
   if (!module || !module->getModuleInlineAsm().empty() ||
       !module->getComdatSymbolTable().empty() || !module->alias_empty() ||
       !module->ifunc_empty())

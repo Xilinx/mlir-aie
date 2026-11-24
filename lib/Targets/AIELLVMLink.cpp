@@ -11,6 +11,7 @@
 // in case you need to go back to the source and compare/contrast.
 
 #include "aie/Targets/AIETargets.h"
+#include "aie/Targets/AliasScopeDomains.h"
 
 #include "mlir/Support/LogicalResult.h"
 
@@ -71,7 +72,8 @@ static mlir::LogicalResult linkFiles(const std::vector<std::string> &Files,
   // Similar to some flags, internalization doesn't apply to the first file.
   bool InternalizeLinkedSymbols = false;
   for (const auto &File : Files) {
-    std::unique_ptr<MemoryBuffer> Buffer = MemoryBuffer::getMemBufferCopy(File);
+    std::unique_ptr<MemoryBuffer> Buffer = MemoryBuffer::getMemBufferCopy(
+        xilinx::AIE::upgradeAliasScopeDomains(File));
 
     std::unique_ptr<Module> maybeModule =
         loadFile(std::move(Buffer), Context, Verbose);
