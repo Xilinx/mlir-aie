@@ -53,16 +53,26 @@ def AIE_Dialect : Dialect {
     any core has an incomplete lock summary. It still emits core disables
     and DMA resets.
 
-    On an overlay `aie.device`, `aie.ctrl_pkt_multicast` describes control
-    multicast routes. Each dictionary contains `column`, the source shim
-    column; `id`, the stream packet ID; and `tiles`, an array of destination
-    coordinates written as `#aie.tile<column, row>`. The source column selects
-    the first overlay-marked MM2S shim DMA allocation in that column. Generated
-    control overlays provide one such allocation per source column. Packet
-    lowering uses that allocation's symbol in `dma_configure_task_for`; shim
-    allocation substitution supplies its channel number. The dictionary does
-    not contain a channel number or a route symbol. Packet optimization uses
-    the destination list to match multicast writes and check overlapping writes.
+    `aie.ctrl_pkt_multicast` declares control multicast routes on an overlay
+    `aie.device`. Each array entry contains three fields:
+
+    - `allocation`: a flat symbol reference to an MM2S
+      `aie.shim_dma_allocation` in that overlay.
+    - `packet_id`: the stream packet ID for the route.
+    - `tiles`: the route's destination coordinates as `#aie.tile<column, row>`.
+
+    `aiex.control_packet` uses `multicast_id` as a zero-based index into this
+    array. `aiex.set_device` selects the configuration and its overlay.
+    The allocation supplies the source tile and channel. The encoder uses
+    `packet_id` in the stream header. The DMA lowerer references the matching
+    imported allocation by symbol in `dma_configure_task_for`.
+
+    One allocation can carry several packet IDs with different destinations.
+    Distinct allocations can use the same packet ID. The destination list
+    describes the allocation-and-packet-ID pair, not the channel alone.
+    The producer must list every destination once and match the fixed route.
+    Destination lists may overlap. Packet optimizers use these lists to
+    match multicast writes and retain ordering at shared destinations.
 
   }];
   let useDefaultTypePrinterParser = 1;

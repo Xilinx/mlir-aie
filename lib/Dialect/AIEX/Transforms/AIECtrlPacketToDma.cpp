@@ -81,6 +81,7 @@ struct AIECtrlPacketToDmaPass
     bool ordinary;
     bool independent;
     bool disjointMulticast;
+    bool disjointMulticastRoutes;
     std::optional<int32_t> multicast;
   };
 
@@ -105,6 +106,7 @@ struct AIECtrlPacketToDmaPass
     const auto &targetModel = device.getTargetModel();
     auto *ctx = device->getContext();
     auto loc = device->getLoc();
+    SymbolTable symbols(device);
 
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       return; // Disable this pass for AIE1; AIE1 support NYI.
@@ -129,32 +131,32 @@ struct AIECtrlPacketToDmaPass
       bool previousIntervalMulticast = false;
       for (auto [index, interval] : llvm::enumerate(packetIntervals(entry))) {
         llvm::DenseSet<uint32_t> multicastWords;
+        llvm::DenseMap<TileID, uint32_t> multicastRoutes;
+        bool disjointMulticastRoutes = true;
         bool disjointMulticast = interval.ordinary;
-        ArrayAttr groups = controlPacketMulticasts(
+        auto groups = controlPacketMulticasts(
             device->getParentOfType<ModuleOp>(), interval.device);
+        if (failed(groups))
+          return signalPassFailure();
         for (NpuControlPacketOp packet : interval.packets)
-          if (packet.getMulticastId() && packet.getData()) {
-            ArrayAttr destinations;
-            if (groups)
-              for (Attribute attribute : groups) {
-                auto group = cast<DictionaryAttr>(attribute);
-                if (group.getAs<IntegerAttr>("column").getInt() ==
-                        packet.getColumnFromAddr() &&
-                    group.getAs<IntegerAttr>("id").getInt() ==
-                        *packet.getMulticastId())
-                  destinations = group.getAs<ArrayAttr>("tiles");
-              }
-            if (!destinations) {
-              disjointMulticast = false;
-              continue;
+          if (auto id = packet.getMulticastId()) {
+            if (*id >= groups->size()) {
+              packet.emitOpError("multicast_id ")
+                  << *id << " has no declaration in the active overlay";
+              return signalPassFailure();
             }
-            for (auto tile : destinations.getAsRange<AIE::TileAttr>()) {
+            for (auto tile : (*groups)[*id].tiles.getAsRange<AIE::TileAttr>()) {
               auto destination = tile.getTileID();
+              auto [found, inserted] =
+                  multicastRoutes.try_emplace(destination, *id);
+              disjointMulticastRoutes &= inserted || found->second == *id;
               uint32_t address =
                   (destination.col << targetModel.getColumnShift()) |
                   (destination.row << targetModel.getRowShift()) |
                   packet.getLocalAddress();
-              for (size_t word = 0; word < packet.getData()->size(); ++word)
+              unsigned words = packet.getData() ? packet.getData()->size()
+                                                : *packet.getLength();
+              for (unsigned word = 0; word < words; ++word)
                 multicastWords.insert(address + 4 * word);
             }
           }
@@ -190,8 +192,24 @@ struct AIECtrlPacketToDmaPass
             batches.back().ordinary &= interval.ordinary;
             batches.back().independent &= interval.independent;
             batches.back().disjointMulticast &= disjointMulticast;
+            batches.back().disjointMulticastRoutes &= disjointMulticastRoutes;
           } else {
-            ShimDMAAllocationOp alloc = getCtrlPktShimAlloc(device, col);
+            ShimDMAAllocationOp alloc;
+            if (multicast) {
+              auto source = (*groups)[*multicast].allocation;
+              alloc = symbols.lookup<ShimDMAAllocationOp>(source.getSymName());
+              if (!alloc || alloc.getChannelDir() != DMAChannelDir::MM2S ||
+                  alloc.getTileOp().getTileID() !=
+                      source.getTileOp().getTileID() ||
+                  alloc.getChannelIndex() != source.getChannelIndex()) {
+                ctrlPktOp.emitOpError("multicast allocation @")
+                    << source.getSymName()
+                    << " requires the matching imported shim DMA allocation";
+                return signalPassFailure();
+              }
+            } else {
+              alloc = getCtrlPktShimAlloc(device, col);
+            }
             if (!alloc) {
               ctrlPktOp.emitOpError("column ")
                   << col
@@ -204,7 +222,8 @@ struct AIECtrlPacketToDmaPass
                                alloc.getSymName().str(), ctrlPktOp,
                                interval.delivery, static_cast<unsigned>(index),
                                interval.ordinary, interval.independent,
-                               disjointMulticast, multicast});
+                               disjointMulticast, disjointMulticastRoutes,
+                               multicast});
           }
           new_batch = !batchable;
           ddrOffset += ctrlPktSize;
@@ -236,7 +255,8 @@ struct AIECtrlPacketToDmaPass
              (((batchIt->independent && next->independent) ||
                (batchIt->ordinary && next->ordinary)) &&
               next->interval == batchIt->interval &&
-              ((batchIt->multicast && next->multicast) ||
+              ((batchIt->multicast && next->multicast &&
+                batchIt->disjointMulticastRoutes) ||
                (!next->multicast && batchIt->disjointMulticast)))) &&
             ((chainBds && next->shimDmaAllocName == batchIt->shimDmaAllocName &&
               (independent || next->tileId == batchIt->tileId)) ||

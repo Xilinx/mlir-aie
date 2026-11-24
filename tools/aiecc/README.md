@@ -157,11 +157,13 @@ Authored and generated control packets use the same interval contract.
 An explicit sync, await, or other runtime operation ends the packet interval.
 Parameter writes after that boundary remain after it. A channel sync does not
 assert array-wide inactivity. Ordinary storage writes have final-value semantics
-within each consecutive run. Programs must not depend on intermediate values
-or concurrently modify the storage during that run. Action writes, reads,
-writes with responses, unknown register writes, barriers, and other runtime
-operations end each run. Every packet optimizer uses this contract and the same
-target predicate for ordinary writes. No permission attribute is required.
+within each consecutive run. Each 32-bit word retains the value from its last
+write in IR order when delivery completes. Unsynchronized cores and DMA
+tasks must not depend on intermediate values. Programs must prevent concurrent
+modification of that storage. Consumers require synchronization with delivery.
+Action writes, reads, writes with responses, unknown register writes, barriers,
+and other runtime operations end each run. Every packet optimizer uses this
+contract and the same target predicate for ordinary writes.
 
 `aiex.control_packet_barrier {independent}` permits delivery to different tiles
 in any order until the next hardware barrier or other runtime operation.
@@ -169,11 +171,12 @@ Per-destination action order and multiplicity remain unchanged. The producer
 must ensure that application traffic permits the remaining packets to arrive.
 Compiler-only barriers retain this delivery permission.
 
-AIERT emits setup before activation for control-packet output. A hardware
-barrier separates them and completes activation before the runtime sequence.
+AIERT emits ELF reset staging, ELF data, configuration setup, and activation
+in the same order for direct transactions, PDI/CDO output, and control packets.
+The configuration producer places a hardware barrier between setup and activation.
+Another hardware barrier completes activation delivery before runtime work.
 The application must complete its use of configuration resources between
 configurations. Teardown retains core-stop polls, DMA reset, and lock draining.
-Direct write32/blockwrite output retains its per-tile emission order.
 
 `--ctrlpkt-optimize=false` disables optional destination grouping, address
 sorting, dead-write elimination, coalescing, multicast, BD chaining, and
@@ -181,6 +184,15 @@ parallel shim delivery. Programs that require intermediate ordinary writes can
 use this option. It overrides the individual optimization flags.
 Packet legalization, required synchronization, and resource allocation
 remain enabled. The option does not change the control overlay or teardown.
+It does not supply missing synchronization for intermediate observations.
+
+The overlay declares multicast routes in `aie.ctrl_pkt_multicast`. Each entry
+contains an `allocation` symbol, a stream `packet_id`, and destination `tiles`.
+`multicast_id` is the entry's zero-based array index. The allocation supplies
+the source tile and channel, including when two control channels occupy one
+column. One allocation can carry several packet IDs with different destinations.
+The producer must list the fixed route's complete destination set. Overlapping
+routes retain final values and action order through separate completion.
 
 - `aie-reorder-ctrl-packets-by-tile` groups independent writes by destination.
   It sorts ordinary writes and removes overwritten words in ordinary-write runs.
@@ -214,6 +226,36 @@ requires prior packets to complete. Neither barrier proves that application
 streams stopped. The control overlay must remain intact during packet delivery.
 The producer must ensure that the overlay delivers concurrent packets without
 deadlock. Packet passes neither analyze application activity nor repair routes.
+
+### DMA ordering and deferred completion
+
+Each DMA channel executes queue pushes in FIFO order. Unsynchronized starts on
+different channels establish no relative execution or completion order. Programs
+must not rely on intermediate buffer values or relative progress without
+synchronization. Buffer and descriptor dependencies, locks, and explicit
+synchronization remain binding. Different channels do not prove independence.
+
+`aiex.dma_await_task(%task) {defer_completion}` permits the allocator to schedule a
+bounded group of adjacent configure/start/await triples. A marked await permits
+the next eligible triple to join. The first unmarked await closes the group,
+including its task. Another operation, an ineligible triple, or the block end
+closes the group. Every transfer completes before the next outside operation.
+
+The allocator may reorder configure/start pairs across channels, delay marked
+waits, and combine compatible same-channel tasks into chains. It may wait for
+part of the group before starting more tasks to respect resource limits.
+The allocator may replace A0, B0, A1 with an A0 -> A1 chain plus B0.
+It retains per-channel order and configures every descriptor before its start.
+It retains every transfer's data effects. It may replace intermediate
+completion tokens with the chain's completion token.
+
+The producer must guarantee independent effects across channels for the whole
+group. Each started transfer must progress without a later start on another
+channel or an outside operation. No observer may require the memory state or
+token at an intermediate await that the allocator removes. The allocator checks
+structure and resources, not application dependencies. Unmarked tasks outside
+the group retain their completion boundaries. `dma_free_task` releases IDs
+without waiting or consuming a token.
 
 ### Parameterized C++ transaction builders
 

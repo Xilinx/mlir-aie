@@ -1287,27 +1287,38 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
     be longer than 4 words: `aie-legalize-control-packet` splits it.
 
     Ordinary storage writes have final-value semantics within each consecutive
-    run. Optimizers may remove overwritten writes, reorder disjoint writes,
-    and coalesce adjacent writes. Programs must not depend on intermediate
-    values or concurrently modify the storage during the run. An action
+    run. Each 32-bit word retains the value from its last write in IR order
+    when the run's delivery completes. Optimizers may remove overwritten
+    writes, reorder disjoint writes, coalesce adjacent writes, and use multicast
+    for matching writes. Every destination must retain its final value.
+
+    A program must not depend on an intermediate value within the run.
+    Unsynchronized cores and DMA tasks must not rely on observing such a
+    value. The program must prevent concurrent modification of that storage.
+    A consumer of the final value requires synchronization with delivery.
+
+    The target model classifies ordinary storage. Program memory, data memory,
+    BD words, and selected switch configuration words qualify. An action
     register write, read, write with response, unknown register write, barrier,
-    or other operation ends the run. Action writes retain their multiplicity
-    and per-destination order.
+    or other operation ends the run. Queue pushes, resets, lock actions, and
+    enables retain their multiplicity and per-destination order. These action
+    boundaries restrict optimization; they do not imply array-wide completion.
 
     `aiecc --ctrlpkt-optimize=false` disables optional packet transformations
     and parallel delivery for programs that require the original writes.
     Packet legalization and required synchronization remain enabled.
+    The option does not supply missing synchronization for observers.
 
-    With `multicast_id`, the packet uses a control multicast route from the
-    overlay. The `aie.ctrl_pkt_multicast` attribute belongs to the overlay's
-    `aie.device` operation. Its dictionaries contain the source shim `column`,
-    packet `id`, and destination `tiles`. The address's column and
-    `multicast_id` select an entry. Each destination applies the write at the
-    address's tile-local offset.
+    `multicast_id` selects an entry by zero-based index in the active overlay's
+    `aie.ctrl_pkt_multicast` array. `aiex.set_device` selects the configuration
+    and its overlay. Each entry contains `allocation`, `packet_id`, and `tiles`.
+    The allocation symbol identifies the MM2S shim DMA source. `packet_id`
+    supplies the stream packet ID. `multicast_id` is not a stream packet ID.
 
-    The address encodes the first destination in column-then-row order. Its
-    column selects the overlay's MM2S shim DMA allocation. `multicast_id`
-    supplies the stream packet ID; it does not name a channel or an IR symbol.
+    The address encodes the first destination in column-then-row order.
+    Every destination applies the write at the address's tile-local offset.
+    The source allocation may occupy a different column. The DMA lowerer retains
+    final values and action order when multicast destination lists overlap.
   }];
   let hasVerifier = 1;
   let builders = [OpBuilder<
@@ -1726,8 +1737,17 @@ def AIE_DMAStartTaskOp
     : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Submit a Preconfigured Task to the Task Queue";
   let description = [{
-    Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
-    Once submitted, if the task is configured to issue a token, you can await completion of the task using `aiex.await_task`.
+    Submits the referenced task to its configured tile, channel, and direction.
+    `aiex.dma_await_task` waits for completion if the task issues a token.
+
+    Each channel executes queue pushes in FIFO order. Unsynchronized starts
+    on different channels establish no cross-channel execution or completion
+    order. A program must not depend on their relative progress or on observing
+    particular intermediate buffer values without synchronization. Different
+    channels do not imply independent data effects. Buffer and descriptor
+    dependencies, lock protocols, and explicit synchronization remain binding.
+    `defer_completion` on an await grants the bounded scheduling permissions
+    described by `aiex.dma_await_task`.
 
     A task may be started more than once; each start is one queue push. For
     this start only, `repeat_count` (or the runtime `repeat_count_val`)
@@ -1822,31 +1842,46 @@ def AIE_DMAAwaitTaskOp
     : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
-    This operation blocks execution of the runtime sequence until a previously
-    started DMA task completes, by waiting on its task-completion token (TCT).
-    To be able to wait on a task, it must issue a token (`issue_token = true`).
+    This operation blocks the runtime sequence until the referenced DMA task
+    completes. It consumes the task-completion token (TCT). The task must issue
+    a token (`issue_token = true`). `aiex.dma_start_task` submits the task.
 
-    DMA tasks can be started using `aiex.start_task` using abstract BD chains
-    declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a
-    manually configured task.
+    The `$task` SSA value identifies the task's configure operation. The dynamic
+    BD allocator requires the configure operation to dominate the await.
+    A branch-local configure requires an await inside that branch.
 
-    The task is identified by its `$task` SSA value, which must resolve to the
-    configure that set it up. Under the dynamic BD pool path this configure must
-    dominate the await; an await after an `scf.if` on a task configured inside a
-    branch is rejected (move the await inside the branch that configures it).
+    `defer_completion` permits the static BD allocator to schedule a bounded
+    group of consecutive configure/start/await triples. The producer emits
+    all three operations. The group starts at a triple with a marked await.
+    Each marked await permits inclusion of the next eligible triple.
+    The first unmarked await closes the group, including its task. Another
+    operation, an ineligible triple, or the block end closes the group before
+    that boundary. Every group transfer completes before the next operation
+    outside the group.
 
-    `defer_completion` permits the allocator to combine consecutive
-    configure/start/await triples. The producer emits all three operations
-    before allocation. The attribute creates no start or await operation.
-    The allocator may move independent starts before waits. With task
-    chaining enabled, it may replace compatible same-channel tasks with one
-    BD chain, one start, and one await.
+    The allocator may reorder configure/start pairs across channels and delay
+    marked awaits within the group. It may wait for a subset before starting
+    more tasks to respect descriptor and queue limits. The `chain-tasks` option
+    permits compatible same-channel tasks to form one BD chain, one start,
+    and one await. The allocator may replace A0, B0, A1 with a chain A0 -> A1
+    plus B0. Each channel retains FIFO order. Each descriptor precedes its
+    start. The allocator retains every transfer's data effects. It may replace
+    intermediate tokens with a chain token.
 
-    The producer asserts that transfers in the deferred group are independent
-    across channels. The allocator checks descriptor and queue constraints;
-    it does not infer application dependencies. No observer may require
-    intermediate completion tokens. An unmarked await or an intervening
-    operation ends the group. Ineligible tasks retain their start and await.
+    The producer guarantees independent data effects across channels for the
+    entire group. No observer may require a separate memory observation or
+    token at an intermediate await that the allocator removes.
+    Each started transfer must make progress without a later start on another
+    channel or an operation outside the group. Different channels do not
+    establish these guarantees. The allocator checks structure and
+    resources; it does not infer these application dependencies.
+
+    An eligible triple has one token-issuing, single-BD task with one start
+    and one await as its only handle uses. Explicit BD IDs, repeats, locks,
+    out-of-order execution, and start overrides exclude a triple. Ineligible
+    triples retain their operations. An unmarked await retains its completion
+    boundary outside a deferred group. `dma_free_task` retains its separate
+    contract: it releases descriptor IDs without waiting or consuming a token.
   }];
 
   let arguments = (ins Index:$task, UnitAttr:$defer_completion);

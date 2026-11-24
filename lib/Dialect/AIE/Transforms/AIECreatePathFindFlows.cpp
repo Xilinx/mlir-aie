@@ -3152,7 +3152,20 @@ static LogicalResult checkFixedFlowEndpoints(DeviceOp device) {
     // Packets join the overlay's TileControl master set (see joinedAmsels).
     if (packet && !source && port.bundle == WireBundle::TileControl &&
         isa<MasterSetOp>(reserved) && overlay.isAttrPresent(reserved)) {
-      if (findExclusiveAMSel(cast<MasterSetOp>(reserved)))
+      auto master = cast<MasterSetOp>(reserved);
+      if (AIE::keepsPktHeader(tile.getTileID(), port,
+                              packet.getKeepPktHeader()) !=
+          master.keepsPktHeader()) {
+        auto diag = emitError(flow->getLoc());
+        diag << "keep_pkt_header conflicts with the control packet overlay at "
+             << describeTilePort(tile.getTileID(), port);
+        diag.attachNote(master.getLoc())
+            << "TileControl master set "
+            << (master.keepsPktHeader() ? "retains" : "drops")
+            << " packet headers";
+        return failure();
+      }
+      if (findExclusiveAMSel(master))
         return success();
       auto diag = emitError(flow->getLoc());
       diag << "control packet overlay has no TileControl-only amsel at "

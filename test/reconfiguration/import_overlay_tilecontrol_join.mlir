@@ -77,6 +77,34 @@ module {
   } {aie.is_ctrl_pkt_overlay}
 }
 
+// -----
+
+// CHECK-LABEL: aie.device(npu2_1col) @drop_header
+// CHECK: %[[DROP:.*]] = aie.amsel<5> (3)
+// CHECK: aie.masterset(TileControl : 0, %[[DROP]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = false}
+// CHECK: aie.packet_rules(DMA : 0) {
+// CHECK-NEXT: aie.rule(31, 0, %[[DROP]])
+// CHECK-LABEL: aie.device(npu2_1col) @transport
+module {
+  aie.device(npu2_1col) @drop_header {
+    %tile = aie.tile(0, 2)
+    aie.packet_flow(0) {
+      aie.packet_source<%tile, DMA : 0>
+      aie.packet_dest<%tile, TileControl : 0>
+    } {keep_pkt_header = false}
+  } {overlay = @transport}
+  aie.device(npu2_1col) @transport {
+    %tile = aie.tile(0, 2)
+    aie.switchbox(%tile) {
+      %selection = aie.amsel<5>(3) {aie.is_ctrl_pkt_overlay}
+      aie.masterset(TileControl : 0, %selection) {aie.is_ctrl_pkt_overlay, keep_pkt_header = false}
+      aie.packet_rules(South : 0) {
+        aie.rule(31, 15, %selection) {aie.is_ctrl_pkt_overlay}
+      }
+    }
+  } {aie.is_ctrl_pkt_overlay}
+}
+
 //--- incompatible.mlir
 module {
   aie.device(npu2_1col) @application {
@@ -122,4 +150,52 @@ module {
       }
     }
   }
+}
+
+// -----
+
+module {
+  aie.device(npu2_1col) @request_drop {
+    %tile = aie.tile(0, 2)
+    // expected-error@+1 {{keep_pkt_header conflicts with the control packet overlay}}
+    aie.packet_flow(0) {
+      aie.packet_source<%tile, DMA : 0>
+      aie.packet_dest<%tile, TileControl : 0>
+    } {keep_pkt_header = false}
+  } {overlay = @transport}
+  aie.device(npu2_1col) @transport {
+    %tile = aie.tile(0, 2)
+    aie.switchbox(%tile) {
+      %selection = aie.amsel<5>(3) {aie.is_ctrl_pkt_overlay}
+      // expected-note@+1 {{TileControl master set retains packet headers}}
+      aie.masterset(TileControl : 0, %selection) {aie.is_ctrl_pkt_overlay}
+      aie.packet_rules(South : 0) {
+        aie.rule(31, 15, %selection) {aie.is_ctrl_pkt_overlay}
+      }
+    }
+  } {aie.is_ctrl_pkt_overlay}
+}
+
+// -----
+
+module {
+  aie.device(npu2_1col) @request_keep {
+    %tile = aie.tile(0, 2)
+    // expected-error@+1 {{keep_pkt_header conflicts with the control packet overlay}}
+    aie.packet_flow(0) {
+      aie.packet_source<%tile, DMA : 0>
+      aie.packet_dest<%tile, TileControl : 0>
+    }
+  } {overlay = @transport}
+  aie.device(npu2_1col) @transport {
+    %tile = aie.tile(0, 2)
+    aie.switchbox(%tile) {
+      %selection = aie.amsel<5>(3) {aie.is_ctrl_pkt_overlay}
+      // expected-note@+1 {{TileControl master set drops packet headers}}
+      aie.masterset(TileControl : 0, %selection) {aie.is_ctrl_pkt_overlay, keep_pkt_header = false}
+      aie.packet_rules(South : 0) {
+        aie.rule(31, 15, %selection) {aie.is_ctrl_pkt_overlay}
+      }
+    }
+  } {aie.is_ctrl_pkt_overlay}
 }

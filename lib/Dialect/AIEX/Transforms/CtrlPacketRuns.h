@@ -24,8 +24,6 @@ struct PacketInterval {
 };
 
 llvm::SmallVector<PacketInterval> packetIntervals(mlir::Block &block);
-mlir::ArrayAttr controlPacketMulticasts(mlir::ModuleOp module,
-                                        mlir::FlatSymbolRefAttr device);
 
 } // namespace xilinx::AIEX
 

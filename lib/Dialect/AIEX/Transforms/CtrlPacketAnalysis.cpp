@@ -47,17 +47,3 @@ SmallVector<PacketInterval> AIEX::packetIntervals(Block &block) {
   finish();
   return intervals;
 }
-
-ArrayAttr AIEX::controlPacketMulticasts(ModuleOp module,
-                                        FlatSymbolRefAttr reference) {
-  auto device = reference ? module.lookupSymbol<AIE::DeviceOp>(reference)
-                          : AIE::DeviceOp{};
-  auto overlay =
-      device && device.getOverlayAttr()
-          ? module.lookupSymbol<AIE::DeviceOp>(device.getOverlayAttr())
-          : AIE::DeviceOp{};
-  return overlay
-             ? AIE::AIEDialect::CtrlPktMulticastAttrHelper(module.getContext())
-                   .getAttr(overlay)
-             : ArrayAttr{};
-}

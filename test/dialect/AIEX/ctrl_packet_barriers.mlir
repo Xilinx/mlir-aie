@@ -10,14 +10,28 @@
 
 module {
   aie.device(npu2) @overlay {
-  } {aie.ctrl_pkt_multicast = [{column = 0 : i32, id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>]}], aie.is_ctrl_pkt_overlay}
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrl0(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+  } {aie.ctrl_pkt_multicast = [{allocation = @ctrl0, packet_id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>]}], aie.is_ctrl_pkt_overlay}
   aie.device(npu2) @cfg {
   } {overlay = @overlay}
+  aie.device(npu2) @overlap_overlay {
+    %shim0 = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %shim2 = aie.tile(2, 0)
+    aie.shim_dma_allocation @ctrl0(%shim0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.shim_dma_allocation @ctrl1(%shim1, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.shim_dma_allocation @ctrl2(%shim2, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+  } {aie.ctrl_pkt_multicast = [{allocation = @ctrl0, packet_id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<1, 2>]}, {allocation = @ctrl1, packet_id = 29 : i32, tiles = [#aie.tile<1, 2>, #aie.tile<1, 3>]}, {allocation = @ctrl2, packet_id = 28 : i32, tiles = [#aie.tile<2, 2>, #aie.tile<2, 3>]}], aie.is_ctrl_pkt_overlay}
+  aie.device(npu2) @overlap_cfg {
+  } {overlay = @overlap_overlay}
   aie.device(npu2) @main {
     %shim0 = aie.tile(0, 0)
     %shim1 = aie.tile(1, 0)
+    %shim2 = aie.tile(2, 0)
     aie.shim_dma_allocation @ctrl0(%shim0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.shim_dma_allocation @ctrl1(%shim1, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.shim_dma_allocation @ctrl2(%shim2, MM2S, 0) {aie.is_ctrl_pkt_overlay}
 
     // CHECK-LABEL: @storage
     // CHECK: address = 2228224 : ui32, data = array<i32: 1, 7, 8, 4>
@@ -57,9 +71,9 @@ module {
     }
 
     // CHECK-LABEL: @multicast
-    // CHECK: address = 2228224 : ui32, data = array<i32: 7, 9>, multicast_id = 28 : i32
+    // CHECK: address = 2228224 : ui32, data = array<i32: 7, 9>, multicast_id = 0 : i32
     // CHECK-NEXT: aiex.control_packet_barrier
-    // CHECK-NEXT: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 2>, multicast_id = 28 : i32
+    // CHECK-NEXT: aiex.control_packet {address = 2228224 : ui32, data = array<i32: 2>, multicast_id = 0 : i32
     aie.runtime_sequence @multicast() {
       aiex.set_device @cfg
       aiex.control_packet_barrier {compiler_only}
@@ -80,10 +94,10 @@ module {
     aie.runtime_sequence @multicast_disjoint_destinations() {
       aiex.set_device @cfg
       aiex.control_packet_barrier
-      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier
-      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 7>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
     }
 
@@ -96,8 +110,8 @@ module {
     }
 
     // CHECK-LABEL: @multicast_actions
-    // CHECK: address = 2301952 : ui32, data = array<i32: 2>, multicast_id = 28 : i32
-    // CHECK-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, multicast_id = 28 : i32
+    // CHECK: address = 2301952 : ui32, data = array<i32: 2>, multicast_id = 0 : i32
+    // CHECK-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, multicast_id = 0 : i32
     // CHECK-NEXT: {{^ *}}}
     aie.runtime_sequence @multicast_actions() {
       aiex.set_device @cfg
@@ -193,6 +207,50 @@ module {
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+
+    // DMA-LABEL: @overlapping_multicasts
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA-NEXT: {{^ *}}}
+    aie.runtime_sequence @overlapping_multicasts() {
+      aiex.set_device @overlap_cfg
+      aiex.control_packet_barrier {independent}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, multicast_id = 1 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+
+    // DMA-LABEL: @nonadjacent_multicast_overlap
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA-NEXT: {{^ *}}}
+    aie.runtime_sequence @nonadjacent_multicast_overlap() {
+      aiex.set_device @overlap_cfg
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 69337088 : ui32, data = array<i32: 3>, multicast_id = 2 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, multicast_id = 1 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+
+    // DMA-LABEL: @disjoint_multicasts
+    // DMA: aiex.dma_await_task({{.*}}) {defer_completion}
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA-NEXT: {{^ *}}}
+    aie.runtime_sequence @disjoint_multicasts() {
+      aiex.set_device @overlap_cfg
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 69337088 : ui32, data = array<i32: 3>, multicast_id = 2 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+
+    // DMA-LABEL: @overlapping_multicast_actions
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA-NEXT: {{^ *}}}
+    aie.runtime_sequence @overlapping_multicast_actions() {
+      aiex.set_device @overlap_cfg
+      aiex.control_packet_barrier {independent}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35856384 : ui32, data = array<i32: 0>, multicast_id = 1 : i32, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }

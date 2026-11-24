@@ -15,9 +15,9 @@
 // span 2, columns 0 and 1 are one multicast.
 
 // CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
-// CHECK:       aie.ctrl_pkt_multicast = [{{.}}column = 0 : i32, id = 25 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 5>]
+// CHECK:       aie.ctrl_pkt_multicast = [{{.}}allocation = @ctrlpkt_col0_mm2s_chan0, packet_id = 25 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 5>]
 // SPAN2-LABEL: aie.device(npu2) @ctrl_pkt_overlay
-// SPAN2:       aie.ctrl_pkt_multicast = [{{.}}column = 0 : i32, id = 25 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 5>, #aie.tile<1, 2>]
+// SPAN2:       aie.ctrl_pkt_multicast = [{{.}}allocation = @ctrlpkt_col0_mm2s_chan0, packet_id = 25 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 5>, #aie.tile<1, 2>]
 
 module {
   aie.device(npu2) @a {
@@ -53,18 +53,18 @@ module {
 // CHECK:           aie.packet_rules(South : 0) {
 // CHECK-NEXT:        aie.rule(31, 28,
 // CHECK:       aie.ctrl_pkt_multicast = [
-// CHECK-SAME:    column = 0 : i32, id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>]
-// CHECK-SAME:    column = 1 : i32, id = 28 : i32, tiles = [#aie.tile<1, 2>, #aie.tile<1, 3>]
-// CHECK-SAME:    column = 2 : i32, id = 28 : i32,
-// CHECK-SAME:    column = 3 : i32, id = 28 : i32,
-// CHECK-SAME:    column = 4 : i32, id = 28 : i32,
-// CHECK-SAME:    column = 5 : i32, id = 28 : i32,
-// CHECK-SAME:    column = 6 : i32, id = 28 : i32,
-// CHECK-SAME:    column = 7 : i32, id = 28 : i32, tiles = [#aie.tile<7, 2>, #aie.tile<7, 3>]
+// CHECK-SAME:    allocation = @ctrlpkt_col0_mm2s_chan0, packet_id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>]
+// CHECK-SAME:    allocation = @ctrlpkt_col1_mm2s_chan0, packet_id = 28 : i32, tiles = [#aie.tile<1, 2>, #aie.tile<1, 3>]
+// CHECK-SAME:    allocation = @ctrlpkt_col2_mm2s_chan0, packet_id = 28 : i32,
+// CHECK-SAME:    allocation = @ctrlpkt_col3_mm2s_chan0, packet_id = 28 : i32,
+// CHECK-SAME:    allocation = @ctrlpkt_col4_mm2s_chan0, packet_id = 28 : i32,
+// CHECK-SAME:    allocation = @ctrlpkt_col5_mm2s_chan0, packet_id = 28 : i32,
+// CHECK-SAME:    allocation = @ctrlpkt_col6_mm2s_chan0, packet_id = 28 : i32,
+// CHECK-SAME:    allocation = @ctrlpkt_col7_mm2s_chan0, packet_id = 28 : i32, tiles = [#aie.tile<7, 2>, #aie.tile<7, 3>]
 // SPAN2-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // SPAN2:       aie.ctrl_pkt_multicast = [
-// SPAN2-SAME:    column = 0 : i32, id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>]
-// SPAN2-SAME:    column = 6 : i32, id = 28 : i32, tiles = [#aie.tile<6, 2>, #aie.tile<6, 3>, #aie.tile<7, 2>, #aie.tile<7, 3>]
+// SPAN2-SAME:    allocation = @ctrlpkt_col0_mm2s_chan0, packet_id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<1, 2>, #aie.tile<1, 3>]
+// SPAN2-SAME:    allocation = @ctrlpkt_col6_mm2s_chan0, packet_id = 28 : i32, tiles = [#aie.tile<6, 2>, #aie.tile<6, 3>, #aie.tile<7, 2>, #aie.tile<7, 3>]
 
 module {
   aie.device(npu2) @wide {

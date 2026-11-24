@@ -2785,6 +2785,51 @@ std::set<uint32_t> AIEX::staticBdIds(ArrayRef<AIE::DeviceOp> devices,
   return ids;
 }
 
+FailureOr<SmallVector<AIEX::ControlPacketMulticast>>
+AIEX::controlPacketMulticasts(ModuleOp module, FlatSymbolRefAttr reference) {
+  SmallVector<ControlPacketMulticast> routes;
+  auto device = reference ? module.lookupSymbol<AIE::DeviceOp>(reference)
+                          : AIE::DeviceOp{};
+  auto overlay =
+      device && device.getOverlayAttr()
+          ? module.lookupSymbol<AIE::DeviceOp>(device.getOverlayAttr())
+          : AIE::DeviceOp{};
+  auto groups =
+      overlay ? AIE::AIEDialect::CtrlPktMulticastAttrHelper(module.getContext())
+                    .getAttr(overlay)
+              : ArrayAttr{};
+  if (!groups)
+    return routes;
+  SymbolTable symbols(overlay);
+  for (auto [index, attribute] : llvm::enumerate(groups)) {
+    auto group = dyn_cast<DictionaryAttr>(attribute);
+    auto allocation = group ? group.getAs<FlatSymbolRefAttr>("allocation")
+                            : FlatSymbolRefAttr{};
+    auto packetId =
+        group ? group.getAs<IntegerAttr>("packet_id") : IntegerAttr{};
+    auto tiles = group ? group.getAs<ArrayAttr>("tiles") : ArrayAttr{};
+    if (!allocation || !packetId || !tiles || tiles.empty() ||
+        packetId.getInt() < 0 ||
+        packetId.getInt() > overlay.getTargetModel().getMaxPacketId() ||
+        !llvm::all_of(
+            tiles, [](Attribute tile) { return isa<AIE::TileAttr>(tile); })) {
+      overlay.emitOpError("aie.ctrl_pkt_multicast entry ")
+          << index << " requires allocation, a valid packet_id, and tiles";
+      return failure();
+    }
+    auto alloc =
+        symbols.lookup<AIE::ShimDMAAllocationOp>(allocation.getValue());
+    if (!alloc || alloc.getChannelDir() != AIE::DMAChannelDir::MM2S) {
+      overlay.emitOpError("aie.ctrl_pkt_multicast entry ")
+          << index << " allocation " << allocation
+          << " must reference an MM2S shim DMA allocation in this overlay";
+      return failure();
+    }
+    routes.push_back({alloc, static_cast<uint32_t>(packetId.getInt()), tiles});
+  }
+  return routes;
+}
+
 Operation *AIEX::findShimDmaStart(AIE::DeviceOp device) {
   Operation *found = nullptr;
   device.walk([&](Operation *op) {

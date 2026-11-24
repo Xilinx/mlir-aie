@@ -102,6 +102,16 @@ mlir::Operation *findShimDmaStart(AIE::DeviceOp device);
 llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>
 controllerIdsOf(AIE::DeviceOp device);
 
+struct ControlPacketMulticast {
+  AIE::ShimDMAAllocationOp allocation;
+  uint32_t packetId;
+  mlir::ArrayAttr tiles;
+};
+
+mlir::FailureOr<llvm::SmallVector<ControlPacketMulticast>>
+controlPacketMulticasts(mlir::ModuleOp module,
+                        mlir::FlatSymbolRefAttr reference);
+
 // The buffer descriptor ids the static DMAs of `devices` take on `tile`.
 std::set<uint32_t> staticBdIds(llvm::ArrayRef<AIE::DeviceOp> devices,
                                AIE::TileID tile);

@@ -241,7 +241,9 @@ module {
 
 module {
   aie.device(npu2) @overlay {
-  } {aie.ctrl_pkt_multicast = [{column = 0 : i32, id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<1, 2>]}], aie.is_ctrl_pkt_overlay}
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrl0(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+  } {aie.ctrl_pkt_multicast = [{allocation = @ctrl0, packet_id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<1, 2>]}], aie.is_ctrl_pkt_overlay}
   aie.device(npu2) @cfg {
   } {overlay = @overlay}
   aie.device(npu2) @main {
@@ -276,7 +278,7 @@ module {
     aie.runtime_sequence @multicast_interval() {
       aiex.set_device @cfg
       aiex.control_packet_barrier {independent}
-      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 3276800 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier {compiler_only}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -312,9 +314,9 @@ module {
     aie.runtime_sequence @multicast_batch_interval() {
       aiex.set_device @cfg
       aiex.control_packet_barrier {independent}
-      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier {compiler_only}
-      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 3>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228228 : ui32, data = array<i32: 3>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier
     }
@@ -342,7 +344,7 @@ module {
     aie.runtime_sequence @multicast_unicast_batch_interval() {
       aiex.set_device @cfg
       aiex.control_packet_barrier {independent}
-      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 28 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35782660 : ui32, data = array<i32: 9>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet_barrier {compiler_only}
       aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}

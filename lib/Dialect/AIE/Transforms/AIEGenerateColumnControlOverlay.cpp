@@ -346,8 +346,11 @@ struct AIEGenerateColumnControlOverlayPass
       EndOp::create(builder, flow.getLoc());
       record.push_back(DictionaryAttr::get(
           ctx,
-          {builder.getNamedAttr("id", builder.getI32IntegerAttr(id)),
-           builder.getNamedAttr("column", builder.getI32IntegerAttr(srcCol)),
+          {builder.getNamedAttr(
+               "allocation",
+               FlatSymbolRefAttr::get(
+                   ctx, getCtrlPktAllocName(srcCol, channel->second))),
+           builder.getNamedAttr("packet_id", builder.getI32IntegerAttr(id)),
            builder.getNamedAttr("tiles", ArrayAttr::get(ctx, listed))}));
     }
     AIEDialect::CtrlPktMulticastAttrHelper(ctx).setAttr(

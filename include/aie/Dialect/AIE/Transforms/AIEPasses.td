@@ -944,8 +944,9 @@ def AIEGenerateColumnControlOverlay
 
     All routes use the same packet ID. The pass selects the highest ID unused
     by application devices and tile controllers. It records each route's
-    source column, packet ID, and destination tiles in `aie.ctrl_pkt_multicast`
-    on the overlay's `aie.device` operation.
+    shim DMA allocation symbol, packet ID, and destination tiles in
+    `aie.ctrl_pkt_multicast` on the overlay's `aie.device` operation.
+    A control packet's `multicast_id` indexes that array.
   }];
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",

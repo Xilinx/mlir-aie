@@ -29,8 +29,8 @@ struct AIEDedupCtrlPacketMulticastPass
           AIEDedupCtrlPacketMulticastPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    module.walk([&](AIE::RuntimeSequenceOp sequence) {
-      sequence.walk([&](Block *block) {
+    auto result = module.walk([&](AIE::RuntimeSequenceOp sequence) {
+      return sequence.walk([&](Block *block) -> WalkResult {
         for (PacketInterval interval : packetIntervals(*block)) {
           if ((!interval.ordinary && !interval.independent) ||
               !interval.device ||
@@ -38,8 +38,10 @@ struct AIEDedupCtrlPacketMulticastPass
                 return packet.getMulticastId().has_value();
               }))
             continue;
-          ArrayAttr groups = controlPacketMulticasts(module, interval.device);
-          if (!groups)
+          auto groups = controlPacketMulticasts(module, interval.device);
+          if (failed(groups))
+            return WalkResult::interrupt();
+          if (groups->empty())
             continue;
           std::map<AIE::TileID, SmallVector<NpuControlPacketOp>> byTile;
           for (NpuControlPacketOp packet : interval.packets)
@@ -48,11 +50,9 @@ struct AIEDedupCtrlPacketMulticastPass
           auto anchor = ControlPacketBarrierOp::create(
               builder, interval.packets.front().getLoc(),
               builder.getUnitAttr());
-          for (Attribute attribute : groups) {
-            auto group = cast<DictionaryAttr>(attribute);
+          for (auto [id, group] : llvm::enumerate(*groups)) {
             SmallVector<SmallVector<NpuControlPacketOp> *> copies;
-            for (auto tile :
-                 group.getAs<ArrayAttr>("tiles").getAsRange<AIE::TileAttr>())
+            for (auto tile : group.tiles.getAsRange<AIE::TileAttr>())
               copies.push_back(&byTile[tile.getTileID()]);
             if (copies.size() < 2)
               continue;
@@ -76,7 +76,7 @@ struct AIEDedupCtrlPacketMulticastPass
             }
             for (size_t index = 0; index < length; ++index) {
               NpuControlPacketOp packet = (*copies.front())[index];
-              packet.setMulticastId(group.getAs<IntegerAttr>("id").getInt());
+              packet.setMulticastId(id);
               packet->moveBefore(anchor);
               for (auto *other : llvm::drop_begin(copies))
                 (*other)[index].erase();
@@ -86,8 +86,11 @@ struct AIEDedupCtrlPacketMulticastPass
           }
           anchor.erase();
         }
+        return WalkResult::advance();
       });
     });
+    if (result.wasInterrupted())
+      signalPassFailure();
   }
 };
 

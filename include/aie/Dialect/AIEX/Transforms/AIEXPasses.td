@@ -387,8 +387,13 @@ def AIEAssignRuntimeSequenceBDIDs
     a completion boundary. The allocator schedules compatible single-BD,
     single-start tasks within its current descriptor and queue limits. With
     `chain-tasks`, it links tasks on the same channel into chains that fit.
-    An unmarked await or another operation ends the interval. Tasks with
-    explicit IDs, repeats, locks, or additional handle uses remain unchanged.
+    It may reorder starts across channels and delay marked waits. The first
+    unmarked await closes the group, including its task. Another operation or
+    an ineligible triple ends the group before that operation. Every group
+    transfer completes before the next operation outside the group.
+    `aiex.dma_await_task` defines the producer's whole-group independence and
+    progress contract. Tasks with explicit IDs, repeats, locks, or additional
+    handle uses remain unchanged.
   }];
 
   let options =
@@ -577,11 +582,11 @@ def AIESubstituteShimDMAAllocations
 def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
   let summary = "Deliver control packets with DMA tasks";
   let description = [{
-    Streams each runtime sequence's control packets through their column's
-    control channel. Consecutive packets to one tile go in one transfer where
-    the target supports it. Each transfer gets its own buffer descriptor, since
-    a descriptor ends its stream packet and the switches route each to its
-    tile.
+    Streams unicast control packets through their column's control channel.
+    A multicast uses the allocation symbol in its overlay declaration.
+    Consecutive packets to one destination go in one transfer where the target
+    supports it. Each transfer has one buffer descriptor. The descriptor ends
+    its stream packet; the switches route each stream packet by its first header.
 
     Each batch uses one configure/start/await triple. `chain-bds` permits
     chains on one channel for the same destination or independent writes.
@@ -594,9 +599,12 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     preceding transfer. Compiler-only barriers retain packet order but permit
     consecutive packets with the same destination to share a transfer.
 
-    Independent multicast prefixes may share completion. A multicast and unicast
-    require separate completion unless their destination words are disjoint
-    within an ordinary-write interval.
+    Distinct multicast routes may share completion when their destination
+    lists are disjoint across the entire interval. Overlapping multicast
+    routes require separate completion, including nonadjacent routes.
+    A multicast and unicast require separate completion unless their destination
+    words are disjoint within an ordinary-write interval. These permissions
+    end at an interval boundary when the interval contains multicast packets.
     The control overlay must deliver these transfers without application
     interference. This pass does not analyze application execution or routes.
   }];

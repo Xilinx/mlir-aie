@@ -679,8 +679,20 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
   const AIETargetModel &tm = deviceOp.getTargetModel();
   llvm::DenseMap<TileID, AIE::PacketInfoAttr> controllerIds =
       AIEX::controllerIdsOf(deviceOp);
-  for (AIEX::NpuControlPacketOp packetOp :
-       seq.getOps<AIEX::NpuControlPacketOp>()) {
+  SmallVector<AIEX::ControlPacketMulticast> multicasts;
+  for (Operation &operation : seq.getBody().getOps()) {
+    if (auto context = dyn_cast<AIEX::SetDeviceOp>(operation)) {
+      auto groups =
+          AIEX::controlPacketMulticasts(module, context.getDeviceRefAttr());
+      if (failed(groups))
+        return failure();
+      multicasts = std::move(*groups);
+    } else if (isa<AIEX::NpuLoadPdiOp>(operation)) {
+      multicasts.clear();
+    }
+    auto packetOp = dyn_cast<AIEX::NpuControlPacketOp>(operation);
+    if (!packetOp)
+      continue;
 
     // The C API and Python callers can pass ops that were never verified,
     // and the encoding below relies on the verifier's checks.
@@ -727,11 +739,13 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
              << " on the wire. Run --aie-legalize-control-packet before "
                 "translating.";
 
-    // The header routes the packet by its tile's controller_id, or by its
-    // multicast's id. A tile without a controller_id has no route.
+    // A tile without a controller_id has no unicast route.
     uint32_t hdr = 0;
     if (std::optional<uint32_t> id = packetOp.getMulticastId()) {
-      hdr = *id & 0xff;
+      if (*id >= multicasts.size())
+        return packetOp.emitOpError("multicast_id ")
+               << *id << " has no declaration in the active overlay";
+      hdr = multicasts[*id].packetId;
     } else {
       TileID tile = packetOp.getTileFromAddr();
       AIE::PacketInfoAttr info = controllerIds.lookup(tile);
