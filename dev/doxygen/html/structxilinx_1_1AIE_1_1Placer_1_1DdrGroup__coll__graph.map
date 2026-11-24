@@ -1,9 +1,0 @@
-<map id="xilinx::AIE::Placer::DdrGroup" name="xilinx::AIE::Placer::DdrGroup">
-<area shape="rect" id="Node000001" title=" " alt="" coords="291,65,425,110"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="18,5,167,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="182,37,267,54,296,65,291,65,266,60,182,42"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,74,180,102"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="195,85,293,87,288,89,196,90"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="17,125,168,170"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="183,132,266,115,290,111,295,110,267,121,184,138"/>
-</map>

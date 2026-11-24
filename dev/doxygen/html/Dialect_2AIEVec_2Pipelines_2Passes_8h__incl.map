@@ -1,7 +1,0 @@
-<map id="include/aie/Dialect/AIEVec/Pipelines/Passes.h" name="include/aie/Dialect/AIEVec/Pipelines/Passes.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="58,5,251,50"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,98,131,126"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="134,49,94,89,91,85,129,51"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="155,98,330,126"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="179,48,220,87,215,87,177,53"/>
-</map>
