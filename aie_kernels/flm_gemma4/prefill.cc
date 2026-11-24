@@ -7,9 +7,8 @@
 
 // FastFlowLM's Gemma 4 prefill attention on linalg/flash_attn_prefill.h, whose
 // q * k^T, mask, row sums, S reorder and block bookkeeping it uses. The head
-// dim is FLM_GEMMA4_PREFILL_HEAD_DIM: 512 builds the global kernel, 256 or 128
-// the sliding-window one, which a window of at least the sequence length makes
-// plain causal attention.
+// dim is FLM_GEMMA4_PREFILL_HEAD_DIM; see PrefillGeom there. A window of at
+// least the sequence length makes a windowed build plain causal attention.
 //
 // It keeps FastFlowLM's numerics: the softmax scales by log2(e) alone (Gemma
 // 4's attention scale is 1), c and y round as FastFlowLM's kernel does, S * V
