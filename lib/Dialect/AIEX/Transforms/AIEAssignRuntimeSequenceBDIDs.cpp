@@ -376,6 +376,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
+    if (!seq.getBody().hasOneBlock())
+      return seq.emitOpError(
+          "requires a single block for static BD allocation");
     WalkResult unplaced = seq.walk([](DMAConfigureTaskOp cfg) {
       if (cfg.getTile().getDefiningOp<AIE::TileOp>())
         return WalkResult::advance();

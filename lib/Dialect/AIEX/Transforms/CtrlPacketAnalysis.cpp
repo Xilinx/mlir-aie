@@ -15,6 +15,7 @@ using namespace xilinx::AIEX;
 SmallVector<PacketInterval> AIEX::packetIntervals(Block &block) {
   SmallVector<PacketInterval> intervals;
   PacketInterval current;
+  ArrayAttr multicasts;
   auto finish = [&] {
     if (!current.packets.empty()) {
       intervals.push_back(current);
@@ -24,6 +25,26 @@ SmallVector<PacketInterval> AIEX::packetIntervals(Block &block) {
   for (Operation &operation : block) {
     if (auto packet = dyn_cast<NpuControlPacketOp>(operation)) {
       bool ordinary = packet.isOrdinaryWrite();
+      if (auto id = packet.getMulticastId()) {
+        auto group = multicasts && *id < multicasts.size()
+                         ? dyn_cast<DictionaryAttr>(multicasts[*id])
+                         : DictionaryAttr{};
+        auto tiles = group ? group.getAs<ArrayAttr>("tiles") : ArrayAttr{};
+        ordinary =
+            ordinary && tiles && !tiles.empty() &&
+            llvm::all_of(tiles, [&](Attribute attribute) {
+              auto tile = dyn_cast<AIE::TileAttr>(attribute);
+              return tile &&
+                     llvm::all_of(
+                         llvm::seq<size_t>(0, packet.getDataAttr().size()),
+                         [&](size_t word) {
+                           return AIE::getTargetModel(packet)
+                               .isReorderableRegisterWrite(
+                                   tile.getTileID(),
+                                   packet.getLocalAddress() + 4 * word);
+                         });
+            });
+      }
       if (ordinary != current.ordinary) {
         finish();
         current.ordinary = ordinary;
@@ -39,10 +60,23 @@ SmallVector<PacketInterval> AIEX::packetIntervals(Block &block) {
                     (barrier.getCompilerOnly() && current.independent));
     if (!barrier || !barrier.getCompilerOnly())
       ++current.delivery;
-    if (auto context = dyn_cast<SetDeviceOp>(operation))
+    if (auto context = dyn_cast<SetDeviceOp>(operation)) {
       current.device = context.getDeviceRefAttr();
-    else if (isa<NpuLoadPdiOp>(operation))
+      auto module = context->getParentOfType<ModuleOp>();
+      auto device = module.lookupSymbol<AIE::DeviceOp>(current.device);
+      auto overlay =
+          device && device.getOverlayAttr()
+              ? module.lookupSymbol<AIE::DeviceOp>(device.getOverlayAttr())
+              : AIE::DeviceOp{};
+      multicasts =
+          overlay
+              ? AIE::AIEDialect::CtrlPktMulticastAttrHelper(module.getContext())
+                    .getAttr(overlay)
+              : ArrayAttr{};
+    } else if (isa<NpuLoadPdiOp>(operation)) {
       current.device = {};
+      multicasts = {};
+    }
   }
   finish();
   return intervals;

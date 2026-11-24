@@ -250,6 +250,8 @@ struct AIECtrlPacketToDmaPass
         pendingMulticast |= batchIt->multicast.has_value();
         bool defer =
             next != batches.end() && next->delivery == batchIt->delivery &&
+            batchIt->independent == next->independent &&
+            (batchIt->independent || next->interval == batchIt->interval) &&
             (!pendingMulticast || next->interval == batchIt->interval) &&
             ((!batchIt->multicast && !next->multicast) ||
              (((batchIt->independent && next->independent) ||

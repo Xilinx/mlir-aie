@@ -1317,6 +1317,8 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
 
     The address encodes the first destination in column-then-row order.
     Every destination applies the write at the address's tile-local offset.
+    A multicast write qualifies as ordinary only when every payload word
+    targets ordinary storage at every declared destination.
     The source allocation may occupy a different column. The DMA lowerer retains
     final values and action order when multicast destination lists overlap.
   }];
@@ -1388,6 +1390,7 @@ def AIE_ControlPacketBarrierOp
     `independent` permits delivery of following control packets to different
     tiles in any order. It grants no permission for packets before this
     barrier. Each destination retains its action order and multiplicity.
+    A deferred DMA group must obey this scope for every packet it contains.
     The permission ends at the next hardware barrier or non-packet runtime
     operation. Compiler-only barriers retain this permission. The producer
     guarantees that application traffic cannot prevent the remaining packets

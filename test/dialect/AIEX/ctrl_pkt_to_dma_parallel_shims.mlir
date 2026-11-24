@@ -352,3 +352,30 @@ module {
     }
   }
 }
+
+// -----
+
+// CHECK-LABEL: @following_only
+// CHECK: aie.dma_bd({{.*}} offset = 0 len = 3)
+// CHECK: aiex.dma_start_task(%[[FIRST:.*]])
+// CHECK-NEXT: aiex.dma_await_task(%[[FIRST]])
+// CHECK: aie.dma_bd({{.*}} offset = 6 len = 3)
+// CHAIN-LABEL: @following_only
+// CHAIN: aie.dma_bd({{.*}} offset = 0 len = 3)
+// CHAIN: aiex.dma_start_task(%[[FIRST:.*]])
+// CHAIN-NEXT: aiex.dma_await_task(%[[FIRST]])
+// CHAIN: aie.dma_bd({{.*}} offset = 6 len = 3)
+module {
+  aie.device(npu1) {
+    %shim0 = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    aie.shim_dma_allocation @ctrl0(%shim0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.shim_dma_allocation @ctrl1(%shim1, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.runtime_sequence @following_only() {
+      aiex.control_packet {address = 35856384 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier {compiler_only, independent}
+      aiex.control_packet {address = 35856384 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+  }
+}

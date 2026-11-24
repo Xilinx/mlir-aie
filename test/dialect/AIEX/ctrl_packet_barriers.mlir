@@ -22,7 +22,7 @@ module {
     aie.shim_dma_allocation @ctrl0(%shim0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.shim_dma_allocation @ctrl1(%shim1, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.shim_dma_allocation @ctrl2(%shim2, MM2S, 0) {aie.is_ctrl_pkt_overlay}
-  } {aie.ctrl_pkt_multicast = [{allocation = @ctrl0, packet_id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<1, 2>]}, {allocation = @ctrl1, packet_id = 29 : i32, tiles = [#aie.tile<1, 2>, #aie.tile<1, 3>]}, {allocation = @ctrl2, packet_id = 28 : i32, tiles = [#aie.tile<2, 2>, #aie.tile<2, 3>]}], aie.is_ctrl_pkt_overlay}
+  } {aie.ctrl_pkt_multicast = [{allocation = @ctrl0, packet_id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<1, 2>]}, {allocation = @ctrl1, packet_id = 29 : i32, tiles = [#aie.tile<1, 2>, #aie.tile<1, 3>]}, {allocation = @ctrl2, packet_id = 28 : i32, tiles = [#aie.tile<2, 2>, #aie.tile<2, 3>]}, {allocation = @ctrl0, packet_id = 30 : i32, tiles = [#aie.tile<0, 1>, #aie.tile<1, 2>]}], aie.is_ctrl_pkt_overlay}
   aie.device(npu2) @overlap_cfg {
   } {overlay = @overlap_overlay}
   aie.device(npu2) @main {
@@ -251,6 +251,27 @@ module {
       aiex.control_packet_barrier {independent}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, multicast_id = 0 : i32, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 35856384 : ui32, data = array<i32: 0>, multicast_id = 1 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+
+    // CHECK-LABEL: @multicast_mixed_tile_kinds
+    // CHECK: address = 1253376 : ui32, data = array<i32: 0>, multicast_id = 3
+    // CHECK-NEXT: aiex.control_packet {address = 1253380 : ui32, data = array<i32: 1>, multicast_id = 3
+    // CHECK-NEXT: aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>
+    // CHECK-NEXT: aiex.control_packet_barrier
+    // CHECK-NEXT: aiex.control_packet {address = 1048576 : ui32, data = array<i32: 7, 9>, multicast_id = 3
+    // DMA-LABEL: @multicast_mixed_tile_kinds
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA: aiex.dma_await_task({{.*}}){{$}}
+    // DMA-NEXT: {{^ *}}}
+    aie.runtime_sequence @multicast_mixed_tile_kinds() {
+      aiex.set_device @overlap_cfg
+      aiex.control_packet {address = 1253376 : ui32, data = array<i32: 0>, multicast_id = 3 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 1253380 : ui32, data = array<i32: 1>, multicast_id = 3 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 35782656 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet_barrier
+      aiex.control_packet {address = 1048576 : ui32, data = array<i32: 7>, multicast_id = 3 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 1048580 : ui32, data = array<i32: 9>, multicast_id = 3 : i32, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
 }

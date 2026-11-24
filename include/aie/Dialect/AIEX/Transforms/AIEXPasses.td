@@ -357,8 +357,9 @@ def AIEAssignRuntimeSequenceBDIDs
     Gives each `aie.dma_bd` of an `aiex.dma_configure_task` in a runtime
     sequence a buffer descriptor id on its tile, in program order, and takes
     a task's ids back once it is known to have finished, for later tasks to
-    reuse. The sequence must be straight-line (constant loops unrolled,
-    constant branches folded); runtime-valued `scf` ops are rejected.
+    reuse. The sequence must have one block with straight-line execution.
+    The pipeline unrolls constant loops and folds constant branches before
+    this pass. The allocator rejects runtime-valued `scf` ops.
 
     An await (`aiex.dma_await_task`, `aiex.npu.sync`, `aiex.npu.dma_wait`)
     takes the oldest completion token on its channel, which proves that push
