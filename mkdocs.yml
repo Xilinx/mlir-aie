@@ -200,6 +200,7 @@ nav:
     - Windows (WSL): buildHostWin.md
     - Windows (Native): buildHostWinNative.md
     - Non-Ubuntu Linux: buildHostLinNonUbuntu.md
+    - Install via FastFlow SDK: installFastFlowSDK.md
     - Build from Source: Building.md
     - Devices: Devices.md
     - Versal: BuildingVersal.md

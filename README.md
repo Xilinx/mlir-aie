@@ -83,6 +83,7 @@ IRON is described in the following paper:
 | Linux (non-Ubuntu) | [Non-Ubuntu Linux Setup](docs/buildHostLinNonUbuntu.md) |
 | Windows 11 | [Native Windows Setup](docs/buildHostWinNative.md) |
 | Windows via WSL | [Windows via WSL Setup](docs/buildHostWin.md) |
+| Windows or Linux, prebuilt, installed with pip | [Install via FastFlow SDK](docs/installFastFlowSDK.md) |
 
 ## Getting Started for AMD Ryzen™ AI on Linux
 
