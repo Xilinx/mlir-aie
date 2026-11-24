@@ -2181,7 +2181,8 @@ bool AIEX::NpuControlPacketOp::isOrdinaryWrite() {
 
 bool AIEX::NpuControlPacketOp::isOrdinaryWrite(
     const AIE::AIETargetModel &target) {
-  if (getOpcode() != 0 || !getData())
+  auto data = getData();
+  if (getOpcode() != 0 || !data)
     return false;
   AIE::TileID tile{
       static_cast<int>(getAddress() >> target.getColumnShift()),
@@ -2189,7 +2190,7 @@ bool AIEX::NpuControlPacketOp::isOrdinaryWrite(
           (getAddress() >> target.getRowShift()) &
           ((1u << (target.getColumnShift() - target.getRowShift())) - 1))};
   uint32_t offset = getAddress() & ((1u << target.getRowShift()) - 1);
-  for (size_t index = 0; index < getData()->size(); ++index)
+  for (size_t index = 0; index < data->size(); ++index)
     if (!target.isReorderableRegisterWrite(tile, offset + 4 * index))
       return false;
   return true;

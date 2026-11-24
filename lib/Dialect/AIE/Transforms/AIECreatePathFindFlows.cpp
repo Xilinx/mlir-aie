@@ -1798,8 +1798,6 @@ PacketFlowRouting::conflictingStreams(TileID tileId, const SlaveFlow &a,
 
 std::optional<ArbiterPlan> PacketFlowRouting::planTile(
     TileID tileId, SmallVectorImpl<std::pair<size_t, size_t>> &blocking) {
-  // Flows ending at a joined master set take its amsel, and the rest are
-  // planned without them.
   if (auto joined = joinedAmsels.find(tileId); joined != joinedAmsels.end()) {
     SmallVector<SlaveFlow, 8> &all = tileFlows.at(tileId);
     ArbiterPlan plan;
@@ -2758,7 +2756,6 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
       for (int arbiter = 0; arbiter < numArbiters; arbiter++)
         if (int amsel = arbiter + msel * numArbiters; amselNeeded.test(amsel))
           amselOps[amsel] = AMSelOp::create(builder, tileLoc, arbiter, msel);
-    // Rules into a joined master set take the amsel it already has.
     for (auto amsel : b.getOps<AMSelOp>())
       amselOps.try_emplace(
           amsel.arbiterIndex() + amsel.getMselValue() * numArbiters, amsel);
@@ -3149,7 +3146,6 @@ static LogicalResult checkFixedFlowEndpoints(DeviceOp device) {
     auto packet = dyn_cast<PacketFlowOp>(flow);
     if (!reserved || (packet && isa<PacketRulesOp>(reserved)))
       return success();
-    // Packets join the overlay's TileControl master set (see joinedAmsels).
     if (packet && !source && port.bundle == WireBundle::TileControl &&
         isa<MasterSetOp>(reserved) && overlay.isAttrPresent(reserved)) {
       auto master = cast<MasterSetOp>(reserved);

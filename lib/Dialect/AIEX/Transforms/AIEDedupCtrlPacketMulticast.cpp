@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CtrlPacketRuns.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "CtrlPacketRuns.h"
 #include "mlir/Pass/Pass.h"
 
 #include <map>

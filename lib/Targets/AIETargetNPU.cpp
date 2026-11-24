@@ -682,9 +682,9 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
   SmallVector<AIEX::ControlPacketMulticast> multicasts;
   for (Operation &operation : seq.getBody().getOps()) {
     if (auto context = dyn_cast<AIEX::SetDeviceOp>(operation)) {
-      auto groups =
+      std::optional<SmallVector<AIEX::ControlPacketMulticast>> groups =
           AIEX::controlPacketMulticasts(module, context.getDeviceRefAttr());
-      if (failed(groups))
+      if (!groups)
         return failure();
       multicasts = std::move(*groups);
     } else if (isa<AIEX::NpuLoadPdiOp>(operation)) {

@@ -99,13 +99,11 @@ bool AIETargetModel::isReorderableRegisterWrite(TileID tile,
   if (!reg)
     return false;
   llvm::StringRef name = reg->name;
-  if (name.starts_with("Stream_Switch_Master_Config_") ||
-      name.starts_with("Stream_Switch_Slave_Config_") ||
-      (name.starts_with("Stream_Switch_Slave_") && name.contains("_Slot")) ||
-      (isShimNOCorPLTile(tile.col, tile.row) &&
-       (name == "Mux_Config" || name == "Demux_Config")))
-    return true;
-  return false;
+  return name.starts_with("Stream_Switch_Master_Config_") ||
+         name.starts_with("Stream_Switch_Slave_Config_") ||
+         (name.starts_with("Stream_Switch_Slave_") && name.contains("_Slot")) ||
+         (isShimNOCorPLTile(tile.col, tile.row) &&
+          (name == "Mux_Config" || name == "Demux_Config"));
 }
 
 std::optional<uint32_t> AIETargetModel::lookupEvent(llvm::StringRef name,

@@ -960,7 +960,7 @@ def AIEGenerateColumnControlOverlay
                   "Additional columns touched by application routing">,
        Option<"packetSwitched", "packet-sw-objFifos", "bool", "false",
               "Count route ends with no packet header as packet switched, "
-    "as aie-assign-packet-ids does with this option">,
+              "as aie-assign-packet-ids does with this option">,
        Option<"multicastSpan", "multicast-span", "unsigned", "0",
               "With configuration, the columns of each control multicast; 0 "
               "adds none">];

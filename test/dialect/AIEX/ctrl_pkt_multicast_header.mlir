@@ -9,6 +9,9 @@
 // RUN: aie-opt %t/routes.mlir -aie-import-overlay -aie-ctrl-packet-to-dma="parallel-shims=true chain-bds=true" | FileCheck %s
 // RUN: aie-translate --aie-ctrlpkt-to-bin -aie-output-binary=false %t/routes.mlir | FileCheck %s --check-prefix=BIN
 // RUN: aie-opt %t/invalid.mlir --split-input-file -aie-ctrl-packet-to-dma --verify-diagnostics -o /dev/null
+// RUN: aie-opt %t/bad-packet-id.mlir -aie-ctrl-packet-to-dma --verify-diagnostics -o /dev/null
+// RUN: not aie-translate --aie-ctrlpkt-to-bin %t/bad-packet-id.mlir 2>&1 | FileCheck %s --check-prefix=BAD-PACKET-ID
+// RUN: not aie-translate --aie-ctrlpkt-to-bin %t/bad-index.mlir 2>&1 | FileCheck %s --check-prefix=BAD-INDEX
 
 //--- routes.mlir
 
@@ -119,8 +122,8 @@ module {
   }
 }
 
-// -----
-
+//--- bad-packet-id.mlir
+// BAD-PACKET-ID: error: 'aie.device' op aie.ctrl_pkt_multicast entry 0 requires allocation, a valid packet_id, and tiles
 module {
   aie.device(npu2_1col) @main {
     aie.runtime_sequence() {
@@ -133,4 +136,14 @@ module {
     %shim = aie.tile(0, 0)
     aie.shim_dma_allocation @control(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
   } {aie.ctrl_pkt_multicast = [{allocation = @control, packet_id = 32 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>]}], aie.is_ctrl_pkt_overlay}
+}
+
+//--- bad-index.mlir
+// BAD-INDEX: error: 'aiex.control_packet' op multicast_id 256 has no declaration in the active overlay
+module {
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence() {
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 256 : i32, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+  }
 }

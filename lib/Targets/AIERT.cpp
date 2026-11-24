@@ -1014,7 +1014,6 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
           return failure();
       }
     }
-
   }
   return success();
 }
@@ -1030,9 +1029,12 @@ LogicalResult xilinx::AIE::AIERTControl::addDmaActivation(DeviceOp &targetOp) {
     if (!dmaOps.empty()) {
       for (auto dmaOp : dmaOps) {
         DMABDOp bd = *dmaOp.getBds().front().front().getOps<DMABDOp>().begin();
+        auto bdId = bd.getBdId();
+        if (!bdId)
+          return bd.emitOpError("requires a BD ID before DMA activation");
         if (failed(pushToBdQueueAndEnable(
                 *dmaOp.getOperation(), col, row, dmaOp.getChannelIndex(),
-                dmaOp.getChannelDir(), *bd.getBdId(), dmaOp.getRepeatCount(),
+                dmaOp.getChannelDir(), *bdId, dmaOp.getRepeatCount(),
                 dmaOp.getPadValue(), dmaOp.getOutOfOrder())))
           return failure();
       }
@@ -1041,9 +1043,12 @@ LogicalResult xilinx::AIE::AIERTControl::addDmaActivation(DeviceOp &targetOp) {
            getOrderedChainOfBlocks(&memOp.getOperation()->getRegion(0))) {
         for (auto op : block->getOps<DMAStartOp>()) {
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
+          auto bdId = bd.getBdId();
+          if (!bdId)
+            return bd.emitOpError("requires a BD ID before DMA activation");
           if (failed(pushToBdQueueAndEnable(
                   *bd.getOperation(), col, row, op.getChannelIndex(),
-                  op.getChannelDir(), *bd.getBdId(), op.getRepeatCount(),
+                  op.getChannelDir(), *bdId, op.getRepeatCount(),
                   op.getPadValue(), op.getOutOfOrder(),
                   /*configureChannel=*/true, /*pushTask=*/!op.getCorePushes())))
             return failure();

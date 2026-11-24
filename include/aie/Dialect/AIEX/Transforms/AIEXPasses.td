@@ -397,10 +397,10 @@ def AIEAssignRuntimeSequenceBDIDs
   }];
 
   let options =
-     [Option<"chainTasks", "chain-tasks", "bool", /*default=*/"false",
-          "Combine compatible tasks across deferrable awaits into chains "
-          "that fit the available descriptor IDs.">,
-      Option<
+      [Option<"chainTasks", "chain-tasks", "bool", /*default=*/"false",
+              "Combine compatible tasks across deferrable awaits into chains "
+              "that fit the available descriptor IDs.">,
+       Option<
            "enforceQueueDepth", "enforce-queue-depth", "bool",
            /*default=*/"true",
            "Insert an aiex.npu.maskpoll before any dma_start_task that could "
@@ -421,7 +421,8 @@ def AIEAssignRuntimeSequenceBDIDs
        Option<"warnUnreleasedTransfers", "warn-unreleased-transfers", "bool",
               /*default=*/"true",
               "Warn when a straight-line runtime sequence leaves DMA transfers "
-        "neither awaited nor freed. Completion established indirectly through "
+              "neither awaited nor freed. Completion established indirectly "
+              "through "
               "computation or other channels may not be visible.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
@@ -610,12 +611,12 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
   }];
 
   let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
-           "Permit allocation to chain consecutive transfers on "
-           "one shim channel">,
+                        "Permit allocation to chain consecutive transfers on "
+                        "one shim channel">,
                  Option<"parallelShims", "parallel-shims", "bool",
                         /*default=*/"false",
-           "Permit independent shim channels to share a "
-           "completion boundary">,
+                        "Permit independent shim channels to share a "
+                        "completion boundary">,
   ];
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";

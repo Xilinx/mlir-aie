@@ -1349,9 +1349,9 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
 }
 
 def AIE_SetDeviceOp
-    : AIEX_Op<"set_device",
-        [HasParent<"AIE::RuntimeSequenceOp">,
-               DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+    : AIEX_Op<
+          "set_device", [HasParent<"AIE::RuntimeSequenceOp">,
+                         DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Identify static BD reservations for a device configuration";
   let description = [{
     Identifies the device configuration whose static BD IDs the allocator
@@ -1377,7 +1377,7 @@ def AIE_SetDeviceOp
 
 def AIE_ControlPacketBarrierOp
     : AIEX_Op<
-      "control_packet_barrier", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
+          "control_packet_barrier", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Order the control packets around it";
   let description = [{
     A hardware barrier completes preceding control-packet delivery before
@@ -1420,7 +1420,8 @@ def AIE_ControlPacketBarrierOp
   let assemblyFormat = [{ attr-dict }];
   let builders = [OpBuilder<(ins), [{
     build($_builder, $_state, ::mlir::UnitAttr{}, nullptr);
-  }]>, OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly), [{
+  }]>,
+                  OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly), [{
     build($_builder, $_state, compilerOnly, nullptr);
   }]>];
 }

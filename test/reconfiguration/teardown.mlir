@@ -193,6 +193,7 @@ module {
 // CHECK-NEXT:  aiex.set_device @cfg
 // CHECK:         aiex.control_packet {address = 2355844 : ui32, data = array<i32: 52363521>
 // CHECK:         aiex.control_packet {address = 1705528 : ui32, data = array<i32: 1>
+// CHECK-NEXT:  aiex.control_packet_barrier
 // CHECK-NEXT:  aiex.npu.sync
 // CHECK-NEXT:  aiex.control_packet_barrier
 // CHECK-NEXT:    aiex.control_packet {address = 2355204 : ui32, data = array<i32: 0>
@@ -201,7 +202,9 @@ module {
 // CHECK-NEXT:    aiex.control_packet {address = 2355844 : ui32, data = array<i32: 0>
 // CHECK-NEXT:    aiex.control_packet {address = 1705528 : ui32, data = array<i32: 3>
 // CHECK-NEXT:    aiex.control_packet {address = 1705528 : ui32, data = array<i32: 0>
+// CHECK-NEXT:  aiex.control_packet_barrier
 // CHECK-NEXT:  aiex.set_device @cfg
+// CHECK-NEXT:  aiex.control_packet_barrier
 // CHECK-NEXT:    aiex.control_packet {address = 2355204 : ui32, data = array<i32: -2147483642>
 // CHECK-NOT:   aiex.npu.load_pdi
 // CHECK:       aiex.npu.sync
