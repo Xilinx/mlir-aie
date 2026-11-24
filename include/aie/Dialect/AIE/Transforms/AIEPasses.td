@@ -947,6 +947,7 @@ def AIEGenerateColumnControlOverlay
     shim DMA allocation symbol, packet ID, and destination tiles in
     `aie.ctrl_pkt_multicast` on the overlay's `aie.device` operation.
     A control packet's `multicast_id` indexes that array.
+    The pass retains unicast delivery when no multicast packet ID remains.
   }];
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",

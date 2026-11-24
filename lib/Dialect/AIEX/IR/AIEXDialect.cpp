@@ -25,6 +25,7 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/MathExtras.h"
@@ -2818,6 +2819,13 @@ AIEX::controlPacketMulticasts(ModuleOp module, FlatSymbolRefAttr reference) {
           << index << " requires allocation, a valid packet_id, and tiles";
       return failure();
     }
+    llvm::SmallDenseSet<Attribute> destinations;
+    for (Attribute tile : tiles)
+      if (!destinations.insert(tile).second) {
+        overlay.emitOpError("aie.ctrl_pkt_multicast entry ")
+            << index << " repeats destination " << tile;
+        return failure();
+      }
     auto alloc =
         symbols.lookup<AIE::ShimDMAAllocationOp>(allocation.getValue());
     if (!alloc || alloc.getChannelDir() != AIE::DMAChannelDir::MM2S) {

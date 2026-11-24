@@ -377,5 +377,63 @@ module {
       aiex.control_packet {address = 35856384 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 2301952 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
     }
+
+    // CHECK-LABEL: @user_dma_before_packet
+    // CHECK: aiex.dma_start_task(%[[USER:.*]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[USER]])
+    // CHECK-NEXT: %{{.*}} = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHECK: aiex.dma_await_task
+    // CHECK: aiex.dma_start_task(%[[DIRECT:.*]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[DIRECT]])
+    // CHECK-NEXT: %{{.*}} = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHAIN-LABEL: @user_dma_before_packet
+    // CHAIN: aiex.dma_start_task(%[[USER:.*]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[USER]])
+    // CHAIN-NEXT: %{{.*}} = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    // CHAIN: aiex.dma_await_task
+    // CHAIN: aiex.dma_start_task(%[[DIRECT:.*]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[DIRECT]])
+    // CHAIN-NEXT: %{{.*}} = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0)
+    aie.runtime_sequence @user_dma_before_packet(%buffer: memref<4xi32>) {
+      %task = aiex.dma_configure_task(%shim1, MM2S, 1) {
+        aie.dma_bd(%buffer : memref<4xi32> offset = 0 len = 4)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%task)
+      aiex.dma_await_task(%task) {defer_completion}
+      aiex.control_packet_barrier
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      %direct = aiex.dma_configure_task(%shim1, MM2S, 1) {
+        aie.dma_bd(%buffer : memref<4xi32> offset = 0 len = 4)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%direct)
+      aiex.dma_await_task(%direct) {defer_completion}
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+
+    // CHECK-LABEL: @barrier_between_user_tasks
+    // CHECK: aiex.dma_start_task(%[[BEFORE:.*]])
+    // CHECK-NEXT: aiex.dma_await_task(%[[BEFORE]])
+    // CHECK-NEXT: %{{.*}} = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 1)
+    // CHAIN-LABEL: @barrier_between_user_tasks
+    // CHAIN: aiex.dma_start_task(%[[BEFORE:.*]])
+    // CHAIN-NEXT: aiex.dma_await_task(%[[BEFORE]])
+    // CHAIN-NEXT: %{{.*}} = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 1)
+    aie.runtime_sequence @barrier_between_user_tasks(%buffer: memref<4xi32>) {
+      %before = aiex.dma_configure_task(%shim1, MM2S, 1) {
+        aie.dma_bd(%buffer : memref<4xi32> offset = 0 len = 4)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%before)
+      aiex.dma_await_task(%before) {defer_completion}
+      aiex.control_packet_barrier {compiler_only}
+      %after = aiex.dma_configure_task(%shim0, MM2S, 1) {
+        aie.dma_bd(%buffer : memref<4xi32> offset = 0 len = 4)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%after)
+      aiex.dma_await_task(%after)
+    }
   }
 }

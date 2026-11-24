@@ -600,6 +600,8 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     boundaries. Hardware barriers and other runtime operations complete every
     preceding transfer. Compiler-only barriers retain packet order but permit
     consecutive packets with the same destination to share a transfer.
+    The pass closes a preceding deferred DMA group before replacing a packet
+    or erasing a packet barrier.
 
     Distinct multicast routes may share completion when their destination
     lists are disjoint across the entire interval. Overlapping multicast

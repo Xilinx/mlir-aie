@@ -111,6 +111,12 @@ struct AIECtrlPacketToDmaPass
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       return; // Disable this pass for AIE1; AIE1 support NYI.
 
+    device.walk([](DMAAwaitTaskOp await) {
+      if (isa_and_nonnull<NpuControlPacketOp, ControlPacketBarrierOp>(
+              await->getNextNode()))
+        await.removeDeferCompletionAttr();
+    });
+
     auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
       if (f.getBody().empty())

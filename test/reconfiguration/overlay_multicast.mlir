@@ -102,3 +102,34 @@ module {
     %c73 = aie.core(%t73) { aie.end }
   }
 }
+
+// -----
+
+// CHECK-LABEL: aie.device(npu2) @all_ids
+// CHECK: aie.rule(0, 0,
+// CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
+// CHECK: aie.masterset(TileControl : 0,
+// CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
+// CHECK-NOT: aie.ctrl_pkt_multicast
+// SPAN2-LABEL: aie.device(npu2) @all_ids
+// SPAN2: aie.rule(0, 0,
+// SPAN2-LABEL: aie.device(npu2) @ctrl_pkt_overlay
+// SPAN2: aie.masterset(TileControl : 0,
+// SPAN2: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
+// SPAN2-NOT: aie.ctrl_pkt_multicast
+module {
+  aie.device(npu2) @all_ids {
+    %core0 = aie.tile(0, 2)
+    %core1 = aie.tile(0, 3)
+    %receiver = aie.tile(1, 2)
+    aie.core(%core0) { aie.end }
+    aie.core(%core1) { aie.end }
+    aie.switchbox(%receiver) {
+      %selection = aie.amsel<0> (0)
+      aie.masterset(DMA : 0, %selection)
+      aie.packet_rules(DMA : 0) {
+        aie.rule(0, 0, %selection)
+      }
+    }
+  }
+}

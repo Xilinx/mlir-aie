@@ -312,8 +312,7 @@ struct AIEGenerateColumnControlOverlayPass
           }))
         break;
     if (id < 0)
-      return overlay.emitOpError(
-          "has no packet id left for the control multicasts");
+      return success();
 
     MLIRContext *ctx = overlay.getContext();
     SmallVector<Attribute> record;

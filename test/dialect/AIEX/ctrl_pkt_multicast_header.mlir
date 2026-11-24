@@ -12,6 +12,8 @@
 // RUN: aie-opt %t/bad-packet-id.mlir -aie-ctrl-packet-to-dma --verify-diagnostics -o /dev/null
 // RUN: not aie-translate --aie-ctrlpkt-to-bin %t/bad-packet-id.mlir 2>&1 | FileCheck %s --check-prefix=BAD-PACKET-ID
 // RUN: not aie-translate --aie-ctrlpkt-to-bin %t/bad-index.mlir 2>&1 | FileCheck %s --check-prefix=BAD-INDEX
+// RUN: aie-opt %t/duplicate-tiles.mlir -aie-ctrl-packet-to-dma --verify-diagnostics -o /dev/null
+// RUN: aie-opt %t/duplicate-tiles.mlir -aie-dedup-ctrl-packet-multicast --verify-diagnostics -o /dev/null
 
 //--- routes.mlir
 
@@ -146,4 +148,22 @@ module {
       aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, multicast_id = 256 : i32, opcode = 0 : i32, stream_id = 0 : i32}
     }
   }
+}
+
+//--- duplicate-tiles.mlir
+module {
+  aie.device(npu2_1col) @main {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @control(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+    aie.runtime_sequence() {
+      aiex.set_device @main
+      aiex.control_packet {address = 2228224 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+      aiex.control_packet {address = 3276800 : ui32, data = array<i32: 1>, opcode = 0 : i32, stream_id = 0 : i32}
+    }
+  } {overlay = @overlay}
+  // expected-error@+1 {{aie.ctrl_pkt_multicast entry 0 repeats destination #aie.tile<0, 2>}}
+  aie.device(npu2_1col) @overlay {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @control(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+  } {aie.ctrl_pkt_multicast = [{allocation = @control, packet_id = 28 : i32, tiles = [#aie.tile<0, 2>, #aie.tile<0, 3>, #aie.tile<0, 2>]}], aie.is_ctrl_pkt_overlay}
 }
