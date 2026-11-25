@@ -5267,11 +5267,24 @@ With configuration enabled, also creates shim-to-controller flows and
 routes the overlay once, before importing its fixed resources.
 Adaptive placement avoids application reservations; fixed placement uses
 shim MM2S channel zero. Supplied overlays must be explicitly referenced.</p>
+<p>With configuration and <code>multicast-span=w</code> for <code>w &gt; 0</code>, the pass groups core
+tiles into spans of <code>w</code> consecutive columns. The first span begins at the
+lowest column containing a core. The pass creates a multicast route for
+each span containing at least two core tiles. The route starts at the
+overlay's control shim DMA channel in the span's lowest occupied column.
+It reaches the TileControl ports of all core tiles in that span.</p>
+<p>All routes use the same packet ID. The pass selects the highest ID unused
+by application devices and tile controllers. It records each route's
+shim DMA allocation symbol, packet ID, and destination tiles in
+<code>aie.ctrl_pkt_multicast</code> on the overlay's <code>aie.device</code> operation.
+A control packet's <code>multicast_id</code> indexes that array.
+The pass retains unicast delivery when no multicast packet ID remains.</p>
 <h4 id="options_7">Options<a class="headerlink" href="#options_7" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>-configuration      : Include and pre-route configuration transport
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>-adaptive           : Place configuration transport around application resources
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>-cover-columns      : Additional columns touched by application routing
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>-packet-sw-objFifos : Count route ends with no packet header as packet switched, as aie-assign-packet-ids does with this option
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>-multicast-span     : With configuration, the columns of each control multicast; 0 adds none
 </code></pre></div>
 <h3 id="-aie-hoist-vector-transfer-pointers"><code>-aie-hoist-vector-transfer-pointers</code><a class="headerlink" href="#-aie-hoist-vector-transfer-pointers" title="Permanent link">&para;</a></h3>
 <p><em>Hoist vector transfer pointer computations out of scf.for loops in aie.core regions</em></p>

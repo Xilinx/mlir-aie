@@ -3448,6 +3448,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#control-packet-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control packet delivery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#parameterized-c-transaction-builders" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3983,6 +3994,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#control-packet-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control packet delivery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#parameterized-c-transaction-builders" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4401,6 +4423,24 @@ transfers are mutually disjoint. Allocations without sharing permissions and
 unknown transfer lifetimes remain exclusive.
 The overlay's packet IDs and routing settings remain protected during reload
 and teardown.</p>
+<h3 id="control-packet-delivery">Control packet delivery<a class="headerlink" href="#control-packet-delivery" title="Permanent link">&para;</a></h3>
+<p><code>--get-ctrlpkt</code> and <code>--load-pdi-to-ctrl-pkt</code> support constant runtime loops.
+The driver unrolls these loops before static DMA lowering.</p>
+<p>Use these options with <code>--load-pdi-to-ctrl-pkt</code> to control delivery:</p>
+<ul>
+<li><code>--ctrlpkt-optimize=false</code> disables optional write optimization, multicast,
+  BD chaining, and parallel delivery. It leaves packet batching, required
+  synchronization, overlay selection, and teardown unchanged.</li>
+<li><code>--ctrlpkt-address-order=false</code>, <code>--ctrlpkt-eliminate-dead-writes=false</code>, and
+  <code>--ctrlpkt-coalesce=false</code> disable individual write optimizations.</li>
+<li><code>--ctrlpkt-parallel-shims=false</code> serializes delivery across shim channels.</li>
+<li><code>--ctrlpkt-multicast-span=&lt;w&gt;</code> groups core tiles across <code>w</code> columns for
+  multicast delivery. The default is <code>1</code>; <code>0</code> disables multicast.</li>
+</ul>
+<p><code>--dma-chain-bds=false</code> disables automatic BD chaining for both application
+and control-packet DMA tasks. Chaining defaults to enabled.</p>
+<p>These options do not establish application completion before reconfiguration.
+The application must supply the required synchronization.</p>
 <h3 id="parameterized-c-transaction-builders">Parameterized C++ transaction builders<a class="headerlink" href="#parameterized-c-transaction-builders" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>aiecc<span class="w"> </span>--get-npu-cpp<span class="w"> </span>design.mlir
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># -&gt; npu_&lt;device&gt;_&lt;seq&gt;.cpp (one standalone C++17 builder per selected sequence)</span>

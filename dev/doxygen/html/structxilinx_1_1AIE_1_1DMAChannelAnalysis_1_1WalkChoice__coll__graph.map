@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::DMAChannelAnalysis::WalkChoice" name="xilinx::AIE::DMAChannelAnalysis::WalkChoice">
-<area shape="rect" id="Node000001" title="One walkSetsThatFit set per mem tile of a spill component (memTileSpillComponents),..." alt="" coords="54,128,287,173"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,194,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="115,44,161,128,156,128,112,49"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="218,5,267,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="230,46,184,130,180,126,225,48"/>
-</map>

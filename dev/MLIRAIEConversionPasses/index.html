@@ -3738,6 +3738,14 @@
 <p>Records each source core's acquire conditions in its typed <code>lock_acquires</code>
 summary after physical lock assignment. Precompiled cores retain their
 supplied summaries.</p>
+<p>The pass traverses defined functions without requiring an attribute.
+An external <code>func.func</code> with <code>aie.no_lock_acquires</code> declares that its body
+and every transitive callee perform no AIE lock acquisitions. This contract
+permits lock releases and other side effects. An external declaration
+without the attribute has unknown lock effects.</p>
+<p>The teardown generator emits a warning and skips lock draining for the
+device when any core summary is incomplete. It disables cores and resets
+DMA channels.</p>
 <h3 id="-convert-aie-to-control-packets"><code>-convert-aie-to-control-packets</code><a class="headerlink" href="#-convert-aie-to-control-packets" title="Permanent link">&para;</a></h3>
 <p><em>Convert AIE dialect to npu control packet operations</em></p>
 <p>This pass converts aie.device operations to a sequence of control packet
