@@ -232,10 +232,27 @@ def _rewrite_target(target, page_dir_link, page_dir_real, docs_dir, repo_root):
             rel_doc = "./" + rel_doc
         return rel_doc + suffix
 
-    # Belt-and-suspenders: an intra-programming_guide link (or a broken doc link
-    # that doesn't exist on disk) is a doc reference — leave it alone.
+    # A link into the programming_guide is a doc reference. From a page inside
+    # the guide (or if the target doesn't exist on disk), leave it alone. From a
+    # page elsewhere under docs/, ``../programming_guide/x.md`` is right on
+    # GitHub, but MkDocs only knows the guide through the docs/programming_guide
+    # symlink, so emit the page-relative path through it; otherwise the raw .md
+    # link ships and 404s on the site.
     if resolved == real_pg or resolved.startswith(real_pg + os.sep):
-        return None
+        page_in_pg = page_dir_real == real_pg or page_dir_real.startswith(
+            real_pg + os.sep
+        )
+        if page_in_pg or not os.path.exists(resolved):
+            return None
+        target_link = os.path.normpath(
+            os.path.join(
+                docs_dir, "programming_guide", os.path.relpath(resolved, real_pg)
+            )
+        )
+        if os.path.isdir(resolved):
+            target_link = os.path.join(target_link, "README.md")
+        rel_doc = os.path.relpath(target_link, page_dir_link).replace(os.sep, "/")
+        return rel_doc + suffix
 
     # The repo-root README is itself served on the site as the Getting Started
     # page (docs/getting-started.md -> ../README.md). A relative ``../README.md``
