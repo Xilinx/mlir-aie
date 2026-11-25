@@ -1,0 +1,17 @@
+<map id="xilinx::AIEX::AIEResourceStagesOptions" name="xilinx::AIEX::AIEResourceStagesOptions">
+<area shape="rect" id="Node000001" title="Options of aie&#45;resource&#45;stages, named and defaulted as aiecc&#39;s flags." alt="" coords="471,200,655,245"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,232,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="246,10,297,11,349,17,400,29,448,51,488,83,519,123,541,165,556,201,551,199,537,167,514,126,484,87,445,55,399,34,348,22,297,16,249,15"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="22,74,215,102"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="229,81,283,83,338,89,394,101,448,120,477,136,504,157,546,200,540,200,500,161,474,141,446,125,393,106,337,95,282,88,232,85"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="63,152,174,180"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="189,167,310,176,447,193,473,199,468,201,446,198,310,182,191,172"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="49,208,188,236"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="203,220,472,220,469,224,204,225"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="57,398,180,426"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="195,421,253,424,318,421,384,409,416,399,445,384,483,354,513,316,536,277,551,247,555,243,540,280,518,319,487,358,448,389,418,404,385,414,319,427,253,429,196,426"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="42,454,195,482"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="191,482,251,490,317,492,384,481,416,470,445,454,471,434,493,408,511,380,525,350,545,291,556,247,560,243,550,293,530,352,515,382,497,411,475,437,448,459,418,475,385,486,317,497,250,496,191,488"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="49,510,188,538"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="178,540,238,552,309,558,345,557,380,551,414,540,445,522,477,494,502,460,521,422,536,381,553,304,559,247,563,243,558,304,541,383,526,424,507,463,481,498,448,527,416,544,381,556,345,562,308,564,238,558,177,545"/>
+</map>

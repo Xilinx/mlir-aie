@@ -1,0 +1,5 @@
+<map id="xilinx::AIE::TransactionBinaryOperation::SyncPayload" name="xilinx::AIE::TransactionBinaryOperation::SyncPayload">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,218,223,262"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="81,5,147,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="116,48,117,217,111,217,112,50"/>
+</map>

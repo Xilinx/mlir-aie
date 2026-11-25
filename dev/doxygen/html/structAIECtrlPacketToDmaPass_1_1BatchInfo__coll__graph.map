@@ -1,0 +1,17 @@
+<map id="AIECtrlPacketToDmaPass::BatchInfo" name="AIECtrlPacketToDmaPass::BatchInfo">
+<area shape="rect" id="Node000001" title=" " alt="" coords="312,173,494,218"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,65,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="33,46,40,100,49,126,65,147,82,158,105,167,168,180,241,187,315,193,309,194,241,193,167,185,104,172,79,162,62,151,44,128,35,101,32,51"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="88,5,155,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="115,45,113,72,113,99,118,125,131,147,142,156,158,164,203,176,314,190,309,192,202,181,157,169,139,161,127,151,113,127,107,99,108,72,113,50"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="200,5,259,33"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="221,46,217,72,214,98,217,124,228,147,241,157,260,165,315,181,309,181,258,170,238,161,224,151,212,126,209,98,212,71,218,50"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="308,5,404,33"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="371,45,376,56,393,119,402,174,398,171,388,120,371,58,369,49"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="428,5,508,33"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="466,46,455,97,436,150,421,175,418,170,431,148,450,95,462,50"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="534,5,584,33"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="562,47,556,100,546,127,530,151,514,165,495,176,493,171,511,161,526,147,541,125,550,99,558,51"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="676,5,826,33"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="755,47,751,101,741,128,723,151,707,162,685,170,627,183,560,191,494,195,494,190,560,186,626,178,683,165,705,157,720,147,736,125,745,100,751,50"/>
+</map>
