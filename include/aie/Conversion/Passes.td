@@ -67,6 +67,16 @@ def AIEAnnotateCoreLockAcquires
     Records each source core's acquire conditions in its typed `lock_acquires`
     summary after physical lock assignment. Precompiled cores retain their
     supplied summaries.
+
+    The pass traverses defined functions without requiring an attribute.
+    An external `func.func` with `aie.no_lock_acquires` declares that its body
+    and every transitive callee perform no AIE lock acquisitions. This contract
+    permits lock releases and other side effects. An external declaration
+    without the attribute has unknown lock effects.
+
+    The teardown generator emits a warning and skips lock draining for the
+    device when any core summary is incomplete. It disables cores and resets
+    DMA channels.
   }];
   let constructor = "xilinx::AIE::createAIEAnnotateCoreLockAcquiresPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect"];

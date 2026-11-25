@@ -33,6 +33,7 @@
 #include "llvm/ADT/StringRef.h"
 
 #include <optional>
+#include <set>
 
 namespace xilinx {
 namespace AIEX {
@@ -95,6 +96,25 @@ mlir::Value createConstantArgPlus(mlir::OpBuilder &builder, mlir::Location loc,
 // The first `aie.dma_start` or `aie.dma` in one of `device`'s shim DMAs, which
 // starts a channel teardown cannot stop, or null.
 mlir::Operation *findShimDmaStart(AIE::DeviceOp device);
+
+// The assigned controller_id of each tile of `device` that has one, which the
+// control packets to that tile route by.
+llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>
+controllerIdsOf(AIE::DeviceOp device);
+
+struct ControlPacketMulticast {
+  AIE::ShimDMAAllocationOp allocation;
+  uint32_t packetId;
+  mlir::ArrayAttr tiles;
+};
+
+mlir::FailureOr<llvm::SmallVector<ControlPacketMulticast>>
+controlPacketMulticasts(mlir::ModuleOp module,
+                        mlir::FlatSymbolRefAttr reference);
+
+// The buffer descriptor ids the static DMAs of `devices` take on `tile`.
+std::set<uint32_t> staticBdIds(llvm::ArrayRef<AIE::DeviceOp> devices,
+                               AIE::TileID tile);
 
 } // namespace AIEX
 } // namespace xilinx

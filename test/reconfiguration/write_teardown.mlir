@@ -38,8 +38,13 @@
 // RUN: FileCheck %s --check-prefix=SUMMARY < %t/summary.twice.mlir
 // RUN: aie-opt --split-input-file --verify-diagnostics %t/summary-invalid.mlir -o %t/summary-invalid.out
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true" %t/incomplete-ctrlpkt.mlir | FileCheck %s --check-prefix=INCOMPLETE
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true" --aie-reorder-ctrl-packets-by-tile %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true" --aie-reorder-ctrl-packets-by-tile --aie-ctrl-packet-to-dma="chain-bds=true parallel-shims=true" %t/stop-ctrlpkt.mlir | FileCheck %s --check-prefix=STOP-DMA
 // RUN: aie-opt --aie-annotate-core-lock-acquires %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" --verify-diagnostics %t/opaque-llvm.mlir | FileCheck %s --check-prefix=OPAQUE-DRAIN
+// RUN: aie-opt --aie-annotate-core-lock-acquires %t/external-contract.mlir | FileCheck %s --check-prefix=EXTERNAL
+// RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" %t/external-contract.mlir | FileCheck %s --check-prefix=EXTERNAL-DRAIN
 
 // ANNOTATE-LABEL: aie.device(npu2_1col) @lock_cfg
 // ANNOTATE: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>, <column = 0, row = 2, lock_id = 5, action = Acquire, value = 3>, <column = 0, row = 2, lock_id = 6, action = AcquireGreaterEqual, value = 2>, <column = 0, row = 2, lock_id = 6, action = AcquireGreaterEqual, value = 3>]>
@@ -435,6 +440,36 @@ module {
   }
 }
 
+//--- external-contract.mlir
+
+// EXTERNAL: lock_acquires = #aie.core_lock_acquires<complete = true, acquires = [<column = 0, row = 2, lock_id = 5, action = AcquireGreaterEqual, value = 1>]>
+// EXTERNAL-DRAIN-LABEL: aie.runtime_sequence @external_contract
+// EXTERNAL-DRAIN: arith.constant 2224208 : i32
+// EXTERNAL-DRAIN: arith.constant 960 : i32
+// EXTERNAL-DRAIN: aiex.npu.maskpoll
+module {
+  aie.device(npu2_1col) @cfg {
+    %tile = aie.tile(0, 2)
+    %lock = aie.lock(%tile, 5) {init = 0 : i32}
+    func.func private @kernel() attributes {aie.no_lock_acquires}
+    func.func private @wrapper() {
+      func.call @kernel() : () -> ()
+      return
+    }
+    aie.core(%tile) {
+      %one = arith.constant 1 : i32
+      aie.use_lock(%lock, AcquireGreaterEqual, %one)
+      func.call @wrapper() : () -> ()
+      aie.end
+    }
+  }
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence @external_contract() {
+      aiex.npu.load_pdi {device_ref = @cfg}
+    }
+  }
+}
+
 //--- opaque-llvm.mlir
 
 // OPAQUE-LABEL: aie.device(npu2_2col) @cfg
@@ -606,7 +641,9 @@ module {
 //--- stop-ctrlpkt.mlir
 
 // STOP-LABEL: aie.runtime_sequence()
+// STOP: aiex.set_device @cfg
 // STOP: aiex.npu.sync
+// STOP-NEXT: aiex.control_packet_barrier
 // STOP-NEXT: aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>
 // STOP-NEXT: aiex.control_packet {address = 3350528 : ui32, data = array<i32: 0>
 // STOP: %[[FIRST_STATUS:.*]] = arith.constant 2301956 : i32
@@ -615,9 +652,25 @@ module {
 // STOP-NEXT: aiex.npu.maskpoll(%[[FIRST_STATUS]], %[[ZERO]], %[[ENABLE]])
 // STOP: %[[SECOND_STATUS:.*]] = arith.constant 3350532 : i32
 // STOP: aiex.npu.maskpoll(%[[SECOND_STATUS]], %{{.*}}, %{{.*}})
+// STOP-NEXT: aiex.control_packet_barrier {independent}
 // STOP-NEXT: aiex.control_packet {address = 2224208 : ui32, data = array<i32: 1>
 // STOP: %[[STALL:.*]] = arith.constant 960 : i32
 // STOP-NEXT: aiex.npu.maskpoll(%{{.*}}, %{{.*}}, %[[STALL]])
+// STOP-NEXT: aiex.control_packet_barrier
+
+// STOP-DMA-LABEL: aie.runtime_sequence(
+// STOP-DMA: aiex.set_device @cfg
+// STOP-DMA: aiex.npu.sync
+// STOP-DMA: %[[STOP_TASK:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
+// STOP-DMA: aiex.dma_start_task(%[[STOP_TASK]])
+// STOP-DMA-NEXT: aiex.dma_await_task(%[[STOP_TASK]])
+// STOP-DMA: aiex.npu.maskpoll
+// STOP-DMA: aiex.npu.maskpoll
+// STOP-DMA: %[[DRAIN_TASK:.*]] = aiex.dma_configure_task_for @ctrlpkt_col0_mm2s_chan0
+// STOP-DMA: aiex.dma_start_task(%[[DRAIN_TASK]])
+// STOP-DMA-NEXT: aiex.dma_await_task(%[[DRAIN_TASK]])
+// STOP-DMA: %[[STALL:.*]] = arith.constant 960 : i32
+// STOP-DMA-NEXT: aiex.npu.maskpoll(%{{.*}}, %{{.*}}, %[[STALL]])
 
 module {
   aie.device(npu2_1col) @overlay {
@@ -644,11 +697,45 @@ module {
     }
   } {overlay = @overlay}
   aie.device(npu2_1col) @main {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.runtime_sequence @sequence() {
       %zero = arith.constant 0 : i32
       %one = arith.constant 1 : i32
       aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 2 : i32}
       aiex.npu.sync(%zero, %zero, %zero, %zero, %one, %one) : i32, i32, i32, i32, i32, i32
+    }
+  }
+}
+
+//--- incomplete-ctrlpkt.mlir
+
+// INCOMPLETE-LABEL: aie.runtime_sequence()
+// INCOMPLETE: aiex.set_device @cfg{{$}}
+// INCOMPLETE-NOT: quiescent
+// INCOMPLETE-NOT: drains
+// INCOMPLETE: {{^ *}}}
+module {
+  aie.device(npu2_1col) @overlay {
+    %tile = aie.tile(0, 2)
+    aie.switchbox(%tile) {
+      aie.connect<South : 0, TileControl : 0>
+    }
+  }
+  aie.device(npu2_1col) @cfg {
+    %tile = aie.tile(0, 2)
+    %lock = aie.lock(%tile, 5) {init = 0 : i32}
+    aie.core(%tile) {
+      %one = arith.constant 1 : i32
+      %two = arith.constant 2 : i32
+      aie.use_lock(%lock, Acquire, %one)
+      aie.use_lock(%lock, Acquire, %two)
+      aie.end
+    }
+  } {overlay = @overlay}
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence() {
+      aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 2 : i32}
     }
   }
 }

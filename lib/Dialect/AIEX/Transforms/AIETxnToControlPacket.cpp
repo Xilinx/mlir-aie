@@ -9,6 +9,8 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "CtrlPacketRuns.h"
+
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -17,6 +19,7 @@
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIELEGALIZECONTROLPACKET
+#define GEN_PASS_DEF_AIECOALESCECONTROLPACKETS
 #define GEN_PASS_DEF_AIETXNTOCONTROLPACKET
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
@@ -107,7 +110,7 @@ struct ControlPacketSplitPattern
       AIEX::NpuControlPacketOp::create(
           rewriter, loc, rewriter.getUI32IntegerAttr(address), nullptr,
           op.getOpcodeAttr(), op.getStreamIdAttr(),
-          DenseI32ArrayAttr::get(context, chunkData));
+          DenseI32ArrayAttr::get(context, chunkData), op.getMulticastIdAttr());
       address += count * sizeof(uint32_t);
       it += count;
     }
@@ -160,6 +163,43 @@ struct AIELegalizeControlPacketPass
   }
 };
 
+struct AIECoalesceControlPacketsPass
+    : xilinx::AIEX::impl::AIECoalesceControlPacketsBase<
+          AIECoalesceControlPacketsPass> {
+  void runOnOperation() override {
+    getOperation().walk([&](AIE::RuntimeSequenceOp sequence) {
+      sequence.walk([&](Block *block) {
+        for (const AIEX::PacketInterval &interval :
+             AIEX::packetIntervals(*block)) {
+          if (!interval.ordinary)
+            continue;
+          AIEX::NpuControlPacketOp previous;
+          for (auto packet : interval.packets) {
+            auto data = packet.getData().value();
+            if (previous && previous.getStreamId() == packet.getStreamId() &&
+                previous.getMulticastId() == packet.getMulticastId() &&
+                previous.getTileFromAddr() == packet.getTileFromAddr() &&
+                previous.getAddress() + 4 * previous.getData()->size() ==
+                    packet.getAddress() &&
+                previous.getAddress() / 16 ==
+                    (packet.getAddress() + 4 * data.size() - 1) / 16) {
+              SmallVector<int32_t, 4> merged(previous.getData()->begin(),
+                                             previous.getData()->end());
+              llvm::append_range(merged, data);
+              previous.setDataAttr(
+                  DenseI32ArrayAttr::get(&getContext(), merged));
+              previous.removeLengthAttr();
+              packet.erase();
+            } else {
+              previous = packet;
+            }
+          }
+        }
+      });
+    });
+  }
+};
+
 } // namespace
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
@@ -170,4 +210,9 @@ xilinx::AIEX::createAIETxnToControlPacketPass() {
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 xilinx::AIEX::createAIELegalizeControlPacketPass() {
   return std::make_unique<AIELegalizeControlPacketPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+xilinx::AIEX::createAIECoalesceControlPacketsPass() {
+  return std::make_unique<AIECoalesceControlPacketsPass>();
 }

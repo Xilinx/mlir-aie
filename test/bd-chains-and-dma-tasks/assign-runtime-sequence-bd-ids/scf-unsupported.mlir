@@ -92,3 +92,21 @@ aie.device(npu2) {
     aiex.dma_free_task(%other)
   }
 }
+
+// -----
+
+aie.device(npu2) {
+  %shim = aie.tile(0, 0)
+  // expected-error@+1 {{requires a single block for static BD allocation}}
+  aie.runtime_sequence(%buffer: memref<4xi32>) {
+    cf.br ^later
+  ^later:
+    %task = aiex.dma_configure_task(%shim, MM2S, 0) {
+      aie.dma_bd(%buffer : memref<4xi32> offset = 0 len = 4)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%task)
+    aiex.dma_await_task(%task)
+    aie.end
+  }
+}

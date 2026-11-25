@@ -1416,6 +1416,9 @@ struct PacketFlowRouting : PacketPlan {
   // input IR already occupies. Kept apart from masterAMSels so the allocator
   // run does not re-emit those ops.
   std::map<TileID, std::set<int>> reservedAmsels;
+  // The amsel of each TileControl master set of the control packet overlay.
+  // Packets ending there take it.
+  std::map<TileID, std::map<Port, int>> joinedAmsels;
   // Each switchbox has its arbiters planned as a whole (see planArbiters).
   // Where that is impossible the routing is unusable, and the connections of
   // the flows in the way are what the router has to move.
@@ -1626,10 +1629,37 @@ const SwitchSettings &PacketFlowRouting::settingsOf(const PathEndPoint &src,
   return it == routing.settings.end() ? noSettings : it->second;
 }
 
+static AMSelOp findExclusiveAMSel(MasterSetOp master) {
+  for (Value selection : master.getAmsels()) {
+    auto candidate = cast<AMSelOp>(selection.getDefiningOp());
+    if (llvm::all_of(
+            master->getBlock()->getOps<MasterSetOp>(),
+            [&](MasterSetOp otherMaster) {
+              return otherMaster.destPort() == master.destPort() ||
+                     llvm::none_of(otherMaster.getAmsels(), [&](Value other) {
+                       auto amsel = cast<AMSelOp>(other.getDefiningOp());
+                       return amsel.arbiterIndex() ==
+                                  candidate.arbiterIndex() &&
+                              amsel.getMselValue() == candidate.getMselValue();
+                     });
+            }))
+      return candidate;
+  }
+  return {};
+}
+
 void PacketFlowRouting::findCircuitHops() {
   // Seed the reserved set from the packet-switch configuration the switchboxes
   // already carry, so this run allocates around it instead of over it.
   reservedAmsels = configuredAmsels(device);
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
+  for (auto swbox : device.getOps<SwitchboxOp>())
+    for (auto master : swbox.getConnections().getOps<MasterSetOp>())
+      if (master.getDestBundle() == WireBundle::TileControl &&
+          overlay.isAttrPresent(master))
+        if (auto amsel = findExclusiveAMSel(master))
+          joinedAmsels[swbox.getTileOp().getTileID()][master.destPort()] =
+              amsel.arbiterIndex() + amsel.getMselValue() * numArbiters;
 
   // Ports the input's own aie.switchbox ops already drive, circuit or packet.
   std::set<PhysPort> claimedSlaves, claimedMasters;
@@ -1768,6 +1798,43 @@ PacketFlowRouting::conflictingStreams(TileID tileId, const SlaveFlow &a,
 
 std::optional<ArbiterPlan> PacketFlowRouting::planTile(
     TileID tileId, SmallVectorImpl<std::pair<size_t, size_t>> &blocking) {
+  if (auto joined = joinedAmsels.find(tileId); joined != joinedAmsels.end()) {
+    SmallVector<SlaveFlow, 8> &all = tileFlows.at(tileId);
+    ArbiterPlan plan;
+    SmallVector<size_t, 8> rest;
+    for (auto [i, f] : llvm::enumerate(all)) {
+      auto amsel = joined->second.find(f.masters.front());
+      if (amsel == joined->second.end()) {
+        if (llvm::any_of(f.masters,
+                         [&](Port m) { return joined->second.count(m); }))
+          return std::nullopt;
+        rest.push_back(i);
+      } else if (f.masters.size() == 1) {
+        plan.slaveAmsels[{f.slave, f.id}] = amsel->second;
+      } else {
+        return std::nullopt;
+      }
+    }
+    if (!plan.slaveAmsels.empty()) {
+      SmallVector<SlaveFlow, 8> saved = std::move(all);
+      all.clear();
+      for (size_t i : rest)
+        all.push_back(saved[i]);
+      size_t known = blocking.size();
+      std::optional<ArbiterPlan> others =
+          all.empty() ? ArbiterPlan() : planTile(tileId, blocking);
+      all = std::move(saved);
+      for (auto &[a, b] : llvm::drop_begin(blocking, known)) {
+        a = rest[a];
+        b = rest[b];
+      }
+      if (!others)
+        return std::nullopt;
+      others->slaveAmsels.insert(plan.slaveAmsels.begin(),
+                                 plan.slaveAmsels.end());
+      return others;
+    }
+  }
   ArrayRef<SlaveFlow> flows = tileFlows.at(tileId);
   auto key = [&](size_t f) { return FlowKey{flows[f].slave, flows[f].id}; };
   auto conflict = [&](size_t a, size_t b) {
@@ -2689,6 +2756,9 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
       for (int arbiter = 0; arbiter < numArbiters; arbiter++)
         if (int amsel = arbiter + msel * numArbiters; amselNeeded.test(amsel))
           amselOps[amsel] = AMSelOp::create(builder, tileLoc, arbiter, msel);
+    for (auto amsel : b.getOps<AMSelOp>())
+      amselOps.try_emplace(
+          amsel.arbiterIndex() + amsel.getMselValue() * numArbiters, amsel);
     for (const auto &[master, msels] : tileMastersets) {
       SmallVector<Value, 4> amsels;
       for (int msel : msels)
@@ -3076,6 +3146,30 @@ static LogicalResult checkFixedFlowEndpoints(DeviceOp device) {
     auto packet = dyn_cast<PacketFlowOp>(flow);
     if (!reserved || (packet && isa<PacketRulesOp>(reserved)))
       return success();
+    if (packet && !source && port.bundle == WireBundle::TileControl &&
+        isa<MasterSetOp>(reserved) && overlay.isAttrPresent(reserved)) {
+      auto master = cast<MasterSetOp>(reserved);
+      if (AIE::keepsPktHeader(tile.getTileID(), port,
+                              packet.getKeepPktHeader()) !=
+          master.keepsPktHeader()) {
+        auto diag = emitError(flow->getLoc());
+        diag << "keep_pkt_header conflicts with the control packet overlay at "
+             << describeTilePort(tile.getTileID(), port);
+        diag.attachNote(master.getLoc())
+            << "TileControl master set "
+            << (master.keepsPktHeader() ? "retains" : "drops")
+            << " packet headers";
+        return failure();
+      }
+      if (findExclusiveAMSel(master))
+        return success();
+      auto diag = emitError(flow->getLoc());
+      diag << "control packet overlay has no TileControl-only amsel at "
+           << describeTilePort(tile.getTileID(), port);
+      diag.attachNote(reserved->getLoc())
+          << "TileControl master set declared here";
+      return failure();
+    }
     bool fromOverlay = overlay.isAttrPresent(reserved);
     if (auto rules = dyn_cast<PacketRulesOp>(reserved))
       fromOverlay |= llvm::any_of(

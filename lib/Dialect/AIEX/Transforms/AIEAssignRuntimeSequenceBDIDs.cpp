@@ -52,6 +52,7 @@
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEASSIGNRUNTIMESEQUENCEBDIDS
+#define GEN_PASS_DEF_AIENORMALIZEDMATASKGROUPS
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
@@ -60,6 +61,44 @@ using namespace xilinx;
 using namespace xilinx::AIEX;
 
 namespace {
+
+static DMAAwaitTaskOp taskTripleAwait(Operation *operation) {
+  auto configure = dyn_cast_or_null<DMAConfigureTaskLike>(operation);
+  if (!configure || !configure.getBody().hasOneBlock() ||
+      configure.getRepeatCount() || configure.getRepeatCountVal() ||
+      !configure.getIssueToken() || !operation->getResult(0).hasNUses(2))
+    return {};
+  if (auto concrete = dyn_cast<DMAConfigureTaskOp>(operation);
+      concrete && concrete.getOutOfOrder())
+    return {};
+  auto start = dyn_cast_or_null<DMAStartTaskOp>(operation->getNextNode());
+  auto await = start ? dyn_cast_or_null<DMAAwaitTaskOp>(start->getNextNode())
+                     : DMAAwaitTaskOp();
+  if (!start || !await || start.getTask() != operation->getResult(0) ||
+      await.getTask() != operation->getResult(0) || start.getRepeatCount() ||
+      start.getRepeatCountVal() || start.getNoToken() ||
+      start.hasRepeatParameter())
+    return {};
+  Block &body = configure.getBody().front();
+  if (body.getNumArguments() || body.getOperations().size() != 2 ||
+      !isa<AIE::DMABDOp>(body.front()) || !isa<AIE::EndOp>(body.back()))
+    return {};
+  auto bd = cast<AIE::DMABDOp>(body.front());
+  return bd.getBdId() || bd.getNextBdId() ? DMAAwaitTaskOp() : await;
+}
+
+struct AIENormalizeDMATaskGroupsPass
+    : xilinx::AIEX::impl::AIENormalizeDMATaskGroupsBase<
+          AIENormalizeDMATaskGroupsPass> {
+  void runOnOperation() override {
+    getOperation().walk([](DMAAwaitTaskOp await) {
+      if (await.getDeferCompletion() &&
+          (taskTripleAwait(await.getTask().getDefiningOp()) != await ||
+           !taskTripleAwait(await->getNextNode())))
+        await.removeDeferCompletionAttr();
+    });
+  }
+};
 
 struct AIEAssignRuntimeSequenceBDIDsPass
     : xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<
@@ -117,8 +156,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     });
   }
 
-  // The BD ids each device's static DMAs take, by tile. Generators restart
-  // at every PDI load, so this is read once per tile per load.
+  AIE::DeviceOp configuredDevice;
+
+  // Reserves on `tile` the BD ids the static DMAs there hold: those of the
+  // device holding the sequence, the loaded device and the configured one.
   //
   // Known limitation: after a load_pdi of another device, this and
   // loopingStartsOf read that sibling device's DMA programs, which races with
@@ -127,22 +168,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // them one at a time today. Splitting the nest does not help, since the pass
   // manager merges adjacent device nests; a parallel build needs these
   // summaries computed at module scope before the nest.
-  llvm::DenseMap<Operation *,
-                 llvm::DenseMap<AIE::TileID, SmallVector<uint32_t>>>
-      staticBdIds;
-
-  // Mark every BD id a static DMA already took on `tile`, so this allocator
-  // doesn't hand the same id to a runtime-sequence task.
-  void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
-                         BdIdGenerator &gen) {
-    auto [it, inserted] = staticBdIds.try_emplace(device);
-    if (inserted)
-      for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
-        llvm::append_range(it->second[program.getTileID()],
-                           AIE::getAssignedBdIds(program));
-    for (uint32_t id : it->second.lookup(tile.getTileID()))
-      if (!gen.bdIdAlreadyAssigned(id))
-        gen.assignBdId(id);
+  void reserveStaticBds(AIE::TileID tile, BdIdGenerator &gen) {
+    SmallVector<AIE::DeviceOp, 3> devices{getOperation()};
+    for (AIE::DeviceOp device : {loadedDevice, configuredDevice})
+      if (device)
+        devices.push_back(device);
+    gen.reserved = AIEX::staticBdIds(devices, tile);
   }
 
   // Keyed by (col, row), not the aie.tile op's own identity: two tile ops
@@ -156,11 +187,60 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       it = gens.insert({id, BdIdGenerator(tile.getCol(), tile.getRow(),
                                           device.getTargetModel())})
                .first;
-      seedFromStaticBds(device, tile, it->second);
-      if (loadedDevice && loadedDevice != device)
-        seedFromStaticBds(loadedDevice, tile, it->second);
+      reserveStaticBds(id, it->second);
     }
     return it->second;
+  }
+
+  void noteConfigured(SetDeviceOp context) {
+    llvm::SmallPtrSet<Operation *, 16> pending;
+    for (const auto &entry : liveByTile)
+      for (DMAConfigureTaskOp task : entry.second)
+        if (pushCounts.lookup(task).running)
+          pending.insert(task);
+    for (const auto &entry : loadState.holdsOn)
+      for (const auto &hold : entry.second)
+        pending.insert(hold.second.copy);
+    if (!pending.empty()) {
+      SmallVector<Operation *> transfers(pending.begin(), pending.end());
+      llvm::sort(transfers, [](Operation *left, Operation *right) {
+        return left->isBeforeInBlock(right);
+      });
+      auto diagnostic =
+          mlir::emitWarning(context.getLoc())
+          << "configures a device while runtime DMA transfers may still be in "
+             "flight; await their completion before reconfiguration";
+      diagnostic.attachNote(transfers.front()->getLoc())
+          << "unfinished transfer (" << transfers.size() << " pending)";
+    }
+    FlatSymbolRefAttr ref = context.getDeviceRefAttr();
+    auto device = SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(
+        getOperation()->getParentOp(), ref);
+    if (!device || device == configuredDevice)
+      return;
+    configuredDevice = device;
+    for (auto &[tile, gen] : gens) {
+      reserveStaticBds(tile, gen);
+      const std::set<uint32_t> &reserved = gen.reserved;
+      for (DMAConfigureTaskOp task : liveByTile.lookup(tile)) {
+        if (releasedTasks.contains(task) || knownComplete.contains(task) ||
+            provenFinished.contains(task))
+          continue;
+        std::optional<uint32_t> held;
+        task.walk([&](AIE::DMABDOp bd) {
+          if (!held && bd.getBdId() && reserved.count(*bd.getBdId()))
+            held = *bd.getBdId();
+        });
+        if (!held)
+          continue;
+        auto diag = mlir::emitWarning(context.getLoc())
+                    << "configures " << ref
+                    << ", whose static DMAs take buffer descriptor ID " << *held
+                    << " on tile (" << tile.col << "," << tile.row
+                    << "), which a transfer not known to be finished holds";
+        diag.attachNote(task.getLoc()) << "the transfer is configured here";
+      }
+    }
   }
 
   // Each device's static aie.dma_starts whose BD chain never ends, by channel.
@@ -233,6 +313,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   void noteLoadPdi(NpuLoadPdiOp load) {
     loadedDevice = loadedBy(load);
     opaqueLoad = loadedDevice ? NpuLoadPdiOp() : load;
+    configuredDevice = {};
     resetChannels.clear();
     for (auto &[tile, tasks] : liveByTile)
       for (DMAConfigureTaskOp task : tasks)
@@ -334,6 +415,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
+    if (!seq.getBody().hasOneBlock())
+      return seq.emitOpError(
+          "requires a single block for static BD allocation");
     WalkResult unplaced = seq.walk([](DMAConfigureTaskOp cfg) {
       if (cfg.getTile().getDefiningOp<AIE::TileOp>())
         return WalkResult::advance();
@@ -386,7 +470,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           diag.attachNote(held->copy->getLoc()) << "the copy is here";
           return WalkResult::interrupt();
         }
-        if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
+        if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value()) ||
+            gen.reserved.count(bd_op.getBdId().value())) {
           op.emitOpError("Specified buffer descriptor ID ")
               << bd_op.getBdId().value()
               << " is already in use. Release the earlier task first: "
@@ -570,6 +655,153 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   };
   llvm::DenseMap<Operation *, PushCounts> pushCounts;
 
+  struct TaskTriple {
+    DMAConfigureTaskOp configure;
+    DMAStartTaskOp start;
+    DMAAwaitTaskOp await;
+  };
+  struct TaskSchedule {
+    Block *block;
+    Operation *after;
+    SmallVector<SmallVector<TaskTriple>> chains;
+    SmallVector<std::pair<size_t, bool>> events;
+  };
+
+  static std::optional<TaskTriple> taskTriple(Operation *operation) {
+    auto configure = dyn_cast_or_null<DMAConfigureTaskOp>(operation);
+    auto await = configure ? taskTripleAwait(operation) : DMAAwaitTaskOp();
+    if (!await)
+      return std::nullopt;
+    return TaskTriple{configure, cast<DMAStartTaskOp>(configure->getNextNode()),
+                      await};
+  }
+
+  bool fitsNow(DMAConfigureTaskOp configure) {
+    if (opaqueLoad)
+      return false;
+    BdIdGenerator available = getGeneratorForTile(configure.getTileOp());
+    for (auto [id, copy] : forbidden.lookup(configure))
+      available.reserved.insert(id);
+    return available
+        .nextBdId(configure.getChannel(),
+                  DMAStartTaskOp::headBdIdAlignment(configure.getResult()))
+        .has_value();
+  }
+
+  LogicalResult
+  allocateDeferredTasks(ArrayRef<TaskTriple> tasks,
+                        llvm::function_ref<WalkResult(Operation *)> visit) {
+    std::map<DmaQueueModel::ChannelKey, SmallVector<TaskTriple>> channels;
+    for (TaskTriple task : tasks)
+      channels[DmaQueueModel::keyOf(task.configure)].push_back(task);
+    TaskSchedule schedule{tasks.front().configure->getBlock(),
+                          tasks.back().await->getNextNode(),
+                          {},
+                          {}};
+    std::map<DmaQueueModel::ChannelKey, size_t> next;
+    std::map<DmaQueueModel::ChannelKey, std::deque<size_t>> pending;
+    std::map<DmaQueueModel::ChannelKey, size_t> windows;
+    uint32_t depth = getOperation().getTargetModel().getDmaTaskQueueDepth();
+    for (const auto &[key, list] : channels) {
+      const ChannelPushes &channel = startedOnChannel[key];
+      windows[key] =
+          chainTasks ? 1 : depth - (channel.tasks.size() - channel.finished);
+    }
+    auto retire = [&](std::deque<size_t> &queue) -> LogicalResult {
+      size_t index = queue.front();
+      for (TaskTriple task : schedule.chains[index])
+        if (visit(task.await).wasInterrupted())
+          return failure();
+      windows[DmaQueueModel::keyOf(schedule.chains[index].front().configure)] =
+          chainTasks ? 1 : depth;
+      schedule.events.emplace_back(index, true);
+      queue.pop_front();
+      return success();
+    };
+    size_t remaining = tasks.size();
+    while (remaining) {
+      bool progress = false;
+      for (auto &[key, list] : channels) {
+        size_t &position = next[key];
+        if (position == list.size())
+          continue;
+        auto &queue = pending[key];
+        if (queue.size() >= windows[key] && failed(retire(queue)))
+          return failure();
+        SmallVector<TaskTriple> chain;
+        while (position < list.size() && fitsNow(list[position].configure)) {
+          TaskTriple task = list[position];
+          if (!chain.empty() &&
+              (task.configure->getAttrDictionary() !=
+                   chain.front().configure->getAttrDictionary() ||
+               task.configure.getPacketAttr() !=
+                   chain.front().configure.getPacketAttr()))
+            break;
+          if (visit(task.configure).wasInterrupted())
+            return failure();
+          chain.push_back(task);
+          ++position;
+          --remaining;
+          if (!chainTasks)
+            break;
+        }
+        if (chain.empty())
+          continue;
+        for (TaskTriple task : chain)
+          if (visit(task.start).wasInterrupted())
+            return failure();
+        size_t index = schedule.chains.size();
+        schedule.chains.push_back(std::move(chain));
+        schedule.events.emplace_back(index, false);
+        queue.push_back(index);
+        progress = true;
+      }
+      if (!progress) {
+        auto waiting = llvm::find_if(
+            pending, [](const auto &entry) { return !entry.second.empty(); });
+        if (waiting == pending.end() || failed(retire(waiting->second)))
+          return failure();
+      }
+    }
+    for (auto &[key, queue] : pending)
+      while (!queue.empty())
+        if (failed(retire(queue)))
+          return failure();
+    roundState.schedules.push_back(std::move(schedule));
+    return success();
+  }
+
+  static void commitSchedule(TaskSchedule &schedule) {
+    for (auto &chain : schedule.chains) {
+      TaskTriple first = chain.front();
+      for (TaskTriple task : llvm::drop_begin(chain)) {
+        Operation *end = first.configure.getBody().back().getTerminator();
+        OpBuilder builder(end);
+        AIE::NextBDOp::create(builder, end->getLoc(),
+                              &task.configure.getBody().front());
+        end->erase();
+        first.configure.getBody().getBlocks().splice(
+            first.configure.getBody().end(),
+            task.configure.getBody().getBlocks());
+        task.await.erase();
+        task.start.erase();
+        task.configure.erase();
+      }
+    }
+    auto insertion =
+        schedule.after ? schedule.after->getIterator() : schedule.block->end();
+    for (auto [index, await] : schedule.events) {
+      TaskTriple first = schedule.chains[index].front();
+      if (await) {
+        first.await.removeDeferCompletionAttr();
+        first.await->moveBefore(schedule.block, insertion);
+      } else {
+        first.configure->moveBefore(schedule.block, insertion);
+        first.start->moveBefore(schedule.block, insertion);
+      }
+    }
+  }
+
   void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
                 bool issuesToken, Operation *origin,
                 AIE::ShimDMAAllocationOp allocation,
@@ -616,6 +848,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     // What one allocation of the sequence did that the next undoes.
     SmallVector<AIE::DMABDOp> assignedHere;
     SmallVector<Operation *> insertedHere;
+    SmallVector<TaskSchedule> schedules;
   };
   RoundState roundState;
 
@@ -692,6 +925,28 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::TileOp tile = allocationOf(copy).getTileOp();
     AIE::TileID tileId = tile.getTileID();
     auto id = static_cast<int32_t>(copy.getId());
+    auto staticConflict = [&]() -> LogicalResult {
+      InFlightDiagnostic diag =
+          copy.emitOpError("programs buffer descriptor ID ")
+          << id << ", which a static DMA program on tile (" << tile.getCol()
+          << "," << tile.getRow() << ") already uses; give the copy another ID";
+      SmallVector<AIE::DeviceOp, 3> devices{getOperation()};
+      for (AIE::DeviceOp device : {loadedDevice, configuredDevice})
+        if (device && !llvm::is_contained(devices, device))
+          devices.push_back(device);
+      for (AIE::DeviceOp device : devices)
+        for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+          if (program.getTileID() == tileId)
+            program.getDmaBody().walk([&](AIE::DMABDOp bd) {
+              if (bd.getBdId() == id)
+                diag.attachNote(bd.getLoc())
+                    << "the static program's buffer descriptor is here";
+            });
+      return diag;
+    };
+    BdIdGenerator &gen = getGeneratorForTile(tile);
+    if (gen.reserved.count(id))
+      return staticConflict();
     if (auto held = loadState.holdsOn.find({tileId, id});
         held != loadState.holdsOn.end() && warnUnsafeBdReuse) {
       const HeldBy &earlier = held->second.begin()->second;
@@ -702,7 +957,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       entry->second.tiles.insert({tile.getCol(), tile.getRow()});
       entry->second.count++;
     }
-    BdIdGenerator &gen = getGeneratorForTile(tile);
     loadState.holdsByChannel[key].push_back({order, tileId, id});
     loadState.holdsOn[{tileId, id}][order] = {copy, issuesToken};
     if (!gen.bdIdAlreadyAssigned(id)) {
@@ -764,22 +1018,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     }
     // The id was already taken in the generator, owned by neither a copy
     // nor a live task: only a static DMA program claims an id that way.
-    InFlightDiagnostic diag = copy.emitOpError("programs buffer descriptor ID ")
-                              << id << ", which a static DMA program on tile ("
-                              << tile.getCol() << "," << tile.getRow()
-                              << ") already uses; give the copy another ID";
-    AIE::DeviceOp other =
-        loadedDevice && loadedDevice != getOperation() ? loadedDevice : nullptr;
-    for (AIE::DeviceOp candidate : {getOperation(), other})
-      if (candidate)
-        for (AIE::DmaBody program : candidate.getOps<AIE::DmaBody>())
-          if (program.getTileID() == tileId)
-            program.getDmaBody().walk([&](AIE::DMABDOp bd) {
-              if (bd.getBdId() == id)
-                diag.attachNote(bd.getLoc())
-                    << "the static program's buffer descriptor is here";
-            });
-    return diag;
+    return staticConflict();
   }
 
   void releaseRetiredCopies(const DmaQueueModel::ChannelKey &key) {
@@ -1901,6 +2140,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return constant.getResult();
     };
     Value maskValue = cst(mask);
+    for (TaskSchedule &schedule : roundState.schedules)
+      if (schedule.after == op.getOperation())
+        schedule.after = maskValue.getDefiningOp();
     Value compareValue = cst(0);
     Value statusValue = cst(*status);
     auto poll = NpuMaskPollOp::create(b, op.getLoc(), statusValue, compareValue,
@@ -1947,6 +2189,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     liveByTile.clear();
     freedInFlight.clear();
     loadedDevice = {};
+    configuredDevice = {};
     opaqueLoad = {};
     unloaded.clear();
     resetChannels.clear();
@@ -1983,7 +2226,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
-    staticBdIds.clear();
     loopingStarts.clear();
     deviceState = {};
     deviceState.symbols.emplace(device);
@@ -1996,6 +2238,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             deviceState.proofsByOutput[output].push_back({input, proof});
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
+      if (seq.getBody().empty())
+        return WalkResult::advance();
       if (failed(checkForeignTail(seq)))
         return WalkResult::interrupt();
       // Skip sequences already handled by the dynamic free-list pool path
@@ -2060,6 +2304,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           }
         } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
           noteLoadPdi(load);
+        } else if (auto context = dyn_cast<SetDeviceOp>(op)) {
+          noteConfigured(context);
         } else if (auto reset = dyn_cast<DmaChannelResetOp>(op)) {
           resetChannels.insert(DmaQueueModel::keyOf(
               reset.getTileOp(), reset.getDirection(), reset.getChannel()));
@@ -2119,7 +2365,45 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             held.push_back(std::move(diag));
             return success();
           });
-          r = seq.walk(visit);
+          r = WalkResult::advance();
+          auto &body = seq.getBody().front();
+          for (auto iterator = body.begin(); iterator != body.end();) {
+            Operation *operation = &*iterator++;
+            SmallVector<TaskTriple> tasks;
+            auto triple = taskTriple(operation);
+            while (triple) {
+              tasks.push_back(*triple);
+              if (!triple->await.getDeferCompletion())
+                break;
+              triple = taskTriple(triple->await->getNextNode());
+            }
+            bool eligible =
+                tasks.size() > 1 && tasks.front().await.getDeferCompletion() &&
+                llvm::all_of(tasks, [&](TaskTriple task) {
+                  const auto &channel =
+                      startedOnChannel[DmaQueueModel::keyOf(task.configure)];
+                  return fitsNow(task.configure) &&
+                         channel.tasks.size() - channel.finished <
+                             getOperation()
+                                 .getTargetModel()
+                                 .getDmaTaskQueueDepth() &&
+                         llvm::none_of(
+                             channel.tasks,
+                             [](const StartedTask &push) {
+                               return push.issuesToken;
+                             });
+                });
+            if (eligible) {
+              iterator = std::next(tasks.back().await->getIterator());
+              if (failed(allocateDeferredTasks(tasks, visit))) {
+                r = WalkResult::interrupt();
+                break;
+              }
+            } else if (operation->walk(visit).wasInterrupted()) {
+              r = WalkResult::interrupt();
+              break;
+            }
+          }
         }
         if (!roundState.reallocate)
           break;
@@ -2135,8 +2419,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (r.wasInterrupted())
         return WalkResult::interrupt();
       warnLeaks(seq);
+      for (TaskSchedule &schedule : roundState.schedules)
+        commitSchedule(schedule);
+      for (auto await : seq.getOps<DMAAwaitTaskOp>())
+        await.removeDeferCompletionAttr();
       for (DMAFreeTaskOp freeOp : frees)
         freeOp.erase();
+      for (auto context : llvm::make_early_inc_range(seq.getOps<SetDeviceOp>()))
+        context.erase();
       return WalkResult::advance();
     });
     emitUnsafeReuses();
@@ -2146,6 +2436,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 };
 
 } // namespace
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIENormalizeDMATaskGroupsPass() {
+  return std::make_unique<AIENormalizeDMATaskGroupsPass>();
+}
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 AIEX::createAIEAssignRuntimeSequenceBDIDsPass() {

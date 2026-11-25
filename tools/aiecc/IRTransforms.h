@@ -1416,7 +1416,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
     bool skipObjectFifoVerify = false, bool assignAddresses = true,
     llvm::ArrayRef<int> coverColumns = {}, bool adaptiveOverlay = true,
-    bool checkQueueSpace = true) {
+    bool checkQueueSpace = true, unsigned multicastSpan = 0) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1439,7 +1439,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // lowering in this stage writes no `outputParamsFile`.
   X::addLoweringStage(*pm, dynamicObjFifos, packetSwObjFifos, ctrlPktOverlay,
                       loadPdiToCtrlPkt, skipObjectFifoVerify, coverColumns,
-                      adaptiveOverlay, checkQueueSpace);
+                      adaptiveOverlay, checkQueueSpace, multicastSpan);
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   if (assignAddresses) {
@@ -2004,6 +2004,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIELowerDynamicBDPoolPass(poolOpts));
   dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
+  bdIdOpts.chainTasks = cli::dmaChainBds;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
@@ -2037,6 +2038,14 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 inline std::unique_ptr<mlir::PassManager>
 getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
+  if (ctrlPkt) {
+    auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+    dpm.addPass(xilinx::AIEX::createAIEUnrollRuntimeSequenceLoopsPass());
+    mlir::GreedyRewriteConfig canonicalize;
+    canonicalize.setRegionSimplificationLevel(
+        mlir::GreedySimplifyRegionLevel::Disabled);
+    dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
+  }
   auto flag = [](bool b) { return b ? "true" : "false"; };
   std::string expandPipeline =
       llvm::formatv("aie-expand-load-pdi{{ctrl-pkt={0} teardown={1} "
@@ -2050,6 +2059,15 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   if (ctrlPkt) {
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIELegalizeControlPacketPass());
+    xilinx::AIEX::AIEReorderCtrlPacketsByTileOptions normalize;
+    normalize.addressOrder = cli::ctrlpktAddressOrder;
+    normalize.eliminateDeadWrites = cli::ctrlpktEliminateDeadWrites;
+    pm->addPass(xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass(normalize));
+    if (cli::ctrlpktMulticastSpan)
+      pm->addPass(xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass());
+    if (cli::ctrlpktCoalesce)
+      pm->nest<xilinx::AIE::DeviceOp>().addPass(
+          xilinx::AIEX::createAIECoalesceControlPacketsPass());
   }
   return pm;
 }
@@ -2066,24 +2084,30 @@ getMaterializeRuntimeSeqPipeline(mlir::MLIRContext *ctx) {
 // Per-device DMA→NPU lowering, for both user DMA ops and the DMA ops lowered
 // from control packets.
 inline std::unique_ptr<mlir::PassManager>
-getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
+getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx,
+                                bool lowerControlPackets = false) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  mlir::GreedyRewriteConfig canonicalize;
+  canonicalize.setRegionSimplificationLevel(
+      mlir::GreedySimplifyRegionLevel::Disabled);
+  if (lowerControlPackets) {
+    dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
+    dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
+    dpm.addPass(X::createAIECtrlPacketToDmaPass());
+  }
   dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIESplitLongRepeatsPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
+  bdIdOpts.chainTasks = cli::dmaChainBds;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
   bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
-  // Without region simplification; see getNpuDmaLoweringPipeline.
-  mlir::GreedyRewriteConfig canonicalize;
-  canonicalize.setRegionSimplificationLevel(
-      mlir::GreedySimplifyRegionLevel::Disabled);
   dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());
@@ -2099,8 +2123,11 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 inline std::unique_ptr<mlir::PassManager>
 getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
+  xilinx::AIEX::AIECtrlPacketToDmaOptions opts;
+  opts.chainBds = cli::dmaChainBds;
+  opts.parallelShims = cli::ctrlpktParallelShims;
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIEX::createAIECtrlPacketToDmaPass());
+      xilinx::AIEX::createAIECtrlPacketToDmaPass(opts));
   return pm;
 }
 
@@ -2144,22 +2171,9 @@ getControlPacketPipeline(mlir::MLIRContext *ctx, llvm::StringRef elfDir,
   return pm;
 }
 
-// Lower legalized control packets into a DMA sequence the host streams in:
-// `aie-ctrl-packet-to-dma` → `aie-dma-to-npu`.
 inline std::unique_ptr<mlir::PassManager>
 getControlPacketDmaPipeline(mlir::MLIRContext *ctx) {
-  auto pm = std::make_unique<mlir::PassManager>(ctx);
-  auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-  dpm.addPass(xilinx::AIEX::createAIECtrlPacketToDmaPass());
-  // Not the user's queue-depth setting: this sequence is generated one push and
-  // one sync at a time, so the queue never fills. If that ever regresses, a
-  // warning against compiler-generated IR is the right diagnostic for a
-  // compiler bug -- a poll would paper over it, and a build failure would blame
-  // the user for IR they cannot edit.
-  xilinx::AIEX::AIEDmaToNpuOptions ctrlPktOpts;
-  ctrlPktOpts.enforceQueueDepth = false;
-  dpm.addPass(xilinx::AIEX::createAIEDmaToNpuPass(ctrlPktOpts));
-  return pm;
+  return getPerDeviceDmaLoweringPipeline(ctx, true);
 }
 
 } // namespace xilinx::aiecc

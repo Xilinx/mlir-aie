@@ -144,6 +144,28 @@ unknown transfer lifetimes remain exclusive.
 The overlay's packet IDs and routing settings remain protected during reload
 and teardown.
 
+### Control packet delivery
+
+`--get-ctrlpkt` and `--load-pdi-to-ctrl-pkt` support constant runtime loops.
+The driver unrolls these loops before static DMA lowering.
+
+Use these options with `--load-pdi-to-ctrl-pkt` to control delivery:
+
+- `--ctrlpkt-optimize=false` disables optional write optimization, multicast,
+  BD chaining, and parallel delivery. It leaves packet batching, required
+  synchronization, overlay selection, and teardown unchanged.
+- `--ctrlpkt-address-order=false`, `--ctrlpkt-eliminate-dead-writes=false`, and
+  `--ctrlpkt-coalesce=false` disable individual write optimizations.
+- `--ctrlpkt-parallel-shims=false` serializes delivery across shim channels.
+- `--ctrlpkt-multicast-span=<w>` groups core tiles across `w` columns for
+  multicast delivery. The default is `1`; `0` disables multicast.
+
+`--dma-chain-bds=false` disables automatic BD chaining for both application
+and control-packet DMA tasks. Chaining defaults to enabled.
+
+These options do not establish application completion before reconfiguration.
+The application must supply the required synchronization.
+
 ### Parameterized C++ transaction builders
 
 ```bash

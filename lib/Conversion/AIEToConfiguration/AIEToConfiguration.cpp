@@ -419,23 +419,6 @@ std::optional<int> xilinx::AIE::parseTransactionBinary(
   return num_cols;
 }
 
-static LogicalResult generateTransactions(AIERTControl &ctl,
-                                          const StringRef workDirPath,
-                                          DeviceOp &targetOp, bool aieSim,
-                                          bool enableElfs, bool enableInit,
-                                          bool enableCores,
-                                          bool skipCtrlPktOverlay = false) {
-  if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
-      failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
-    return failure();
-  if (enableInit && failed(ctl.addInitConfig(targetOp, skipCtrlPktOverlay)))
-    return failure();
-  if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
-      failed(ctl.addCoreEnable(targetOp)))
-    return failure();
-  return success();
-}
-
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
 // ops (npu.write32, npu.maskwrite32, npu.maskpoll, npu.blockwrite). Each
 // emitted op gets the per-op `sourceLoc` from AIERT's instruction-range
@@ -828,13 +811,37 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   // start collecting transactions
   ctl.startTransaction();
 
-  bool generateElfs = true;
-  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
-                                  true, true, skipCtrlPktOverlay)))
+  DeviceOp configured = skipCtrlPktOverlay ? device : DeviceOp{};
+  bool controlPackets =
+      outputType == AIEToConfigurationOutputType::ControlPacket;
+  if (controlPackets) {
+    auto boundary =
+        AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+    boundary.setIndependent(true);
+  }
+  if ((!device.getOps<CoreOp>().empty() &&
+       failed(ctl.addAieElfs(device, clElfDir, aieSim))) ||
+      failed(ctl.addInitConfig(device, skipCtrlPktOverlay)))
     return failure();
-
-  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
-                                   skipCtrlPktOverlay ? device : DeviceOp{});
+  if (controlPackets) {
+    if (failed(insertRecordedTransaction(ctl, builder, outputType,
+                                         blockwriteData, configured)))
+      return failure();
+    auto boundary =
+        AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+    boundary.setIndependent(true);
+    ctl.clearTransaction();
+    ctl.startTransaction();
+  }
+  if (failed(ctl.addDmaActivation(device)) ||
+      (!device.getOps<CoreOp>().empty() && failed(ctl.addCoreEnable(device))))
+    return failure();
+  if (failed(insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
+                                       configured)))
+    return failure();
+  if (controlPackets)
+    AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+  return success();
 }
 
 namespace {
@@ -890,7 +897,8 @@ static CoreLockAcquiresAttr collectCoreLockAcquires(CoreOp core) {
           call, call.getCalleeAttr());
       if (callee && !callee.isExternal())
         pending.push_back(callee);
-      else
+      else if (!callee ||
+               !callee->getAttrOfType<UnitAttr>("aie.no_lock_acquires"))
         unknown = true;
     });
     operation->walk([&](Operation *nested) {
@@ -1055,6 +1063,12 @@ insertCoreLockDrain(OpBuilder &builder, DeviceOp device,
   if (!writes.empty())
     for (auto core : device.getOps<CoreOp>())
       pollCoreStatus(core, 0x1);
+  if (!writes.empty() &&
+      outputType == AIEToConfigurationOutputType::ControlPacket) {
+    auto boundary =
+        AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+    boundary.setIndependent(true);
+  }
   if (failed(convertTransactionOpsToMLIR(builder, outputType, writes,
                                          blockwriteData, {})))
     return failure();
@@ -1097,6 +1111,11 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (failed(ctl.teardownSwitches(device, skipCtrlPktOverlay)) ||
       failed(ctl.disableCores(device)) || failed(ctl.resetDmaChannels(device)))
     return failure();
+  if (outputType == AIEToConfigurationOutputType::ControlPacket) {
+    auto boundary =
+        AIEX::ControlPacketBarrierOp::create(builder, device.getLoc());
+    boundary.setIndependent(true);
+  }
   if (failed(
           insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
                                     skipCtrlPktOverlay ? device : DeviceOp{})))

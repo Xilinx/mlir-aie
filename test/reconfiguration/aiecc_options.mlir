@@ -32,6 +32,22 @@
 // RUN: not %aiecc --ctrlpkt-adaptive-overlay %s 2>&1 | FileCheck %s --check-prefix=ADAPTIVE-LDPDI-CTRLPKT
 // ADAPTIVE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-adaptive-overlay requires --generate-ctrl-pkt-overlay or --load-pdi-to-ctrl-pkt
 
+// RUN: not %aiecc --ctrlpkt-parallel-shims %s 2>&1 | FileCheck %s --check-prefix=PARALLEL-LDPDI-CTRLPKT
+// PARALLEL-LDPDI-CTRLPKT: aiecc: --ctrlpkt-parallel-shims requires --load-pdi-to-ctrl-pkt
+
+// RUN: not %aiecc --ctrlpkt-multicast-span=2 %s 2>&1 | FileCheck %s --check-prefix=SPAN-LDPDI-CTRLPKT
+// SPAN-LDPDI-CTRLPKT: aiecc: --ctrlpkt-multicast-span requires --load-pdi-to-ctrl-pkt
+
+// RUN: not %aiecc -j1 --ctrlpkt-address-order %s 2>&1 | FileCheck %s --check-prefix=ORDER-LDPDI-CTRLPKT
+// ORDER-LDPDI-CTRLPKT: aiecc: --ctrlpkt-address-order requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc -j1 --ctrlpkt-eliminate-dead-writes %s 2>&1 | FileCheck %s --check-prefix=DSE-LDPDI-CTRLPKT
+// DSE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-eliminate-dead-writes requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc -j1 --ctrlpkt-coalesce %s 2>&1 | FileCheck %s --check-prefix=COALESCE-LDPDI-CTRLPKT
+// COALESCE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-coalesce requires --load-pdi-to-ctrl-pkt
+// RUN: %aiecc -j1 -n --dma-chain-bds=true %s
+// RUN: %aiecc -j1 -n --dma-chain-bds=false %s
+// RUN: %aiecc -j1 -n --ctrlpkt-address-order=false --ctrlpkt-eliminate-dead-writes=false --ctrlpkt-coalesce=false --dma-chain-bds=false %s
+
 // Under --load-pdi-to-ctrl-pkt the teardown is on by default with full-ELF
 // output, and off without it.
 // RUN: %aiecc -n --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-init-entry %s
@@ -48,7 +64,7 @@
 // RUN: %aiecc -n --get=aie.elf --expand-load-pdis --reconfig-teardown --reconfig-init-entry %s
 
 // Turning an option off explicitly is never an error.
-// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-adaptive-overlay=false %s
+// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-adaptive-overlay=false --ctrlpkt-parallel-shims=false --ctrlpkt-multicast-span=0 %s
 
 module {
   aie.device(npu2) @main {

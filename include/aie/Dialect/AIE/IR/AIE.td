@@ -56,7 +56,9 @@ def AIE_Dialect : Dialect {
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_pkt_overlay,
       "::mlir::UnitAttr":$priority_route, "::mlir::ArrayAttr":$shareable_with,
       "::mlir::UnitAttr":$reserve_controller_packet_ids,
-      "::mlir::UnitAttr":$generated_configure);
+      "::mlir::UnitAttr":$generated_configure,
+      "::mlir::UnitAttr":$no_lock_acquires,
+      "::mlir::ArrayAttr":$ctrl_pkt_multicast);
 }
 
 #endif // AIE_BASE

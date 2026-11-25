@@ -25,6 +25,7 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/MathExtras.h"
@@ -2175,6 +2176,27 @@ uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
   return colInt;
 }
 
+bool AIEX::NpuControlPacketOp::isOrdinaryWrite() {
+  return isOrdinaryWrite(AIE::getTargetModel(*this));
+}
+
+bool AIEX::NpuControlPacketOp::isOrdinaryWrite(
+    const AIE::AIETargetModel &target) {
+  auto data = getData();
+  if (getOpcode() != 0 || !data)
+    return false;
+  AIE::TileID tile{
+      static_cast<int>(getAddress() >> target.getColumnShift()),
+      static_cast<int>(
+          (getAddress() >> target.getRowShift()) &
+          ((1u << (target.getColumnShift() - target.getRowShift())) - 1))};
+  uint32_t offset = getAddress() & ((1u << target.getRowShift()) - 1);
+  for (size_t index = 0; index < data->size(); ++index)
+    if (!target.isOrdinaryWriteAddress(tile, offset + 4 * index))
+      return false;
+  return true;
+}
+
 LogicalResult AIEX::NpuControlPacketOp::verify() {
   // The 2-bit operation field: 0 write, 1 read, 2 write with response, 3
   // reserved. A wider value would also spill into the stream ID.
@@ -2211,6 +2233,15 @@ LogicalResult AIEX::NpuControlPacketOp::verify() {
            << " 32-bit words";
 
   return success();
+}
+
+AIE::TileID AIEX::NpuControlPacketOp::getTileFromAddr() {
+  return {static_cast<int>(getColumnFromAddr()),
+          static_cast<int>(getRowFromAddr())};
+}
+
+uint32_t AIEX::NpuControlPacketOp::getLocalAddress() {
+  return getAddress() & ((1u << AIE::getTargetModel(*this).getRowShift()) - 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2717,6 +2748,95 @@ AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
                     << " starts a shim DMA channel, which teardown cannot stop";
   diag.attachNote(shimStart->getLoc()) << "started here";
   return diag;
+}
+
+LogicalResult AIEX::SetDeviceOp::verify() {
+  auto sequence = cast<AIE::RuntimeSequenceOp>((*this)->getParentOp());
+  if (!llvm::hasSingleElement(sequence.getBody()))
+    return emitOpError("requires a single-block runtime sequence");
+  return success();
+}
+
+LogicalResult
+AIEX::SetDeviceOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
+  if (!isa_and_present<AIE::DeviceOp>(
+          symbolTable.lookupSymbolIn(scope, getDeviceRefAttr())))
+    return emitOpError() << getDeviceRefAttr() << " is not a device";
+  return success();
+}
+
+llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr>
+AIEX::controllerIdsOf(AIE::DeviceOp device) {
+  llvm::DenseMap<AIE::TileID, AIE::PacketInfoAttr> ids;
+  for (auto tile : device.getOps<AIE::TileOp>())
+    if (auto id = tile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+        id && id.isAssigned())
+      ids[tile.getTileID()] = id;
+  return ids;
+}
+
+std::set<uint32_t> AIEX::staticBdIds(ArrayRef<AIE::DeviceOp> devices,
+                                     AIE::TileID tile) {
+  std::set<uint32_t> ids;
+  for (AIE::DeviceOp device : devices)
+    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+      if (program.getTileID() == tile)
+        for (uint32_t id : AIE::getAssignedBdIds(program))
+          ids.insert(id);
+  return ids;
+}
+
+FailureOr<SmallVector<AIEX::ControlPacketMulticast>>
+AIEX::controlPacketMulticasts(ModuleOp module, FlatSymbolRefAttr reference) {
+  SmallVector<ControlPacketMulticast> routes;
+  auto device = reference ? module.lookupSymbol<AIE::DeviceOp>(reference)
+                          : AIE::DeviceOp{};
+  auto overlay =
+      device && device.getOverlayAttr()
+          ? module.lookupSymbol<AIE::DeviceOp>(device.getOverlayAttr())
+          : AIE::DeviceOp{};
+  auto groups =
+      overlay ? AIE::AIEDialect::CtrlPktMulticastAttrHelper(module.getContext())
+                    .getAttr(overlay)
+              : ArrayAttr{};
+  if (!groups)
+    return routes;
+  SymbolTable symbols(overlay);
+  for (auto [index, attribute] : llvm::enumerate(groups)) {
+    auto group = dyn_cast<DictionaryAttr>(attribute);
+    auto allocation = group ? group.getAs<FlatSymbolRefAttr>("allocation")
+                            : FlatSymbolRefAttr{};
+    auto packetId =
+        group ? group.getAs<IntegerAttr>("packet_id") : IntegerAttr{};
+    auto tiles = group ? group.getAs<ArrayAttr>("tiles") : ArrayAttr{};
+    if (!allocation || !packetId || !tiles || tiles.empty() ||
+        packetId.getInt() < 0 ||
+        packetId.getInt() > overlay.getTargetModel().getMaxPacketId() ||
+        !llvm::all_of(
+            tiles, [](Attribute tile) { return isa<AIE::TileAttr>(tile); })) {
+      overlay.emitOpError("aie.ctrl_pkt_multicast entry ")
+          << index << " requires allocation, a valid packet_id, and tiles";
+      return failure();
+    }
+    llvm::SmallDenseSet<Attribute> destinations;
+    for (Attribute tile : tiles)
+      if (!destinations.insert(tile).second) {
+        overlay.emitOpError("aie.ctrl_pkt_multicast entry ")
+            << index << " repeats destination " << tile;
+        return failure();
+      }
+    auto alloc =
+        symbols.lookup<AIE::ShimDMAAllocationOp>(allocation.getValue());
+    if (!alloc || alloc.getChannelDir() != AIE::DMAChannelDir::MM2S) {
+      overlay.emitOpError("aie.ctrl_pkt_multicast entry ")
+          << index << " allocation " << allocation
+          << " must reference an MM2S shim DMA allocation in this overlay";
+      return failure();
+    }
+    routes.push_back({alloc, static_cast<uint32_t>(packetId.getInt()), tiles});
+  }
+  return routes;
 }
 
 Operation *AIEX::findShimDmaStart(AIE::DeviceOp device) {

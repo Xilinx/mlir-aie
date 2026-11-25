@@ -1,0 +1,19 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: cd %t.d
+// RUN: %aiecc -j1 --get-full-elf --load-pdi-to-ctrl-pkt --reconfig-teardown=true --ctrlpkt-multicast-span=1 --get=npu_expanded.mlir %S/aie.mlir
+// RUN: FileCheck %s < npu_expanded.mlir
+// RUN: FileCheck %S/run_ctrlpkt_span2.lit --check-prefix=TEARDOWN < npu_expanded.mlir
+// RUN: %host_clang -o test %S/../parallel_shims/test.cpp -std=c++17 %host_link_flags %xrt_flags
+// RUN: %run_on_npu2% ./test 4
+//
+// CHECK: address = 2228224 : ui32, data = {{.*}}multicast_id = 0 : i32
+// CHECK: address = 35782656 : ui32, data = {{.*}}multicast_id = 1 : i32
+// CHECK: address = 2113536 : ui32, data = array<i32: 1>, opcode
+// CHECK: address = 4210688 : ui32, data = array<i32: 1>, opcode
+// CHECK: address = 35667968 : ui32, data = array<i32: 1>, opcode
+// CHECK: address = 37765120 : ui32, data = array<i32: 1>, opcode

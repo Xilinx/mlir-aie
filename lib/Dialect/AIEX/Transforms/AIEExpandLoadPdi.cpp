@@ -146,6 +146,15 @@ struct CtrlPktReload {
   AIE::DeviceOp overlay;
 };
 
+// The ops of `block` strictly between `after` and `end`, where null means the
+// block's start or end.
+static iterator_range<Block::iterator>
+opsBetween(Block *block, Operation *after, Operation *end) {
+  return llvm::make_range(after ? std::next(after->getIterator())
+                                : block->begin(),
+                          end ? end->getIterator() : block->end());
+}
+
 // Set `builder` at the next load_pdi, or at the block's end if there is none.
 static void setInsertionPointToSegmentEnd(OpBuilder &builder,
                                           NpuLoadPdiOp loadPdiOp) {
@@ -248,12 +257,11 @@ static LogicalResult transformLoadPdi(
     loadPdiOp.emitError("Failed to generate configuration operations");
     return failure();
   }
-  if (failed(verifyOverlayReachesTiles(
-          loadPdiOp, overlay,
-          {beforeConfig ? std::next(beforeConfig->getIterator())
-                        : loadPdiOp->getBlock()->begin(),
-           loadPdiOp->getIterator()})))
+  auto config = opsBetween(loadPdiOp->getBlock(), beforeConfig, loadPdiOp);
+  if (failed(verifyOverlayReachesTiles(loadPdiOp, overlay, config)))
     return failure();
+  builder.setInsertionPoint(loadPdiOp->getBlock(), config.begin());
+  SetDeviceOp::create(builder, loadPdiOp.getLoc(), deviceRefAttr);
 
   // Erase the load_pdi before inserting the teardown, so the teardown's masked
   // writes fold onto the configuration's writes instead of stopping at it.
@@ -266,6 +274,7 @@ static LogicalResult transformLoadPdi(
     emitError(loc, "Failed to generate teardown operations");
     return failure();
   }
+  ControlPacketBarrierOp::create(builder, loc);
   return success();
 }
 
@@ -304,6 +313,13 @@ verifyExpansion(ModuleOp module, ArrayRef<NpuLoadPdiOp> loadPdiOps,
   if (!teardown)
     return success();
   for (NpuLoadPdiOp loadPdiOp : loadPdiOps) {
+    // A configuration is torn down before its block's next load_pdi, which a
+    // load in a loop or branch may skip or repeat.
+    Operation *parent = loadPdiOp->getParentOp();
+    if (!isa<AIE::RuntimeSequenceOp>(parent))
+      return loadPdiOp.emitOpError("with teardown, must be in the runtime "
+                                   "sequence's body, not inside ")
+             << parent->getName();
     if (expandMode(loadPdiOp) == AIEX::ExpandMode::none)
       continue;
     // write_teardown's verifier checks this too, but inline-config leaves no
@@ -435,7 +451,9 @@ struct AIEExpandLoadPdiPass
       std::optional<ArrayState> &state =
           arrayState.try_emplace(seq, start).first->second;
       auto dev =
-          module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr());
+          loadPdiOp.getDeviceRefAttr()
+              ? module.lookupSymbol<AIE::DeviceOp>(loadPdiOp.getDeviceRefAttr())
+              : AIE::DeviceOp();
       auto mode = expandMode(loadPdiOp);
       ArrayState next = {mode, dev && mode == AIEX::ExpandMode::ctrlpkt
                                    ? dev.getOverlayAttr()
@@ -469,7 +487,6 @@ struct AIEExpandLoadPdiPass
         return;
       }
     }
-
     SmallVector<std::pair<Operation *, AIE::DeviceOp>> ctrlPktSites;
     for (CtrlPktReload &reload : ctrlPktReloads)
       ctrlPktSites.emplace_back(reload.load, reload.device);
@@ -479,16 +496,19 @@ struct AIEExpandLoadPdiPass
       return;
     }
     for (CtrlPktReload &reload : ctrlPktReloads) {
-      if (failed(verifyOverlayReachesTiles(
-              reload.load, reload.overlay,
-              {std::next(reload.preload->getIterator()),
-               reload.load->getIterator()}))) {
+      auto config =
+          opsBetween(reload.load->getBlock(), reload.preload, reload.load);
+      if (failed(
+              verifyOverlayReachesTiles(reload.load, reload.overlay, config))) {
         signalPassFailure();
         return;
       }
+      OpBuilder builder(reload.load->getBlock(), config.begin());
+      SetDeviceOp::create(
+          builder, reload.load.getLoc(),
+          FlatSymbolRefAttr::get(reload.device.getSymNameAttr()));
       reload.load.erase();
     }
-
     for (auto [device, kind] : initEntries) {
       FlatSymbolRefAttr preloadRef =
           kind.first == AIEX::ExpandMode::ctrlpkt

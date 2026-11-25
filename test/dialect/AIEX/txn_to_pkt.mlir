@@ -10,10 +10,10 @@
 
 module {
   aie.device(npu2_1col) {
-    memref.global "private" constant @blockwrite_data_0 : memref<8xi32> = dense<[123, 456, 789, 0xabcd, 0x80000000, -1, -2, -3]>
+    memref.global "private" constant @data : memref<8xi32> = dense<[123, 456, 789, 0xabcd, 0x80000000, -1, -2, -3]>
     aie.runtime_sequence @run() {
-      %0 = memref.get_global @blockwrite_data_0 : memref<8xi32>
-      aiex.npu.blockwrite(%0) {address = 65432 : ui32} : memref<8xi32>
+      %data = memref.get_global @data : memref<8xi32>
+      aiex.npu.blockwrite(%data) {address = 65432 : ui32} : memref<8xi32>
     }
   }
 }

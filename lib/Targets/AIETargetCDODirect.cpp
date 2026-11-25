@@ -87,11 +87,14 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
     return failure();
 
   LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_init.bin");
-  if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) +
-           targetOp.getSymName() + "_aie_cdo_init.bin")
-              .str(),
-          [&ctl, &targetOp] { return ctl.addInitConfig(targetOp); })))
+  if (failed(generateCDOBinary((llvm::Twine(workDirPath) + std::string(1, ps) +
+                                targetOp.getSymName() + "_aie_cdo_init.bin")
+                                   .str(),
+                               [&ctl, &targetOp] {
+                                 if (failed(ctl.addInitConfig(targetOp)))
+                                   return failure();
+                                 return ctl.addDmaActivation(targetOp);
+                               })))
     return failure();
 
   LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_enable.bin");
@@ -120,7 +123,8 @@ static LogicalResult generateCDOUnified(AIERTControl &ctl,
         if (!targetOp.getOps<CoreOp>().empty() &&
             failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
           return failure();
-        if (failed(ctl.addInitConfig(targetOp)))
+        if (failed(ctl.addInitConfig(targetOp)) ||
+            failed(ctl.addDmaActivation(targetOp)))
           return failure();
         if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
             failed(ctl.addCoreEnable(targetOp)))

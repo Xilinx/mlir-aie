@@ -63,6 +63,7 @@ struct AIERTControl {
                                         bool skipCtrlPktOverlay = false);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
                                     bool skipCtrlPktOverlay = false);
+  mlir::LogicalResult addDmaActivation(DeviceOp &targetOp);
   mlir::LogicalResult teardownSwitches(DeviceOp &targetOp,
                                        bool skipCtrlPktOverlay = false);
   mlir::LogicalResult disableCores(DeviceOp &targetOp);
@@ -73,6 +74,7 @@ struct AIERTControl {
   mlir::LogicalResult addAieElfs(DeviceOp &targetOp,
                                  const mlir::StringRef elfPath, bool aieSim);
   void startTransaction();
+  void clearTransaction();
   void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId);
   std::vector<uint8_t> exportSerializedTransaction();
 

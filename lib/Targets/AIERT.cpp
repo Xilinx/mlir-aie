@@ -1014,39 +1014,48 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
           return failure();
       }
     }
+  }
+  return success();
+}
 
-    if (!dmaOps.empty())
+LogicalResult xilinx::AIE::AIERTControl::addDmaActivation(DeviceOp &targetOp) {
+  auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
+  llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
+  llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
+  for (TileElement memOp : memOps) {
+    int col = memOp.getTileID().col;
+    int row = memOp.getTileID().row;
+    auto dmaOps = memOp.getOperation()->getRegion(0).getOps<DMAOp>();
+    if (!dmaOps.empty()) {
       for (auto dmaOp : dmaOps) {
-        auto &block = dmaOp.getBds().front().getBlocks().front();
-        DMABDOp bd = *block.getOps<DMABDOp>().begin();
+        DMABDOp bd = *dmaOp.getBds().front().front().getOps<DMABDOp>().begin();
         auto bdId = bd.getBdId();
-        assert(bdId.has_value() &&
-               "bd_id assigned by configureLocksAndBd above");
+        if (!bdId)
+          return bd.emitOpError("requires a BD ID before DMA activation");
         if (failed(pushToBdQueueAndEnable(
                 *dmaOp.getOperation(), col, row, dmaOp.getChannelIndex(),
-                dmaOp.getChannelDir(), bdId.value(), dmaOp.getRepeatCount(),
+                dmaOp.getChannelDir(), *bdId, dmaOp.getRepeatCount(),
                 dmaOp.getPadValue(), dmaOp.getOutOfOrder())))
           return failure();
       }
-    else
-      for (Block *block : blockVector) {
+    } else {
+      for (Block *block :
+           getOrderedChainOfBlocks(&memOp.getOperation()->getRegion(0))) {
         for (auto op : block->getOps<DMAStartOp>()) {
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
-          int chNum = op.getChannelIndex();
-          auto channelDir = op.getChannelDir();
           auto bdId = bd.getBdId();
-          assert(bdId.has_value() &&
-                 "bd_id assigned by configureLocksAndBd above");
+          if (!bdId)
+            return bd.emitOpError("requires a BD ID before DMA activation");
           if (failed(pushToBdQueueAndEnable(
-                  *bd.getOperation(), col, row, chNum, channelDir, bdId.value(),
-                  op.getRepeatCount(), op.getPadValue(), op.getOutOfOrder(),
-                  /*configureChannel=*/true,
-                  /*pushTask=*/!op.getCorePushes())))
+                  *bd.getOperation(), col, row, op.getChannelIndex(),
+                  op.getChannelDir(), *bdId, op.getRepeatCount(),
+                  op.getPadValue(), op.getOutOfOrder(),
+                  /*configureChannel=*/true, /*pushTask=*/!op.getCorePushes())))
             return failure();
         }
       }
+    }
   }
-
   return success();
 }
 
@@ -1073,21 +1082,11 @@ LogicalResult xilinx::AIE::AIERTControl::addCoreEnable(DeviceOp &targetOp) {
 LogicalResult xilinx::AIE::AIERTControl::addAieElf(uint8_t col, uint8_t row,
                                                    const StringRef elfPath,
                                                    bool aieSim) {
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreDisable, &aiert->devInst,
-                              XAie_TileLoc(col, row));
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &aiert->devInst,
-                              XAie_TileLoc(col, row),
-                              XAie_DmaChReset::DMA_CHANNEL_RESET);
-
   // loadSym: Load symbols from .map file. This argument is not used when
   // __AIESIM__ is not defined.
   TRY_XAIE_API_LOGICAL_RESULT(XAie_LoadElf, &aiert->devInst,
                               XAie_TileLoc(col, row), elfPath.str().c_str(),
                               /*loadSym*/ aieSim);
-
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &aiert->devInst,
-                              XAie_TileLoc(col, row),
-                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);
 
   return success();
 }
@@ -1226,6 +1225,25 @@ LogicalResult xilinx::AIE::AIERTControl::resetPerfCounters(int col, int row) {
 LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
                                                     const StringRef elfPath,
                                                     bool aieSim) {
+  auto reset = [&](bool asserted) -> LogicalResult {
+    for (auto core : targetOp.getOps<CoreOp>()) {
+      if (!core.getElfFile())
+        continue;
+      auto tile = core.getTileOp();
+      auto tileLoc = XAie_TileLoc(tile.colIndex(), tile.rowIndex());
+      TxnLocBracket bracket(*this, core.getLoc());
+      if (asserted)
+        TRY_XAIE_API_EMIT_ERROR(core, XAie_CoreDisable, &aiert->devInst,
+                                tileLoc);
+      TRY_XAIE_API_EMIT_ERROR(core, XAie_DmaChannelResetAll, &aiert->devInst,
+                              tileLoc,
+                              asserted ? XAie_DmaChReset::DMA_CHANNEL_RESET
+                                       : XAie_DmaChReset::DMA_CHANNEL_UNRESET);
+    }
+    return success();
+  };
+  if (failed(reset(true)))
+    return failure();
   for (auto tileOp : targetOp.getOps<TileOp>())
     if (tileOp.isShimNOCorPLTile()) {
       // Resets no needed with V2 kernel driver
@@ -1255,7 +1273,7 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
           return failure();
       }
     }
-  return success();
+  return reset(false);
 }
 
 void xilinx::AIE::AIERTControl::dmaUpdateBdAddr(int col, int row, size_t addr,
@@ -1270,6 +1288,10 @@ void xilinx::AIE::AIERTControl::startTransaction() {
   aiert->txnOpLocs.clear();
   TRY_XAIE_API_FATAL_ERROR(XAie_StartTransaction, &aiert->devInst,
                            XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
+}
+
+void xilinx::AIE::AIERTControl::clearTransaction() {
+  TRY_XAIE_API_FATAL_ERROR(XAie_ClearTransaction, &aiert->devInst);
 }
 
 // Project the per-XAie_TxnCmd locations in `cmdLocs` onto the operations

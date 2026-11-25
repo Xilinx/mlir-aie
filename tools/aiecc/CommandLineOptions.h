@@ -68,6 +68,10 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+inline cl::opt<bool> dmaChainBds(
+    "dma-chain-bds", cl::init(true),
+    cl::desc("Chain eligible runtime DMA tasks with deferrable completion"));
+
 inline cl::opt<bool> allowDeadlockProneRouting(
     "allow-deadlock-prone-routing",
     cl::desc("Warn of, rather than fail on, flows the router finds can "
@@ -235,6 +239,27 @@ inline cl::opt<bool> ctrlpktAdaptiveOverlay(
     "ctrlpkt-adaptive-overlay",
     cl::desc("Choose the control overlay around application resources; false "
              "uses channel 0 and default routes (default: on)"));
+inline cl::opt<bool> ctrlpktParallelShims(
+    "ctrlpkt-parallel-shims",
+    cl::desc("Send every column's control packets at once (default: on)"));
+inline cl::opt<bool>
+    ctrlpktOptimize("ctrlpkt-optimize", cl::init(true),
+                    cl::desc("Enable optional control-packet transformations "
+                             "and parallel delivery"));
+inline cl::opt<bool> ctrlpktAddressOrder(
+    "ctrlpkt-address-order", cl::init(true),
+    cl::desc("Sort ordinary control-packet writes by address"));
+inline cl::opt<bool> ctrlpktEliminateDeadWrites(
+    "ctrlpkt-eliminate-dead-writes", cl::init(true),
+    cl::desc("Remove overwritten control-packet words"));
+inline cl::opt<bool>
+    ctrlpktCoalesce("ctrlpkt-coalesce", cl::init(true),
+                    cl::desc("Merge adjacent control-packet writes"));
+inline cl::opt<unsigned> ctrlpktMulticastSpan(
+    "ctrlpkt-multicast-span", cl::value_desc("w"),
+    cl::desc("Send the control packets the core tiles of each <w> columns "
+             "share once, on a control multicast; 0 turns it off (default: "
+             "1)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -692,7 +717,8 @@ inline bool wantFullElf = false;
 
 // Resolve `option` to itself AND `met`. Asking for it explicitly when `met`
 // does not hold is an error; an option that is on by default turns off.
-inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
+template <typename T>
+inline bool resolveDependentOption(cl::opt<T> &option, bool met,
                                    llvm::StringRef requirement) {
   if (!option || met)
     return true;
@@ -701,7 +727,7 @@ inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
                  << "\n";
     return false;
   }
-  option = false;
+  option = T{};
   return true;
 }
 
@@ -764,6 +790,19 @@ inline bool resolveOptions(bool resuming = false) {
     reconfigTeardown = loadPdiToCtrlPkt && wantFullElf;
   if (!ctrlpktAdaptiveOverlay.getNumOccurrences())
     ctrlpktAdaptiveOverlay = ctrlPktOverlay || loadPdiToCtrlPkt;
+  if (!ctrlpktParallelShims.getNumOccurrences())
+    ctrlpktParallelShims = loadPdiToCtrlPkt;
+  if (!ctrlpktMulticastSpan.getNumOccurrences())
+    ctrlpktMulticastSpan = loadPdiToCtrlPkt ? 1 : 0;
+  if (!ctrlpktOptimize) {
+    ctrlpktParallelShims = false;
+    ctrlpktAddressOrder = false;
+    ctrlpktEliminateDeadWrites = false;
+    ctrlpktCoalesce = false;
+    if (loadPdiToCtrlPkt)
+      dmaChainBds = false;
+    ctrlpktMulticastSpan = 0;
+  }
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -778,7 +817,19 @@ inline bool resolveOptions(bool resuming = false) {
                                 "--reconfig-teardown") &&
          resolveDependentOption(
              ctrlpktAdaptiveOverlay, ctrlPktOverlay || loadPdiToCtrlPkt,
-             "--generate-ctrl-pkt-overlay or --load-pdi-to-ctrl-pkt");
+             "--generate-ctrl-pkt-overlay or --load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktParallelShims, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktOptimize, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktAddressOrder, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktEliminateDeadWrites, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktCoalesce, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt") &&
+         resolveDependentOption(ctrlpktMulticastSpan, loadPdiToCtrlPkt,
+                                "--load-pdi-to-ctrl-pkt");
 }
 
 //===----------------------------------------------------------------------===//

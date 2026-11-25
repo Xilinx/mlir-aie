@@ -1273,7 +1273,8 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
   let summary = "AIE control packet";
   let arguments = (ins UI32Attr:$address, OptionalAttr<I32Attr>:$length,
       I32Attr:$opcode, I32Attr:$stream_id,
-      OptionalAttr<DenseI32ArrayAttr>:$data);
+      OptionalAttr<DenseI32ArrayAttr>:$data,
+      OptionalAttr<I32Attr>:$multicast_id);
   let results = (outs);
   let assemblyFormat = [{ attr-dict }];
   let description = [{
@@ -1284,11 +1285,61 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
     reserved. A write carries its payload in `data`. A read carries no `data`;
     `length` gives the number of words to read, at most 4. A write payload may
     be longer than 4 words: `aie-legalize-control-packet` splits it.
+
+    Ordinary storage writes have final-value semantics within each consecutive
+    run. Each 32-bit word retains the value from its last write in IR order
+    when the run's delivery completes. Optimizers may remove overwritten
+    writes, reorder disjoint writes, coalesce adjacent writes, and use multicast
+    for matching writes. Every destination must retain its final value.
+
+    A program must not depend on an intermediate value within the run.
+    Unsynchronized cores and DMA tasks must not rely on observing such a
+    value. The program must prevent concurrent modification of that storage.
+    A consumer of the final value requires synchronization with delivery.
+
+    The target model classifies ordinary storage. Program memory, data memory,
+    BD words, and selected switch configuration words qualify. An action
+    register write, read, write with response, unknown register write, barrier,
+    or other operation ends the run. Queue pushes, resets, lock actions, and
+    enables retain their multiplicity and per-destination order. These action
+    boundaries restrict optimization; they do not imply array-wide completion.
+
+    `aiecc --ctrlpkt-optimize=false` disables optional packet transformations
+    and parallel delivery for programs that require the original writes.
+    Packet legalization and required synchronization remain enabled.
+    The option does not supply missing synchronization for observers.
+
+    `multicast_id` selects an entry by zero-based index in the active overlay's
+    `aie.ctrl_pkt_multicast` array. `aiex.set_device` selects the configuration
+    and its overlay. Each entry contains `allocation`, `packet_id`, and `tiles`.
+    The allocation symbol identifies the MM2S shim DMA source. `packet_id`
+    supplies the stream packet ID. `multicast_id` is not a stream packet ID.
+
+    The address encodes the first destination in column-then-row order.
+    Every destination applies the write at the address's tile-local offset.
+    A multicast write qualifies as ordinary only when every payload word
+    targets ordinary storage at every declared destination.
+    The source allocation may occupy a different column. The DMA lowerer retains
+    final values and action order when multicast destination lists overlap.
   }];
   let hasVerifier = 1;
+  let builders = [OpBuilder<
+      (ins "::mlir::IntegerAttr":$address, "::mlir::IntegerAttr":$length,
+          "::mlir::IntegerAttr":$opcode, "::mlir::IntegerAttr":$stream_id,
+          "::mlir::DenseI32ArrayAttr":$data),
+      [{
+      build($_builder, $_state, address, length, opcode, stream_id, data,
+            /*multicast_id=*/nullptr);
+    }]>];
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
+    bool isOrdinaryWrite();
+    bool isOrdinaryWrite(const ::xilinx::AIE::AIETargetModel &target);
+    /// The tile the address names.
+    AIE::TileID getTileFromAddr();
+    /// The address within that tile.
+    uint32_t getLocalAddress();
 
     /// Most words -- data payload, or read length when there is no data --
     /// one packet can carry on the wire (the header's beat count field is 2
@@ -1297,6 +1348,85 @@ def AIE_NpuControlPacketOp : AIEX_Op<"control_packet", []> {
     /// `aie-legalize-control-packet` splits them first.
     static constexpr unsigned getMaxDataWords() { return 4; }
   }];
+}
+
+def AIE_SetDeviceOp
+    : AIEX_Op<
+          "set_device", [HasParent<"AIE::RuntimeSequenceOp">,
+                         DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let summary = "Identify static BD reservations for a device configuration";
+  let description = [{
+    Identifies the device configuration whose static BD IDs the allocator
+    must reserve for subsequent operations, including nested operations.
+    Reservations begin before the transfers that install the configuration.
+    Other loaded resources and live runtime tasks retain their reservations.
+    Packet optimizers also use `device_ref` to resolve the overlay's multicast
+    destination declarations.
+
+    The marker must be a direct child of a single-block runtime sequence.
+    The allocator handles a retained `aiex.npu.load_pdi` directly: that load
+    changes the loaded-device state and clears this marker's context. A PDI
+    load needs no companion `set_device` operation.
+
+    The operation emits no hardware instruction. The sequence must complete
+    the outgoing application's use of shared resources before replacing its
+    configuration. Explicit synchronization orders configuration delivery.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$device_ref);
+  let assemblyFormat = [{ $device_ref attr-dict }];
+  let hasVerifier = 1;
+}
+
+def AIE_ControlPacketBarrierOp
+    : AIEX_Op<
+          "control_packet_barrier", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Order the control packets around it";
+  let description = [{
+    A hardware barrier completes preceding control-packet delivery before
+    subsequent packets start. With `compiler_only`, the operation separates
+    packet optimization intervals without requesting an unconditional hardware
+    wait. DMA lowering still inserts waits required by packet dependencies.
+
+    `independent` permits delivery of following control packets to different
+    tiles in any order. It grants no permission for packets before this
+    barrier. Each destination retains its action order and multiplicity.
+    A deferred DMA group must obey this scope for every packet it contains.
+    The permission ends at the next hardware barrier or non-packet runtime
+    operation. Compiler-only barriers retain this permission. The producer
+    guarantees that application traffic cannot prevent the remaining packets
+    from arriving. The operation has no tile or address-range selector.
+
+    Ordinary writes use the final-value semantics of `aiex.control_packet`
+    without an annotation. Action writes end ordinary-write optimization runs.
+    They do not implicitly require array-wide delivery completion. A hardware
+    barrier supplies that requirement. `independent` permits cross-tile
+    delivery, including actions, within the phase; it does not permit removing
+    actions or reversing their order at one destination.
+
+    A barrier completes packet delivery, not application execution.
+    The producer must supply a control overlay that permits delivery within
+    each hardware-barrier interval. Packet optimizers do not infer stream
+    activity or repair the supplied routes.
+
+    Configuration generation emits hardware barriers before setup, between
+    setup and activation, and after activation. The first two barriers carry
+    `independent` for the following phase. Register classification separates
+    ordinary-write runs from reset, enable, and other action writes.
+
+    Teardown generation emits an `independent` hardware barrier before its
+    writes. It emits another before lock-drain writes, after the core-disable
+    status polls. Status polls and the final teardown barrier require
+    completion of preceding packet delivery. The producer must establish
+    application quiescence separately.
+  }];
+  let arguments = (ins UnitAttr:$compiler_only, UnitAttr:$independent);
+  let assemblyFormat = [{ attr-dict }];
+  let builders = [OpBuilder<(ins), [{
+    build($_builder, $_state, ::mlir::UnitAttr{}, nullptr);
+  }]>,
+                  OpBuilder<(ins "::mlir::UnitAttr":$compilerOnly), [{
+    build($_builder, $_state, compilerOnly, nullptr);
+  }]>];
 }
 
 // NPU Bd Write operation
@@ -1611,8 +1741,17 @@ def AIE_DMAStartTaskOp
     : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Submit a Preconfigured Task to the Task Queue";
   let description = [{
-    Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
-    Once submitted, if the task is configured to issue a token, you can await completion of the task using `aiex.await_task`.
+    Submits the referenced task to its configured tile, channel, and direction.
+    `aiex.dma_await_task` waits for completion if the task issues a token.
+
+    Each channel executes queue pushes in FIFO order. Unsynchronized starts
+    on different channels establish no cross-channel execution or completion
+    order. A program must not depend on their relative progress or on observing
+    particular intermediate buffer values without synchronization. Different
+    channels do not imply independent data effects. Buffer and descriptor
+    dependencies, lock protocols, and explicit synchronization remain binding.
+    `defer_completion` on an await grants the bounded scheduling permissions
+    described by `aiex.dma_await_task`.
 
     A task may be started more than once; each start is one queue push. For
     this start only, `repeat_count` (or the runtime `repeat_count_val`)
@@ -1707,25 +1846,61 @@ def AIE_DMAAwaitTaskOp
     : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
-    This operation blocks execution of the runtime sequence until a previously
-    started DMA task completes, by waiting on its task-completion token (TCT).
-    To be able to wait on a task, it must issue a token (`issue_token = true`).
+    This operation blocks the runtime sequence until the referenced DMA task
+    completes. It consumes the task-completion token (TCT). The task must issue
+    a token (`issue_token = true`). `aiex.dma_start_task` submits the task.
 
-    DMA tasks can be started using `aiex.start_task` using abstract BD chains
-    declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a
-    manually configured task.
+    The `$task` SSA value identifies the task's configure operation. The dynamic
+    BD allocator requires the configure operation to dominate the await.
+    A branch-local configure requires an await inside that branch.
 
-    The task is identified by its `$task` SSA value, which must resolve to the
-    configure that set it up. Under the dynamic BD pool path this configure must
-    dominate the await; an await after an `scf.if` on a task configured inside a
-    branch is rejected (move the await inside the branch that configures it).
+    `defer_completion` permits the static BD allocator to schedule a bounded
+    group of consecutive configure/start/await triples. The producer emits
+    all three operations. The group starts at a triple with a marked await.
+    Each marked await permits inclusion of the next eligible triple.
+    The first unmarked await closes the group, including its task. Another
+    operation, an ineligible triple, or the block end closes the group before
+    that boundary. Every group transfer completes before the next operation
+    outside the group.
+
+    Run `aie-normalize-dma-task-groups` before rewrites that can remove
+    implicit group boundaries. The pass removes `defer_completion` from
+    each group's last await. `aiecc` runs this pass before placement.
+
+    The allocator may reorder configure/start pairs across channels and delay
+    marked awaits within the group. It may wait for a subset before starting
+    more tasks to respect descriptor and queue limits. The `chain-tasks` option
+    permits compatible same-channel tasks to form one BD chain, one start,
+    and one await. The allocator may replace A0, B0, A1 with a chain A0 -> A1
+    plus B0. Each channel retains FIFO order. Each descriptor precedes its
+    start. The allocator retains every transfer's data effects. It may replace
+    intermediate tokens with a chain token.
+
+    The producer guarantees independent data effects across channels for the
+    entire group. No observer may require a separate memory observation or
+    token at an intermediate await that the allocator removes.
+    Each started transfer must make progress without a later start on another
+    channel or an operation outside the group. Different channels do not
+    establish these guarantees. The allocator checks structure and
+    resources; it does not infer these application dependencies.
+
+    An eligible triple has one token-issuing, single-BD task with one start
+    and one await as its only handle uses. Explicit BD IDs, repeats, locks,
+    out-of-order execution, and start overrides exclude a triple. Ineligible
+    triples retain their operations. An unmarked await retains its completion
+    boundary outside a deferred group. `dma_free_task` retains its separate
+    contract: it releases descriptor IDs without waiting or consuming a token.
   }];
 
-  let arguments = (ins Index:$task);
+  let arguments = (ins Index:$task, UnitAttr:$defer_completion);
 
   let assemblyFormat = [{
     `(` $task `)` attr-dict
   }];
+
+  let builders = [OpBuilder<(ins "::mlir::Value":$task), [{
+    build($_builder, $_state, task, /*defer_completion=*/nullptr);
+  }]>];
 
   let extraClassDeclaration = [{
     DMAConfigureTaskOp getTaskOp();

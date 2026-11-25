@@ -349,6 +349,21 @@ def AIEResolveAddressPatchBuffers
                            "xilinx::AIEX::AIEXDialect"];
 }
 
+def AIENormalizeDMATaskGroups
+    : Pass<"aie-normalize-dma-task-groups", "AIE::DeviceOp"> {
+  let summary = "Make deferred DMA group endings explicit";
+  let description = [{
+    Removes `defer_completion` from awaits that end a group at another
+    operation, an ineligible triple, or the block end. Each group then ends
+    with an unmarked await. Concrete and symbolic configure tasks use the
+    static allocator's eligibility checks.
+
+    Run before canonicalization, inlining, or other rewrites can remove
+    implicit group boundaries.
+  }];
+  let constructor = "xilinx::AIEX::createAIENormalizeDMATaskGroupsPass()";
+}
+
 def AIEAssignRuntimeSequenceBDIDs
     : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary =
@@ -357,8 +372,9 @@ def AIEAssignRuntimeSequenceBDIDs
     Gives each `aie.dma_bd` of an `aiex.dma_configure_task` in a runtime
     sequence a buffer descriptor id on its tile, in program order, and takes
     a task's ids back once it is known to have finished, for later tasks to
-    reuse. The sequence must be straight-line (constant loops unrolled,
-    constant branches folded); runtime-valued `scf` ops are rejected.
+    reuse. The sequence must have one block with straight-line execution.
+    The pipeline unrolls constant loops and folds constant branches before
+    this pass. The allocator rejects runtime-valued `scf` ops.
 
     An await (`aiex.dma_await_task`, `aiex.npu.sync`, `aiex.npu.dma_wait`)
     takes the oldest completion token on its channel, which proves that push
@@ -382,10 +398,25 @@ def AIEAssignRuntimeSequenceBDIDs
     Before allocating, the pass checks each channel's completion tokens (an
     await with no token to take would deadlock the host) and task queue
     (`enforce-queue-depth`).
+
+    `defer_completion` on an await permits independent task triples to share
+    a completion boundary. The allocator schedules compatible single-BD,
+    single-start tasks within its current descriptor and queue limits. With
+    `chain-tasks`, it links tasks on the same channel into chains that fit.
+    It may reorder starts across channels and delay marked waits. The first
+    unmarked await closes the group, including its task. Another operation or
+    an ineligible triple ends the group before that operation. Every group
+    transfer completes before the next operation outside the group.
+    `aiex.dma_await_task` defines the producer's whole-group independence and
+    progress contract. Tasks with explicit IDs, repeats, locks, or additional
+    handle uses remain unchanged.
   }];
 
   let options =
-      [Option<
+      [Option<"chainTasks", "chain-tasks", "bool", /*default=*/"false",
+              "Combine compatible tasks across deferrable awaits into chains "
+              "that fit the available descriptor IDs.">,
+       Option<
            "enforceQueueDepth", "enforce-queue-depth", "bool",
            /*default=*/"true",
            "Insert an aiex.npu.maskpoll before any dma_start_task that could "
@@ -407,7 +438,8 @@ def AIEAssignRuntimeSequenceBDIDs
               /*default=*/"true",
               "Warn when a straight-line runtime sequence leaves DMA transfers "
               "neither awaited nor freed. Completion established indirectly "
-              "through computation or other channels may not be visible.">,
+              "through "
+              "computation or other channels may not be visible.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "
@@ -565,7 +597,45 @@ def AIESubstituteShimDMAAllocations
 }
 
 def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
-  let summary = "Lowers npu.control_packet op to npu.dma_memcpy_nd op";
+  let summary = "Deliver control packets with DMA tasks";
+  let description = [{
+    Streams unicast control packets through their column's control channel.
+    A multicast uses the allocation symbol in its overlay declaration.
+    Consecutive packets to one destination go in one transfer where the target
+    supports it. Each transfer has one buffer descriptor. The descriptor ends
+    its stream packet; the switches route each stream packet by its first header.
+
+    Each batch uses one configure/start/await triple. `chain-bds` permits
+    chains on one channel for the same destination or independent writes.
+    `parallel-shims` permits independent
+    destinations to share completion. The descriptor allocator owns queue
+    capacity, descriptor IDs, scheduling, and chain formation.
+
+    The shared packet interval contract supplies independence and delivery
+    boundaries. Hardware barriers and other runtime operations complete every
+    preceding transfer. Compiler-only barriers retain packet order but permit
+    consecutive packets with the same destination to share a transfer.
+    The pass closes a preceding deferred DMA group before replacing a packet
+    or erasing a packet barrier.
+
+    Distinct multicast routes may share completion when their destination
+    lists are disjoint across the entire interval. Overlapping multicast
+    routes require separate completion, including nonadjacent routes.
+    A multicast and unicast require separate completion unless their destination
+    words are disjoint within an ordinary-write interval. These permissions
+    end at an interval boundary when the interval contains multicast packets.
+    The control overlay must deliver these transfers without application
+    interference. This pass does not analyze application execution or routes.
+  }];
+
+  let options = [Option<"chainBds", "chain-bds", "bool", /*default=*/"false",
+                        "Permit allocation to chain consecutive transfers on "
+                        "one shim channel">,
+                 Option<"parallelShims", "parallel-shims", "bool",
+                        /*default=*/"false",
+                        "Permit independent shim channels to share a "
+                        "completion boundary">,
+  ];
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
@@ -707,11 +777,62 @@ def AIETxnToControlPacket : Pass<"aie-txn-to-ctrl-packet", "AIE::DeviceOp"> {
   ];
 }
 
+def AIECoalesceControlPackets
+    : Pass<"aie-coalesce-control-packets", "AIE::DeviceOp"> {
+  let summary = "Merge adjacent control-packet writes";
+  let description = [{
+    Combines adjacent writes with consecutive addresses and matching
+    destinations and header settings inside ordinary-write intervals.
+    The merged payload stays within one aligned four-word line.
+  }];
+  let constructor = "xilinx::AIEX::createAIECoalesceControlPacketsPass()";
+  let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
+}
+
 def AIELegalizeControlPacket
     : Pass<"aie-legalize-ctrl-packet", "AIE::DeviceOp"> {
   let summary = "Legalize control packet operations for target";
 
   let constructor = "xilinx::AIEX::createAIELegalizeControlPacketPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEReorderCtrlPacketsByTile
+    : Pass<"aie-reorder-ctrl-packets-by-tile", "mlir::ModuleOp"> {
+  let summary = "Order ordinary control writes and remove overwritten words";
+  let description = [{
+    Groups independent packets by destination while retaining each
+    destination's action order and multiplicity.
+    Retains the last value for each ordinary unicast word and orders surviving
+    packets by address inside ordinary-write intervals. Barriers, ordered
+    actions, header changes, and other operations end each interval.
+    Run before multicast selection and adjacent-write coalescing.
+
+    `address-order` and `eliminate-dead-writes` select each transformation
+    independently. Address ordering without elimination partitions each
+    sequence at overlapping writes to retain their order.
+  }];
+  let options = [Option<"addressOrder", "address-order", "bool",
+                        /*default=*/"true", "Sort ordinary writes by address">,
+                 Option<"eliminateDeadWrites", "eliminate-dead-writes", "bool",
+                        /*default=*/"true", "Remove overwritten words">];
+  let constructor = "xilinx::AIEX::createAIEReorderCtrlPacketsByTilePass()";
+  let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
+}
+
+def AIEDedupCtrlPacketMulticast
+    : Pass<"aie-dedup-ctrl-packet-multicast", "mlir::ModuleOp"> {
+  let summary = "Send the control packets a multicast's tiles share once";
+  let description = [{
+    Replaces equal per-destination prefixes inside ordinary-write or independent
+    action intervals. Each destination retains its action order and multiplicity.
+    The overlay declares destination groups in `aie.ctrl_pkt_multicast`.
+    DMA lowering owns delivery ordering and completion.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEDedupCtrlPacketMulticastPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];

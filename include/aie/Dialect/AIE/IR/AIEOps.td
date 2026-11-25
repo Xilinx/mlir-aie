@@ -68,6 +68,24 @@ def AIE_DeviceOp
       %CORE = aie.core(%tile) { ... }
     }
     ```
+
+    #### Control Multicast Routes
+
+    The `aie.ctrl_pkt_multicast` array declares control multicast routes on
+    an overlay device. Each entry contains:
+
+    - `allocation`: a flat symbol reference to an MM2S
+      `aie.shim_dma_allocation` in this overlay. It selects the source tile
+      and channel.
+    - `packet_id`: the stream packet ID for the route.
+    - `tiles`: the complete destination list as `#aie.tile<column, row>`.
+      The producer must list every destination once and match the fixed route.
+
+    Each allocation-and-packet-ID pair identifies one route. An allocation
+    can carry several packet IDs. Distinct allocations can reuse a packet ID.
+    Destination lists may overlap. `aiex.control_packet` selects an array
+    entry by its zero-based `multicast_id`. `aiex.set_device` selects the
+    configuration and its overlay.
   }];
 
   let arguments = (ins AIEDevice:$device,

@@ -133,6 +133,10 @@ struct HoldCycle {
 /// rule of the first switchbox it enters.
 std::vector<RoutedStream> traceRoutedStreams(DeviceOp device);
 
+/// Every DMA channel program: aie.dma_start and aie.dma inside the tile DMA
+/// ops, and runtime-configured tasks.
+llvm::SmallVector<DmaChannelProgram> collectDmaPrograms(DeviceOp device);
+
 /// The streams the aie.flow and aie.packet_flow ops ask for, one per source,
 /// destination and packet id, before any of them is routed.
 std::vector<RoutedStream> requestedStreams(DeviceOp device);

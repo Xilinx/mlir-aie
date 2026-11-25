@@ -7,12 +7,10 @@
 
 // RUN: aie-opt --aie-ctrl-packet-to-dma --mlir-print-debuginfo %s | FileCheck %s
 
-// Each generated dma_memcpy_nd carries its own batch's first control packet's
-// location, not the aie.device line: a later BD-id diagnostic on one batch's
-// copy should not merge with another's, or with a user task's.
-
-// CHECK: aiex.npu.dma_memcpy_nd{{.*}}loc(#[[LOC1:loc[0-9]*]])
-// CHECK: aiex.npu.dma_memcpy_nd{{.*}}loc(#[[LOC2:loc[0-9]*]])
+// CHECK: aiex.dma_configure_task_for
+// CHECK: } {issue_token = true} loc(#[[LOC1:loc[0-9]*]])
+// CHECK: aiex.dma_configure_task_for
+// CHECK: } {issue_token = true} loc(#[[LOC2:loc[0-9]*]])
 // CHECK-DAG: #[[LOC1]] = loc("first_batch")
 // CHECK-DAG: #[[LOC2]] = loc("second_batch")
 aie.device(npu1_1col) {
