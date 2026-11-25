@@ -93,6 +93,9 @@ def install_eudsl(req_file, target_dir):
             "--no-binary",
             "eudsl-python-extras",
             "--no-cache-dir",
+            # eudsl dropped 3.10 from CI, not from its source; the Ryzen AI 1.3
+            # SDK build still runs on 3.10.
+            "--ignore-requires-python",
             "-f",
             find_links,
             "-d",
@@ -124,6 +127,7 @@ def install_eudsl(req_file, target_dir):
             install_dir,
             "--no-deps",
             "--no-build-isolation",
+            "--ignore-requires-python",
             "--config-settings",
             config_setting,
         ]

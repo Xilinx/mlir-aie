@@ -1105,6 +1105,11 @@ xilinx::aiecc::readLutPairsFromIR(llvm::StringRef irPath) {
 }
 
 std::optional<std::vector<LutPair>>
+xilinx::aiecc::readLutPairsFromIRText(llvm::StringRef ir) {
+  return readLutPairs(llvm::MemoryBufferRef(ir, "ir"));
+}
+
+std::optional<std::vector<LutPair>>
 xilinx::aiecc::readLutPairsFromObject(llvm::StringRef objectPath,
                                       llvm::StringRef elfPath) {
   if (objectPath.ends_with(".ll") || objectPath.ends_with(".bc")) {

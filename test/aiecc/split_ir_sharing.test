@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # REQUIRES: system-linux
-# RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -UNDEBUG -I%S/../../tools/aiecc -I%S/../../include %S/split_ir_sharing.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags) -Wl,--start-group -lMLIRParser -lMLIRAsmParser -lMLIRBytecodeReader -lMLIRBytecodeWriter -lMLIRFuncDialect -lMLIRCallInterfaces -lMLIRControlFlowInterfaces -lMLIRFunctionInterfaces -lMLIRInferTypeOpInterface -lMLIRSideEffectInterfaces -lMLIRIR -lMLIRSupport $(%LLVM_TOOLS_DIR/llvm-config --libs support --system-libs) -Wl,--end-group %host_link_flags -o %t.exe'
+# RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -UNDEBUG -I%S/../../tools/aiecc -I%S/../../include %S/split_ir_sharing.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags) -Wl,--start-group -lMLIRParser -lMLIRAsmParser -lMLIRBytecodeReader -lMLIRBytecodeWriter -lMLIRFuncDialect -lMLIRDLTIDialect -lMLIRDataLayoutInterfaces -lMLIRCallInterfaces -lMLIRControlFlowInterfaces -lMLIRFunctionInterfaces -lMLIRInferTypeOpInterface -lMLIRSideEffectInterfaces -lMLIRIR -lMLIRSupport $(%LLVM_TOOLS_DIR/llvm-config --libs support --system-libs) -Wl,--end-group %host_link_flags -o %t.exe'
 # RUN: rm -rf %t.ckpt
 # RUN: %t.exe %t.ckpt | FileCheck %s
 # RUN: FileCheck %s --check-prefix=IR --input-file=%t.ckpt/module.mlir

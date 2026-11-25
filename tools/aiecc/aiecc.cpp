@@ -422,8 +422,10 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                 }
                 // AIELLVMLink takes module *contents*, not paths (its `Files`
                 // parameter is a misnomer). parseIR sniffs each buffer, so a
-                // `.bc` artifact works the same as a `.ll`.
-                std::vector<std::string> modules{ir.asString()};
+                // `.bc` artifact works the same as a `.ll`. Both the downgraded
+                // core IR and a Peano `.ll` are Peano's text.
+                std::vector<std::string> modules{
+                    upgradeIRFromPeano(ir.asString())};
                 for (const std::string &link : links.get()) {
                   auto buf = llvm::MemoryBuffer::getFile(link);
                   if (!buf) {
@@ -433,7 +435,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                         << link << "': " << buf.getError().message() << "\n";
                     return mlir::failure();
                   }
-                  modules.push_back((*buf)->getBuffer().str());
+                  modules.push_back(upgradeIRFromPeano((*buf)->getBuffer()));
                 }
                 std::string merged;
                 llvm::raw_string_ostream mergedOs(merged);

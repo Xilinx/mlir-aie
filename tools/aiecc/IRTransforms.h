@@ -49,9 +49,11 @@
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
@@ -59,6 +61,7 @@
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -585,6 +588,8 @@ inline mlir::LogicalResult checkBankPlacement(
   return result;
 }
 
+inline std::string upgradeIRFromPeano(llvm::StringRef ir);
+
 // Inspect both the optimized core IR (including merge-mode kernels) and the
 // embedded IR in separately compiled objects. Missing IR or unresolved table
 // placement is an error, not a successful verification.
@@ -716,8 +721,14 @@ inline mlir::LogicalResult checkLutBankSeparation(
       }
     };
 
+    // Peano's opt wrote the core IR.
     std::string coreIR = irForCore(coreOp);
-    checkPairs(coreIR, xilinx::aiecc::readLutPairsFromIR(coreIR), true);
+    std::optional<std::vector<LutPair>> corePairs;
+    if (auto buffer = llvm::MemoryBuffer::getFile(coreIR)) {
+      corePairs = xilinx::aiecc::readLutPairsFromIRText(
+          upgradeIRFromPeano((*buffer)->getBuffer()));
+    }
+    checkPairs(coreIR, corePairs, true);
     if (auto files = coreOp.getLinkFiles()) {
       for (auto f : files->getAsRange<mlir::StringAttr>()) {
         std::string object = resolvePath(f.getValue());
@@ -763,6 +774,110 @@ patchCoreElfFiles(mlir::ModuleOp src,
 //===----------------------------------------------------------------------===//
 // LLVM-IR text post-processing
 //===----------------------------------------------------------------------===//
+
+// Rewrite the operands of every alias scope domain in textual IR. Domains are
+// found through the scopes that `!alias.scope`/`!noalias` lists and
+// noalias.scope.decl calls name: a loop ID has the same shape as a scope.
+inline void rewriteAliasScopeDomains(
+    std::string &ir,
+    llvm::function_ref<void(std::vector<std::string> &)> rewrite) {
+  struct Node {
+    size_t begin, end, body;
+    std::vector<std::string> ops;
+  };
+  llvm::StringMap<Node> nodes;
+  for (size_t begin = 0; begin < ir.size();) {
+    size_t end = ir.find('\n', begin);
+    if (end == std::string::npos) {
+      end = ir.size();
+    }
+    llvm::StringRef line = llvm::StringRef(ir).slice(begin, end).rtrim();
+    size_t eq = line.find(" = ");
+    llvm::StringRef rest = eq == llvm::StringRef::npos
+                               ? llvm::StringRef()
+                               : line.drop_front(eq + 3);
+    rest.consume_front("distinct ");
+    if (line.starts_with("!") && rest.starts_with("!{") &&
+        rest.ends_with("}")) {
+      Node node{
+          begin, begin + line.size(), begin + (line.size() - rest.size()), {}};
+      llvm::StringRef body = rest.drop_front(2).drop_back();
+      size_t start = 0;
+      int depth = 0;
+      bool quoted = false;
+      for (size_t i = 0; i <= body.size(); ++i) {
+        char c = i < body.size() ? body[i] : ',';
+        if (c == '"') {
+          quoted = !quoted;
+        } else if (!quoted && c == '{') {
+          ++depth;
+        } else if (!quoted && c == '}') {
+          --depth;
+        } else if (!quoted && depth == 0 && c == ',') {
+          llvm::StringRef op = body.slice(start, i).trim();
+          if (!op.empty()) {
+            node.ops.push_back(op.str());
+          }
+          start = i + 1;
+        }
+      }
+      nodes[line.take_front(eq)] = std::move(node);
+    }
+    begin = end + 1;
+  }
+  auto idAt = [&](size_t p) {
+    size_t e = p + 1;
+    while (e < ir.size() && std::isdigit(static_cast<unsigned char>(ir[e]))) {
+      ++e;
+    }
+    return llvm::StringRef(ir).slice(p, e);
+  };
+  llvm::StringSet<> domains;
+  for (llvm::StringRef use :
+       {"!alias.scope !", "!noalias !",
+        "@llvm.experimental.noalias.scope.decl(metadata !"}) {
+    for (size_t p = 0; (p = ir.find(use.str(), p)) != std::string::npos;) {
+      p += use.size() - 1;
+      auto list = nodes.find(idAt(p));
+      if (list == nodes.end()) {
+        continue;
+      }
+      for (const std::string &scopeId : list->second.ops) {
+        auto scope = nodes.find(scopeId);
+        if (scope != nodes.end() && scope->second.ops.size() >= 2 &&
+            nodes.count(scope->second.ops[1])) {
+          domains.insert(scope->second.ops[1]);
+        }
+      }
+    }
+  }
+  std::vector<Node *> edits;
+  for (const auto &domain : domains) {
+    edits.push_back(&nodes[domain.getKey()]);
+  }
+  llvm::sort(edits, [](Node *a, Node *b) { return a->begin > b->begin; });
+  for (Node *node : edits) {
+    rewrite(node->ops);
+    ir.replace(node->body, node->end - node->body,
+               "!{" + llvm::join(node->ops, ", ") + "}");
+  }
+}
+
+// The reverse of downgradeIRForPeano, for Peano's text that aiecc's LLVM parses
+// back: aiecc's LLVM requires an alias scope domain's disjoint flag and does
+// not upgrade text. Bitcode is returned unchanged.
+inline std::string upgradeIRFromPeano(llvm::StringRef ir) {
+  std::string result = ir.str();
+  if (llvm::isBitcode(ir.bytes_begin(), ir.bytes_end())) {
+    return result;
+  }
+  rewriteAliasScopeDomains(result, [](std::vector<std::string> &ops) {
+    if (ops.size() < 2 || !llvm::StringRef(ops[1]).starts_with("i1 ")) {
+      ops.insert(ops.begin() + std::min<size_t>(1, ops.size()), "i1 false");
+    }
+  });
+  return result;
+}
 
 // Strip newer-LLVM features Peano's older opt/llc can't parse. aiecc's LLVM is
 // 24; Peano's is 21, so the text handed between them needs the gap patched.
@@ -847,6 +962,14 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
       p = arg + sizeArg.size();
     }
   }
+  // LLVM 24 gives each alias scope domain a disjoint flag as its second
+  // operand, which Peano rejects. Drop it: `false` is the old meaning, and
+  // reading a disjoint domain as non-disjoint only loses noalias facts.
+  rewriteAliasScopeDomains(result, [](std::vector<std::string> &ops) {
+    if (ops.size() >= 2 && llvm::StringRef(ops[1]).starts_with("i1 ")) {
+      ops.erase(ops.begin() + 1);
+    }
+  });
   replaceTypedLiteral("half -inf", "half 0xHFC00");
   replaceTypedLiteral("half inf", "half 0xH7C00");
   replaceTypedLiteral("half nan", "half 0xH7E00");
@@ -1322,8 +1445,9 @@ struct CanonicalCoreIR {
 inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
   llvm::LLVMContext context;
   llvm::SMDiagnostic error;
+  std::string upgraded = upgradeIRFromPeano(ir);
   std::unique_ptr<llvm::Module> module =
-      llvm::parseIR(llvm::MemoryBufferRef(ir, "core"), error, context);
+      llvm::parseIR(llvm::MemoryBufferRef(upgraded, "core"), error, context);
   if (!module || !module->getModuleInlineAsm().empty() ||
       !module->getComdatSymbolTable().empty() || !module->alias_empty() ||
       !module->ifunc_empty())
