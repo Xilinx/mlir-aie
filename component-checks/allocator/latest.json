@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "45319023712",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45319023712",
- "date": "2026-11-24T03:22:10+00:00",
+ "id": "45539516857",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45539516857",
+ "date": "2026-11-25T03:22:22+00:00",
  "commit": {
-  "id": "ffe27a5880abd11b7b704443653f5a8331caf8c9",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/ffe27a5880abd11b7b704443653f5a8331caf8c9",
-  "message": "Remove temporary comment for transformAiePartitionPDIs (#4100)",
-  "timestamp": "2026-11-23T17:27:26Z"
+  "id": "90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
+  "message": "Speed up control packet delivery (#3936)",
+  "timestamp": "2026-11-25T00:44:22Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V74 80-Core Processor",
+ "device": "AMD EPYC 9V45 96-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "ffe27a5880",
-  "cpu": "AMD EPYC 9V74 80-Core Processor"
+  "commit": "90226ad006",
+  "cpu": "AMD EPYC 9V45 96-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 225.0,
+    "value": 234.7,
     "unit": "s"
    }
   }

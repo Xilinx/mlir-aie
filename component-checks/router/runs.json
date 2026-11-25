@@ -1101,6 +1101,33 @@
     "npu2/properties/seed=207810000+2000/completeness"
    ],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "45539516857",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45539516857",
+   "date": "2026-11-25T03:22:22+00:00",
+   "commit": {
+    "id": "90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
+    "message": "Speed up control packet delivery (#3936)",
+    "timestamp": "2026-11-25T00:44:22Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "90226ad006",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 27,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
