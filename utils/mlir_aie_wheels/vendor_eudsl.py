@@ -93,6 +93,9 @@ def install_eudsl(req_file, target_dir):
             "--no-binary",
             "eudsl-python-extras",
             "--no-cache-dir",
+            # pip builds the sdist's metadata here. An isolated build env cannot
+            # fetch setuptools under PIP_NO_INDEX, so match the install step.
+            "--no-build-isolation",
             "-f",
             find_links,
             "-d",
