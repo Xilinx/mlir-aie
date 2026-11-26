@@ -2269,11 +2269,11 @@
      "main": 1.0,
      "pull_requests": 0.813,
      "flaky": 0.068,
-     "minutes_median": 78.6,
-     "queued_median": 3.7
+     "minutes_median": 77.3,
+     "queued_median": 0.4
     },
     "buildAndTestRyzenAIWindows.yml": {
-     "main": 0.846,
+     "main": 0.857,
      "pull_requests": 0.721,
      "flaky": 0.044,
      "minutes_median": 59.5,
