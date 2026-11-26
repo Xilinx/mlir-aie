@@ -111,20 +111,7 @@ public:
   /// narrower than 4 bytes must be a multiple of the elements in a word, or
   /// the DMA would round its address down.
   void writeBits(const std::string &name, uint32_t bits) {
-    if (unslotted.count(name))
-      throw std::runtime_error("ParameterScratchpad: no command reads "
-                               "parameter '" +
-                               name + "', so it has no slot");
-    auto it = paramMap.find(name);
-    if (it == paramMap.end()) {
-      throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
-                               name + "'");
-    }
-    if (!members.count(name))
-      throw std::runtime_error("ParameterScratchpad: command '" + command +
-                               "' does not read parameter '" + name +
-                               "', whose slot another of its parameters may "
-                               "hold");
+    unsigned index = memberSlot(name);
     if (auto multiple = offsetMultiples.find(name);
         multiple != offsetMultiples.end() &&
         static_cast<int32_t>(bits) % multiple->second)
@@ -141,21 +128,12 @@ public:
             "ParameterScratchpad: value " + std::to_string(value) + " of '" +
             name + "' is outside [" + std::to_string(range->second.first) +
             ", " + std::to_string(range->second.second) + "], " +
-            (repeatParams.count(name)
+            (kinds.at(name) == "repeat"
                  ? "its task's largest repeat count"
                  : "which keeps its DMA transfers within their buffers"));
       values[name] = value;
     }
-    uint8_t idx = it->second;
-    uint32_t encoded = bits;
-    if (coreParams.count(name)) {
-      // core parameters require shift-2 to survive masking of lowest bits by
-      // firmware op
-      encoded = bits << 2;
-    } else if (repeatParams.count(name)) {
-      encoded = bits << 16;
-    }
-    boMap[idx] = encoded;
+    boMap[index] = bits << kindShift(kinds.at(name));
   }
 
   /// Write a typed parameter value. For core-kind parameters, the raw bits
@@ -207,18 +185,37 @@ public:
     return std::vector<std::string>(members.begin(), members.end());
   }
 
+  /// Where firmware reads a parameter, for a runtime that stages the table
+  /// itself or fills a slot from elsewhere: the slot's index, the left shift
+  /// writeBits applies for its kind, the kind and the scalar type.
+  struct Slot {
+    unsigned index;
+    unsigned shift;
+    std::string kind;
+    std::string type;
+  };
+
+  Slot slot(const std::string &name) const {
+    unsigned index = memberSlot(name);
+    const std::string &kind = kinds.at(name);
+    return {index, kindShift(kind), kind, types.at(name)};
+  }
+
+  /// The number of 32-bit slots the scratchpad of `paramsPath` holds, for a
+  /// caller that allocates the buffer.
+  static unsigned slotCount(const std::string &paramsPath) {
+    std::ifstream file(paramsPath);
+    unsigned numParams = 0, numSlots = 0;
+    if (!(file >> numParams >> numSlots))
+      throw std::runtime_error(
+          "ParameterScratchpad: missing parameter and slot counts in '" +
+          paramsPath + "'");
+    return numSlots;
+  }
+
   /// Read back a parameter's current encoded value (for debugging).
   uint32_t read(const std::string &name) const {
-    if (unslotted.count(name))
-      throw std::runtime_error("ParameterScratchpad: no command reads "
-                               "parameter '" +
-                               name + "', so it has no slot");
-    auto it = paramMap.find(name);
-    if (it == paramMap.end()) {
-      throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
-                               name + "'");
-    }
-    return boMap[it->second];
+    return boMap[memberSlot(name)];
   }
 
 private:
@@ -228,9 +225,9 @@ private:
   uint32_t *boMap = nullptr;
   size_t scratchpadSizeBytes = 0;
   std::unordered_map<std::string, uint8_t> paramMap;
-  std::unordered_set<std::string> unslotted;    // params no command reads
-  std::unordered_set<std::string> coreParams;   // params with kind="core"
-  std::unordered_set<std::string> repeatParams; // params with kind="repeat"
+  std::unordered_set<std::string> unslotted; // params no command reads
+  // Each parameter's kind ("core", "addr" or "repeat") and scalar type.
+  std::unordered_map<std::string, std::string> kinds, types;
   std::unordered_map<std::string, std::pair<int32_t, int32_t>> ranges;
   std::unordered_map<std::string, int32_t> values; // of the ranged params
   // Offset parameters into elements narrower than a word, by the element
@@ -246,6 +243,32 @@ private:
   std::vector<std::string> commandNames; // in params.txt order
   std::string command;
   std::unordered_set<std::string> members;
+
+  /// A core reads its slot shifted back down, as firmware's UPDATE_REG Incr
+  /// masks the low two bits; a repeat count sits in the task queue word's
+  /// repeat field; an address is added as it is.
+  static unsigned kindShift(const std::string &kind) {
+    return kind == "core" ? 2 : kind == "repeat" ? 16 : 0;
+  }
+
+  /// The slot of `name`, one of this command's parameters. Another command's
+  /// may share a slot with one of this command's, so it is refused too.
+  unsigned memberSlot(const std::string &name) const {
+    if (unslotted.count(name))
+      throw std::runtime_error("ParameterScratchpad: no command reads "
+                               "parameter '" +
+                               name + "', so it has no slot");
+    auto it = paramMap.find(name);
+    if (it == paramMap.end())
+      throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
+                               name + "'");
+    if (!members.count(name))
+      throw std::runtime_error("ParameterScratchpad: command '" + command +
+                               "' does not read parameter '" + name +
+                               "', whose slot another of its parameters may "
+                               "hold");
+    return it->second;
+  }
 
   void selectCommand(const std::string &name, const std::string &path) {
     command = name;
@@ -340,14 +363,11 @@ private:
                                    " slots of '" + path + "'");
         paramMap[name] = static_cast<uint8_t>(idx);
       }
-      if (kind != "core" && kind != "addr" && kind != "repeat") {
+      if (kind != "core" && kind != "addr" && kind != "repeat")
         throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind +
                                  "' for parameter '" + name + "'");
-      } else if (kind == "core") {
-        coreParams.insert(name);
-      } else if (kind == "repeat") {
-        repeatParams.insert(name);
-      }
+      kinds[name] = kind;
+      types[name] = type;
       if (min != "-") {
         try {
           ranges[name] = {std::stoi(min), std::stoi(max)};

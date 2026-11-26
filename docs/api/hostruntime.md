@@ -129,3 +129,9 @@ mkdocstrings, for example:
 | `XRTTensor` | [`xrtruntime.tensor`](../../python/utils/hostruntime/xrtruntime/tensor.py) | Tensor backed by NPU/CPU-accessible memory managed with PyXRT. |
 | `XrtTransport` | [`xrtruntime.tensor`](../../python/utils/hostruntime/xrtruntime/tensor.py) | `Transport` for an XRT allocation; reconciles a range through a derived sub-buffer. |
 | `ParameterScratchpad` | [`xrtruntime.parameter_scratchpad`](../../python/utils/hostruntime/xrtruntime/parameter_scratchpad.py) | Write named runtime parameters to a run's ctrl scratchpad; the lower-level form of an `iron.jit` call's `parameters=`. |
+
+The encoding itself needs no device or runtime:
+
+| Symbol | Module | Summary |
+|--------|--------|---------|
+| `ParameterScratchpad` | [`parameter_scratchpad`](../../python/utils/hostruntime/parameter_scratchpad.py) | A command's scratchpad as host words (`table`), encoded as firmware reads them, with each parameter's `slot` (index, shift, kind, type) for a runtime that stages the table itself. |

@@ -29,8 +29,8 @@ updates:
       github-actions-major:
         update-types: ["major"]
 
-  # All pip manifests share a build toolchain (nanobind, pybind11, cmake,
-  # setuptools, numpy, ...) that must resolve to the same version across every
+  # All pip manifests share a build toolchain (nanobind, cmake, setuptools,
+  # numpy, ...) that must resolve to the same version across every
   # directory to stay ABI-compatible with the prebuilt distro wheels. They are
   # covered by one entry using the plural `directories` key, combined with the
   # `group-by` grouping below, so a shared-dependency bump is synchronized

@@ -6,41 +6,57 @@
 //===----------------------------------------------------------------------===//
 
 #include <cstdint>
+#include <string>
 
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
+#include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
 
 #include "parameter_scratchpad.h"
 
-namespace py = pybind11;
+namespace nb = nanobind;
+using namespace nb::literals;
 
-PYBIND11_MODULE(_parameter_scratchpad, m) {
+using test_utils::ParameterScratchpad;
+
+// Any writable, C-contiguous host buffer: a numpy table, or a mapped buffer
+// object's memoryview. The scratchpad keeps its pointer, so a buffer is taken
+// as it is (noconvert): a copy made to meet these would be written instead.
+using HostBuffer = nb::ndarray<nb::c_contig, nb::device::cpu>;
+
+NB_MODULE(_parameter_scratchpad, m) {
   m.doc() = "Python bindings for test_utils::ParameterScratchpad";
 
-  py::class_<test_utils::ParameterScratchpad>(m, "ParameterScratchpad")
-      .def(py::init([](py::buffer buf, const std::string &paramsPath,
-                       const std::string &command) {
-             py::buffer_info info = buf.request(/*writable=*/true);
-             if (reinterpret_cast<uintptr_t>(info.ptr) % alignof(uint32_t) != 0)
-               throw py::value_error("buffer must be 4-byte aligned");
-             if (info.itemsize * info.size < 4)
-               throw py::value_error("buffer too small: need at least 4 bytes");
-             auto *ptr = static_cast<uint32_t *>(info.ptr);
-             return new test_utils::ParameterScratchpad(
-                 ptr, static_cast<size_t>(info.itemsize) * info.size,
-                 paramsPath, command);
-           }),
-           py::arg("buffer"), py::arg("params_path"), py::arg("command") = "",
-           py::keep_alive<1, 2>()) // prevent GC of buffer while alive
+  nb::class_<ParameterScratchpad::Slot>(m, "Slot")
+      .def_ro("index", &ParameterScratchpad::Slot::index)
+      .def_ro("shift", &ParameterScratchpad::Slot::shift)
+      .def_ro("kind", &ParameterScratchpad::Slot::kind)
+      .def_ro("type", &ParameterScratchpad::Slot::type);
+
+  nb::class_<ParameterScratchpad>(m, "ParameterScratchpad")
+      .def(
+          "__init__",
+          [](ParameterScratchpad *self, HostBuffer buf,
+             const std::string &paramsPath, const std::string &command) {
+            if (reinterpret_cast<uintptr_t>(buf.data()) % alignof(uint32_t))
+              throw nb::value_error("buffer must be 4-byte aligned");
+            new (self) ParameterScratchpad(static_cast<uint32_t *>(buf.data()),
+                                           buf.nbytes(), paramsPath, command);
+          },
+          "buffer"_a.noconvert(), "params_path"_a, "command"_a = "",
+          nb::keep_alive<1, 2>()) // prevent GC of buffer while alive
       .def(
           "write_bytes",
-          [](test_utils::ParameterScratchpad &self, const std::string &name,
-             py::bytes data) {
-            std::string s = data;
-            self.writeBytes(name, s.data(), s.size());
+          [](ParameterScratchpad &self, const std::string &name,
+             nb::bytes data) {
+            self.writeBytes(name, data.c_str(), data.size());
           },
-          py::arg("name"), py::arg("data"))
-      .def("validate", &test_utils::ParameterScratchpad::validate)
-      .def("names", &test_utils::ParameterScratchpad::names)
-      .def("read", &test_utils::ParameterScratchpad::read, py::arg("name"));
+          "name"_a, "data"_a)
+      .def("validate", &ParameterScratchpad::validate)
+      .def("names", &ParameterScratchpad::names)
+      .def("read", &ParameterScratchpad::read, "name"_a)
+      .def("slot", &ParameterScratchpad::slot, "name"_a)
+      .def_static("slot_count", &ParameterScratchpad::slotCount,
+                  "params_path"_a);
 }
