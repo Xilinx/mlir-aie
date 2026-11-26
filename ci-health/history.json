@@ -2262,7 +2262,7 @@
     "merged": 48,
     "hours_median": 13.9,
     "hours_p90": 154.3,
-    "open": 46
+    "open": 47
    },
    "critical": {
     "buildAndTestRyzenAI.yml": {
@@ -2281,21 +2281,21 @@
     },
     "buildAndTestMulti.yml": {
      "main": 1.0,
-     "pull_requests": 0.868,
+     "pull_requests": 0.869,
      "flaky": 0.048,
      "minutes_median": 28.7,
      "queued_median": 0.2
     },
     "buildAndTestPythons.yml": {
      "main": 1.0,
-     "pull_requests": 0.864,
+     "pull_requests": 0.865,
      "flaky": 0.048,
      "minutes_median": 25.4,
      "queued_median": 0.2
     },
     "lintAndFormat.yml": {
      "main": 1.0,
-     "pull_requests": 0.899,
+     "pull_requests": 0.9,
      "flaky": 0.048,
      "minutes_median": 2.5,
      "queued_median": 0.2
