@@ -1083,6 +1083,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "45748426458",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45748426458",
+   "date": "2026-11-26T03:21:50+00:00",
+   "commit": {
+    "id": "90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
+    "message": "Speed up control packet delivery (#3936)",
+    "timestamp": "2026-11-25T00:44:22Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V74 80-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "90226ad006",
+    "cpu": "AMD EPYC 9V74 80-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

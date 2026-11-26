@@ -1,0 +1,256 @@
+{
+ "schema": 1,
+ "target": "router",
+ "id": "45748426458",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45748426458",
+ "date": "2026-11-26T03:21:50+00:00",
+ "commit": {
+  "id": "90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
+  "message": "Speed up control packet delivery (#3936)",
+  "timestamp": "2026-11-25T00:44:22Z"
+ },
+ "event": "schedule",
+ "pmode": null,
+ "device": "AMD EPYC 9V74 80-Core Processor",
+ "device_raw": null,
+ "provenance": {
+  "commit": "90226ad006",
+  "cpu": "AMD EPYC 9V74 80-Core Processor"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 27,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "npu1": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0153,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 14.913,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 12.17,
+    "unit": "ms"
+   },
+   "strict_misses": {
+    "value": 0,
+    "unit": "designs"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  },
+  "npu2": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.0134,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 15.184,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 12.95,
+    "unit": "ms"
+   },
+   "strict_misses": {
+    "value": 2,
+    "unit": "designs"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  },
+  "xcvc1902": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unrouted": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "routings"
+   },
+   "hop_ratio": {
+    "value": 1.015,
+    "unit": "\u00d7"
+   },
+   "amsels_per_design": {
+    "value": 17.76,
+    "unit": "amsels"
+   },
+   "ms_per_design": {
+    "value": 176.22,
+    "unit": "ms"
+   },
+   "strict_misses": {
+    "value": 17,
+    "unit": "designs"
+   },
+   "failed_mutations": {
+    "value": 0,
+    "unit": "cases"
+   },
+   "survived_corruptions": {
+    "value": 0,
+    "unit": "corruptions"
+   }
+  }
+ },
+ "builds": {},
+ "detail": [
+  {
+   "run": "lit",
+   "tests": 2,
+   "failed": []
+  },
+  {
+   "device": "npu1",
+   "run": "properties",
+   "first_seed": 207830000,
+   "seeds": 2000,
+   "partial": false,
+   "seeds_done": 2000,
+   "failed": []
+  },
+  {
+   "device": "npu1",
+   "run": "hops-on",
+   "first_seed": 207830000,
+   "seeds": 400,
+   "partial": false,
+   "seeds_done": 400,
+   "killed": 1918,
+   "survived": 0,
+   "failures": 0,
+   "strict_misses": 0,
+   "why": []
+  },
+  {
+   "device": "npu1",
+   "run": "hops-off",
+   "first_seed": 207830000,
+   "seeds": 400,
+   "partial": false,
+   "seeds_done": 400,
+   "killed": 1914,
+   "survived": 0,
+   "failures": 0,
+   "strict_misses": 0,
+   "why": []
+  },
+  {
+   "device": "npu2",
+   "run": "properties",
+   "first_seed": 207830000,
+   "seeds": 2000,
+   "partial": false,
+   "seeds_done": 2000,
+   "failed": []
+  },
+  {
+   "device": "npu2",
+   "run": "hops-on",
+   "first_seed": 207830000,
+   "seeds": 400,
+   "partial": false,
+   "seeds_done": 400,
+   "killed": 1922,
+   "survived": 0,
+   "failures": 0,
+   "strict_misses": 1,
+   "why": []
+  },
+  {
+   "device": "npu2",
+   "run": "hops-off",
+   "first_seed": 207830000,
+   "seeds": 400,
+   "partial": false,
+   "seeds_done": 400,
+   "killed": 1914,
+   "survived": 0,
+   "failures": 0,
+   "strict_misses": 1,
+   "why": []
+  },
+  {
+   "device": "xcvc1902",
+   "run": "properties",
+   "first_seed": 207830000,
+   "seeds": 500,
+   "partial": false,
+   "seeds_done": 500,
+   "failed": []
+  },
+  {
+   "device": "xcvc1902",
+   "run": "hops-on",
+   "first_seed": 207830000,
+   "seeds": 100,
+   "partial": false,
+   "seeds_done": 100,
+   "killed": 428,
+   "survived": 0,
+   "failures": 0,
+   "strict_misses": 4,
+   "why": []
+  },
+  {
+   "device": "xcvc1902",
+   "run": "hops-off",
+   "first_seed": 207830000,
+   "seeds": 100,
+   "partial": false,
+   "seeds_done": 100,
+   "killed": 427,
+   "survived": 0,
+   "failures": 0,
+   "strict_misses": 12,
+   "why": []
+  }
+ ]
+}
