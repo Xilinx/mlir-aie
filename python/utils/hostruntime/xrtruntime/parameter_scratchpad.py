@@ -5,9 +5,9 @@
 #
 """Host-side runtime for writing named parameters to AIE cores.
 
-Writes named parameters to AIE cores via the scratchpad mechanism.
-Thin Python wrapper around the C++ ``test_utils::ParameterScratchpad``
-class (exposed via pybind11).
+Writes named parameters to AIE cores via the scratchpad mechanism: the
+host-word encoding of ``aie.utils.hostruntime.parameter_scratchpad``, over
+an XRT run's ctrl scratchpad.
 
 Usage:
 
@@ -30,15 +30,12 @@ with that command's parameters (``names``) only.
 """
 
 import ctypes
-import struct
 from pathlib import Path
 
 import numpy as np
 import pyxrt  # pyright: ignore[reportMissingImports]
-from aie._mlir_libs._parameter_scratchpad import (  # pyright: ignore[reportMissingImports]
-    ParameterScratchpad as _ParameterScratchpadImpl,
-)
 
+from .. import parameter_scratchpad
 from .device import acquire_device
 
 # PyCapsule_New(pointer, name, destructor): pyxrt.ext.bo takes a host pointer
@@ -48,22 +45,7 @@ _pointer_capsule = ctypes.PYFUNCTYPE(
 )(("PyCapsule_New", ctypes.pythonapi))
 
 
-def _to_bytes(value) -> bytes:
-    """Convert any scalar to its little-endian in-memory bytes.
-
-    This helper is required to support native Python `int` and convert them to the 4-byte little-endian format assumed on the cores.
-    """
-    if isinstance(value, int):
-        assert -0x80000000 <= value <= 0xFFFFFFFF
-        return value.to_bytes(4, "little", signed=value < 0)
-    if isinstance(value, float):
-        return struct.pack("<f", value)
-    if isinstance(value, (np.generic, np.ndarray)):
-        return value.tobytes()
-    raise TypeError(f"unsupported parameter type: {type(value)}")
-
-
-class ParameterScratchpad:
+class ParameterScratchpad(parameter_scratchpad.ParameterScratchpad):
     """Write named runtime parameters to the NPU scratchpad buffer."""
 
     def __init__(
@@ -86,31 +68,9 @@ class ParameterScratchpad:
         """
         self._bo = run.get_ctrl_scratchpad_bo()
         self._mv = self._bo.map()
-        self._impl = _ParameterScratchpadImpl(self._mv, str(params_path), command)
+        super().__init__(params_path, command, buffer=self._mv)
         self._device = device if device is not None else acquire_device()
         self._alias = None
-
-    @property
-    def names(self) -> frozenset[str]:
-        """The parameters this scratchpad holds: its command's, or all."""
-        return frozenset(self._impl.names())
-
-    def write(self, name: str, value) -> None:
-        """Write a parameter value to the scratchpad.
-
-        Args:
-            name: The parameter name (must match a name in the params file).
-            value: A scalar value — ``int``, or any type with a ``tobytes()``
-                   method (``np.int32``, ``bfloat16``, etc.).
-
-        Raises:
-            ValueError: `name` is a DMA offset or length parameter and `value`
-                is outside the range that keeps its transfers within their
-                buffers, or an offset into elements narrower than 4 bytes
-                that is not a multiple of the elements in a word.
-            RuntimeError: `name` is not one of ``names``.
-        """
-        self._impl.write_bytes(name, _to_bytes(value))
 
     def sync(self) -> None:
         """Sync the scratchpad buffer to device.
@@ -119,12 +79,8 @@ class ParameterScratchpad:
             ValueError: An offset and a length parameter that one DMA transfer
                 uses together take it past the end of its buffer.
         """
-        self._impl.validate()
+        self.validate()
         self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
-
-    def read(self, name: str) -> int:
-        """Read back a parameter's current decoded value (for debugging)."""
-        return self._impl.read(name)
 
     def sync_from_device(self) -> None:
         """Sync from the device, so ``read`` sees what a transfer into ``alias`` wrote."""

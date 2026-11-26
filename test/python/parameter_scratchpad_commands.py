@@ -93,6 +93,23 @@ def main():
     except RuntimeError as error:
         print("refused:", error)
 
+    # CHECK: refused slot: ParameterScratchpad: command 'main:first' does not read parameter 'b'
+    # CHECK: refused read: ParameterScratchpad: command 'main:first' does not read parameter 'b'
+    for method in ("slot", "read"):
+        try:
+            getattr(params, method)("b")
+        except RuntimeError as error:
+            print(f"refused {method}:", error)
+
+    # A strided buffer is refused, not copied: the scratchpad would write the copy.
+    # CHECK: strided: TypeError
+    try:
+        ParameterScratchpad(
+            np.zeros(4, dtype=np.uint32)[::2], args.params, "main:first"
+        )
+    except TypeError as error:
+        print("strided:", type(error).__name__)
+
     # CHECK: refused: ParameterScratchpad: no command reads parameter 'unused', so it has no slot
     try:
         params.write_bytes("unused", np.int32(1).tobytes())
