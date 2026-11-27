@@ -183,6 +183,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 #define XAIE_SHIM_ROW 0
 #define XAIE_MEM_TILE_ROW_START 1
 #define XAIE_PARTITION_BASE_ADDR 0x0
+// Base address of the AIE array on Versal devices, as used by
+// AIETargetXAIEV2.cpp. CDO addresses for these devices are absolute.
+#define XAIE_VERSAL_BASE_ADDR 0x20000000000ULL
 
 #define NPI_ADDR 0x0
 #define NUM_LOCKS 16
@@ -245,6 +248,10 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
   size_t partitionNumCols = tm.columns();
   size_t deviceRows = tm.rows();
   size_t deviceCols = tm.columns() + partitionStartCol;
+  bool isNPU = tm.hasProperty(AIE::AIETargetModel::IsNPU);
+  uint64_t baseAddr = isNPU ? XAIE_BASE_ADDR : XAIE_VERSAL_BASE_ADDR;
+  uint64_t partBaseAddr =
+      isNPU ? XAIE_PARTITION_BASE_ADDR : XAIE_VERSAL_BASE_ADDR;
 
   // Don't put this in the target model, because it's XAIE specific.
   unsigned char devGen = XAIE_DEV_GEN_AIE;
@@ -253,9 +260,9 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     devGen = XAIE_DEV_GEN_AIE;
     break;
   case AIEArch::AIE2:
-    // FIXME: What if we don't have an IPU?  aie-codegen
-    // models non-IPU devices differently.
-    devGen = XAIE_DEV_GEN_AIE2IPU;
+    // aie-codegen models non-NPU (Versal AIE-ML) devices as AIEML, as
+    // AIETargetXAIEV2.cpp does.
+    devGen = isNPU ? XAIE_DEV_GEN_AIE2IPU : XAIE_DEV_GEN_AIEML;
     break;
   case AIEArch::AIE2p:
     devGen = XAIE_DEV_GEN_AIE2P_STRIX_B0;
@@ -270,7 +277,7 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
   }
   aiert->configPtr = XAie_Config{
       /*AieGen*/ devGen,
-      /*BaseAddr*/ XAIE_BASE_ADDR,
+      /*BaseAddr*/ baseAddr,
       /*ColShift*/ static_cast<uint8_t>(tm.getColumnShift()),
       /*RowShift*/ static_cast<uint8_t>(tm.getRowShift()),
       /*NumRows*/ static_cast<uint8_t>(deviceRows),
@@ -288,8 +295,7 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
   XAie_InstDeclare(_devInst, &aiert->configPtr);
   aiert->devInst = _devInst;
   TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &aiert->devInst,
-                           XAIE_PARTITION_BASE_ADDR, partitionStartCol,
-                           partitionNumCols);
+                           partBaseAddr, partitionStartCol, partitionNumCols);
   TRY_XAIE_API_FATAL_ERROR(XAie_CfgInitialize, &aiert->devInst,
                            &aiert->configPtr);
   TRY_XAIE_API_FATAL_ERROR(XAie_UpdateNpiAddr, &aiert->devInst, NPI_ADDR);
@@ -733,8 +739,9 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     int32_t col = switchboxOp.colIndex();
     int32_t row = switchboxOp.rowIndex();
     XAie_LocType tileLoc = XAie_TileLoc(col, row);
-    assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
-           "Only NPU currently supported");
+    assert((targetModel.hasProperty(AIETargetModel::IsNPU) ||
+            targetModel.getTargetArch() == AIEArch::AIE2) &&
+           "Only NPU and AIE-ML (AIE2) devices currently supported");
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {

@@ -146,10 +146,14 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   const AIETargetModel &targetModel =
       (const AIETargetModel &)targetOp.getTargetModel();
 
-  // things like XAIE_MEM_TILE_ROW_START and the missing
-  // shim dma on tile (0,0) are hard-coded assumptions about NPU...
-  assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
-         "Only NPU currently supported");
+  // Things like XAIE_MEM_TILE_ROW_START and the missing shim DMA on tile
+  // (0,0) are hard-coded assumptions about NPU devices. AIE-ML (AIE2) Versal
+  // devices share them (shim row 0, memory tiles from row 1, shim PL tile in
+  // column 0); AIERTControl selects their device generation and array base
+  // address.
+  assert((targetModel.hasProperty(AIETargetModel::IsNPU) ||
+          targetModel.getTargetArch() == AIEArch::AIE2) &&
+         "Only NPU and AIE-ML (AIE2) devices currently supported");
 
   AIERTControl ctl(targetModel);
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))

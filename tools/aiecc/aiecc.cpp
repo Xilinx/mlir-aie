@@ -2022,12 +2022,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [](const Item<OpInModule<DeviceOp>> &item,
          Item<Directory> &out) -> mlir::LogicalResult {
         DeviceOp d = item.get().op;
-        // CDO (and the PDI/xclbin built from it) is NPU-only
+        // CDO: NPU and AIE-ML (AIE2) devices. The PDI/xclbin built from it
+        // are NPU-only (checked in the BIF step).
         if (!d.getTargetModel().hasProperty(
-                xilinx::AIE::AIETargetModel::IsNPU)) {
-          llvm::errs() << "aiecc: --get-cdo/-pdi/-xclbin require an NPU "
+                xilinx::AIE::AIETargetModel::IsNPU) &&
+            d.getTargetModel().getTargetArch() != xilinx::AIE::AIEArch::AIE2) {
+          llvm::errs() << "aiecc: --get-cdo requires an NPU or AIE-ML (AIE2) "
                           "device, but '"
-                       << d.getSymName() << "' is not NPU\n";
+                       << d.getSymName() << "' is neither\n";
           return mlir::failure();
         }
         const std::string &cdoDir = out.filePath;
@@ -2058,6 +2060,15 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                  const Item<Directory> &cdoItem,
                  Item<std::string> &out) -> mlir::LogicalResult {
                 DeviceOp d = devItem.get().op;
+                // The BIF (id_code, image id) and the xclbin built from the
+                // PDI are NPU-specific.
+                if (!d.getTargetModel().hasProperty(
+                        xilinx::AIE::AIETargetModel::IsNPU)) {
+                  llvm::errs() << "aiecc: --get-pdi/-xclbin are NPU-only, "
+                                  "but '"
+                               << d.getSymName() << "' is not an NPU device\n";
+                  return mlir::failure();
+                }
                 // The real path drops Windows 8.3 short names
                 // (ADMINI~1), which bootgen cannot read.
                 llvm::SmallString<256> dir;
