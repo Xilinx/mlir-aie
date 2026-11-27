@@ -1,9 +1,9 @@
 {
  "schema": 1,
  "target": "router",
- "id": "45748426458",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45748426458",
- "date": "2026-11-26T03:21:50+00:00",
+ "id": "45933781111",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45933781111",
+ "date": "2026-11-27T03:22:24+00:00",
  "commit": {
   "id": "90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
   "url": "https://github.com/Xilinx/mlir-aie/commit/90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
@@ -39,15 +39,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0153,
+    "value": 1.0176,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 14.913,
+    "value": 15.091,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 12.17,
+    "value": 9.9,
     "unit": "ms"
    },
    "strict_misses": {
@@ -77,19 +77,19 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0134,
+    "value": 1.0178,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.184,
+    "value": 15.03,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 12.95,
+    "value": 11.67,
     "unit": "ms"
    },
    "strict_misses": {
-    "value": 2,
+    "value": 3,
     "unit": "designs"
    },
    "failed_mutations": {
@@ -115,19 +115,19 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.015,
+    "value": 1.0135,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 17.76,
+    "value": 17.584,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 176.22,
+    "value": 155.27,
     "unit": "ms"
    },
    "strict_misses": {
-    "value": 17,
+    "value": 1,
     "unit": "designs"
    },
    "failed_mutations": {
@@ -150,7 +150,7 @@
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 2000,
    "partial": false,
    "seeds_done": 2000,
@@ -159,11 +159,11 @@
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 400,
    "partial": false,
    "seeds_done": 400,
-   "killed": 1918,
+   "killed": 1928,
    "survived": 0,
    "failures": 0,
    "strict_misses": 0,
@@ -172,11 +172,11 @@
   {
    "device": "npu1",
    "run": "hops-off",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 400,
    "partial": false,
    "seeds_done": 400,
-   "killed": 1914,
+   "killed": 1921,
    "survived": 0,
    "failures": 0,
    "strict_misses": 0,
@@ -185,7 +185,7 @@
   {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 2000,
    "partial": false,
    "seeds_done": 2000,
@@ -194,24 +194,24 @@
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 400,
    "partial": false,
    "seeds_done": 400,
-   "killed": 1922,
+   "killed": 1909,
    "survived": 0,
    "failures": 0,
-   "strict_misses": 1,
+   "strict_misses": 2,
    "why": []
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 400,
    "partial": false,
    "seeds_done": 400,
-   "killed": 1914,
+   "killed": 1901,
    "survived": 0,
    "failures": 0,
    "strict_misses": 1,
@@ -220,7 +220,7 @@
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 500,
    "partial": false,
    "seeds_done": 500,
@@ -229,27 +229,27 @@
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 100,
    "partial": false,
    "seeds_done": 100,
-   "killed": 428,
+   "killed": 420,
    "survived": 0,
    "failures": 0,
-   "strict_misses": 4,
+   "strict_misses": 0,
    "why": []
   },
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207830000,
+   "first_seed": 207840000,
    "seeds": 100,
    "partial": false,
    "seeds_done": 100,
-   "killed": 427,
+   "killed": 418,
    "survived": 0,
    "failures": 0,
-   "strict_misses": 12,
+   "strict_misses": 0,
    "why": []
   }
  ]
