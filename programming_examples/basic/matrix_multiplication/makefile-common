@@ -87,11 +87,15 @@ ${trace_xclbin_target} ${trace_insts_target} &: ${srcdir}/${aie_py_src}
 	mkdir -p $(@D)
 	python3 $< ${aieargs} --trace_size=${trace_size} --xclbin-path=${trace_xclbin_target} --insts-path=${trace_insts_target}
 
+# -DAIE_BUILD_DESIGN=OFF for the same reason the shared build_host_exe passes it:
+# this family's CMakeLists now calls add_aie_design, whose ${target}_xclbin is an
+# ALL target. Without the flag `cmake --build .` below would JIT the design a
+# second time, on top of the ${xclbin_target} rule above that make already drives.
 ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=${dtype_in_cpp} -DDTYPE_OUT=${dtype_out_cpp} -DDTYPE_ACC=${dtype_acc_cpp}" \
-		cmake `${getwslpath} ${srcdir}/..` -D CMAKE_C_COMPILER=${CC} -D CMAKE_CXX_COMPILER=${CXX} -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
+		cmake `${getwslpath} ${srcdir}/..` -D CMAKE_C_COMPILER=${CC} -D CMAKE_CXX_COMPILER=${CXX} -DTARGET_NAME=${targetname} -DAIE_BUILD_DESIGN=OFF -Dsubdir=${subdir}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@

@@ -47,6 +47,32 @@ if(CASE STREQUAL "all")
                    TIMEOUT 42)
   add_aie_run_test(NAME t_standalone PY design.py PY_STANDALONE RUN_ARGS --trace)
 
+elseif(CASE STREQUAL "multi")
+  # Two designs in one directory, which is only possible because OUTPUT_PREFIX
+  # keeps them off each other's artifact names (basic/packet_switch is the real
+  # instance). The run tests then have to say which one they mean.
+  add_aie_design(TARGET d_add PY design.py OUTPUT_PREFIX add ARGS --op add)
+  add_aie_design(TARGET d_mult PY design.py OUTPUT_PREFIX mult ARGS --op mult)
+
+  add_aie_run_test(NAME t_add EXE host_exe XCLBIN add.xclbin INSTS add_insts.bin)
+  # NO_DEFAULT_ARGS: the host takes its artifacts positionally, so -x/-i/-k must
+  # not be synthesized -- but they are still asserted through REQUIRED_FILES.
+  add_aie_run_test(NAME t_mult EXE host_exe NO_DEFAULT_ARGS
+                   XCLBIN mult.xclbin INSTS mult_insts.bin
+                   RUN_ARGS 1 "${CMAKE_CURRENT_BINARY_DIR}/mult_insts.bin"
+                            "${CMAKE_CURRENT_BINARY_DIR}/mult.xclbin")
+
+elseif(CASE STREQUAL "mlir")
+  # The non-@iron.jit shape: the design script prints MLIR and aiecc turns it
+  # into the same artifacts, with kernel objects compiled alongside.
+  add_aie_kernel_object(OUTPUT kernel_a.o SOURCE kernel.cc DEFINES GROUPA)
+  add_aie_kernel_object(OUTPUT kernel_b.o SOURCE kernel.cc DEFINES GROUPB)
+  add_aie_mlir_design(TARGET host_exe PY design.py EMIT_MLIR_FLAG --emit-mlir
+                      INPUT_WITH_ADDRESSES
+                      ARGS --fixture-arg 7 AIECC_ARGS -v
+                      OBJECTS kernel_a.o kernel_b.o)
+  add_aie_run_test(NAME t_mlir PY host.py)
+
 elseif(CASE STREQUAL "err_design_missing_py")
   add_aie_design(TARGET host_exe)
 
@@ -91,6 +117,36 @@ elseif(CASE STREQUAL "err_run_use_elf_without_elf_design")
   # directory ever writes final.elf, so USE_ELF cannot be satisfied.
   add_aie_design(TARGET host_exe PY design.py)
   add_aie_run_test(NAME t EXE host_exe USE_ELF)
+
+elseif(CASE STREQUAL "err_run_ambiguous_elf")
+  # Two ELF designs: USE_ELF no longer names one file, so it has to be spelled out.
+  add_aie_design(TARGET d_add PY design.py ELF OUTPUT_PREFIX add)
+  add_aie_design(TARGET d_mult PY design.py ELF OUTPUT_PREFIX mult)
+  add_aie_run_test(NAME t EXE host_exe USE_ELF)
+
+elseif(CASE STREQUAL "err_run_bad_xclbin")
+  # An artifact name nothing emits. Without the check the test still registers,
+  # and the only symptom is an abort inside XRT naming neither the test nor the typo.
+  add_aie_design(TARGET host_exe PY design.py OUTPUT_PREFIX add)
+  add_aie_run_test(NAME t EXE host_exe XCLBIN mult.xclbin)
+
+elseif(CASE STREQUAL "err_run_elf_and_insts")
+  add_aie_design(TARGET host_exe PY design.py ELF)
+  add_aie_run_test(NAME t EXE host_exe USE_ELF INSTS final.elf)
+
+elseif(CASE STREQUAL "err_run_no_default_args_with_kernel")
+  add_aie_design(TARGET host_exe PY design.py)
+  add_aie_run_test(NAME t EXE host_exe NO_DEFAULT_ARGS KERNEL MY_KERNEL)
+
+elseif(CASE STREQUAL "err_run_standalone_with_artifacts")
+  add_aie_design(TARGET host_exe PY design.py)
+  add_aie_run_test(NAME t PY design.py PY_STANDALONE XCLBIN final.xclbin)
+
+elseif(CASE STREQUAL "err_kernel_bad_source")
+  add_aie_kernel_object(OUTPUT kernel_a.o SOURCE no_such_kernel.cc)
+
+elseif(CASE STREQUAL "err_mlir_missing_py")
+  add_aie_mlir_design(TARGET host_exe)
 
 else()
   message(FATAL_ERROR "cmake_helpers: unknown CASE '${CASE}'")

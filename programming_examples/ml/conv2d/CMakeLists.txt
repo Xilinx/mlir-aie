@@ -3,59 +3,53 @@
 #
 
 # parameters
-# -DOpenCV_DIR: Path to OpenCV install
 # -DXRT_INC_DIR: Full path to src/runtime_src/core/include in XRT cloned repo
 # -DXRT_LIB_DIR: Path to xrt_coreutil.lib
 # -DTARGET_NAME: Target name to be built
+# -DFUSE_RELU: Fuse the ReLU into the conv kernel (Makefile `fuse_relu`)
 
 cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
+set(TARGET_NAME conv2d CACHE STRING "Target to be built")
+
 include(../../mlir_aie_init.cmake)
 mlir_aie_init_example()
-
-if(NOT CMAKE_HOST_WIN32)
-    set(OpenCV_DIR /usr/include/opencv4 CACHE STRING "Path to OpenCV install")
-else()
-    set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
-endif()
-
-set(EDGEDETECT_WIDTH 1920 CACHE STRING "image width")
-set(EDGEDETECT_HEIGHT 1080 CACHE STRING "image height")
-
 project(${ProjectName})
 include(../../common.cmake)
 
-# Find packages
-find_package(OpenCV REQUIRED)
-message("opencv library path: ${OpenCV_LIB_PATH}")
-message("opencv libs: ${OpenCV_LIBS}")
+# No add_executable() here: this example has no C++ host, only test.py. What
+# this file held before was a copy of the vision template -- OpenCV, an
+# EDGEDETECT_WIDTH/HEIGHT pair and a test.cpp that has never existed in this
+# directory -- so it could not be configured at all. The project() call is
+# still needed for common.cmake's find_package(XRT).
 
-add_executable(${currentTarget}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/xrtUtils.cpp
-    test.cpp
-)
+# -----------------------------------------------------------------------------
+# CMake-driven design build + NPU run (run_cmake.lit)
+# -----------------------------------------------------------------------------
+# The CMake equivalent of the Makefile's jit_xclbin plus its `run_py` target.
+# FUSE_RELU is the Makefile's fuse_relu: it selects a different kernel library
+# and has to be passed to both the design and the host test, which is why the
+# Makefile threads it through aieargs and test_py_args alike.
+if(AIE_BUILD_DESIGN)
 
-target_compile_definitions(${currentTarget} PUBLIC
-        EDGEDETECT_WIDTH=${EDGEDETECT_WIDTH}
-        EDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT}
-)
+set(WIDTH 32 CACHE STRING "conv tile width (Makefile `width`)")
+set(HEIGHT 32 CACHE STRING "conv tile height (Makefile `height`)")
+set(IN_CHANNELS 64 CACHE STRING "input channels (Makefile `in_channels`)")
+set(OUT_CHANNELS 64 CACHE STRING "output channels (Makefile `out_channels`)")
+option(FUSE_RELU "Fuse the ReLU into the conv kernel" OFF)
 
-target_include_directories (${currentTarget} PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib
-    ${XRT_INC_DIR}
-    ${OpenCV_INCLUDE_DIRS}
-)
+set(_relu "")
+if(FUSE_RELU)
+  set(_relu --fuse_relu)
+endif()
 
-target_link_directories(${currentTarget} PUBLIC
-    ${XRT_LIB_DIR}
-    ${OpenCV_LIB_PATH}
-)
+add_aie_design(TARGET ${currentTarget} PY conv2d.py DEVICE ${AIE_DEVICE}
+               ARGS -wd ${WIDTH} -ht ${HEIGHT}
+                    -ic ${IN_CHANNELS} -oc ${OUT_CHANNELS} ${_relu})
+add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} PY test.py
+                 RUN_ARGS -wd ${WIDTH} -ht ${HEIGHT}
+                          -ic ${IN_CHANNELS} -oc ${OUT_CHANNELS} ${_relu})
 
-target_link_libraries(${currentTarget} PUBLIC
-    xrt_coreutil
-    ${OpenCV_LIBS}
-)
+endif() # AIE_BUILD_DESIGN

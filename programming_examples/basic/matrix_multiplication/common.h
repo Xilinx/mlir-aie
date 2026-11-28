@@ -115,6 +115,22 @@ static inline float scalar_to_float(T value) {
   return static_cast<float>(scalar_to_arithmetic(value));
 }
 
+// Multiply by an integer factor in the element's *value* space. Only
+// test_utils::bfloat16_t needs the detour: where std::bfloat16_t is missing it
+// falls back to a uint16_t holding the bit pattern, so a plain `value * factor`
+// multiplies the bits as an integer. That lands on arbitrary exponents --
+// ~0.4% of them NaN or infinity -- which a K-long dot product then spreads to
+// almost every output element.
+template <typename T>
+static inline T scalar_scale(T value, int factor) {
+  if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
+    return test_utils::bfloat16_from_float(
+        test_utils::bfloat16_to_float(value) * static_cast<float>(factor));
+  } else {
+    return static_cast<T>(value * factor);
+  }
+}
+
 template <typename T, typename Tacc>
 static inline T scalar_from_accum(Tacc value) {
   auto arithmetic_value = scalar_to_arithmetic(value);
@@ -379,7 +395,7 @@ verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual,
                          rel_tol, abs_tol);
   }
   if (!match) {
-    return (struct error<Tout>){row, col, expected, actual};
+    return error<Tout>{row, col, expected, actual};
   }
   return std::nullopt;
 }
