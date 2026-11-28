@@ -452,9 +452,9 @@ mkdocs-literate-nav==0.6.3 \
     --hash=sha256:2c421561280fa9184f88cbf399bebbd4cc17ee507e978a31ce11fd6f3aabf233 \
     --hash=sha256:edbaca22343f861fe4e34aac47d55a0c9955c640dbf02eea99fe631e914cf9ee
     # via -r requirements-mkdocs.txt
-mkdocs-material==9.8.0 \
-    --hash=sha256:19304a7263c5700428227122b3b2699aa73f432c9de8816876adaec7d7293ce3 \
-    --hash=sha256:1ed4c5edaf405a3fb62e55288b8fdff592971729361548b1ffa757bf9849fb81
+mkdocs-material==9.8.2 \
+    --hash=sha256:005d942bdbfa22efa049f4818c31d42fb36bed6d362adb641dd7a2e948078f9d \
+    --hash=sha256:ef1414cab33d64fcc13387e972af5ba4620f55f93482d1842933399ed2c69b02
     # via -r requirements-mkdocs.txt
 mkdocs-material-extensions==1.3.1 \
     --hash=sha256:10c9511cea88f568257f960358a467d12b970e1f7b2c0e5fb2bb48cab1928443 \
