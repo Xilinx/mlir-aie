@@ -2351,8 +2351,8 @@
   {
    "date": "2026-11-28",
    "merge": {
-    "merged": 36,
-    "hours_median": 13.3,
+    "merged": 35,
+    "hours_median": 13.9,
     "hours_p90": 167.6,
     "open": 48
    },
