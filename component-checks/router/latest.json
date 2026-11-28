@@ -1,9 +1,9 @@
 {
  "schema": 1,
  "target": "router",
- "id": "45933781111",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45933781111",
- "date": "2026-11-27T03:22:24+00:00",
+ "id": "46102398203",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/46102398203",
+ "date": "2026-11-28T03:20:41+00:00",
  "commit": {
   "id": "90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
   "url": "https://github.com/Xilinx/mlir-aie/commit/90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
@@ -39,15 +39,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0176,
+    "value": 1.0165,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.091,
+    "value": 14.685,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 9.9,
+    "value": 17.24,
     "unit": "ms"
    },
    "strict_misses": {
@@ -77,19 +77,19 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0178,
+    "value": 1.0161,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.03,
+    "value": 14.905,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 11.67,
+    "value": 23.68,
     "unit": "ms"
    },
    "strict_misses": {
-    "value": 3,
+    "value": 0,
     "unit": "designs"
    },
    "failed_mutations": {
@@ -115,19 +115,19 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0135,
+    "value": 1.0168,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 17.584,
+    "value": 18.148,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 155.27,
+    "value": 237.25,
     "unit": "ms"
    },
    "strict_misses": {
-    "value": 1,
+    "value": 0,
     "unit": "designs"
    },
    "failed_mutations": {
@@ -150,7 +150,7 @@
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207840000,
+   "first_seed": 207850000,
    "seeds": 2000,
    "partial": false,
    "seeds_done": 2000,
@@ -159,7 +159,20 @@
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207840000,
+   "first_seed": 207850000,
+   "seeds": 400,
+   "partial": false,
+   "seeds_done": 400,
+   "killed": 1935,
+   "survived": 0,
+   "failures": 0,
+   "strict_misses": 0,
+   "why": []
+  },
+  {
+   "device": "npu1",
+   "run": "hops-off",
+   "first_seed": 207850000,
    "seeds": 400,
    "partial": false,
    "seeds_done": 400,
@@ -170,22 +183,9 @@
    "why": []
   },
   {
-   "device": "npu1",
-   "run": "hops-off",
-   "first_seed": 207840000,
-   "seeds": 400,
-   "partial": false,
-   "seeds_done": 400,
-   "killed": 1921,
-   "survived": 0,
-   "failures": 0,
-   "strict_misses": 0,
-   "why": []
-  },
-  {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207840000,
+   "first_seed": 207850000,
    "seeds": 2000,
    "partial": false,
    "seeds_done": 2000,
@@ -194,33 +194,33 @@
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207840000,
+   "first_seed": 207850000,
    "seeds": 400,
    "partial": false,
    "seeds_done": 400,
-   "killed": 1909,
+   "killed": 1937,
    "survived": 0,
    "failures": 0,
-   "strict_misses": 2,
+   "strict_misses": 0,
    "why": []
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207840000,
+   "first_seed": 207850000,
    "seeds": 400,
    "partial": false,
    "seeds_done": 400,
-   "killed": 1901,
+   "killed": 1931,
    "survived": 0,
    "failures": 0,
-   "strict_misses": 1,
+   "strict_misses": 0,
    "why": []
   },
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207840000,
+   "first_seed": 207850000,
    "seeds": 500,
    "partial": false,
    "seeds_done": 500,
@@ -229,11 +229,11 @@
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207840000,
+   "first_seed": 207850000,
    "seeds": 100,
    "partial": false,
    "seeds_done": 100,
-   "killed": 420,
+   "killed": 427,
    "survived": 0,
    "failures": 0,
    "strict_misses": 0,
@@ -242,11 +242,11 @@
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207840000,
+   "first_seed": 207850000,
    "seeds": 100,
    "partial": false,
    "seeds_done": 100,
-   "killed": 418,
+   "killed": 426,
    "survived": 0,
    "failures": 0,
    "strict_misses": 0,

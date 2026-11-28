@@ -1,9 +1,9 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "45933781111",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/45933781111",
- "date": "2026-11-27T03:22:24+00:00",
+ "id": "46102398203",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/46102398203",
+ "date": "2026-11-28T03:20:41+00:00",
  "commit": {
   "id": "90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
   "url": "https://github.com/Xilinx/mlir-aie/commit/90226ad006b1a9297d7e86c6fa3b8a7884bb0eee",
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 181.2,
+    "value": 228.3,
     "unit": "s"
    }
   }
